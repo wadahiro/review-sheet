@@ -1,0 +1,5 @@
+---
+# Staging overrides for the nginx role (defaults in roles/nginx/defaults/main.yml).
+nginx_server_name: staging.example.com
+nginx_worker_processes: "2"
+nginx_client_max_body_size: "10m"

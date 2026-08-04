@@ -1,0 +1,8 @@
+---
+# Production overrides for the httpd role (defaults in roles/httpd/defaults/main.yml).
+httpd_server_name: "www.example.com"
+httpd_max_request_workers: 800
+httpd_server_limit: 32
+httpd_threads_per_child: 25
+httpd_keep_alive_timeout: 15
+httpd_log_level: "warn"

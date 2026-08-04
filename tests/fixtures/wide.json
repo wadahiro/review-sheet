@@ -1,0 +1,142 @@
+{
+  "metadata": {
+    "title": "Wide Layout Stress Test Parameter Sheet",
+    "project": "Multi-Region Cluster Comparison",
+    "version": "1.0",
+    "generated_at": "2026-06-18T09:00:00Z",
+    "changelog": [
+      { "version": "1.0", "date": "2026-06-18", "author": "Layout Reviewer", "description": "Fixture to verify horizontal scrolling and column overflow with many instance columns and long values" }
+    ]
+  },
+  "sheets": [
+    {
+      "name": "Application Servers (10 instances)",
+      "role": "app-cluster",
+      "file_path": "/opt/app/config/application.yml",
+      "categories": [
+        {
+          "name": "Connection Settings",
+          "params": [
+            {
+              "key": "server.endpoint.url",
+              "description": "Fully qualified base endpoint URL used by upstream load balancers and health checks across all regions",
+              "default": "http://localhost:8080/",
+              "instances": [
+                { "name": "web-prod-tokyo-01", "value": "https://web-prod-tokyo-01.ap-northeast-1.internal.example.com:8443/api/v2/" },
+                { "name": "web-prod-tokyo-02", "value": "https://web-prod-tokyo-02.ap-northeast-1.internal.example.com:8443/api/v2/" },
+                { "name": "web-prod-osaka-01", "value": "https://web-prod-osaka-01.ap-northeast-3.internal.example.com:8443/api/v2/" },
+                { "name": "web-prod-osaka-02", "value": "https://web-prod-osaka-02.ap-northeast-3.internal.example.com:8443/api/v2/" },
+                { "name": "web-prod-virginia-01", "value": "https://web-prod-virginia-01.us-east-1.internal.example.com:8443/api/v2/" },
+                { "name": "web-prod-virginia-02", "value": "https://web-prod-virginia-02.us-east-1.internal.example.com:8443/api/v2/" },
+                { "name": "web-prod-frankfurt-01", "value": "https://web-prod-frankfurt-01.eu-central-1.internal.example.com:8443/api/v2/" },
+                { "name": "web-prod-frankfurt-02", "value": "https://web-prod-frankfurt-02.eu-central-1.internal.example.com:8443/api/v2/" },
+                { "name": "web-prod-singapore-01", "value": "https://web-prod-singapore-01.ap-southeast-1.internal.example.com:8443/api/v2/" },
+                { "name": "web-prod-singapore-02", "value": "https://web-prod-singapore-02.ap-southeast-1.internal.example.com:8443/api/v2/" }
+              ]
+            },
+            {
+              "key": "server.tomcat.max-threads",
+              "description": "Maximum number of worker threads in the embedded Tomcat connector thread pool",
+              "default": "200",
+              "instances": [
+                { "name": "web-prod-tokyo-01", "value": "800" },
+                { "name": "web-prod-tokyo-02", "value": "800" },
+                { "name": "web-prod-osaka-01", "value": "600" },
+                { "name": "web-prod-osaka-02", "value": "600" },
+                { "name": "web-prod-virginia-01", "value": "1000" },
+                { "name": "web-prod-virginia-02", "value": "1000" },
+                { "name": "web-prod-frankfurt-01", "value": "750" },
+                { "name": "web-prod-frankfurt-02", "value": "750" },
+                { "name": "web-prod-singapore-01", "value": "500" },
+                { "name": "web-prod-singapore-02", "value": "500" }
+              ]
+            },
+            {
+              "key": "datasource.jdbc-url",
+              "description": "JDBC connection string including failover host list, connection timeout and SSL parameters",
+              "default": "jdbc:postgresql://localhost:5432/app",
+              "instances": [
+                { "name": "web-prod-tokyo-01", "value": "jdbc:postgresql://db-tokyo-primary.internal:5432,db-tokyo-standby.internal:5432/appdb?targetServerType=primary&ssl=true&sslmode=verify-full&connectTimeout=10" },
+                { "name": "web-prod-tokyo-02", "value": "jdbc:postgresql://db-tokyo-primary.internal:5432,db-tokyo-standby.internal:5432/appdb?targetServerType=primary&ssl=true&sslmode=verify-full&connectTimeout=10" },
+                { "name": "web-prod-osaka-01", "value": "jdbc:postgresql://db-osaka-primary.internal:5432,db-osaka-standby.internal:5432/appdb?targetServerType=primary&ssl=true&sslmode=verify-full&connectTimeout=10" },
+                { "name": "web-prod-osaka-02", "value": "jdbc:postgresql://db-osaka-primary.internal:5432,db-osaka-standby.internal:5432/appdb?targetServerType=primary&ssl=true&sslmode=verify-full&connectTimeout=10" },
+                { "name": "web-prod-virginia-01", "value": "jdbc:postgresql://db-virginia-primary.internal:5432,db-virginia-standby.internal:5432/appdb?targetServerType=primary&ssl=true&sslmode=verify-full&connectTimeout=10" },
+                { "name": "web-prod-virginia-02", "value": "jdbc:postgresql://db-virginia-primary.internal:5432,db-virginia-standby.internal:5432/appdb?targetServerType=primary&ssl=true&sslmode=verify-full&connectTimeout=10" },
+                { "name": "web-prod-frankfurt-01", "value": "jdbc:postgresql://db-frankfurt-primary.internal:5432,db-frankfurt-standby.internal:5432/appdb?targetServerType=primary&ssl=true&sslmode=verify-full&connectTimeout=10" },
+                { "name": "web-prod-frankfurt-02", "value": "jdbc:postgresql://db-frankfurt-primary.internal:5432,db-frankfurt-standby.internal:5432/appdb?targetServerType=primary&ssl=true&sslmode=verify-full&connectTimeout=10" },
+                { "name": "web-prod-singapore-01", "value": "jdbc:postgresql://db-singapore-primary.internal:5432,db-singapore-standby.internal:5432/appdb?targetServerType=primary&ssl=true&sslmode=verify-full&connectTimeout=10" },
+                { "name": "web-prod-singapore-02", "value": "jdbc:postgresql://db-singapore-primary.internal:5432,db-singapore-standby.internal:5432/appdb?targetServerType=primary&ssl=true&sslmode=verify-full&connectTimeout=10" }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "TLS Settings",
+          "params": [
+            {
+              "key": "ssl.cipher-suites",
+              "description": "Ordered list of allowed TLS cipher suites negotiated during the handshake (very long single-line value)",
+              "default": "DEFAULT",
+              "remarks": "Hardened set; must match the corporate baseline and intentionally has no line breaks to test wrapping",
+              "instances": [
+                { "name": "web-prod-tokyo-01", "value": "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256" },
+                { "name": "web-prod-tokyo-02", "value": "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256" },
+                { "name": "web-prod-osaka-01", "value": "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384" },
+                { "name": "web-prod-osaka-02", "value": "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384" },
+                { "name": "web-prod-virginia-01", "value": "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305" },
+                { "name": "web-prod-virginia-02", "value": "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305" },
+                { "name": "web-prod-frankfurt-01", "value": "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384" },
+                { "name": "web-prod-frankfurt-02", "value": "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384" },
+                { "name": "web-prod-singapore-01", "value": "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256" },
+                { "name": "web-prod-singapore-02", "value": "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256" }
+              ]
+            },
+            {
+              "key": "ssl.enabled-protocols",
+              "description": "Enabled TLS protocol versions",
+              "default": "TLSv1.2",
+              "instances": [
+                { "name": "web-prod-tokyo-01", "value": "TLSv1.3,TLSv1.2" },
+                { "name": "web-prod-tokyo-02", "value": "TLSv1.3,TLSv1.2" },
+                { "name": "web-prod-osaka-01", "value": "TLSv1.3,TLSv1.2" },
+                { "name": "web-prod-osaka-02", "value": "TLSv1.3,TLSv1.2" },
+                { "name": "web-prod-virginia-01", "value": "TLSv1.3" },
+                { "name": "web-prod-virginia-02", "value": "TLSv1.3" },
+                { "name": "web-prod-frankfurt-01", "value": "TLSv1.3,TLSv1.2" },
+                { "name": "web-prod-frankfurt-02", "value": "TLSv1.3,TLSv1.2" },
+                { "name": "web-prod-singapore-01", "value": "TLSv1.2" },
+                { "name": "web-prod-singapore-02", "value": "TLSv1.2" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Simple Sheet With Long Values",
+      "role": "single-host",
+      "categories": [
+        {
+          "name": "Kernel Tuning (long descriptions and remarks)",
+          "file_path": "/etc/sysctl.d/99-extremely-long-filename-for-layout-testing-purposes.conf",
+          "params": [
+            {
+              "key": "net.ipv4.tcp_rmem.with.an.unusually.long.parameter.key.name.for.testing",
+              "default": "4096 87380 6291456",
+              "value": "4096 1048576 16777216",
+              "description": "TCP receive buffer minimum, default and maximum sizes; this description is intentionally verbose to verify that long description text wraps within its column instead of forcing the whole table wider than the viewport",
+              "remarks": "Tuned for high bandwidth-delay product links between regions; coordinate with the network team before any further change because it interacts with net.core.rmem_max"
+            },
+            {
+              "key": "kernel.core_pattern",
+              "default": "core",
+              "value": "|/usr/lib/systemd/systemd-coredump %P %u %g %s %t %c %h /var/lib/systemd/coredump/core.%e.%p.%t.long.path.for.testing",
+              "description": "Pattern used to name and route core dumps to the systemd coredump handler",
+              "remarks": "Single long unbroken value to check horizontal overflow"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

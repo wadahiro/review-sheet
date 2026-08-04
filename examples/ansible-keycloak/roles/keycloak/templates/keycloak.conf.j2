@@ -1,0 +1,37 @@
+# {{ ansible_managed }}
+# Keycloak server configuration (Quarkus keycloak.conf). Rendered by the role.
+# {{ var }} values are the reviewable Ansible variables; a bare literal (db) is
+# fixed by the role and shown out_of_scope in the review sheet.
+
+# --- Database ---
+# The role commits to PostgreSQL; the vendor is a role decision, not a knob.
+db=postgres
+db-url={{ kc_db_url }}
+db-username={{ kc_db_username }}
+db-password={{ kc_db_password }}
+
+# --- Hostname ---
+hostname={{ kc_hostname }}
+hostname-strict={{ kc_hostname_strict }}
+
+# --- HTTP / TLS ---
+http-enabled={{ kc_http_enabled }}
+http-port={{ kc_http_port }}
+https-port={{ kc_https_port }}
+https-certificate-file={{ kc_https_certificate_file }}
+https-certificate-key-file={{ kc_https_certificate_key_file }}
+
+# --- Reverse proxy ---
+proxy-headers={{ kc_proxy_headers }}
+
+# --- Observability ---
+health-enabled={{ kc_health_enabled }}
+metrics-enabled={{ kc_metrics_enabled }}
+
+# --- Logging ---
+log={{ kc_log }}
+log-level={{ kc_log_level }}
+
+# --- Cache ---
+cache={{ kc_cache }}
+cache-stack={{ kc_cache_stack }}

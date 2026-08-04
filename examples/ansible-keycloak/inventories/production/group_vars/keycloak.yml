@@ -1,0 +1,10 @@
+---
+# Production overrides for the keycloak role (defaults in roles/keycloak/defaults/main.yml).
+# Two nodes behind a proxy, clustered Infinispan cache, quieter logs.
+kc_db_url: "jdbc:postgresql://db-prod.example.com/keycloak"
+kc_hostname: "sso.example.com"
+kc_proxy_headers: "xforwarded"
+kc_metrics_enabled: true
+kc_cache: "ispn"
+kc_cache_stack: "kubernetes"
+kc_log_level: "warn"

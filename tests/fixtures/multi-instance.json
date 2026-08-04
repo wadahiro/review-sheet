@@ -1,0 +1,67 @@
+{
+  "metadata": {
+    "title": "Application Settings",
+    "project": "Web Application",
+    "version": "1.0",
+    "generated_at": "2026-06-17T10:00:00Z"
+  },
+  "sheets": [
+    {
+      "name": "Application Settings",
+      "role": "app-config",
+      "file_path": "config/environments/*.yml",
+      "categories": [
+        {
+          "name": "General",
+          "params": [
+            {
+              "key": "app.enabled",
+              "description": "Application enabled flag",
+              "default": "true",
+              "instances": [
+                { "name": "development", "value": "true" },
+                { "name": "staging", "value": "true" },
+                { "name": "production", "value": "true" }
+              ]
+            },
+            {
+              "key": "app.name",
+              "description": "Application display name",
+              "default": "",
+              "instances": [
+                { "name": "development", "value": "Dev App" },
+                { "name": "staging", "value": "Staging App" },
+                { "name": "production", "value": "Production App" }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Session",
+          "params": [
+            {
+              "key": "session.timeout",
+              "description": "Session timeout (seconds)",
+              "default": "300",
+              "instances": [
+                { "name": "development", "value": "3600" },
+                { "name": "staging", "value": "600" },
+                { "name": "production", "value": "300" }
+              ]
+            },
+            {
+              "key": "session.idle_timeout",
+              "description": "Session idle timeout (seconds)",
+              "default": "1800",
+              "instances": [
+                { "name": "development", "value": "7200" },
+                { "name": "staging", "value": "1800" },
+                { "name": "production", "value": "1800" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

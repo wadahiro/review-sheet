@@ -1,0 +1,62 @@
+---
+# Shared verification suite — the single source of assertions for "is nginx in
+# the desired state". Pure native Ansible (assert / *_facts / stat / wait_for /
+# uri), so it runs identically against the Molecule test container AND against
+# real staging/production hosts over SSH ("write once, verify everywhere"):
+#
+#   molecule verify                                              # the test container
+#   ansible-playbook -i inventories/staging/hosts.yml    validate.yml   # real hosts, post-deploy / scheduled
+#   ansible-playbook -i inventories/production/hosts.yml validate.yml
+#
+# Molecule's Ansible verifier is simply "run this playbook against the live
+# instances" (molecule src: verifier/ansible.py), which is mechanically the same
+# as running it over SSH — hence the reuse.
+- name: Validate nginx desired state
+  hosts: web
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Gather installed package facts
+      ansible.builtin.package_facts:
+
+    - name: Assert nginx is installed
+      ansible.builtin.assert:
+        that: "'nginx' in ansible_facts.packages"
+        fail_msg: nginx package is not installed
+        success_msg: nginx package is installed
+
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Assert nginx service is running
+      ansible.builtin.assert:
+        that:
+          - "'nginx.service' in ansible_facts.services"
+          - "ansible_facts.services['nginx.service'].state == 'running'"
+        fail_msg: nginx service is not running
+
+    - name: Stat the rendered nginx config
+      ansible.builtin.stat:
+        path: /etc/nginx/nginx.conf
+      register: nginx_conf
+
+    - name: Assert the config file is present
+      ansible.builtin.assert:
+        that: nginx_conf.stat.exists
+        fail_msg: /etc/nginx/nginx.conf is missing
+
+    - name: Assert nginx is accepting connections on the listen port
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ nginx_listen_port | default(80) }}"
+        state: started
+        timeout: 20
+
+    - name: Assert nginx answers with HTTP 200
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ nginx_listen_port | default(80) }}/"
+        status_code: 200
+      register: page
+      retries: 5
+      delay: 2
+      until: page.status == 200

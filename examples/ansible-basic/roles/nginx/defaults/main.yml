@@ -1,0 +1,22 @@
+---
+# nginx role — tunable parameters.
+# Override these per environment in inventories/<env>/group_vars/web.yml.
+# These values are the ones surfaced in the review-sheet parameter sheet
+# (see ../../review-sheet/build.yml); the defaults here become each param's
+# "default" column.
+
+# --- Listening ---
+nginx_listen_port: 80
+nginx_server_name: "_"
+
+# --- Performance tuning ---
+nginx_worker_processes: "auto"
+nginx_worker_connections: 1024
+nginx_keepalive_timeout: 65
+
+# --- Virtual host ---
+nginx_client_max_body_size: "1m"
+nginx_root: /usr/share/nginx/html   # RHEL/UBI default docroot (SELinux-friendly)
+
+# --- Features ---
+nginx_gzip: true

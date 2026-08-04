@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tgz
+.DS_Store
+
+# local agent/editor state — except the checked-in project rules, which are
+# instructions for anyone working here, not personal state (see CLAUDE.md)
+.claude/*
+!.claude/rules/
+
+# generated example outputs (regenerate with import/annotations/generate)
+examples/**/input.json
+examples/**/sheet.html

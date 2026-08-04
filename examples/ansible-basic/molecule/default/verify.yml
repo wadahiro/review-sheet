@@ -1,0 +1,6 @@
+---
+# Molecule's Ansible verifier just runs this playbook against the live container
+# (molecule src: verifier/ansible.py). Delegate to the shared suite so the exact
+# same assertions run here and against real staging/production inventory.
+- name: Verify
+  ansible.builtin.import_playbook: ../../validate.yml

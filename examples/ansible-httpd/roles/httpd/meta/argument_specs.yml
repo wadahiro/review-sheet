@@ -1,0 +1,21 @@
+---
+# Real Ansible role documentation (ansible-doc, role validation) for these two
+# variables — kept regardless of what review-sheet does with it. review-sheet's
+# argument-specs provider sources ServerTokens/MaxRequestWorkers' sheet
+# description straight from here: both variables resolve 1:1 to a directive
+# in the template, so their row is named after the directive (ServerTokens,
+# MaxRequestWorkers) rather than the variable, but the provider falls back to
+# the row's original variable name when its key doesn't match (see
+# review-sheet's src/providers/argument-specs.ts), so it still reaches these
+# two by httpd_server_tokens/httpd_max_request_workers. The rest fall through
+# to review-sheet/metadata/httpd@2.4.yml as before.
+argument_specs:
+  main:
+    short_description: Install and configure Apache httpd.
+    options:
+      httpd_max_request_workers:
+        type: int
+        description: Maximum number of worker threads serving requests at once (event MPM).
+      httpd_server_tokens:
+        type: str
+        description: How much version detail Apache reveals in the Server response header.

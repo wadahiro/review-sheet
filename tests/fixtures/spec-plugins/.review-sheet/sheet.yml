@@ -1,0 +1,8 @@
+# Project metadata: categories only. Descriptions come from the custom
+# provider in providers/, deliberately — see that file.
+categories:
+  - General
+
+params:
+  app_port: { category: General }
+  timeout: { category: General }

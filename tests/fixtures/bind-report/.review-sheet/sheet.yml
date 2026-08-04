@@ -1,0 +1,22 @@
+# Project metadata for tests/bind-report-cli.test.ts: exercises every
+# BindReportRow method (alias/exact/normalized/none) end to end through the
+# real CLI, so the T4 --bind-report / stdout-normalized-rows / stderr-tally
+# wiring is covered by something other than a unit test on assemble.ts.
+#
+# Dictionary bindings are declared on the sheet itself in build.yml (a
+# data-source fact); category tab order is a display fact and lives here
+# instead (P7 — `build.yml` sheets have no `categories:` field any more, see
+# review-sheet's CLAUDE.md).
+categories: [Network]
+params:
+  widget_port:
+    category: Network
+    dict_key: Port # alias tier: declared verbatim
+  my_time_out:
+    category: Network
+    # No dict_key: only normalizeKey("my_time_out") == normalizeKey("MyTimeOut")
+    # ("mytimeout" both ways) makes this resolve — the "normalized" tier.
+  stray_thing:
+    category: Network
+    description: { en: A setting the widget dictionary has never heard of. }
+    # Matches nothing in the dictionary at all — the "none" tier.

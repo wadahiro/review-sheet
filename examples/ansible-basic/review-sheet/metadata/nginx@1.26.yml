@@ -1,0 +1,162 @@
+# nginx 1.26 parameter dictionary — a product-level reference (not tied to this
+# project's variable names), consulted via review-sheet's "dictionary" metadata
+# provider. Hand-transcribed from the nginx docs, so provenance is "official".
+# Only a hand-picked dozen directives (not every nginx directive), so
+# coverage is "partial" — this dictionary must never be materialized (see
+# build.yml's "materialize" comment).
+product: nginx
+version: "1.26"
+provenance: official
+coverage: partial
+generated_by: "manual transcription of nginx.org/en/docs"
+docs_url: https://nginx.org/en/docs/
+parameters:
+  user:
+    description:
+      en: OS user the nginx worker processes run as.
+      ja: nginx のワーカープロセスを実行する OS ユーザーを指定する。
+    default: nobody
+    type: string
+    scope: main
+    docs_url: https://nginx.org/en/docs/ngx_core_module.html#user
+  pid:
+    description:
+      en: Path of the file storing the nginx master process's PID.
+      ja: nginx マスタープロセスの PID を保存するファイルのパスを指定する。
+    default: nginx.pid
+    type: string
+    scope: main
+    docs_url: https://nginx.org/en/docs/ngx_core_module.html#pid
+  include:
+    description:
+      en: Reads another configuration file (or a glob of them) at this point in the configuration.
+      ja: この位置で別の設定ファイル（またはパターンに一致する複数ファイル）を読み込む。
+    type: string
+    scope: any
+    docs_url: https://nginx.org/en/docs/ngx_core_module.html#include
+  default_type:
+    description:
+      en: MIME type used for a response whose file extension is not in the types table.
+      ja: 拡張子が types テーブルに無いレスポンスへ適用する MIME タイプ。
+    default: text/plain
+    type: string
+    scope: http, server, location
+    docs_url: https://nginx.org/en/docs/http/ngx_http_core_module.html#default_type
+  sendfile:
+    description:
+      en: Enables file delivery via the sendfile() system call, improving static-file serving performance.
+      ja: sendfile() システムコールによるファイル配信を有効にし、静的ファイル配信の性能を向上させる。
+    default: "off"
+    type: bool
+    scope: http, server, location
+    docs_url: https://nginx.org/en/docs/http/ngx_http_core_module.html#sendfile
+  access_log:
+    description:
+      en: Path (and format) of the access log, or `off` to disable it.
+      ja: アクセスログの出力先パス（および形式）。`off` で無効化する。
+    default: logs/access.log combined
+    type: string
+    scope: http, server, location
+    docs_url: https://nginx.org/en/docs/http/ngx_http_log_module.html#access_log
+  error_log:
+    description:
+      en: Path and severity level of the error log.
+      ja: エラーログの出力先パスと出力レベル。
+    default: logs/error.log error
+    type: string
+    scope: main, http, server, location
+    docs_url: https://nginx.org/en/docs/ngx_core_module.html#error_log
+  index:
+    description:
+      en: File names tried, in order, for a request that names a directory.
+      ja: ディレクトリを指すリクエストに対して順に探索するインデックスファイル名。
+    default: index.html
+    type: string
+    scope: http, server, location
+    docs_url: https://nginx.org/en/docs/http/ngx_http_index_module.html#index
+  try_files:
+    description:
+      en: Tries each path in order and falls back to the last argument (a URI or a status code) when none exists.
+      ja: 指定したパスを順に試し、いずれも存在しない場合は最後の引数（URI またはステータスコード）にフォールバックする。
+    type: string
+    scope: server, location
+    docs_url: https://nginx.org/en/docs/http/ngx_http_core_module.html#try_files
+  server_tokens:
+    description:
+      en: Whether the nginx version is emitted in error pages and the Server response header.
+      ja: エラーページおよび Server レスポンスヘッダーに nginx のバージョンを出力するかどうか。
+    default: "on"
+    type: bool
+    scope: http, server, location
+    docs_url: https://nginx.org/en/docs/http/ngx_http_core_module.html#server_tokens
+  add_header:
+    description:
+      en: Adds a response header field when the response status is 200/201/204/206/301/302/303/304/307/308.
+      ja: レスポンスのステータスが 200/201/204/206/301/302/303/304/307/308 のときに応答ヘッダーを追加する。
+    type: string
+    scope: http, server, location
+    docs_url: https://nginx.org/en/docs/http/ngx_http_headers_module.html#add_header
+  listen:
+    description:
+      en: TCP port nginx listens on.
+      ja: nginx がリッスンする TCP ポート。
+    default: 80
+    type: int
+    scope: server
+    docs_url: https://nginx.org/en/docs/http/ngx_http_core_module.html#listen
+  server_name:
+    description:
+      en: Virtual host name matched against the request's Host header.
+      ja: リクエストの Host ヘッダーと照合される仮想ホスト名。
+    default: ""
+    type: string
+    scope: server
+    docs_url: https://nginx.org/en/docs/http/ngx_http_core_module.html#server_name
+  worker_processes:
+    description:
+      en: Number of nginx worker processes.
+      ja: nginx ワーカープロセスの数。
+    default: 1
+    type: string
+    scope: main
+    docs_url: https://nginx.org/en/docs/ngx_core_module.html#worker_processes
+  worker_connections:
+    description:
+      en: Maximum number of simultaneous connections per worker process.
+      ja: ワーカープロセスあたりの最大同時接続数。
+    default: 512
+    type: int
+    scope: events
+    docs_url: https://nginx.org/en/docs/ngx_core_module.html#worker_connections
+  keepalive_timeout:
+    description:
+      en: Seconds a keep-alive client connection is kept open.
+      ja: キープアライブ接続を維持する秒数。
+    default: 75
+    type: int
+    scope: http
+    docs_url: https://nginx.org/en/docs/http/ngx_http_core_module.html#keepalive_timeout
+  client_max_body_size:
+    description:
+      en: Maximum allowed size of a client request body.
+      ja: クライアントリクエストボディの最大許容サイズ。
+    default: "1m"
+    type: string
+    scope: http
+    docs_url: https://nginx.org/en/docs/http/ngx_http_core_module.html#client_max_body_size
+  root:
+    description:
+      en: Document root for requests.
+      ja: リクエストに対するドキュメントルート。
+    default: html
+    type: string
+    scope: http
+    docs_url: https://nginx.org/en/docs/http/ngx_http_core_module.html#root
+  gzip:
+    description:
+      en: Enables or disables gzip compression of responses.
+      ja: レスポンスの gzip 圧縮を有効/無効にする。
+    default: "off"
+    type: bool
+    scope: http
+    docs_url: https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip

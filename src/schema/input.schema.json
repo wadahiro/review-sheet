@@ -1,0 +1,173 @@
+{
+  "title": "Parameter Sheet Input",
+  "type": "object",
+  "required": ["sheets"],
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "project": { "type": "string" },
+        "version": { "type": "string" },
+        "generated_at": { "type": "string" },
+        "changelog": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["version", "date", "author", "description"],
+            "properties": {
+              "version": { "type": "string" },
+              "date": { "type": "string" },
+              "author": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          }
+        },
+        "extra": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "columns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["field", "header"],
+        "properties": {
+          "field": { "type": "string" },
+          "header": { "type": "string" },
+          "width": { "type": "string" },
+          "align": { "type": "string", "enum": ["left", "center", "right"] },
+          "className": { "type": "string" },
+          "render": { "type": "string", "enum": ["text", "status"] },
+          "place": { "type": "string", "enum": ["trailing", "under_key"] }
+        }
+      }
+    },
+    "sheets": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/sheet" }
+    },
+    "capabilities": { "$ref": "#/$defs/capabilities" }
+  },
+  "$defs": {
+    "langText": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "properties": {
+            "en": { "type": "string" },
+            "ja": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "outOfScope": {
+      "type": "object",
+      "required": ["reason"],
+      "properties": {
+        "reason": { "$ref": "#/$defs/langText" },
+        "owner": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "apply": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "sheet": {
+      "type": "object",
+      "required": ["name", "categories"],
+      "properties": {
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "instances": { "type": "array", "items": { "type": "string" } },
+        "file_path": { "type": "string" },
+        "source_file": { "type": "string" },
+        "categories": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/category" }
+        }
+      }
+    },
+    "category": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "tag": { "type": "string" },
+        "file_path": { "type": "string" },
+        "source_file": { "type": "string" },
+        "out_of_scope": { "$ref": "#/$defs/outOfScope" },
+        "params": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/parameter" }
+        },
+        "categories": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/category" }
+        }
+      }
+    },
+    "parameter": {
+      "type": "object",
+      "required": ["key"],
+      "properties": {
+        "key": { "type": "string" },
+        "description": { "$ref": "#/$defs/langText" },
+        "default": { "type": "string" },
+        "remarks": { "$ref": "#/$defs/langText" },
+        "out_of_scope": { "$ref": "#/$defs/outOfScope" },
+        "origin": { "type": "string", "enum": ["overlay", "common", "embedded", "default"] },
+        "value": { "type": "string" },
+        "source": { "$ref": "#/$defs/source" },
+        "additional_sources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/source" }
+        },
+        "instances": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "value"],
+            "properties": {
+              "name": { "type": "string" },
+              "value": { "type": "string" },
+              "source": { "$ref": "#/$defs/source" }
+            }
+          }
+        },
+        "extra": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "oneOf": [
+        { "required": ["value"], "not": { "required": ["instances"] } },
+        { "required": ["instances"], "not": { "required": ["value"] } }
+      ]
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 },
+        "end_line": { "type": "integer", "minimum": 1 },
+        "anchor": { "type": "string" },
+        "path": { "type": "string" },
+        "templateVar": { "type": "string" },
+        "conditional": { "type": "boolean" },
+        "generated": { "type": "boolean" }
+      }
+    }
+  }
+}

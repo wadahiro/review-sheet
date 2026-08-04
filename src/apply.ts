@@ -1,0 +1,237 @@
+// Deterministic "apply" core: turn reviewed value changes into precise,
+// verified edits using the source map. Anything that cannot be applied with
+// confidence is left untouched and handed to the AI prompt instead.
+//
+// File I/O is injected (readFile) so the core stays pure and unit-testable; the
+// CLI wires in the real filesystem and handles writing.
+
+import {
+  buildSourceIndex,
+  resolveSource,
+  buildPromptText,
+  HELD_REASON_GENERATED,
+  HELD_REASON_DEFAULT,
+  HELD_REASON_SHARED_INSTANCE,
+  type SheetData,
+  type ReviewItem,
+  type ReviewChange,
+  type SourceLocation,
+} from "./prompt.js";
+import { resolveParser, type ExtractOptions } from "./parser.js";
+import "./parsers/index.js";
+
+export type ApplyStatus = "applied" | "skipped" | "held" | "out_of_scope";
+
+export type ApplyResult = {
+  target: ReviewItem["target"];
+  file?: string;
+  status: ApplyStatus;
+  // "skipped" = already at the suggested value (idempotent). "held" = could not
+  // verify the location, so it was left for the AI prompt; reason explains why.
+  reason?: string;
+  line?: number; // 1-based line that was (or would be) edited
+  before?: string;
+  after?: string;
+  current: string;
+  suggested: string;
+};
+
+export type ApplyOutcome = {
+  results: ApplyResult[];
+  // Final content for each file that has at least one applied edit.
+  files: { path: string; content: string }[];
+  // AI prompt covering everything not applied deterministically (held value
+  // changes, documentation edits, and comment-only notes).
+  heldPrompt: string;
+  applied: number;
+  skipped: number;
+  held: number;
+  out_of_scope: number;
+};
+
+type ReadFile = (path: string) => string | null;
+
+// `opts` (currently just `marker`, for the ts/py annotation parsers' `edit`)
+// is threaded through to every parser dispatch — see ExtractOptions
+// (parser.ts) for why this is an ordinary argument and not process-wide config.
+export function computeApply(
+  data: SheetData,
+  reviews: ReviewItem[],
+  readFile: ReadFile,
+  opts?: ExtractOptions
+): ApplyOutcome {
+  const index = buildSourceIndex(data);
+  const pending = reviews.filter((r) => r.status === "pending");
+
+  // Lazily loaded, progressively edited file contents (as line arrays).
+  const working = new Map<string, string[] | null>(); // null = unreadable
+  const touched = new Set<string>();
+  const load = (path: string): string[] | null => {
+    if (!working.has(path)) {
+      const raw = readFile(path);
+      working.set(path, raw === null ? null : raw.split("\n"));
+    }
+    return working.get(path) ?? null;
+  };
+
+  const results: ApplyResult[] = [];
+  const heldReviews: ReviewItem[] = [];
+
+  for (const r of pending) {
+    const changes = r.changes ?? [];
+    const heldChanges: ReviewChange[] = [];
+
+    // Out-of-scope targets are skipped outright — not held, not prompted.
+    if (r.target.param && r.target.category) {
+      const entry = index.get(`${r.target.sheet}::${r.target.category}::${r.target.param}`);
+      if (entry?.outOfScope) {
+        for (const c of changes) {
+          results.push({
+            target: r.target,
+            file: entry.fileFallback,
+            status: "out_of_scope",
+            reason: entry.outOfScopeReason ? `out of scope: ${entry.outOfScopeReason}` : "out of scope",
+            current: c.current ?? "",
+            suggested: c.suggested,
+          });
+        }
+        continue;
+      }
+    }
+
+    for (const c of changes) {
+      if (c.field !== "value") {
+        heldChanges.push(c); // documentation edit -> prompt
+        continue;
+      }
+      const current = c.current ?? "";
+      const res = resolveSource(r.target, index);
+      const entry = r.target.param && r.target.category
+        ? index.get(`${r.target.sheet}::${r.target.category}::${r.target.param}`)
+        : undefined;
+
+      // One environment, but the row stores a single shared value: refuse before
+      // any parser is dispatched. `res.file` here is the SHARED definition (or
+      // the sheet's display fallback), which must not be edited to satisfy one
+      // environment — reported as context, never opened.
+      if (r.target.instance && entry && entry.param.instances === undefined && entry.param.origin !== "default") {
+        results.push({
+          target: r.target,
+          file: res.file,
+          status: "held",
+          reason: HELD_REASON_SHARED_INSTANCE,
+          current,
+          suggested: c.suggested,
+        });
+        heldChanges.push(c);
+        continue;
+      }
+
+      // `origin: "default"` means our deliverable sets this parameter NOWHERE:
+      // there is no line to rewrite, and a category/sheet `file_path` fallback
+      // must not tempt the editor into one — applying the change means adding
+      // the setting, which is a judgement call left to the AI prompt. Checked
+      // before the per-target loop for that reason.
+      if (entry?.param.origin === "default") {
+        results.push({
+          target: r.target,
+          file: entry.fileFallback,
+          status: "held",
+          reason: HELD_REASON_DEFAULT,
+          current,
+          suggested: c.suggested,
+        });
+        heldChanges.push(c);
+        continue;
+      }
+
+      // The same value may be defined in several files (primary `source` plus
+      // `additional_sources`). Edit every site; the change is held for the AI
+      // prompt if any one of them cannot be applied.
+      const targets: { source?: SourceLocation; file?: string }[] = [{ source: res.source, file: res.file }];
+      if (!r.target.instance) {
+        for (const a of entry?.param.additional_sources ?? []) {
+          targets.push({ source: a, file: a.file ?? entry?.fileFallback });
+        }
+      }
+
+      let anyHeld = false;
+      for (const tgt of targets) {
+        const base = { target: r.target, file: tgt.file, current, suggested: c.suggested };
+        // A generated source is a build artifact regenerated by some other
+        // process; editing it directly would be lost on the next generation,
+        // so it is always held for the AI-prompt/manual fallback instead.
+        if (tgt.source?.generated) {
+          results.push({ ...base, status: "held", reason: HELD_REASON_GENERATED });
+          anyHeld = true;
+          continue;
+        }
+        if (!tgt.file) {
+          results.push({ ...base, status: "held", reason: "no file mapped" });
+          anyHeld = true;
+          continue;
+        }
+        if (current === "") {
+          results.push({ ...base, status: "held", reason: "empty current value (cannot target)" });
+          anyHeld = true;
+          continue;
+        }
+        const lines = load(tgt.file);
+        if (lines === null) {
+          results.push({ ...base, status: "held", reason: "file not readable" });
+          anyHeld = true;
+          continue;
+        }
+        // Dispatch to the matching parser (structural + line/anchor fallback is
+        // handled inside each parser's edit method).
+        const text = lines.join("\n");
+        const parser = resolveParser(tgt.file, text);
+        if (!parser) {
+          results.push({ ...base, status: "held", reason: "no parser found" });
+          anyHeld = true;
+          continue;
+        }
+        const st = parser.edit(text, tgt.source ?? {}, current, c.suggested, opts);
+        if (st.status === "applied") {
+          working.set(tgt.file, st.content.split("\n"));
+          touched.add(tgt.file);
+          // A fallback edit is still applied (the line was verified against the
+          // current value), but say so — the source map it went through is one
+          // reordering away from breaking. See EditResult.fallback.
+          results.push({
+            ...base,
+            status: "applied",
+            reason: st.fallback === undefined ? "parser edit" : `parser edit by line fallback — ${st.fallback}`,
+            before: st.before,
+            after: st.after,
+          });
+        } else if (st.status === "skipped") {
+          results.push({ ...base, status: "skipped", reason: "already at suggested value" });
+        } else {
+          // st.status === "error"
+          results.push({ ...base, status: "held", reason: st.reason });
+          anyHeld = true;
+        }
+      }
+      if (anyHeld) heldChanges.push(c);
+    }
+
+    // Reconstruct the leftover review for the AI prompt: held value changes +
+    // all documentation changes, or a standalone note.
+    const hasNote = changes.length === 0 && !!r.comment;
+    if (heldChanges.length > 0 || hasNote) {
+      heldReviews.push({ ...r, changes: heldChanges.length > 0 ? heldChanges : undefined });
+    }
+  }
+
+  const files = [...touched].map((path) => ({ path, content: working.get(path)!.join("\n") }));
+  return {
+    results,
+    files,
+    heldPrompt: buildPromptText(heldReviews, data),
+    applied: results.filter((r) => r.status === "applied").length,
+    skipped: results.filter((r) => r.status === "skipped").length,
+    held: results.filter((r) => r.status === "held").length,
+    out_of_scope: results.filter((r) => r.status === "out_of_scope").length,
+  };
+}

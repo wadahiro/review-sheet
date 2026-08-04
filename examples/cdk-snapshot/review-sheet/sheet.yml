@@ -1,0 +1,146 @@
+# Project metadata (review-sheet's "project" metadata provider).
+#
+# There is no dictionary here: a synthesized CloudFormation template has no
+# product whose documentation could be snapshotted key-by-key (the "product" is
+# whatever AWS resources this stack happens to use), so every description is
+# authored by the project, in the project's own words, and every parameter is
+# keyed by its structural path in the template
+# (`Resources.<LogicalId>.Properties.<…>`).
+#
+# Keying by logical ID has one consequence worth knowing before adopting this
+# workflow: CDK derives logical IDs from the construct path, so RENAMING a
+# construct changes the key, and the sheet's history shows the parameter as
+# removed + added rather than changed. That is the price of reviewing an
+# artifact nobody hand-writes.
+#
+# Category display order (below) also guards against a "ghost tab" — a
+# category actually used (e.g. via a typo in some param's `category:`) that
+# isn't in this list now fails the build instead of silently appearing as a
+# new tab (see assemble.ts's fileDrafts).
+
+categories: [Data store, Scaling, Compute, Logging]
+
+params:
+  # --- DynamoDB table (Resources.AppTable815C50BC) ---
+  Resources.AppTable815C50BC.Properties.BillingMode:
+    category: Data store
+    description:
+      en: Capacity mode of the table — PROVISIONED bills for reserved throughput, PAY_PER_REQUEST bills per request.
+      ja: テーブルのキャパシティモード。PROVISIONED は確保したスループットに、PAY_PER_REQUEST はリクエスト数に対して課金される。
+  Resources.AppTable815C50BC.Properties.ProvisionedThroughput.ReadCapacityUnits:
+    category: Data store
+    description:
+      en: Reserved read capacity units. In production this is the floor that read autoscaling scales up from.
+      ja: 確保する読み込みキャパシティユニット。本番では読み込みオートスケーリングの下限値として機能する。
+    remarks:
+      en: 1 RCU = one strongly consistent read of up to 4 KB per second.
+      ja: 1 RCU = 4 KB までの強い整合性の読み込み 1 回/秒。
+  Resources.AppTable815C50BC.Properties.ProvisionedThroughput.WriteCapacityUnits:
+    category: Data store
+    description:
+      en: Reserved write capacity units. Not autoscaled — throttling shows up here first under load.
+      ja: 確保する書き込みキャパシティユニット。オートスケーリング対象外のため、高負荷時のスロットリングはまずここに現れる。
+  Resources.AppTable815C50BC.Properties.PointInTimeRecoverySpecification.PointInTimeRecoveryEnabled:
+    category: Data store
+    description:
+      en: Point-in-time recovery — continuous backups allowing restore to any second in the last 35 days.
+      ja: ポイントインタイムリカバリ。継続的バックアップにより直近 35 日間の任意の時点へリストアできる。
+  Resources.AppTable815C50BC.Properties.SSESpecification.SSEEnabled:
+    category: Data store
+    description:
+      en: Server-side encryption at rest with an AWS managed key.
+      ja: AWS マネージドキーによる保管時のサーバーサイド暗号化。
+  Resources.AppTable815C50BC.DeletionPolicy:
+    category: Data store
+    description:
+      en: What CloudFormation does with the table when it is removed from the stack — Retain keeps the data, Delete destroys it.
+      ja: スタックからテーブルが削除されたときの CloudFormation の挙動。Retain はデータを残し、Delete は破棄する。
+    remarks:
+      en: Rendered from the construct's removalPolicy; a stack-level guardrail, not a runtime setting.
+      ja: コンストラクトの removalPolicy から生成される。実行時の設定ではなくスタックレベルのガードレール。
+
+  # --- Read autoscaling (production only — the whole resource is absent from
+  # the staging template, so these rows have no staging value) ---
+  Resources.TableReadScalingTargetD6E4C6F0.Properties.MinCapacity:
+    category: Scaling
+    description:
+      en: Lower bound of read autoscaling; matches the table's provisioned read capacity.
+      ja: 読み込みオートスケーリングの下限値。テーブルのプロビジョンド読み込みキャパシティと一致させる。
+  Resources.TableReadScalingTargetD6E4C6F0.Properties.MaxCapacity:
+    category: Scaling
+    description:
+      en: Upper bound of read autoscaling — the cost ceiling for read traffic spikes.
+      ja: 読み込みオートスケーリングの上限値。読み込みスパイク時のコスト上限になる。
+  Resources.TableReadScalingTargetD6E4C6F0.Properties.ScalableDimension:
+    category: Scaling
+    description:
+      en: Which dimension of the resource is scaled (here, the table's read capacity units).
+      ja: スケーリング対象となるリソースの次元（ここではテーブルの読み込みキャパシティユニット）。
+  Resources.TableReadScalingTargetD6E4C6F0.Properties.ServiceNamespace:
+    category: Scaling
+    description:
+      en: AWS service the scalable target belongs to.
+      ja: スケーラブルターゲットが属する AWS サービス。
+
+  # --- Lambda function (Resources.ApiFunction4A2B0C1D) ---
+  Resources.ApiFunction4A2B0C1D.Properties.Runtime:
+    category: Compute
+    description:
+      en: Managed runtime the function executes on; determines the language version and the patch/EOL schedule.
+      ja: 関数を実行するマネージドランタイム。言語バージョンとパッチ/EOL のスケジュールを決める。
+  Resources.ApiFunction4A2B0C1D.Properties.Handler:
+    category: Compute
+    # Not a review-remit exclusion of the *mechanism* — the entry point is fixed
+    # by the platform team's function template, so this project has no decision
+    # to make about it.
+    out_of_scope:
+      reason:
+        en: The function entry point is fixed by the platform team's shared template — not this project's decision.
+        ja: 関数のエントリポイントはプラットフォーム共通テンプレートで固定されており、本プロジェクトの決定事項ではないため。
+      owner: Platform
+  Resources.ApiFunction4A2B0C1D.Properties.MemorySize:
+    category: Compute
+    description:
+      en: Memory allocated to the function, in MB. CPU is allocated proportionally, so this is the main latency/cost knob.
+      ja: 関数に割り当てるメモリ（MB）。CPU も比例配分されるため、レイテンシとコストの主要な調整項目となる。
+    remarks:
+      en: 1769 MB is the point where the function gets one full vCPU.
+      ja: 1769 MB が vCPU 1 個分に相当する境界値。
+  Resources.ApiFunction4A2B0C1D.Properties.Timeout:
+    category: Compute
+    description:
+      en: Maximum execution time per invocation, in seconds.
+      ja: 1 回の呼び出しあたりの最大実行時間（秒）。
+  Resources.ApiFunction4A2B0C1D.Properties.Environment.Variables.LOG_LEVEL:
+    category: Compute
+    description:
+      en: Application log level passed to the function as an environment variable.
+      ja: 環境変数として関数へ渡されるアプリケーションのログレベル。
+  Resources.ApiFunction4A2B0C1D.Properties.ReservedConcurrentExecutions:
+    category: Compute
+    description:
+      en: Concurrency reserved for this function — guarantees capacity for it and caps the load it can put on the table.
+      ja: この関数に予約する同時実行数。関数のキャパシティを保証すると同時に、テーブルへかけられる負荷の上限にもなる。
+    remarks:
+      en: Not set in staging, where the function shares the account's unreserved concurrency pool.
+      ja: ステージングでは設定せず、アカウント共通の未予約同時実行プールを共有する。
+
+  # --- Log group (Resources.ApiLogGroup2E9F0B3A) ---
+  Resources.ApiLogGroup2E9F0B3A.Properties.LogGroupName:
+    category: Logging
+    description:
+      en: CloudWatch Logs log group the function writes to.
+      ja: 関数がログを出力する CloudWatch Logs のロググループ。
+  Resources.ApiLogGroup2E9F0B3A.Properties.RetentionInDays:
+    category: Logging
+    description:
+      en: How long log events are retained before CloudWatch Logs deletes them.
+      ja: ログイベントが CloudWatch Logs によって削除されるまでの保持期間。
+    remarks:
+      en: Production keeps a year to satisfy the audit requirement; staging keeps a week.
+      ja: 本番は監査要件のため 1 年、ステージングは 1 週間。
+  Resources.ApiLogGroup2E9F0B3A.DeletionPolicy:
+    category: Logging
+    description:
+      en: What CloudFormation does with the log group when it is removed from the stack.
+      ja: スタックからロググループが削除されたときの CloudFormation の挙動。

@@ -1,0 +1,38 @@
+---
+# Molecule scenario. Uses the `default` (delegated) driver with self-authored
+# create.yml/destroy.yml — the ansible-native foundation. Per ansible/molecule#3919
+# the docker/podman *plugin* drivers are being dropped in favour of Ansible content
+# + the delegated driver, so this is the forward-looking path (not the plugin
+# drivers). The scenario is the single source of truth for the dev/test container.
+driver:
+  name: default
+  options:
+    managed: true
+    login_cmd_template: "docker exec -it {instance} bash"
+    ansible_connection_options:
+      ansible_connection: community.docker.docker
+platforms:
+  - name: rs-nginx-instance
+    # Red Hat UBI 10 with systemd (the ubi-init variant) — enterprise RHEL family,
+    # pullable without a subscription. nginx comes from the UBI AppStream repo.
+    image: registry.access.redhat.com/ubi10/ubi-init:latest
+provisioner:
+  name: ansible
+  env:
+    # Find the project-local collections (community.docker) regardless of cwd.
+    ANSIBLE_COLLECTIONS_PATH: ${MOLECULE_PROJECT_DIRECTORY}/collections
+  playbooks:
+    create: create.yml
+    destroy: destroy.yml
+    converge: converge.yml
+verifier:
+  name: ansible
+scenario:
+  test_sequence:
+    # collections come from `mise run setup` (ansible-galaxy), so no `dependency` step.
+    - destroy
+    - create
+    - converge
+    - idempotence
+    - verify
+    - destroy

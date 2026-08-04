@@ -1,0 +1,60 @@
+---
+- name: Create
+  hosts: localhost
+  gather_facts: false
+  vars:
+    molecule_inventory:
+      all:
+        children:
+          web:
+            hosts: {}
+  tasks:
+    - name: Start the test container(s)
+      community.docker.docker_container:
+        name: "{{ item.name }}"
+        image: "{{ item.image }}"
+        state: started
+        command: /sbin/init     # the ubi-init image runs systemd as PID 1
+        # systemd-in-container knobs (cgroup v2). privileged is the pragmatic
+        # choice for Docker Desktop / macOS hosts; drop it on Linux CI if you
+        # prefer the least-privilege form (cap SYS_ADMIN + ro cgroup mount).
+        privileged: true
+        cgroupns_mode: host
+        volumes:
+          - /sys/fs/cgroup:/sys/fs/cgroup:rw
+        tmpfs:
+          - /run
+          - /tmp
+        pull: false
+      loop: "{{ molecule_yml.platforms }}"
+
+    - name: Install sudo in the container (UBI minimal ships none; converge uses become,
+            mirroring a real RHEL host where you log in as a deploy user and sudo)
+      community.docker.docker_container_exec:
+        container: "{{ item.name }}"
+        command: /usr/bin/dnf install -y sudo
+      loop: "{{ molecule_yml.platforms }}"
+      changed_when: true
+
+    - name: Add the container to the in-memory molecule inventory (group "web")
+      vars:
+        inventory_partial_yaml: |
+          all:
+            children:
+              web:
+                hosts:
+                  "{{ item.name }}":
+                    ansible_connection: community.docker.docker
+      ansible.builtin.set_fact:
+        molecule_inventory: >-
+          {{ molecule_inventory | combine(inventory_partial_yaml | from_yaml, recursive=true) }}
+      loop: "{{ molecule_yml.platforms }}"
+
+    - name: Write the molecule inventory to the ephemeral directory
+      ansible.builtin.copy:
+        content: "{{ molecule_inventory | to_yaml }}"
+        dest: "{{ molecule_ephemeral_directory }}/inventory/molecule_inventory.yml"
+        mode: "0600"
+
+    - name: Refresh the inventory so converge/verify see the new host(s)
+      ansible.builtin.meta: refresh_inventory

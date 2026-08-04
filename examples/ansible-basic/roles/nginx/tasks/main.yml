@@ -1,0 +1,45 @@
+---
+- name: Install nginx
+  ansible.builtin.package:
+    name: nginx
+    state: present
+
+- name: Ensure web root exists
+  ansible.builtin.file:
+    path: "{{ nginx_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy index page
+  ansible.builtin.copy:
+    dest: "{{ nginx_root }}/index.html"
+    content: "ok\n"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy the static security drop-in (identical in every environment)
+  ansible.builtin.copy:
+    src: security.conf
+    dest: /etc/nginx/conf.d/security.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Deploy nginx.conf (templated from the per-environment values)
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Ensure nginx is started and enabled
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true

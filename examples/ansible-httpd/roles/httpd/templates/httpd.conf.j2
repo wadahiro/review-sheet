@@ -1,0 +1,29 @@
+# {{ ansible_managed }}
+
+# --- General ---
+Listen {{ httpd_listen }}
+ServerName {{ httpd_server_name }}
+ServerTokens {{ httpd_server_tokens }}
+ServerSignature {{ httpd_server_signature }}
+TimeOut {{ httpd_timeout }}
+LogLevel {{ httpd_log_level }}
+DocumentRoot "{{ httpd_document_root }}"
+
+# --- KeepAlive ---
+KeepAlive {{ httpd_keep_alive }}
+KeepAliveTimeout {{ httpd_keep_alive_timeout }}
+MaxKeepAliveRequests {{ httpd_max_keep_alive_requests }}
+
+# --- MPM (event) ---
+<IfModule mpm_event_module>
+    StartServers {{ httpd_start_servers }}
+    MinSpareThreads {{ httpd_min_spare_threads }}
+    MaxSpareThreads {{ httpd_max_spare_threads }}
+    ThreadsPerChild {{ httpd_threads_per_child }}
+    MaxRequestWorkers {{ httpd_max_request_workers }}
+    ServerLimit {{ httpd_server_limit }}
+</IfModule>
+
+# --- Fixed (role-managed), identical across environments ---
+Include conf.modules.d/*.conf
+TypesConfig /etc/mime.types

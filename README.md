@@ -1,0 +1,597 @@
+# review-sheet
+
+Generates a self-contained parameter-sheet HTML from a JSON description of your
+configuration, collects reviewer feedback on it, and applies the approved changes
+back to the real config files.
+
+It is for infrastructure / IaC teams that review settings (sysctl, YAML, `.env`,
+Helm values, Ansible vars, …) the same way they review code. Each value carries a
+source map recording where it lives in the real files, so an approved change can
+be written to that line. Values that cannot be edited deterministically are
+collected into an AI prompt instead.
+
+- One HTML file. No server, no runtime dependencies; open it in a browser.
+- Reviewers edit values and leave comments, then export their feedback as
+  `review.json`.
+- `apply` writes the approved value changes back to your config files, verified
+  and idempotent. What it cannot apply deterministically becomes an AI prompt.
+- One sheet can hold several versions, with a switcher between them and a
+  cell-level diff of any two, down to per-instance values (which a line or table
+  diff shows poorly).
+- `diff` also compares two *different* sheets — when both sheets are keyed by
+  the product's own configuration keys, two structurally different platforms
+  (EC2 vs. ECS, mid-migration) land on the same product keys, so
+  `--equivalence` answers "are these configured the same" instead of just
+  "what changed".
+- Japanese / English UI (`--lang`). The AI prompt is always English.
+
+---
+
+## Requirements
+
+- [Bun](https://bun.sh). The CLI and library run TypeScript directly, so there is
+  no build step.
+
+## Install
+
+```sh
+git clone https://github.com/wadahiro/review-sheet
+cd review-sheet
+bun install
+```
+
+Run the CLI from source:
+
+```sh
+bun run src/cli.ts <command> [options]
+```
+
+The examples below write `review-sheet` for brevity. Substitute
+`bun run src/cli.ts`, or expose the binary with `bun link`.
+
+---
+
+## The workflow
+
+You start by drafting a source-mapped model (`import`) and confirming it
+(`verify`). From there, there are two ways to collect the review and land the
+edits. Pick by whether the reviewers are remote (hand them a file) or local
+(edits go straight to disk).
+
+### A. Distribute the HTML (no server, no tooling for reviewers)
+
+```
+ config files ──import──▶ input.json ──generate──▶ sheet.html
+                          (+ source map)               │ distribute
+                                                 reviewers edit in browser
+                                                  + Export review.json
+                                                        │
+ config files ◀──apply── review.json  ────────────────┘
+   (verified edits)   └─ whatever can't be applied ─▶ AI prompt
+```
+
+1. `import` → `verify`: draft `input.json` (with source maps) and confirm it.
+2. Refine: add descriptions and defaults, group settings, merge per-environment files.
+3. `generate`: build `sheet.html`, one self-contained file that opens in any browser.
+4. Review: send the HTML to reviewers. They change values and add comments, then Export `review.json`.
+5. `apply`: write the approved changes back to the config files. The rest goes to the AI prompt.
+
+### B. Serve locally (edits written straight to your files)
+
+```
+ config files ──import──▶ input.json ──serve──▶ localhost UI
+                          (+ source map)            │ reviewer edits in browser
+ config files ◀── written directly ─────────────────┘
+   (verified on save — no review.json, no apply step)
+```
+
+1. `import` → `verify`, optionally refine: same as above.
+2. `serve`: open the sheet on `127.0.0.1`. Each value change is applied to the real
+   file on the spot, with the same verification as `apply`. No `review.json`
+   round-trip.
+
+---
+
+## Quick start
+
+```sh
+# 1. Draft a model from existing config files (exact line + anchor source maps)
+review-sheet import -f /etc/sysctl.conf -f /etc/app/config.yaml -o input.json
+
+# 2. Confirm the source maps resolve against the real files
+review-sheet verify -i input.json
+
+# 3. Build the reviewable HTML
+review-sheet generate -i input.json -o sheet.html
+
+#    ... share sheet.html, reviewers edit values + comment, Export -> review.json ...
+
+# 4. Preview the edits, then write them
+review-sheet apply -i input.json -r review.json            # dry-run diff
+review-sheet apply -i input.json -r review.json --write     # apply
+
+# --- or, instead of steps 3-4, review locally and write edits straight to disk ---
+review-sheet serve -i input.json                            # localhost UI, applies on save
+```
+
+---
+
+## Commands
+
+### `import` — config files → draft model
+
+```sh
+review-sheet import -f <file>... [--format <fmt>] [-o <out>]
+```
+
+Extracts a draft `input.json` with accurate source maps (one sheet per file).
+Supported formats (inferred per file extension, or forced with `--format`):
+
+<!-- parsers:start -->
+| Format | Files | Notes |
+| --- | --- | --- |
+| `jinja2` | *.j2 | Templates (.j2): base-format structure + the {{ variable }} behind each value (extraction aid). |
+| `haproxy` | haproxy.cfg *.cfg (content-detected) | Sections and directives; named sections + repeated directive by 1st arg. |
+| `httpd` | httpd.conf .htaccess conf.d/*.conf *.conf (content-detected) | Apache directives and <Tag> containers by label; repeats indexed. |
+| `nginx` | nginx.conf *.conf (content-detected) | Directives and {} blocks; labeled blocks by label; repeats indexed. |
+| `hcl` | *.tf *.hcl *.tfvars | Blocks by label (resource type+name); scalar attributes only; expressions/lists/maps/heredocs skipped. |
+| `json` | *.json | Same as YAML including minified JSON; no comments. |
+| `py` | *.py (with @rs annotations) | In-source `@rs` annotations on Python config-as-code (CDK for Python, Pulumi, settings); value = the RHS expression. |
+| `shell` | *.sh *.bash *.ksh *.zsh, or any file with a #! shell shebang | Variable assignments and long options with values; a CLI wrapper's arguments become parameters. |
+| `systemd` | *.service *.timer *.socket *.mount *.target *.path *.slice *.scope *.automount *.netdev *.network *.link | [Section]+Key=Value unit files; repeated keys indexed. |
+| `toml` | *.toml | Tables and array-of-tables; reorder-robust paths; scalar values only. |
+| `ts` | *.ts *.tsx *.mts *.cts (with @rs annotations) | In-source `@rs` annotations on TS/TSX config-as-code (CDK, Pulumi); value = the RHS expression. |
+| `xml` | *.xml | Element text and attributes; reorder-robust paths via identity attributes. |
+| `yaml` | *.yaml *.yml | Nested leaves get a structural path; list-of-maps addressed by identity. |
+| `dotenv` | *.env | .env KEY=value files; export prefix stripped; quotes KEPT; # comments. |
+| `ini` | *.ini *.cfg | INI/CFG [section] files; sections become categories. |
+| `properties` | *.properties | Java .properties key=value files; # and ! comments; category is Parameters. |
+| `sysctl` | *.conf (lower priority than nginx/httpd/haproxy) | sysctl-style key = value .conf files; # and ; comments. |
+| `space` | (force only — no dedicated extension) | Whitespace-delimited files (e.g. sshd_config); force-only, not auto-detected. |
+| `generic` | anything else (fallback) | Last-resort fallback; tries = then : as delimiter; always matches. |
+<!-- parsers:end -->
+
+The output is a draft: review it and add descriptions, defaults, grouping, and
+per-environment instances by hand or with the [skill](#agent-skill).
+
+Formats are pluggable. Each one is a `ConfigParser` (detect / extract / locate /
+edit) in a registry, so a custom format is another parser. Drop a module that
+calls `registerParser(...)` into `./.review-sheet/parsers/` (auto-loaded) or pass
+`--parsers-dir <dir>`, and `import` / `verify` / `apply` pick it up.
+
+### Declarative spec: `build.yml` + `sheet.yml`
+
+```sh
+review-sheet import --spec review-sheet/build.yml
+```
+
+`import -f` above is Level 0: point at files, get a draft, refine by hand.
+`import --spec` is Level 1 — it assembles a whole sheet from a declaration,
+no code — and covers most of what makes a sheet worth reviewing:
+per-environment differences (Pattern B), descriptions filled in automatically
+from a product dictionary, and the full-inventory ledger a parameter-sheet
+review traditionally wants. Two files divide the work:
+
+- **`build.yml`** — where the data comes from: `version`, `metadata`,
+  `instances` (the ordered environment list), `enrich` (which metadata
+  sources to read), and `sheets[]`. Each sheet names a `recipe` — `layered`
+  (a base file plus per-environment overlays), `ansible` (the same, plus
+  Jinja2 template rendering), or `snapshot` (one pre-rendered artifact per
+  environment, e.g. `cdk synth` output) — and that recipe's own fields:
+  `defaults`/`overlays`, `template`, `static_files`, `include`/`exclude` key
+  filters, a per-source `key` transform, and `dictionaries` (which product
+  dictionary this sheet's keys bind to, including `materialize`).
+- **`sheet.yml`** — how a human reads it: one entry per parameter key —
+  `category`, `description`/`remarks`, `out_of_scope` (excluded from this
+  review, with a mandatory reason), `dict_key` (an explicit rename for a key
+  that genuinely doesn't match its dictionary entry any other way) — plus,
+  per sheet, `categories` (tab order) and `under_key` (the provenance column,
+  needed once any row is keyed by a product name derived from a template). A
+  spec with more than one sheet nests all of this under `sheets:`, namespaced
+  by sheet name, so a key that leaks from one sheet's extraction into
+  another's (two roles reading the same `group_vars` file, say) can't borrow
+  the wrong sheet's category and description.
+
+A minimal example, trimmed from `examples/ansible-basic/review-sheet/` (one
+Ansible role, base values plus two environment overlays):
+
+```yaml
+# build.yml
+sheets:
+  - name: nginx configuration
+    recipe: ansible
+    defaults: ../roles/nginx/defaults/main.yml
+    template: ../roles/nginx/templates/nginx.conf.j2
+    overlays:
+      staging: ../inventories/staging/group_vars/web.yml
+      production: ../inventories/production/group_vars/web.yml
+    dictionaries:
+      - product: nginx
+        version: "1.26"
+        key_prefix: nginx_
+```
+
+```yaml
+# sheet.yml
+sheets:
+  "nginx configuration":
+    categories: [Network, Performance]
+    params:
+      listen: { category: Network }
+      worker_processes: { category: Performance, remarks: "auto = CPU cores" }
+```
+
+What that buys you:
+
+- **Dictionaries fill in descriptions for free.** A `<product>@<version>.yml`
+  file (under `enrich.metadata_dirs`) documents a product's parameters once;
+  every sheet bound to it (`sheets[].dictionaries`) gets `description` /
+  `default` / `type` / `docs_url` without writing them again. Four provider
+  sources merge in priority order — the project's own `sheet.yml` (100) beats
+  an ecosystem's native metadata (Ansible `argument_specs.yml`, Terraform
+  `variables.tf`, both 50) beats the dictionary (30) — so a Terraform
+  module's own `description = "..."` is read, not retyped.
+- **Keys bind to a dictionary entry on their own.** In order: an explicit
+  `dict_key` alias, an exact match, a `key_prefix`-stripped match, a
+  structural-path leaf, then a delimiter/case-insensitive normalized match —
+  `httpd_timeout` finds dictionary key `TimeOut` with nothing declared. An
+  ambiguous match is a build error, never a silent guess.
+- **`materialize: true`** on a dictionary binding expands every key the sheet
+  does *not* already set into an `origin: "default"` row — the exhaustive
+  ledger a parameter-sheet review traditionally expects, not just the handful
+  of settings a project happened to touch. An entry with no documented
+  default is excluded (asserting "the default applies here" would be false
+  for it); the exclusion count is always printed, and `--materialize-report`
+  lists them.
+- **A build that can't proceed says so, and hands you the fix.** A parameter
+  with no category or description fails the build, naming every offender
+  with a paste-able `sheet.yml` fragment (`--scaffold <file>` writes it out;
+  `--interactive` resolves it from a terminal list instead). A key collision,
+  an undeclared category, or an unknown `build.yml` field fails the same way,
+  named, with a spelling suggestion when one is close.
+
+`skills/review-sheet/SKILL.md` and `review-sheet import --spec --help` cover
+every field; this is the shape, not the reference.
+
+### `generate` — model → reviewable HTML
+
+```sh
+review-sheet generate -i input.json -o sheet.html
+review-sheet generate -i v1.json v2.json v3.json -o sheet.html  # version history (ordered by date)
+review-sheet generate -i input.json --no-review -o sheet.html   # read-only delivery copy
+review-sheet generate -i input.json --lang en -o sheet.html     # English UI (default: ja)
+```
+
+`-i` accepts multiple files; each is a snapshot, ordered by its
+`metadata.generated_at` (see [Versions & diff](#versions--diff)). `-o` defaults to
+stdout. `--title` overrides the document title.
+
+### `validate` — schema check
+
+```sh
+review-sheet validate -i input.json               # input model
+review-sheet validate -i review.json -s review    # a review export
+```
+
+### `verify` — source maps vs. the real files
+
+```sh
+review-sheet verify -i input.json [--quiet]
+```
+
+Checks every value's source: the file is readable, the value is located by
+line/anchor (or by `path` for YAML/JSON), and the recorded value is still there.
+Reports `ok` / `warn` (ambiguous anchor) / `error` (stale value or wrong locator)
+/ `unmapped` (intentionally left to the AI prompt), and exits non-zero on errors.
+Run it after `import` and after any hand edits.
+
+### `apply` — review.json → config edits
+
+```sh
+review-sheet apply -i input.json -r review.json                 # dry-run preview (diff)
+review-sheet apply -i input.json -r review.json --write          # write the edits
+review-sheet apply -i input.json -r review.json --emit-prompt    # print the AI prompt for the rest
+```
+
+For each approved value change, `apply` confirms the location (by line + anchor,
+or structurally by `path` for YAML/JSON), then replaces only that value. It is
+idempotent. Anything it cannot verify (no source, an ambiguous anchor, a
+multi-line or block value, an edit to a documentation field) is left untouched
+and folded into an English AI prompt (`--emit-prompt`) that you can hand to a
+coding agent.
+
+### `serve` — local UI that writes edits straight to your files
+
+```sh
+review-sheet serve -i input.json                # opens http://127.0.0.1:5173
+review-sheet serve -i input.json --port 8080
+review-sheet serve -i input.json --no-open      # don't auto-open the browser
+```
+
+Serves the sheet on localhost (127.0.0.1 only) and skips the
+export-`review.json` round-trip: reviewer edits are applied directly to the local
+config files. The embedded app calls a small backend (`POST /api/apply`,
+`/api/verify`) built on the same verified apply core, so a value you change in
+the browser is written to the real file on the spot, with the same
+line/anchor/`path` verification as `apply`. Single-version models only; no AI, no
+`review.json`.
+
+### `annotations` — inspect in-source `@rs` annotations
+
+```sh
+review-sheet annotations -f stack.ts            # print resolved sheet / category / value / path
+review-sheet annotations -f config.py --lint    # tooling-friction checks
+```
+
+For TS/TSX/Python files that carry in-source `@rs` annotations (config-as-code
+such as AWS CDK / Pulumi; see `spec/annotation.md`), the default `--print` shows
+the resolved sheet / category / value / path per annotated property, and
+`--lint` flags issues (a marker inside a `/** */` doc comment; an `@rs:category`
+not on its own line). The marker defaults to `@rs` and can be changed with
+`--annotation-marker` (also accepted by `import` / `verify` / `apply` / `serve`).
+
+### `diff` — compare two snapshots
+
+```sh
+review-sheet diff -i base.json -i current.json                  # what changed, since the last reviewed revision
+review-sheet diff -i base.json -i current.json --format json    # machine-readable: one document, nothing on stderr
+review-sheet diff -i platform-a.json -i platform-b.json --equivalence --format json  # are two DIFFERENT sheets equivalent?
+```
+
+Compares two `input.json` snapshots — added / removed / changed parameters,
+down to per-instance cells. Differing rows go to **stdout**, the `N changed, …`
+summary to **stderr**, so a naive `$(review-sheet diff …)` capture cannot tell
+"nothing changed" from "the command failed"; use `--format json` for anything
+automated (`{ summary, excluded, sheetsOnlyOnOneSide, rows }`, one document,
+nothing on stderr). `--all` includes unchanged rows.
+
+Two different questions, one command:
+
+- **The same sheet, over time** — "what still needs re-review since the last
+  approved revision" (see [Versions & diff](#versions--diff));
+- **Two different sheets, for equivalence** — "are these two deployment forms
+  configured the same" (see [Equivalence checks](#equivalence-checks-are-two-deployment-forms-configured-the-same)).
+
+---
+
+## Input model & source maps
+
+`input.json` is a list of sheets → categories → parameters. A parameter is either
+a single value (Pattern A) or one value per instance/environment (Pattern B):
+
+```jsonc
+{
+  "sheets": [
+    {
+      "name": "OS Tuning",
+      "file_path": "/etc/sysctl.conf",
+      "categories": [
+        {
+          "name": "Network",
+          "params": [
+            {
+              "key": "net.ipv4.tcp_fin_timeout",
+              "description": "TIME_WAIT socket timeout (seconds).",
+              "default": "60",
+              "value": "30",
+              "source": { "line": 42, "anchor": "net.ipv4.tcp_fin_timeout =" }
+            },
+            {
+              "key": "server.port",
+              "instances": [
+                { "name": "prod", "value": "8080",
+                  "source": { "file": "/etc/app/config.prod.yaml", "path": "$.server.port" } },
+                { "name": "dev",  "value": "8080",
+                  "source": { "file": "/etc/app/config.dev.yaml",  "path": "$.server.port" } }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+The `source` object is what lets `apply` edit the right place:
+
+| field | meaning |
+| --- | --- |
+| `file` | path to the real config file (defaults to the nearest category/sheet `file_path`) |
+| `line` | 1-based line number |
+| `anchor` | a literal substring on that line, usually the key and its delimiter; used to verify the line and to re-locate it if it drifts. Works with any delimiter (`=`, `:`, space, tab) |
+| `path` | structural path for YAML/JSON (`$.server.port`, `hosts[0]`), which allows an exact edit of nested or minified values |
+
+Only `value` is source-mapped. `description` / `default` / `remarks` are
+documentation rather than deployed config, and carry no `source`.
+
+---
+
+## Versions & diff
+
+review-sheet does not store history; your VCS already does. To get a version
+history, produce one model per revision and pass them all to `generate`:
+
+```sh
+# one model per point in time (your own script, or `review-sheet import`)
+git show v1.0:config.yaml | review-sheet import -f /dev/stdin -o model-1.0.json   # (illustrative)
+# ... produce model-1.1.json, model-1.2.json ...
+
+# bundle the snapshots into one sheet
+review-sheet generate -i model-1.0.json model-1.1.json model-1.2.json -o sheet.html
+```
+
+The snapshots are ordered by each model's `metadata.generated_at` date, not by
+the order you pass them, so the timeline is correct whatever the argument order.
+Set `generated_at` to the commit date; the version label comes from
+`metadata.version`, falling back to the file name. If some files have no date,
+the given order is kept and a warning is printed.
+
+For programmatic assembly you can also hand-write or generate a single versioned
+document and pass it as one file:
+
+```jsonc
+{
+  "metadata": { "title": "Cluster config" },
+  "versions": [
+    { "version": "1.0", "date": "2026-01-10", "tags": ["baseline"], "sheets": [ /* ... */ ] },
+    { "version": "1.2", "date": "2026-03-01", "tags": ["release"],  "sheets": [ /* ... */ ] }
+  ]
+}
+```
+
+When the result has more than one version, the sheet shows a version switcher and
+a Compare mode. Compare is an overlay on the normal sheet view, with the same
+tabs, columns, grouping, freeze, outline and search, rather than a separate diff
+screen. You pick a *from* (older baseline) and *to* (current) version and the
+sheet annotates itself in place:
+
+- changed values inline as `old → new`, in the same strikethrough/suggested
+  styling used for review edits; added and removed rows in place with a colored
+  bar and a `+`/`−`/`~` badge; a `N changed · N added · N removed` summary in the
+  toolbar;
+- "Changed only" hides unchanged rows; tabs, outline and search keep working;
+- per-instance cells for Pattern B, so you can see which environment's value
+  moved: `web 8080 → 8888`, `api 9090` (unchanged), `db 5432` (added column),
+  `cache 6379` (removed column). This is the case a plain table diff, such as one
+  in a wiki, renders unreadably.
+
+Renames are matched by name/key, so a renamed sheet, category or parameter shows
+as a remove plus an add. A plain single-`sheets` input still works and is treated
+as one version.
+
+On the command line, `review-sheet diff -i base.json -i current.json` answers
+the same "what changed since the reviewed revision" question — see [`diff`](#diff--compare-two-snapshots)
+above.
+
+### Equivalence checks: are two deployment forms configured the same?
+
+During a staged migration (EC2 → ECS, VM → container, on-prem → cloud, …) both
+forms often run in production side by side, and the question a parameter sheet
+exists to answer is whether they are configured *the same way*. `diff` answers
+it directly when both sheets bind their parameters to the product's own
+configuration keys (see the [skill](skills/review-sheet/SKILL.md))
+rather than to each platform's delivery mechanism (an env var, a Terraform
+variable, a Dockerfile `RUN` flag) — the same setting then lands under the same
+key regardless of how each platform happens to deliver it, so two structurally
+different sheets become comparable.
+
+```sh
+review-sheet diff -i platform-a.json -i platform-b.json --equivalence --format json
+```
+
+`--equivalence` is shorthand for two filters — each also available on its own,
+and each visible in the output rather than silently shrinking the numbers:
+
+- `--exclude-default-origin` drops materialize-derived `origin: "default"` rows
+  from the comparison. A [materialized](skills/review-sheet/SKILL.md) sheet
+  writes down the product's *entire* option space, including everything left
+  at its default; comparing that against a sheet that was never materialized
+  makes every one of those rows look "removed" when the real story is that one
+  side chose to write the full inventory down and the other didn't. The count
+  is reported as `excluded.defaultOrigin` — filtered, not hidden.
+- `--sheet-presence` reports a sheet that exists on only one side once
+  (`sheetsOnlyOnOneSide: [{ name, onlyIn, paramCount }]`) instead of exploding
+  every one of its parameters into `removed`/`added`. A layer that genuinely
+  doesn't exist on one platform — no reverse-proxy sheet once an ALB
+  terminates TLS directly — is a structural fact about that platform, not
+  per-parameter drift.
+
+Measured on a real staged migration (Keycloak on EC2 vs. ECS): plain `diff` reported `changed: 6, added: 0, removed: 181,
+unchanged: 12` — the 6 rows that actually mattered were buried under 181
+`removed` rows, of which 152 were materialize rows the ECS sheet never carried
+and 23 belonged to a reverse-proxy sheet the ECS platform doesn't have.
+`--equivalence` reduced that to `changed: 6, added: 0, removed: 6, unchanged:
+12`, with the exclusion stated rather than assumed:
+`excluded: { defaultOrigin: 152 }`, `sheetsOnlyOnOneSide: [{ name: "httpd
+reverse proxy", onlyIn: "from", paramCount: 23 }]`. The remaining 6 `removed`
+rows are genuine: a mix of real deployment differences (Secrets Manager access
+parameters ECS doesn't need) and pre-existing gaps in the project's own
+`sheet.yml` — not noise from the comparison mechanism.
+
+This equivalence check rests on both sides actually landing on the same key,
+which the same migration measured separately: 18/18 Keycloak
+settings normalized to the same product key regardless of source (env var,
+Terraform variable, or a Dockerfile build flag), 17/18 of those byte-identical
+in value, and 0 false positives once `diff`'s Pattern A/Pattern B cell matching
+was fixed. It is not free, but less
+code buys it than it first looks: the ECS task definition's
+`environment`/`secrets` arrays don't carry the product key as a plain field
+name, but the built-in `layered` recipe plus a declarative `key` transform in
+`build.yml` (a few lines of regex, no code — see [Declarative spec](#declarative-spec-buildyml--sheetyml))
+normalizes them onto the same keys the EC2 side's `ansible` recipe derives
+from its template. A **custom parser** is still needed for the other side of
+the platform gap: build-time flags baked into a Dockerfile `RUN` line have no
+built-in format, so that one plugin remains.
+
+## Reviewing in the browser
+
+Open `sheet.html` (generated without `--no-review`). Reviewers can:
+
+- Edit a value to suggest a change, and leave a comment on any parameter,
+  category, or sheet.
+- Toggle comments, filter to commented rows, search across everything
+  (Cmd/Ctrl+K), and navigate via the outline.
+- Export their feedback as `review.json`, import an existing one to merge, or
+  copy the AI prompt for all pending changes.
+
+Feedback persists in the browser's local storage, so a reviewer can stop and
+resume. The exported `review.json` is what you feed to `apply`.
+
+---
+
+## Agent skill
+
+`skills/review-sheet/SKILL.md` is a [Claude Code](https://claude.com/claude-code)
+skill that describes the whole workflow for an AI agent: drafting `input.json`
+from existing files with accurate source maps (including when to use `import` and
+when to author by hand), and the `validate` → `verify` → `apply` loop.
+
+To use it in your own project, copy the skill into your skills directory:
+
+```sh
+mkdir -p .claude/skills
+cp -r path/to/review-sheet/skills/review-sheet .claude/skills/
+```
+
+Then ask the agent to, e.g., "build a review-sheet model from the config files in
+`./deploy` and verify the source maps." The agent generates the model, runs
+`verify`, and fixes any mismatches it reports.
+
+---
+
+## Library usage
+
+```ts
+import {
+  generateHtml,
+  validateInput,
+  verifySources,
+  computeApply,
+  buildPromptText,
+  // extraction adapters — for project-specific conversion scripts
+  extractFile,
+  buildInput,
+  inferFormat,
+} from "review-sheet";
+```
+
+`generateHtml(input, options?)` returns the HTML string. `verifySources` and
+`computeApply` take an injected file reader, so you can build your own pipelines.
+`extractFile(content, file)` turns one config file into entries with accurate
+source maps (line + anchor, and a `path` for YAML/JSON); use it in a conversion
+script so that you only write the project-specific structure, then run `verify`.
+
+---
+
+## Development
+
+```sh
+bun test          # run the test suite
+```
+
+See `CLAUDE.md` for the architecture and source layout.
+
+## License
+
+MIT

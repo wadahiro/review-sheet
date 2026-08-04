@@ -1,0 +1,71 @@
+{
+  "metadata": {
+    "title": "Sourced Parameters",
+    "project": "Source Map Demo",
+    "version": "1.0",
+    "generated_at": "2026-06-18T09:00:00Z"
+  },
+  "sheets": [
+    {
+      "name": "OS Tuning",
+      "file_path": "/etc/sysctl.conf",
+      "categories": [
+        {
+          "name": "Network",
+          "params": [
+            {
+              "key": "net.ipv4.tcp_fin_timeout",
+              "description": "TIME_WAIT socket timeout in seconds.",
+              "default": "60",
+              "value": "60",
+              "source": { "line": 42, "anchor": "net.ipv4.tcp_fin_timeout =" }
+            },
+            {
+              "key": "net.core.somaxconn",
+              "description": "Max accept queue length.",
+              "default": "128",
+              "value": "128"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Application",
+      "categories": [
+        {
+          "name": "Server",
+          "file_path": "/etc/app/",
+          "params": [
+            {
+              "key": "server.port",
+              "description": "Listening port per environment.",
+              "instances": [
+                {
+                  "name": "prod",
+                  "value": "8080",
+                  "source": { "file": "/etc/app/config.prod.yaml", "line": 17, "path": "$.server.port", "anchor": "port:" }
+                },
+                {
+                  "name": "dev",
+                  "value": "8080",
+                  "source": { "file": "/etc/app/config.dev.yaml", "line": 17 }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Misc",
+          "params": [
+            {
+              "key": "feature.flag",
+              "description": "Unmapped flag with no source location anywhere.",
+              "value": "off"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

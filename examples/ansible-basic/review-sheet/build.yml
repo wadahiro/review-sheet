@@ -1,0 +1,70 @@
+# Declarative build spec for `import --spec` (see src/spec.ts and the
+# "ansible" recipe, src/recipes/ansible.ts). Paths here are relative to this
+# file's own directory (examples/ansible-basic/review-sheet/).
+#
+# Two sheets, one per role (nginx, postgresql). Each `template`'s row naming
+# is derived per row (no `keying:` to declare): a variable backing exactly one
+# directive is named after that directive (the product's own key), a variable
+# the template never resolves to one directive — never referenced, referenced
+# only inside a Jinja `{% if %}` test, or backing more than one directive —
+# keeps its own name. See the skill's "How a template row gets its name".
+
+version: 1
+
+metadata:
+  title: "Ansible nginx + postgresql roles — full parameter sheet"
+  project: "ansible-basic example"
+
+instances: [staging, production]
+
+enrich:
+  project: sheet.yml
+  metadata_dirs: [metadata]
+  argument_specs: [../roles/postgresql/meta/argument_specs.yml]
+
+sheets:
+  - name: nginx configuration
+    recipe: ansible
+    defaults: ../roles/nginx/defaults/main.yml
+    template: ../roles/nginx/templates/nginx.conf.j2
+    # Where the rendered file lands (roles/nginx/tasks/main.yml `dest:`). The
+    # sheet shows THIS path — the one an operator reviewing nginx parameters
+    # knows — and keeps the template as its source. Declared, never inferred:
+    # a task's `dest` can be a variable expression (see ansible-keycloak).
+    deployed_path: /etc/nginx/nginx.conf
+    static_files:
+      - path: ../roles/nginx/files/security.conf
+        format: nginx
+    overlays:
+      staging: ../inventories/staging/group_vars/web.yml
+      production: ../inventories/production/group_vars/web.yml
+    dictionaries:
+      - product: nginx
+        version: "1.26"
+        key_prefix: nginx_
+        # No materialize: nginx@1.26 is a hand-picked dozen directives, not a
+        # genuine full extraction (see the postgresql sheet's dictionary
+        # below for the contrast) — materializing it would produce a fake
+        # inventory (assemble.ts's coverage gate would refuse it anyway).
+
+  - name: postgresql configuration
+    recipe: ansible
+    defaults: ../roles/postgresql/defaults/main.yml
+    template: ../roles/postgresql/templates/postgresql.conf.j2
+    deployed_path: /var/lib/pgsql/data/postgresql.conf
+    overlays:
+      staging: ../inventories/staging/group_vars/db.yml
+      production: ../inventories/production/group_vars/db.yml
+    dictionaries:
+      - product: postgresql
+        version: "16"
+        key_prefix: pg_
+        # Turn this sheet into the exhaustive ledger: every pg_settings
+        # parameter the role does NOT set is expanded as an `origin: default`
+        # row (value = PostgreSQL's own default, categorized by the
+        # dictionary's `group`), so the sheet records the full inventory and
+        # reviewers mark what is out of scope — instead of the sheet
+        # silently covering only the 22 knobs the role happens to touch.
+        # Only worth doing for a dictionary that is a real full extraction of
+        # the product: postgresql@16 comes from a pg_settings dump.
+        materialize: true

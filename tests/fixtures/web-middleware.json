@@ -1,0 +1,293 @@
+{
+  "metadata": {
+    "title": "Web Middleware Configuration Parameter Sheet",
+    "project": "E-commerce Site Production Environment",
+    "version": "1.0",
+    "generated_at": "2026-06-17T15:00:00Z"
+  },
+  "sheets": [
+    {
+      "name": "Apache HTTPD",
+      "file_path": "/etc/httpd/",
+      "categories": [
+        {
+          "name": "Global Settings",
+          "file_path": "/etc/httpd/conf/httpd.conf",
+          "params": [
+            { "key": "ServerRoot", "default": "/etc/httpd", "value": "/etc/httpd", "description": "Server root directory" },
+            { "key": "Timeout", "default": "60", "value": "120", "description": "Request timeout (seconds)" },
+            { "key": "KeepAlive", "default": "On", "value": "On", "description": "Enable KeepAlive" },
+            { "key": "MaxKeepAliveRequests", "default": "100", "value": "500", "description": "Maximum KeepAlive requests" },
+            { "key": "KeepAliveTimeout", "default": "5", "value": "15", "description": "KeepAlive timeout (seconds)" }
+          ]
+        },
+        {
+          "name": "MPM Event Settings",
+          "file_path": "/etc/httpd/conf.modules.d/00-mpm.conf",
+          "params": [
+            { "key": "StartServers", "default": "3", "value": "5", "description": "Number of server processes at startup" },
+            { "key": "MinSpareThreads", "default": "75", "value": "75", "description": "Minimum number of spare threads" },
+            { "key": "MaxSpareThreads", "default": "250", "value": "250", "description": "Maximum number of spare threads" },
+            { "key": "MaxRequestWorkers", "default": "150", "value": "400", "description": "Maximum number of concurrent request processing" },
+            { "key": "ThreadsPerChild", "default": "25", "value": "25", "description": "Number of threads per child process" }
+          ]
+        },
+        {
+          "name": "VirtualHost (*:80)",
+          "tag": "<VirtualHost>",
+          "file_path": "/etc/httpd/conf.d/vhost-redirect.conf",
+          "params": [
+            { "key": "ServerName", "default": "", "value": "www.example.com", "description": "Server name" },
+            { "key": "ServerAlias", "default": "", "value": "example.com", "description": "Server alias" },
+            { "key": "RewriteRule", "default": "", "value": "^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]", "description": "Force HTTPS redirect" }
+          ]
+        },
+        {
+          "name": "VirtualHost (*:443)",
+          "tag": "<VirtualHost>",
+          "file_path": "/etc/httpd/conf.d/vhost-ssl.conf",
+          "categories": [
+            {
+              "name": "Basic Settings",
+              "params": [
+                { "key": "ServerName", "default": "", "value": "www.example.com", "description": "Server name" },
+                { "key": "DocumentRoot", "default": "/var/www/html", "value": "/var/www/app/public", "description": "Document root" },
+                { "key": "ErrorLog", "default": "logs/error_log", "value": "/var/log/httpd/ssl_error_log", "description": "Error log output destination" },
+                { "key": "CustomLog", "default": "", "value": "/var/log/httpd/ssl_access_log combined", "description": "Access log output destination" }
+              ]
+            },
+            {
+              "name": "SSL Settings",
+              "params": [
+                { "key": "SSLEngine", "default": "off", "value": "on", "description": "Enable SSL" },
+                { "key": "SSLProtocol", "default": "all -SSLv3", "value": "all -SSLv3 -TLSv1 -TLSv1.1", "description": "Allowed protocols" },
+                { "key": "SSLCipherSuite", "default": "", "value": "ECDHE-ECDSA-AES128-GCM-SHA256:...", "description": "Cipher suite", "remarks": "TLS 1.3 recommended settings" },
+                { "key": "SSLCertificateFile", "default": "", "value": "/etc/pki/tls/certs/server.crt", "description": "Server certificate path" },
+                { "key": "SSLCertificateKeyFile", "default": "", "value": "/etc/pki/tls/private/server.key", "description": "Private key path" },
+                { "key": "SSLCertificateChainFile", "default": "", "value": "/etc/pki/tls/certs/chain.crt", "description": "Intermediate certificate path" },
+                { "key": "Header (HSTS)", "default": "", "value": "Strict-Transport-Security \"max-age=31536000\"", "description": "HSTS setting" }
+              ]
+            },
+            {
+              "name": "Directory (/var/www/app/public)",
+              "tag": "<Directory>",
+              "params": [
+                { "key": "Options", "default": "Indexes FollowSymLinks", "value": "-Indexes +FollowSymLinks", "description": "Directory options" },
+                { "key": "AllowOverride", "default": "None", "value": "All", "description": "Allow .htaccess" },
+                { "key": "Require", "default": "", "value": "all granted", "description": "Access control" }
+              ]
+            },
+            {
+              "name": "Location (/api)",
+              "tag": "<Location>",
+              "params": [
+                { "key": "ProxyPass", "default": "", "value": "http://localhost:8080/api", "description": "Reverse proxy target" },
+                { "key": "ProxyPassReverse", "default": "", "value": "http://localhost:8080/api", "description": "Reverse proxy response rewrite" },
+                { "key": "ProxyTimeout", "default": "60", "value": "300", "description": "Proxy timeout (seconds)", "remarks": "Accounts for API processing time" }
+              ]
+            },
+            {
+              "name": "Location (/ws)",
+              "tag": "<Location>",
+              "params": [
+                { "key": "ProxyPass", "default": "", "value": "ws://localhost:8080/ws", "description": "WebSocket proxy target" },
+                { "key": "ProxyPassReverse", "default": "", "value": "ws://localhost:8080/ws", "description": "WebSocket proxy response rewrite" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Tomcat",
+      "categories": [
+        {
+          "name": "Server",
+          "tag": "<Server>",
+          "file_path": "/opt/tomcat/conf/server.xml",
+          "categories": [
+            {
+              "name": "Server Attributes",
+              "params": [
+                { "key": "port", "default": "8005", "value": "8005", "description": "Shutdown port" },
+                { "key": "shutdown", "default": "SHUTDOWN", "value": "CUSTOM_SHUTDOWN_CMD", "description": "Shutdown command", "remarks": "Changed from default value for security" }
+              ]
+            },
+            {
+              "name": "Service (Catalina)",
+              "tag": "<Service>",
+              "categories": [
+                {
+                  "name": "Connector (HTTP/8080)",
+                  "tag": "<Connector>",
+                  "params": [
+                    { "key": "port", "default": "8080", "value": "8080", "description": "HTTP listen port" },
+                    { "key": "protocol", "default": "HTTP/1.1", "value": "org.apache.coyote.http11.Http11NioProtocol", "description": "Protocol handler" },
+                    { "key": "maxThreads", "default": "200", "value": "400", "description": "Maximum number of threads" },
+                    { "key": "minSpareThreads", "default": "10", "value": "50", "description": "Minimum number of spare threads" },
+                    { "key": "acceptCount", "default": "100", "value": "200", "description": "Maximum connection queue size" },
+                    { "key": "connectionTimeout", "default": "20000", "value": "30000", "description": "Connection timeout (ms)" },
+                    { "key": "URIEncoding", "default": "ISO-8859-1", "value": "UTF-8", "description": "URI encoding" }
+                  ]
+                },
+                {
+                  "name": "Connector (AJP/8009)",
+                  "tag": "<Connector>",
+                  "params": [
+                    { "key": "port", "default": "8009", "value": "8009", "description": "AJP listen port" },
+                    { "key": "protocol", "default": "AJP/1.3", "value": "AJP/1.3", "description": "Protocol" },
+                    { "key": "secretRequired", "default": "true", "value": "true", "description": "Secret required" },
+                    { "key": "secret", "default": "", "value": "ajp_secret_token", "description": "AJP secret", "remarks": "Ghostcat mitigation" }
+                  ]
+                },
+                {
+                  "name": "Engine (Catalina)",
+                  "tag": "<Engine>",
+                  "categories": [
+                    {
+                      "name": "Engine Attributes",
+                      "params": [
+                        { "key": "name", "default": "Catalina", "value": "Catalina", "description": "Engine name" },
+                        { "key": "defaultHost", "default": "localhost", "value": "localhost", "description": "Default host" }
+                      ]
+                    },
+                    {
+                      "name": "Host (localhost)",
+                      "tag": "<Host>",
+                      "params": [
+                        { "key": "appBase", "default": "webapps", "value": "webapps", "description": "Application base directory" },
+                        { "key": "unpackWARs", "default": "true", "value": "true", "description": "Automatic WAR extraction" },
+                        { "key": "autoDeploy", "default": "true", "value": "false", "description": "Automatic deployment", "remarks": "Disabled in production environment" }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "JVM Settings",
+          "file_path": "/opt/tomcat/bin/setenv.sh",
+          "params": [
+            { "key": "JAVA_OPTS: -Xms", "default": "256m", "value": "2g", "description": "Initial heap size" },
+            { "key": "JAVA_OPTS: -Xmx", "default": "512m", "value": "4g", "description": "Maximum heap size" },
+            { "key": "JAVA_OPTS: -XX:MetaspaceSize", "default": "64m", "value": "256m", "description": "Metaspace size" },
+            { "key": "JAVA_OPTS: -XX:+UseG1GC", "default": "false", "value": "true", "description": "Use G1GC" },
+            { "key": "JAVA_OPTS: -Dfile.encoding", "default": "OS-dependent", "value": "UTF-8", "description": "File encoding" }
+          ]
+        },
+        {
+          "name": "Log Settings",
+          "file_path": "/opt/tomcat/conf/logging.properties",
+          "params": [
+            { "key": "handlers", "default": "", "value": "java.util.logging.ConsoleHandler, java.util.logging.FileHandler", "description": "Log handlers" },
+            { "key": ".level", "default": "INFO", "value": "INFO", "description": "Root log level" },
+            { "key": "org.apache.catalina.level", "default": "INFO", "value": "WARNING", "description": "Catalina log level" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "nginx",
+      "categories": [
+        {
+          "name": "Main Settings",
+          "file_path": "/etc/nginx/nginx.conf",
+          "params": [
+            { "key": "worker_processes", "default": "1", "value": "auto", "description": "Number of worker processes" },
+            { "key": "worker_connections", "default": "1024", "value": "4096", "description": "Maximum connections per worker" },
+            { "key": "error_log", "default": "/var/log/nginx/error.log", "value": "/var/log/nginx/error.log warn", "description": "Error log" }
+          ]
+        },
+        {
+          "name": "http",
+          "tag": "http {}",
+          "categories": [
+            {
+              "name": "Basic Settings",
+              "params": [
+                { "key": "sendfile", "default": "off", "value": "on", "description": "Use sendfile" },
+                { "key": "tcp_nopush", "default": "off", "value": "on", "description": "TCP_NOPUSH" },
+                { "key": "keepalive_timeout", "default": "75", "value": "65", "description": "KeepAlive timeout (seconds)" },
+                { "key": "client_max_body_size", "default": "1m", "value": "50m", "description": "Maximum request body size" },
+                { "key": "gzip", "default": "off", "value": "on", "description": "gzip compression" }
+              ]
+            },
+            {
+              "name": "upstream (backend)",
+              "tag": "upstream {}",
+              "file_path": "/etc/nginx/conf.d/upstream.conf",
+              "params": [
+                { "key": "server (1)", "default": "", "value": "192.168.1.11:8080", "description": "Backend server 1" },
+                { "key": "server (2)", "default": "", "value": "192.168.1.12:8080", "description": "Backend server 2" },
+                { "key": "least_conn", "default": "off", "value": "on", "description": "Least-connection load balancing" }
+              ]
+            },
+            {
+              "name": "server (www.example.com:443)",
+              "tag": "server {}",
+              "file_path": "/etc/nginx/conf.d/www.conf",
+              "categories": [
+                {
+                  "name": "Basic Settings",
+                  "params": [
+                    { "key": "listen", "default": "", "value": "443 ssl http2", "description": "Listen port" },
+                    { "key": "server_name", "default": "", "value": "www.example.com", "description": "Server name" },
+                    { "key": "root", "default": "/usr/share/nginx/html", "value": "/var/www/app/public", "description": "Document root" }
+                  ]
+                },
+                {
+                  "name": "SSL Settings",
+                  "params": [
+                    { "key": "ssl_certificate", "default": "", "value": "/etc/pki/tls/certs/server.crt", "description": "SSL certificate path" },
+                    { "key": "ssl_certificate_key", "default": "", "value": "/etc/pki/tls/private/server.key", "description": "Private key path" },
+                    { "key": "ssl_protocols", "default": "TLSv1 TLSv1.1 TLSv1.2", "value": "TLSv1.2 TLSv1.3", "description": "Allowed protocols" },
+                    { "key": "ssl_session_cache", "default": "none", "value": "shared:SSL:10m", "description": "SSL session cache" }
+                  ]
+                },
+                {
+                  "name": "location /",
+                  "tag": "location {}",
+                  "params": [
+                    { "key": "try_files", "default": "", "value": "$uri $uri/ /index.html", "description": "File lookup order", "remarks": "For SPA frontend" },
+                    { "key": "index", "default": "index.html", "value": "index.html", "description": "Index file" }
+                  ]
+                },
+                {
+                  "name": "location /api/",
+                  "tag": "location {}",
+                  "params": [
+                    { "key": "proxy_pass", "default": "", "value": "http://backend", "description": "Reverse proxy target" },
+                    { "key": "proxy_set_header Host", "default": "", "value": "$host", "description": "Forward Host header" },
+                    { "key": "proxy_set_header X-Real-IP", "default": "", "value": "$remote_addr", "description": "Forward client IP" },
+                    { "key": "proxy_set_header X-Forwarded-For", "default": "", "value": "$proxy_add_x_forwarded_for", "description": "Forward X-Forwarded-For" },
+                    { "key": "proxy_read_timeout", "default": "60", "value": "300", "description": "Proxy read timeout (seconds)" }
+                  ]
+                },
+                {
+                  "name": "location /static/",
+                  "tag": "location {}",
+                  "params": [
+                    { "key": "expires", "default": "off", "value": "30d", "description": "Cache expiration" },
+                    { "key": "access_log", "default": "on", "value": "off", "description": "Access log", "remarks": "No logging needed for static files" }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "server (HTTP→HTTPS redirect)",
+              "tag": "server {}",
+              "file_path": "/etc/nginx/conf.d/redirect.conf",
+              "params": [
+                { "key": "listen", "default": "", "value": "80", "description": "Listen port" },
+                { "key": "server_name", "default": "", "value": "www.example.com example.com", "description": "Server name" },
+                { "key": "return", "default": "", "value": "301 https://$host$request_uri", "description": "HTTPS redirect" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

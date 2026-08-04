@@ -1,0 +1,38 @@
+---
+# postgresql role — tunable parameters (a realistic pgtune-style set).
+# Override per environment in inventories/<env>/group_vars/db.yml.
+# These are the values the review sheet surfaces; their meaning and the product
+# stock default come from review-sheet/metadata/postgresql@16.yml (extracted from
+# pg_settings), so nothing here is hand-described in the build script.
+
+# --- Connections ---
+pg_listen_addresses: "localhost"
+pg_port: 5432
+pg_max_connections: 100
+
+# --- Memory ---
+pg_shared_buffers: "128MB"
+pg_effective_cache_size: "4GB"
+pg_maintenance_work_mem: "64MB"
+pg_work_mem: "4MB"
+pg_huge_pages: "try"
+
+# --- Write-Ahead Log ---
+pg_wal_buffers: "-1"
+pg_min_wal_size: "80MB"
+pg_max_wal_size: "1GB"
+pg_checkpoint_completion_target: "0.9"
+
+# --- Query planner ---
+pg_random_page_cost: "4.0"
+pg_effective_io_concurrency: 1
+pg_default_statistics_target: 100
+
+# --- Autovacuum ---
+pg_autovacuum_max_workers: 3
+pg_autovacuum_naptime: "1min"
+
+# --- Logging ---
+pg_log_min_duration_statement: -1
+pg_log_line_prefix: "%m [%p] %q%u@%d "
+pg_log_checkpoints: "off"

@@ -1,0 +1,10 @@
+product: widget
+version: "1"
+coverage: full
+parameters:
+  Port:
+    description: { en: Listening port }
+    group: Network
+  MyTimeOut:
+    description: { en: The wait time before giving up }
+    group: Network

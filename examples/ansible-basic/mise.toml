@@ -1,0 +1,50 @@
+# Toolchain + task runner for this example (June 2026 stack: mise -> uv -> ansible-dev-tools).
+# mise pins the tools; uv manages the Python env from pyproject.toml + uv.lock.
+
+[tools]
+python = "3.12"
+uv = "latest"
+bun = "latest"          # for the review-sheet CLI (the repo also has bun globally)
+
+[settings]
+# Auto-activate the uv-managed .venv when entering this dir (needs uv.lock present),
+# so `molecule` / `ansible` are on PATH without manual `source .venv/bin/activate`.
+python.uv_venv_auto = true
+
+[env]
+# community.docker talks to the Docker daemon via DOCKER_HOST. Derive it from the
+# active `docker context` so the example works on Docker Desktop, Lima, colima,
+# etc. without a manual export. (Falls back to the default socket if empty.)
+DOCKER_HOST = "{{ exec(command='docker context inspect --format \"{{.Endpoints.docker.Host}}\" 2>/dev/null || true') }}"
+
+# --- Tasks: the develop-while-test inner loop (single source of truth) ---
+
+[tasks.setup]
+description = "Install the Python env and the community.docker collection"
+run = [
+  "uv sync",
+  "uv run ansible-galaxy collection install -r requirements.yml",
+]
+
+[tasks.dev]
+description = "Create the persistent dev container (== the test target)"
+run = "uv run molecule create"
+
+[tasks.loop]
+description = "Re-apply the role and run assertions against the running container"
+run = ["uv run molecule converge", "uv run molecule verify"]
+
+[tasks.down]
+description = "Tear down the container"
+run = "uv run molecule destroy"
+
+[tasks.ci]
+description = "Full clean-room sequence (create -> converge -> idempotence -> verify -> destroy)"
+run = "uv run molecule test"
+
+[tasks.sheet]
+description = "Regenerate the review-sheet parameter sheet from the Ansible vars"
+run = [
+  "bun run ../../src/cli.ts import --spec review-sheet/build.yml -o input.json",
+  "bun run ../../src/cli.ts generate -i input.json -o sheet.html",
+]

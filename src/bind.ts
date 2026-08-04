@@ -1,0 +1,326 @@
+// Pure key-resolution core: the ONE place a project parameter key gets
+// matched against a bound product dictionary entry. This replaces the ad hoc
+// candidate-list matching and leaf-directive normalizer that used to live
+// directly in providers/dictionary.ts — everything that resolves a key
+// against a dictionary is meant to route through here, and only here.
+//
+// Why this exists: a project today hand-writes `dict_key: TimeOut` to bind
+// `httpd_timeout` to Apache's `TimeOut` directive. For years the project's
+// alias and the dictionary's own key were BOTH misspelled "Timeout" (lower
+// case o) and nobody noticed, because an exact string match doesn't care
+// which side is wrong. Delimiter-insensitive, casefolded matching
+// (normalizeKey below) closes that hole for THIS KIND of mistake: since
+// `httpd_timeout` normalizes to the same string as `TimeOut` regardless of
+// which one is "correct", the dictionary's spelling always wins and there is
+// no longer a way to write a wiring alias that quietly agrees with a typo.
+//
+// The flip side is `SSO_SMTP_HOST` vs `smtpServer.host`: normalizing does
+// NOT make these equal (the env var elides "Server"), and that is not a bug
+// in the matcher — it is the matcher correctly reporting that this is real
+// information (a true rename), not wiring. `dict_key` exists for exactly
+// that case, and only that case.
+//
+// The organizing principle: normalization that makes two spellings equal
+// erases wiring. Normalization that would NOT make them equal, so a human
+// wrote an explicit alias instead, is preserving information. bindKey()'s
+// tier order (see TIERS below) is built to prefer "erase wiring" whenever
+// possible and fall back to the explicit alias only when it must.
+
+import { parseSteps } from "./structural.js";
+import type { DictionaryBinding, Provenance } from "./metadata.js";
+import { findDictionary, type DictionaryDoc, type DictionaryParam } from "./providers/dictionary.js";
+
+// How a key ended up bound, in the order bindKey() tries them:
+//   alias      - the project's own `dict_key` declaration, matched verbatim.
+//                A human said "these are the same thing" explicitly; nothing
+//                else should ever outrank that.
+//   exact      - the raw key IS a dictionary key, verbatim. The common case
+//                for a row named by a product key (see assemble.ts's
+//                keyMap), where the project's key space already IS the
+//                product's.
+//   prefix     - the raw key, with the binding's own `key_prefix` stripped,
+//                IS a dictionary key, verbatim. A project namespacing
+//                convention (`nginx_`, `httpd_`) peeled off before matching.
+//   leaf       - the last identity-bearing segment of a dotted/bracketed
+//                structural path (see leafKey()) IS a dictionary key,
+//                verbatim. Handles a repeated or nested structural leaf
+//                (`redirectUris[0]`, `attributes["saml.client.signature"]`)
+//                resolving against a dictionary that documents only the bare
+//                leaf name.
+//   normalized - any of the candidates above, with `_`/`-`/`.` stripped and
+//                casefolded, matches a dictionary key normalized the same
+//                way. This is what makes `httpd_timeout` find `TimeOut`
+//                without anyone declaring an alias. Tried LAST, after every
+//                verbatim tier, so a dictionary that happens to define BOTH
+//                `Timeout` and `TimeOut` (unlikely, but not this module's
+//                problem to prevent) still prefers whichever one actually
+//                matches exactly.
+export type BindMethod = "alias" | "exact" | "prefix" | "leaf" | "normalized";
+
+// A resolved binding. `entry` is the dictionary's own DictionaryParam,
+// unfiltered — including `kind: "container"` entries. A container (Apache's
+// `<IfModule>`, a syntax element with no default value of its own) is a
+// legitimate bind target: enrich() still wants to pull its description by
+// name. Only assemble.ts's materialize() treats `kind: "container"`
+// specially (it must not manufacture a default row for one) — that is a
+// concern of what to DO with a resolved entry, not of whether one resolves.
+export type Binding = {
+  product: string;
+  version: string;
+  dictKey: string;
+  entry: DictionaryParam;
+  method: BindMethod;
+  // The bound dictionary DOCUMENT's own provenance (providers/dictionary.ts's
+  // DictionaryDoc.provenance), carried alongside `entry` so a consumer (the
+  // dictionary metadata provider) can compute `entry.provenance ?? docProvenance
+  // ?? "community"` without re-loading or re-searching the document itself —
+  // bindKey() already had it in hand while resolving.
+  docProvenance?: Provenance;
+};
+
+export type BindMatch = { product: string; version: string; dictKey: string };
+
+// Two (or more) dictionary keys tied at the same tier. This is always an
+// error, never a silent first-wins pick — an unnoticed wrong pick here is
+// exactly the failure mode (a wrong description quietly attached to a
+// parameter) that made the TimeOut/Timeout coincidence dangerous in the
+// first place.
+export type BindError = {
+  kind: "ambiguous";
+  method: BindMethod;
+  key: string;
+  matches: BindMatch[];
+  message: string;
+};
+
+export function isBindError(result: Binding | undefined | BindError): result is BindError {
+  return result !== undefined && "kind" in result && result.kind === "ambiguous";
+}
+
+// One declared dictionary binding, paired with its already-loaded document.
+// bindKey() is pure (no fs access), so loading `<product>@<version>.yml` off
+// ctx.metadataDirs stays the caller's job (see providers/dictionary.ts).
+export type BindSource = { binding: DictionaryBinding; doc: DictionaryDoc };
+
+// The project's own `dict_key` declaration for this parameter:
+//   undefined - not declared. The alias tier is skipped; matching proceeds
+//               through exact/prefix/leaf/normalized as normal.
+//   a string  - a true alias (SSO_SMTP_HOST -> smtpServer.host): tried FIRST,
+//               verbatim, against every bound dictionary.
+//   null      - an explicit severance: this project key is declared to bind
+//               to NOTHING, overriding whatever exact/prefix/leaf/normalized
+//               matching would otherwise have found. bindKey() returns
+//               `undefined` immediately — a deliberate escape hatch for the
+//               rare case where a key coincidentally collides with an
+//               unrelated dictionary entry.
+export type ProjectDictKey = string | null | undefined;
+
+// Tier order. See the BindMethod doc comment above for why each tier exists
+// and why this is the order. Exported so a caller building a per-method
+// tally (assemble.ts's BindingReport) enumerates every possible method
+// without re-deriving this list.
+export const BIND_METHODS: readonly BindMethod[] = ["alias", "exact", "prefix", "leaf", "normalized"];
+const TIERS = BIND_METHODS;
+
+// The three delimiter conventions this project's key spaces actually use:
+// `_` (env vars, snake_case Ansible variables), `-` (kebab-case CLI flags),
+// `.` (dotted structural paths / JSON-ish keys). Stripping exactly these
+// three, and no others, is what lets `httpd_timeout` and `TimeOut` collide
+// without also collapsing keys that only coincidentally share letters —
+// nothing in this codebase's key spaces uses e.g. space or `:` as a
+// segment delimiter, so widening the set would only invite accidental
+// matches, not close a real gap.
+const SEPARATORS = /[_\-.]/g;
+
+export function normalizeKey(key: string): string {
+  return key.replace(SEPARATORS, "").toLowerCase();
+}
+
+// The last identity-bearing segment of a dotted/bracketed structural path.
+//
+//   clients[clientId=x].attributes["saml.client.signature"] -> saml.client.signature
+//   redirectUris[0]                                          -> redirectUris
+//   server[main].listen[1]                                   -> listen
+//
+// The old leaf-directive normalizer (providers/dictionary.ts) found this with
+// `lastIndexOf(".")` on the whole string, then stripped a trailing
+// `[...]`. That breaks on the first example above: the dots inside the
+// quoted attribute key are not segment separators, so a naive last-dot split
+// returns `signature"]` garbage.
+//
+// structural.ts's parseSteps() already tokenizes exactly this grammar for
+// YAML/JSON path resolution, bracket by bracket, and reusing it here happens
+// to solve the problem outright: `foo["bar.baz"]` parses as TWO key steps
+// (`foo`, then `bar.baz` — a quoted-bracket access is another key access,
+// same as `foo.bar.baz` would be), while `foo[0]` and `foo[x=y]` parse as
+// ONE key step (`foo`) plus an index/filter modifier that carries no
+// identity of its own. So the leaf is: the value of the LAST `key` step,
+// walking back over any trailing `index`/`filter` steps. A label that
+// parseSteps' grammar does not recognize at all (a bare `[main]`, neither a
+// digit index nor an `=` filter nor a quoted key) is simply skipped by its
+// scanner, which is also the right outcome here — it carries no identity
+// beyond "which container", and dropping it still leaves the real leaf
+// (`listen`) as the last key step.
+export function leafKey(key: string): string {
+  const steps = parseSteps(key);
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const step = steps[i];
+    if (step.kind === "key") return step.key;
+  }
+  return key;
+}
+
+// The verbatim candidate for a single (non-normalized) tier, or undefined if
+// that tier does not apply to this key/binding at all (no dict_key declared,
+// key_prefix does not match, or the leaf is identical to the raw key).
+function candidateForMethod(
+  method: "alias" | "exact" | "prefix" | "leaf",
+  key: string,
+  dictKey: ProjectDictKey,
+  binding: DictionaryBinding
+): string | undefined {
+  switch (method) {
+    case "alias":
+      return typeof dictKey === "string" ? dictKey : undefined;
+    case "exact":
+      return key;
+    case "prefix":
+      return binding.key_prefix && key.startsWith(binding.key_prefix) ? key.slice(binding.key_prefix.length) : undefined;
+    case "leaf": {
+      const leaf = leafKey(key);
+      return leaf !== key ? leaf : undefined;
+    }
+  }
+}
+
+// Every verbatim candidate (alias/exact/prefix/leaf), normalized and
+// deduplicated, for the normalized tier.
+function normalizedCandidates(key: string, dictKey: ProjectDictKey, binding: DictionaryBinding): string[] {
+  const raw = (["alias", "exact", "prefix", "leaf"] as const)
+    .map((m) => candidateForMethod(m, key, dictKey, binding))
+    .filter((v): v is string => v !== undefined);
+  return [...new Set(raw.map(normalizeKey))];
+}
+
+// normalized dict key -> every original dict key that normalizes to it.
+// More than one entry in a bucket is itself a same-tier collision (two real
+// dictionary entries that happen to normalize the same way) and is reported
+// as ambiguous exactly like a cross-binding collision — see bindKey().
+function normalizedIndex(doc: DictionaryDoc): Map<string, string[]> {
+  const index = new Map<string, string[]>();
+  for (const dictKey of Object.keys(doc.parameters)) {
+    const n = normalizeKey(dictKey);
+    const bucket = index.get(n);
+    if (bucket) bucket.push(dictKey);
+    else index.set(n, [dictKey]);
+  }
+  return index;
+}
+
+type Hit = { source: BindSource; dictKeyHit: string };
+
+// Hits that resolve to the literal same entry (same product+version+dictKey)
+// are not a real ambiguity — they're the same answer reached two ways (e.g.
+// a dictionary appearing twice in `sources`, or two normalized candidates
+// both landing on one entry). Collapse before judging tier-uniqueness.
+function dedupeHits(hits: Hit[]): Hit[] {
+  const seen = new Map<string, Hit>();
+  for (const hit of hits) {
+    const id = `${hit.source.binding.product}@${hit.source.binding.version}:${hit.dictKeyHit}`;
+    if (!seen.has(id)) seen.set(id, hit);
+  }
+  return [...seen.values()];
+}
+
+function ambiguousError(key: string, method: BindMethod, hits: Hit[]): BindError {
+  const matches = hits.map((h) => ({
+    product: h.source.binding.product,
+    version: h.source.binding.version,
+    dictKey: h.dictKeyHit,
+  }));
+  const list = matches.map((m) => `${m.product}@${m.version}:${m.dictKey}`).join(", ");
+  return {
+    kind: "ambiguous",
+    method,
+    key,
+    matches,
+    message: `ambiguous ${method} match for "${key}": ${list}`,
+  };
+}
+
+// Resolve one project parameter key against every declared dictionary
+// binding. Tries each tier in TIERS order; within a tier, evaluates EVERY
+// source (a project can bind more than one product dictionary — see
+// aws-ec2/sheet.yml's keycloak + httpd bindings). A tier with exactly one
+// hit (after deduping identical answers, see dedupeHits) resolves the whole
+// call. A tier with more than one DISTINCT hit is an ambiguity error —
+// never a silent first-source-wins pick. A tier with zero hits falls
+// through to the next tier. No tier matching anything returns undefined
+// (not an error: most parameters simply have no dictionary counterpart).
+export function bindKey(key: string, dictKey: ProjectDictKey, sources: readonly BindSource[]): Binding | undefined | BindError {
+  if (dictKey === null) return undefined;
+
+  for (const method of TIERS) {
+    const hits: Hit[] = [];
+
+    for (const source of sources) {
+      if (method === "normalized") {
+        const index = normalizedIndex(source.doc);
+        for (const candidate of normalizedCandidates(key, dictKey, source.binding)) {
+          for (const dictKeyHit of index.get(candidate) ?? []) {
+            hits.push({ source, dictKeyHit });
+          }
+        }
+      } else {
+        const candidate = candidateForMethod(method, key, dictKey, source.binding);
+        if (candidate !== undefined && Object.hasOwn(source.doc.parameters, candidate)) {
+          hits.push({ source, dictKeyHit: candidate });
+        }
+      }
+    }
+
+    if (hits.length === 0) continue;
+
+    const unique = dedupeHits(hits);
+    if (unique.length === 1) {
+      const { source, dictKeyHit } = unique[0];
+      return {
+        product: source.binding.product,
+        version: source.binding.version,
+        dictKey: dictKeyHit,
+        entry: source.doc.parameters[dictKeyHit],
+        method,
+        docProvenance: source.doc.provenance,
+      };
+    }
+    return ambiguousError(key, method, unique);
+  }
+
+  return undefined;
+}
+
+// ---- Loading -----------------------------------------------------------------
+//
+// bindKey() above is pure (no fs access): it resolves against already-loaded
+// BindSources. Turning a project's declared `dictionaries:` bindings into
+// those BindSources means reading `<product>@<version>.yml` off disk, which
+// every caller needs done the SAME way — this is that one I/O loader, shared
+// by assemble.ts (once per build, all sheets) and enrich.ts's standalone bind
+// pass (the `import -f` + `--project` path, which never goes through
+// assembleSheets and so has no BindingReport handed to it).
+export function loadBindSources(
+  dictionaries: readonly DictionaryBinding[],
+  metadataDirs: readonly string[],
+  readFile: (path: string) => string | null
+): BindSource[] {
+  return dictionaries.map((binding) => {
+    const doc = findDictionary(binding.product, binding.version, [...metadataDirs], readFile);
+    if (!doc) {
+      throw new Error(
+        `bind: dictionary not found: ${binding.product}@${binding.version} ` +
+          `(searched: ${metadataDirs.length > 0 ? metadataDirs.join(", ") : "no metadata dirs configured"})`
+      );
+    }
+    return { binding, doc };
+  });
+}

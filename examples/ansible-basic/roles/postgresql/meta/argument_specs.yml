@@ -1,0 +1,21 @@
+---
+# Real Ansible role documentation (ansible-doc, role validation) for these two
+# variables — kept regardless of what review-sheet does with it. review-sheet's
+# argument-specs provider sources pg_max_connections/pg_shared_buffers' sheet
+# description straight from here: both variables resolve 1:1 to a pg_settings
+# name in the template, so their row is named after that (max_connections,
+# shared_buffers) rather than the variable, but the provider falls back to
+# the row's original variable name when its key doesn't match (see
+# review-sheet's src/providers/argument-specs.ts), so it still reaches these
+# two by pg_max_connections/pg_shared_buffers. The other 18 fall through to
+# the extracted postgresql@16 dictionary, as before.
+argument_specs:
+  main:
+    short_description: Install and configure PostgreSQL.
+    options:
+      pg_max_connections:
+        type: int
+        description: Maximum number of concurrent client connections this node accepts.
+      pg_shared_buffers:
+        type: str
+        description: Memory dedicated to PostgreSQL's shared buffer cache (start ~25% of RAM).

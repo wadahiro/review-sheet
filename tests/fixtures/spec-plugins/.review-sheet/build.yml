@@ -1,0 +1,20 @@
+# Minimal spec whose build only succeeds when `import --spec` loads BOTH a
+# custom parser and a custom metadata provider from .review-sheet/ (see
+# tests/spec-plugins.test.ts). Paths are relative to this file's directory.
+version: 1
+
+metadata:
+  title: "spec plugin discovery fixture"
+
+instances: [only]
+
+enrich:
+  project: sheet.yml
+
+sheets:
+  - name: app
+    recipe: ansible
+    defaults: ../roles/app/defaults/main.yml
+    static_files:
+      - path: ../conf/app.myconf
+        format: myconf

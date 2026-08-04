@@ -1,0 +1,11 @@
+[project]
+name = "ansible-basic-example"
+version = "0"
+description = "review-sheet example: ansible-native Molecule nginx role"
+requires-python = ">=3.10"
+
+# Slim, exactly what this example uses: molecule (pulls ansible-core) + ansible-lint,
+# plus `requests` for the community.docker modules in the Molecule create/destroy
+# playbooks (which run on localhost = this venv). Exact versions pinned in uv.lock.
+[dependency-groups]
+dev = ["molecule", "ansible-lint", "requests"]

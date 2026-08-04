@@ -1,0 +1,60 @@
+# Project metadata. This sheet reviews Keycloak's configuration in
+# Keycloak's own vocabulary, so params are keyed by the keycloak.conf key
+# (db-url, hostname-strict, …) — the same key the extracted dictionary uses, so
+# NO dict_key aliases and NO key_prefix are needed. The backing Ansible variable
+# (kc_*) is provenance: the "ansible" recipe reads it from the template and shows it in a
+# secondary column; the value still source-maps to the group_vars/defaults line.
+#
+# Most rows below also drop `category:` entirely: each key binds (exact tier)
+# to the keycloak@26.7.0 dictionary, whose own `group` already names the tab
+# this project wants (`db` -> group "Database", etc.), so the fallback does
+# the filing for free. `health-enabled`/`metrics-enabled` are the one
+# exception — this project merges the dictionary's separate "Health" and
+# "Metrics" groups into a single "Observability" tab, a display decision the
+# dictionary can't make, so those two keep an explicit `category:`.
+#
+# The dictionary binding is declared on the sheet itself in build.yml
+# (`sheets[].dictionaries`) — a data-source fact. Category display order and
+# the under_key column (below) are display facts and live here instead: the
+# declared `categories:` list also guards against a "ghost tab" — a category
+# actually used that isn't on it (e.g. via a typo) now fails the build instead
+# of silently appearing as a new tab (see assemble.ts's fileDrafts).
+
+categories: [Database, Hostname, "HTTP / TLS", Reverse proxy, Observability, Logging, Cache]
+under_key:
+  id: ansible_var
+  label: { ja: "Ansible variable", en: "Ansible variable" }
+
+params:
+  # Embedded literal (db=postgres in the template): a role decision, but still
+  # in review scope — the dictionary's group ("Database") files it correctly
+  # without a category override.
+  db: {}
+  db-url: {}
+  db-username: {}
+  # Secret: sourced from Ansible Vault in real projects. Reviewed at parameter
+  # granularity as out_of_scope so it is shown (for completeness) but never
+  # surfaced or edited as plaintext. Category still falls back to the
+  # dictionary's group ("Database").
+  db-password:
+    out_of_scope:
+      reason:
+        en: A secret held in Ansible Vault — not reviewed as plaintext here.
+        ja: Ansible Vault で管理されるシークレットのため、平文でのレビュー対象外。
+      owner: DBA/Secrets
+  hostname: {}
+  hostname-strict: {}
+  http-enabled: {}
+  http-port: {}
+  https-port: {}
+  https-certificate-file: {}
+  https-certificate-key-file: {}
+  proxy-headers: {}
+  # See the file header: merges the dictionary's separate Health/Metrics
+  # groups into one "Observability" tab, so category is authored here.
+  health-enabled:                { category: Observability }
+  metrics-enabled:               { category: Observability }
+  log: {}
+  log-level: {}
+  cache: {}
+  cache-stack: {}
