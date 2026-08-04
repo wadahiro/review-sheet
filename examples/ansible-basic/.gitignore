@@ -1,0 +1,8 @@
+# Toolchain / downloaded artifacts (regenerate with the README's bootstrap)
+.venv/
+collections/
+*.retry
+
+# review-sheet generated outputs (also covered by the repo-root .gitignore)
+input.json
+sheet.html

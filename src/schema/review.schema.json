@@ -1,0 +1,47 @@
+{
+  "title": "Parameter Sheet Review v2.0",
+  "type": "object",
+  "required": ["schema_version", "created_at", "reviews"],
+  "properties": {
+    "schema_version": { "const": "2.0" },
+    "created_at": { "type": "string" },
+    "reviews": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "target", "status"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^rev_" },
+          "target": {
+            "type": "object",
+            "required": ["sheet"],
+            "properties": {
+              "sheet": { "type": "string" },
+              "category": { "type": "string" },
+              "param": { "type": "string" },
+              "instance": { "type": "string" },
+              "field": { "type": "string" }
+            }
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["field", "suggested"],
+              "properties": {
+                "field": { "type": "string" },
+                "current": { "type": "string" },
+                "suggested": { "type": "string" }
+              }
+            }
+          },
+          "comment": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "applied", "rejected"]
+          }
+        }
+      }
+    }
+  }
+}

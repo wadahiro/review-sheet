@@ -1,0 +1,9 @@
+---
+# Staging overrides for the keycloak role (defaults in roles/keycloak/defaults/main.yml).
+# Single node, no clustering; metrics on for pre-prod observation.
+kc_db_url: "jdbc:postgresql://db-staging.example.com/keycloak"
+kc_hostname: "sso-staging.example.com"
+kc_proxy_headers: "xforwarded"
+kc_metrics_enabled: true
+kc_cache: "local"
+kc_log_level: "info"

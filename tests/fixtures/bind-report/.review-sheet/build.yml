@@ -1,0 +1,20 @@
+# Minimal build spec for tests/bind-report-cli.test.ts. Paths are relative to
+# this file's own directory.
+version: 1
+
+metadata:
+  title: "bind-report fixture"
+
+instances: [only]
+
+enrich:
+  project: sheet.yml
+  metadata_dirs: [metadata]
+
+sheets:
+  - name: app
+    recipe: ansible
+    defaults: ../roles/app/defaults/main.yml
+    dictionaries:
+      - product: widget
+        version: "1"

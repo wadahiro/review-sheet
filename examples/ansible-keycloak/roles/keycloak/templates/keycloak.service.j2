@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Keycloak Identity and Access Management
+After=network.target
+
+[Service]
+User={{ keycloak_user }}
+Group={{ keycloak_user }}
+# Build-time options are baked here; start reads the built image + keycloak.conf.
+ExecStartPre={{ keycloak_home }}/bin/kc.sh build
+ExecStart={{ keycloak_home }}/bin/kc.sh start --optimized
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=102642
+
+[Install]
+WantedBy=multi-user.target

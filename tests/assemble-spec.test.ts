@@ -1,0 +1,379 @@
+// The escape hatch between a declarative build.yml and a hand-written
+// converter: assembleFromSpec()/buildFromSpecFile() (src/assemble-spec.ts) —
+// the composition `import --spec` itself runs — plus the AssembleHooks
+// (src/assemble.ts) a project uses to fix the one detail its recipe doesn't
+// cover, without leaving the spec.
+
+import { describe, it, expect, beforeEach } from "bun:test";
+import { stubNonBuiltInProviders } from "./only-builtin-providers.js";
+import { assembleFromSpec, buildFromSpecFile } from "../src/assemble-spec";
+import { loadBuildSpec } from "../src/spec";
+import { registerRecipe, type SheetRecipe, type RecipeIO } from "../src/recipe";
+import type { AssembleHooks, SheetInputs, ExtractedMap } from "../src/assemble";
+import { extractFile } from "../src/extract";
+import type { Parameter, ParameterSheetInput, SimpleParameter } from "../src/types";
+
+// The metadata provider registry is a process-wide singleton (see
+// assemble.test.ts for the full rationale) — neutralize any non-core provider
+// so the strict-metadata assertions here don't depend on test file order.
+beforeEach(stubNonBuiltInProviders);
+
+// A recipe standing in for a real one: a base layer with two keys, one
+// per-instance overlay, and one embedded literal — enough for hooks to be
+// observed on all three param kinds.
+const fixtureRecipe: SheetRecipe = {
+  name: "hooks-fixture",
+  schema: { type: "object", properties: {} },
+  load(sheetSpec, io: RecipeIO): SheetInputs {
+    return {
+      name: String(sheetSpec.name),
+      instances: io.instances,
+      layers: [
+        {
+          kind: "base",
+          entries: new Map([
+            ["raw_host", { value: "db.internal", source: { file: io.resolve("base.yml"), line: 1 } }],
+            ["raw_port", { value: "5432", source: { file: io.resolve("base.yml"), line: 2 } }],
+          ]),
+        },
+        {
+          kind: "overlay",
+          instance: "production",
+          entries: new Map([["raw_port", { value: "6432", source: { file: io.resolve("prod.yml"), line: 1 } }]]),
+        },
+      ],
+      embedded: [{ key: "raw_literal", value: "on", source: { file: io.resolve("base.yml"), line: 3 } }],
+    };
+  },
+};
+registerRecipe(fixtureRecipe);
+
+const SPEC_PATH = "/project/build.yml";
+
+const BUILD_YML = `
+version: 1
+metadata:
+  title: Hooks fixture
+instances: [staging, production]
+enrich:
+  project: sheet.yml
+sheets:
+  - name: app
+    recipe: hooks-fixture
+`;
+
+// Keyed by the POST-hook keys (host/port/literal): the project metadata is
+// looked up with a parameter's final identity, which is the contract `keyFor`
+// has to honour.
+const PROJECT_YML = `
+params:
+  host:
+    category: Database
+    description: Database host
+  port:
+    category: Database
+    description: Database port
+  literal:
+    category: Misc
+    description: An embedded literal
+`;
+
+const files: Record<string, string> = {
+  [SPEC_PATH]: BUILD_YML,
+  "/project/sheet.yml": PROJECT_YML,
+};
+const readFile = (p: string): string | null => files[p] ?? null;
+
+// Strip the "raw_" prefix a recipe happens to emit.
+const stripRaw: AssembleHooks["keyFor"] = (ctx) => ctx.key.replace(/^raw_/, "");
+
+function build(hooks?: AssembleHooks, strictMetadata?: boolean): ParameterSheetInput {
+  const spec = loadBuildSpec(SPEC_PATH, { readFile });
+  return assembleFromSpec(spec, { readFile, specDir: "/project", hooks, strictMetadata });
+}
+
+function params(input: ParameterSheetInput): Parameter[] {
+  return input.sheets.flatMap((s) => (s.categories ?? []).flatMap((c) => c.params ?? []));
+}
+
+describe("assembleFromSpec", () => {
+  it("runs the spec's recipes and enriches, with no hooks", () => {
+    // Without keyFor the raw keys have no category -> the same assembly error
+    // the CLI would print, proving the hook is what bridges the two vocabularies.
+    expect(() => build()).toThrow(/raw_port/);
+  });
+
+  it("resolves recipe paths against specDir, overridable by `resolve`", () => {
+    const seen: string[] = [];
+    const spec = loadBuildSpec(SPEC_PATH, { readFile });
+    assembleFromSpec(spec, {
+      readFile,
+      specDir: "/project",
+      resolve: (p) => {
+        seen.push(p);
+        return `rel/${p}`;
+      },
+      hooks: { keyFor: stripRaw },
+    });
+    expect(seen).toContain("base.yml");
+
+    const input = build({ keyFor: stripRaw });
+    const host = params(input).find((p) => p.key === "host") as SimpleParameter;
+    expect(host.source?.file).toBe("/project/base.yml"); // default: absolute against specDir
+  });
+
+  it("buildFromSpecFile loads the spec and assembles in one call", () => {
+    const { input, report } = buildFromSpecFile(SPEC_PATH, { readFile, hooks: { keyFor: stripRaw } });
+    expect(input.metadata?.title).toBe("Hooks fixture");
+    expect(params(input).map((p) => p.key)).toEqual(["host", "port", "literal"]);
+    expect(report.byProvider).toEqual({ project: 3 });
+  });
+});
+
+describe("AssembleHooks", () => {
+  it("keyFor rewrites identity for every param kind, and routes metadata lookup", () => {
+    const input = build({ keyFor: stripRaw });
+    const all = params(input);
+
+    expect(all.map((p) => [p.key, p.origin])).toEqual([
+      ["host", "common"],
+      ["port", "overlay"],
+      ["literal", "embedded"],
+    ]);
+    // Category + description were found under the renamed key.
+    expect((input.sheets[0].categories ?? []).map((c) => c.name)).toEqual(["Database", "Misc"]);
+    expect(all.find((p) => p.key === "port")?.description).toBe("Database port");
+  });
+
+  it("keyFor sees the pre-hook key and the backing variable", () => {
+    const seen: string[] = [];
+    build({
+      keyFor: (ctx) => {
+        seen.push(`${ctx.sheet}:${ctx.key}:${ctx.variable ?? "-"}`);
+        return stripRaw!(ctx);
+      },
+    });
+    expect(seen).toEqual(["app:raw_host:-", "app:raw_port:-", "app:raw_literal:-"]);
+  });
+
+  it("mapParam adjusts a parameter and can drop one by returning null", () => {
+    // strictMetadata: false — mapParam deliberately drops "literal" below, so
+    // the project metadata's own "literal" entry goes legitimately unused
+    // (see assemble.ts's unusedProjectParams build failure).
+    const input = build(
+      {
+        keyFor: stripRaw,
+        mapParam: (param, ctx) => {
+          if (ctx.key === "literal") return null; // drop artifact noise
+          if (ctx.key === "host") param.remarks = "added by mapParam";
+          return param;
+        },
+      },
+      false
+    );
+
+    const all = params(input);
+    expect(all.map((p) => p.key)).toEqual(["host", "port"]);
+    expect(all.find((p) => p.key === "host")?.remarks).toBe("added by mapParam");
+  });
+
+  it("a dropped parameter's category disappears with it", () => {
+    const input = build({ keyFor: stripRaw, mapParam: (p, ctx) => (ctx.key === "literal" ? null : p) }, false);
+    expect((input.sheets[0].categories ?? []).map((c) => c.name)).toEqual(["Database"]);
+  });
+
+  it("finalize sees the assembled model before enrich fills it in", () => {
+    let sawDescription: unknown = "unset";
+    const input = build({
+      keyFor: stripRaw,
+      finalize: (model) => {
+        const first = (model.sheets[0].categories ?? [])[0].params![0];
+        sawDescription = first.description; // enrich has not run yet
+        first.description = "set by finalize";
+        return model;
+      },
+    });
+
+    expect(sawDescription).toBeUndefined();
+    // enrich is fill-only, so what finalize set survives; the rest is enriched.
+    expect(params(input).find((p) => p.key === "host")?.description).toBe("set by finalize");
+    expect(params(input).find((p) => p.key === "port")?.description).toBe("Database port");
+  });
+
+  it("cannot hide a strict-metadata failure: a param finalize adds still needs a description", () => {
+    expect(() =>
+      build({
+        keyFor: stripRaw,
+        finalize: (model) => {
+          (model.sheets[0].categories ?? [])[0].params!.push({ key: "undocumented", value: "x" });
+          return model;
+        },
+      })
+    ).toThrow(/undocumented/);
+  });
+});
+
+// This is the concrete case ExtractOptions threading exists for: a
+// build.yml's `id_fields` reaches extraction as data, through
+// `RecipeIO.extractOptions` (built by assembleFromSpecWithReport), with no
+// process-wide state involved at all — the mechanism that would have
+// silently failed to reach a DIFFERENT loaded copy of extract.ts. This
+// recipe calls the real extractFile() (not a stand-in) with
+// `io.extractOptions`, so the test exercises the actual production path end
+// to end.
+const idFieldsFixtureRecipe: SheetRecipe = {
+  name: "id-fields-fixture",
+  schema: { type: "object", required: ["file"], properties: { file: { type: "string" } } },
+  load(sheetSpec, io: RecipeIO): SheetInputs {
+    const file = io.resolve(String(sheetSpec.file));
+    const content = io.readFile(file);
+    if (content === null) throw new Error(`id-fields-fixture: not found: ${file}`);
+    const entries = extractFile(content, file, undefined, io.extractOptions);
+    const map: ExtractedMap = new Map();
+    for (const e of entries) {
+      const key = e.source.path ?? e.key;
+      map.set(key, { value: e.value, source: { ...e.source, file } });
+    }
+    return {
+      name: String(sheetSpec.name),
+      instances: io.instances,
+      layers: [{ kind: "base", entries: map }],
+      embedded: [],
+    };
+  },
+};
+registerRecipe(idFieldsFixtureRecipe);
+
+describe("assembleFromSpecWithReport — id_fields reaches extraction via RecipeIO.extractOptions, not a global", () => {
+  const ID_SPEC_PATH = "/idfields/build.yml";
+  const CLIENTS_PATH = "/idfields/clients.yml";
+  const PROJECT_PATH = "/idfields/sheet.yml";
+
+  const clientsYaml = "clients:\n  - clientId: poc-oidc\n    enabled: true\n  - clientId: poc-saml\n    enabled: false\n";
+  const projectYaml = [
+    "params:",
+    '  "clients[clientId=poc-oidc].enabled":',
+    "    category: General",
+    "    description: whether the oidc client is enabled",
+    '  "clients[clientId=poc-saml].enabled":',
+    "    category: General",
+    "    description: whether the saml client is enabled",
+  ].join("\n");
+  const specYaml = [
+    "version: 1",
+    "instances: [prod]",
+    "id_fields: [clientId]",
+    "enrich:",
+    "  project: sheet.yml",
+    "sheets:",
+    "  - name: demo",
+    "    recipe: id-fields-fixture",
+    "    file: clients.yml",
+  ].join("\n");
+
+  const map: Record<string, string> = {
+    [ID_SPEC_PATH]: specYaml,
+    [CLIENTS_PATH]: clientsYaml,
+    [PROJECT_PATH]: projectYaml,
+  };
+  const readFile = (p: string): string | null => map[p] ?? null;
+
+  it("addresses clients by clientId, carried entirely through RecipeIO.extractOptions", () => {
+    const spec = loadBuildSpec(ID_SPEC_PATH, { readFile });
+    const input = assembleFromSpec(spec, { readFile, specDir: "/idfields" });
+
+    const keys = params(input).map((p) => p.key);
+    expect(keys).toEqual([
+      "clients[clientId=poc-oidc].enabled",
+      "clients[clientId=poc-saml].enabled",
+    ]);
+  });
+});
+
+// Sheet-level `instances`: before this, a
+// build.yml's `instances` was spec-wide only, forcing a project to split into
+// multiple specs whenever two sheets genuinely covered different environment
+// sets (e.g. Terraform run only in [staging, production] next to an
+// Ansible-rendered config in [local, staging, production]). See spec.ts's
+// BuildSpec.sheets[].instances for the subset-of-spec-instances rule and
+// per-sheet-order rationale.
+describe("sheet-level instances", () => {
+  const PROJECT_PATH = "/sheet-instances/sheet.yml";
+  const projectYaml = `
+params:
+  host:
+    category: Database
+    description: Database host
+  port:
+    category: Database
+    description: Database port
+  literal:
+    category: Misc
+    description: An embedded literal
+`;
+
+  it("a sheet with no `instances` inherits the spec's default, an overriding sheet gets its own", () => {
+    const SPEC_PATH_2 = "/sheet-instances/build.yml";
+    const specYaml = `
+version: 1
+instances: [staging, production]
+enrich:
+  project: sheet.yml
+sheets:
+  - name: app-full
+    recipe: hooks-fixture
+  - name: app-narrow
+    recipe: hooks-fixture
+    instances: [production]
+`;
+    const map: Record<string, string> = { [SPEC_PATH_2]: specYaml, [PROJECT_PATH]: projectYaml };
+    const readFile = (p: string): string | null => map[p] ?? null;
+
+    const spec = loadBuildSpec(SPEC_PATH_2, { readFile });
+    const input = assembleFromSpec(spec, { readFile, specDir: "/sheet-instances", hooks: { keyFor: stripRaw } });
+
+    expect(input.sheets[0].name).toBe("app-full");
+    expect(input.sheets[0].instances).toEqual(["staging", "production"]);
+    expect(input.sheets[1].name).toBe("app-narrow");
+    expect(input.sheets[1].instances).toEqual(["production"]);
+  });
+
+  it("overlay-instance validation runs against the sheet's OWN (narrowed) instances, not the spec's", () => {
+    const SPEC_PATH_3 = "/sheet-instances/build-conflict.yml";
+    // hooks-fixture always overlays instance "production" — narrowing this
+    // sheet to [staging] must make that overlay invalid, the same error
+    // assembleSheets already raises for a spec-wide mismatch.
+    const specYaml = `
+version: 1
+instances: [staging, production]
+enrich:
+  project: sheet.yml
+sheets:
+  - name: app-conflict
+    recipe: hooks-fixture
+    instances: [staging]
+`;
+    const map: Record<string, string> = { [SPEC_PATH_3]: specYaml, [PROJECT_PATH]: projectYaml };
+    const readFile = (p: string): string | null => map[p] ?? null;
+
+    const spec = loadBuildSpec(SPEC_PATH_3, { readFile });
+    expect(() =>
+      assembleFromSpec(spec, { readFile, specDir: "/sheet-instances", hooks: { keyFor: stripRaw } })
+    ).toThrow(/app-conflict.*overlay instance "production" is not in instances/);
+  });
+
+  it("loadBuildSpec rejects a sheet instances entry the spec never declared", () => {
+    const SPEC_PATH_4 = "/sheet-instances-bad/build.yml";
+    const specYaml = `
+version: 1
+instances: [staging, production]
+sheets:
+  - name: app
+    recipe: hooks-fixture
+    instances: [staging, local]
+`;
+    const map: Record<string, string> = { [SPEC_PATH_4]: specYaml };
+    const readFile = (p: string): string | null => map[p] ?? null;
+    expect(() => loadBuildSpec(SPEC_PATH_4, { readFile })).toThrow(/local/);
+  });
+});

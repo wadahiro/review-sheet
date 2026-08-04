@@ -1,0 +1,169 @@
+{
+  "metadata": { "title": "Diff Demo", "project": "diff-demo" },
+  "versions": [
+    {
+      "version": "1.0",
+      "date": "2026-01-10",
+      "tags": ["baseline"],
+      "sheets": [
+        {
+          "name": "Kept Sheet",
+          "categories": [
+            {
+              "name": "Stable",
+              "params": [
+                { "key": "p.keep", "value": "1", "description": "unchanged row" },
+                { "key": "p.update", "value": "10", "description": "value will change" },
+                { "key": "p.remove", "value": "x", "description": "row removed in 1.2" },
+                { "key": "p.desconly", "value": "5", "default": "5", "description": "old description" },
+                { "key": "p.defaultchg", "value": "x", "default": "60", "description": "default value changes (value unchanged)" },
+                { "key": "p.renameOld", "value": "7", "description": "key renamed in 1.2" }
+              ]
+            },
+            {
+              "name": "Removed Category",
+              "params": [
+                { "key": "rc.only.v1", "value": "a" }
+              ]
+            },
+            {
+              "name": "Renamed Cat (old)",
+              "params": [
+                { "key": "rc.kept", "value": "z" }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Removed Sheet",
+          "categories": [
+            { "name": "C", "params": [{ "key": "rs.x", "value": "1" }] }
+          ]
+        },
+        {
+          "name": "Renamed Sheet (old)",
+          "categories": [
+            { "name": "C", "params": [{ "key": "rn.y", "value": "1" }] }
+          ]
+        },
+        {
+          "name": "Instances",
+          "categories": [
+            {
+              "name": "Cluster",
+              "params": [
+                {
+                  "key": "svc.port",
+                  "description": "instance increase/decrease + value change",
+                  "instances": [
+                    { "name": "web", "value": "8080" },
+                    { "name": "api", "value": "9090" },
+                    { "name": "cache", "value": "6379" }
+                  ]
+                },
+                {
+                  "key": "svc.replicas",
+                  "description": "all instances unchanged (hidden under changed-only)",
+                  "instances": [
+                    { "name": "web", "value": "2" },
+                    { "name": "api", "value": "3" }
+                  ]
+                },
+                {
+                  "key": "svc.host",
+                  "description": "instance renamed: web -> web-1 (remove + add)",
+                  "instances": [
+                    { "name": "web", "value": "10.0.0.1" },
+                    { "name": "api", "value": "10.0.0.2" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.2",
+      "date": "2026-03-01",
+      "tags": ["release"],
+      "sheets": [
+        {
+          "name": "Kept Sheet",
+          "categories": [
+            {
+              "name": "Stable",
+              "params": [
+                { "key": "p.keep", "value": "1", "description": "unchanged row" },
+                { "key": "p.update", "value": "20", "description": "value will change" },
+                { "key": "p.desconly", "value": "5", "default": "5", "description": "new description" },
+                { "key": "p.defaultchg", "value": "x", "default": "120", "description": "default value changes (value unchanged)" },
+                { "key": "p.renameNew", "value": "7", "description": "key renamed in 1.2" },
+                { "key": "p.add", "value": "99", "description": "row added in 1.2" }
+              ]
+            },
+            {
+              "name": "Added Category",
+              "params": [
+                { "key": "ac.only.v2", "value": "b" }
+              ]
+            },
+            {
+              "name": "Renamed Cat (new)",
+              "params": [
+                { "key": "rc.kept", "value": "z" }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Added Sheet",
+          "categories": [
+            { "name": "C", "params": [{ "key": "as.z", "value": "1" }] }
+          ]
+        },
+        {
+          "name": "Renamed Sheet (new)",
+          "categories": [
+            { "name": "C", "params": [{ "key": "rn.y", "value": "1" }] }
+          ]
+        },
+        {
+          "name": "Instances",
+          "categories": [
+            {
+              "name": "Cluster",
+              "params": [
+                {
+                  "key": "svc.port",
+                  "description": "instance increase/decrease + value change",
+                  "instances": [
+                    { "name": "web", "value": "8888" },
+                    { "name": "api", "value": "9090" },
+                    { "name": "db", "value": "5432" }
+                  ]
+                },
+                {
+                  "key": "svc.replicas",
+                  "description": "all instances unchanged (hidden under changed-only)",
+                  "instances": [
+                    { "name": "web", "value": "2" },
+                    { "name": "api", "value": "3" }
+                  ]
+                },
+                {
+                  "key": "svc.host",
+                  "description": "instance renamed: web -> web-1 (remove + add)",
+                  "instances": [
+                    { "name": "web-1", "value": "10.0.0.1" },
+                    { "name": "api", "value": "10.0.0.2" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

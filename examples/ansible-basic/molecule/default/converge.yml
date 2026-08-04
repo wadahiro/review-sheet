@@ -1,0 +1,5 @@
+---
+# Converge by running the real site playbook against the test container,
+# so the scenario exercises exactly what production runs.
+- name: Converge
+  ansible.builtin.import_playbook: ../../site.yml

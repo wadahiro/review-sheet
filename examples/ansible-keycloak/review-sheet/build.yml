@@ -1,0 +1,47 @@
+# Declarative build spec for `import --spec` (see src/spec.ts and the
+# "ansible" recipe, src/recipes/ansible.ts). Paths here are relative to this
+# file's own directory (examples/ansible-keycloak/review-sheet/).
+#
+# This sheet reviews Keycloak's CONFIGURATION, in Keycloak's own vocabulary:
+# every kc_* variable in defaults/main.yml backs exactly one directive in the
+# template, so it is automatically named after that directive (the product's
+# own key) — no `keying:` to declare, see the "ansible" recipe's module doc.
+# See review-sheet/README.md for the full rationale.
+
+version: 1
+
+metadata:
+  title: "Ansible keycloak role — Keycloak configuration sheet"
+  project: "ansible-keycloak example"
+
+instances: [staging, production]
+
+enrich:
+  project: sheet.yml
+  metadata_dirs: [metadata]
+  # No argument_specs: this sheet reviews product config keys, documented by
+  # the product's own extracted dictionary, not the Ansible variables.
+
+sheets:
+  - name: keycloak configuration
+    recipe: ansible
+    defaults: ../roles/keycloak/defaults/main.yml
+    template: ../roles/keycloak/templates/keycloak.conf.j2
+    # roles/keycloak/tasks/main.yml has `dest: "{{ keycloak_home }}/conf/keycloak.conf"`
+    # with keycloak_home = /opt/keycloak (vars/main.yml) — the reason a deployed
+    # path is declared here rather than parsed out of the tasks.
+    deployed_path: /opt/keycloak/conf/keycloak.conf
+    overlays:
+      staging: ../inventories/staging/group_vars/keycloak.yml
+      production: ../inventories/production/group_vars/keycloak.yml
+    dictionaries:
+      - product: keycloak
+        version: "26.7.0"
+        # The dictionary is a genuine full extraction of the product (Java
+        # reflection over org.keycloak.config.*Options in the official
+        # image), and this sheet is already keyed by Keycloak's own config
+        # keys — so the two key spaces are the same one, and expanding the
+        # dictionary makes the sheet the exhaustive ledger of what Keycloak
+        # can be configured with. Every option the role does not set becomes
+        # an `origin: default` row, filed under Keycloak's own category.
+        materialize: true

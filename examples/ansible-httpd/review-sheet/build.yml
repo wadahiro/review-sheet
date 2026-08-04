@@ -1,0 +1,35 @@
+# Declarative build spec for `import --spec` (see src/spec.ts and the
+# "ansible" recipe, src/recipes/ansible.ts). Paths here are relative to this
+# file's own directory (examples/ansible-httpd/review-sheet/).
+#
+# Single-role variant of ansible-basic/review-sheet/build.yml — see that file
+# for the two-role shape this is reduced from, and for how a template row's
+# name is derived (no `keying:` to declare).
+
+version: 1
+
+metadata:
+  title: "Ansible httpd role — full parameter sheet"
+  project: "ansible-httpd example"
+
+instances: [staging, production]
+
+enrich:
+  project: sheet.yml
+  metadata_dirs: [metadata]
+  argument_specs: [../roles/httpd/meta/argument_specs.yml]
+
+sheets:
+  - name: httpd configuration
+    recipe: ansible
+    defaults: ../roles/httpd/defaults/main.yml
+    template: ../roles/httpd/templates/httpd.conf.j2
+    # roles/httpd/tasks/main.yml `dest:` — the path the sheet shows.
+    deployed_path: /etc/httpd/conf/httpd.conf
+    overlays:
+      staging: ../inventories/staging/group_vars/web.yml
+      production: ../inventories/production/group_vars/web.yml
+    dictionaries:
+      - product: httpd
+        version: "2.4"
+        key_prefix: httpd_

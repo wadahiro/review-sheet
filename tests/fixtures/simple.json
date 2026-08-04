@@ -1,0 +1,84 @@
+{
+  "metadata": {
+    "title": "Parameter Sheet",
+    "project": "Test Project",
+    "version": "1.0",
+    "generated_at": "2026-06-17T10:00:00Z",
+    "changelog": [
+      { "version": "1.0", "date": "2026-06-17", "author": "John Smith", "description": "Initial version" }
+    ]
+  },
+  "sheets": [
+    {
+      "name": "OS Base Settings",
+      "role": "os-base",
+      "categories": [
+        {
+          "name": "/etc/sysctl.d/override.conf",
+          "file_path": "/etc/sysctl.d/override.conf",
+          "params": [
+            {
+              "key": "net.ipv4.tcp_fin_timeout",
+              "default": "60",
+              "value": "5",
+              "description": "TCP FIN timeout value",
+              "remarks": "Recommended value"
+            },
+            {
+              "key": "net.core.somaxconn",
+              "default": "128",
+              "value": "1024",
+              "description": "Maximum socket connection queue length"
+            },
+            {
+              "key": "net.ipv4.ip_local_port_range",
+              "default": "32768 60999",
+              "value": "32768 60999",
+              "description": "Local port range"
+            }
+          ]
+        },
+        {
+          "name": "/etc/security/limits.conf",
+          "file_path": "/etc/security/limits.conf",
+          "params": [
+            {
+              "key": "nofile (soft)",
+              "default": "1024",
+              "value": "65536",
+              "description": "Maximum number of open files (soft limit)"
+            },
+            {
+              "key": "nofile (hard)",
+              "default": "4096",
+              "value": "65536",
+              "description": "Maximum number of open files (hard limit)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "HTTPD Settings",
+      "categories": [
+        {
+          "name": "Basic Settings",
+          "params": [
+            {
+              "key": "ServerRoot",
+              "default": "/etc/httpd",
+              "value": "/etc/httpd",
+              "description": "Server root directory"
+            },
+            {
+              "key": "Listen",
+              "default": "80",
+              "value": "8080",
+              "description": "Listen port"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+# Two-sheet build spec for tests/scaffold-cli.test.ts's sheets: round-trip
+# case (P6). Paths are relative to this file's own directory.
+version: 1
+
+metadata:
+  title: "scaffold fixture (sheets:)"
+
+instances: [only]
+
+enrich:
+  project: sheet.yml
+
+sheets:
+  - name: app
+    recipe: ansible
+    defaults: ../roles/app/defaults/main.yml
+  - name: other
+    recipe: ansible
+    defaults: ../roles/other/defaults/main.yml

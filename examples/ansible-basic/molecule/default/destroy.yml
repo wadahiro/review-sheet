@@ -1,0 +1,17 @@
+---
+- name: Destroy
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Stop and remove the test container(s)
+      community.docker.docker_container:
+        name: "{{ item.name }}"
+        state: absent
+        auto_remove: true
+        force_kill: true
+      loop: "{{ molecule_yml.platforms }}"
+
+    - name: Remove the dynamic molecule inventory
+      ansible.builtin.file:
+        path: "{{ molecule_ephemeral_directory }}/inventory/molecule_inventory.yml"
+        state: absent

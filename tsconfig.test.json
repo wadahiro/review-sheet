@@ -1,0 +1,20 @@
+// tsconfig.json builds the library: it sets rootDir/outDir and therefore
+// excludes tests/, which had the side effect that NOTHING under tests/ was
+// ever type-checked — `tsc --noEmit` reported a clean tree while test files
+// carried real type errors nobody could see.
+//
+// This config type-checks only (noEmit), over src/ AND tests/, so a test that
+// builds a MetadataContext or a Parameter the wrong way fails here instead of
+// waiting for someone to notice in an editor.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

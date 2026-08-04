@@ -1,0 +1,4 @@
+# Project metadata for tests/scaffold-cli.test.ts — deliberately starts with
+# an empty params:, mirroring the PoC anecdote T5 formalizes: run the build
+# once against this, transcribe the exact key list the error prints.
+params: {}

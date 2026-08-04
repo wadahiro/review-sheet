@@ -1,0 +1,9 @@
+---
+# Staging overrides for the postgresql role (defaults in roles/postgresql/defaults/main.yml).
+# Smaller box; only a few knobs differ from the role defaults.
+pg_listen_addresses: "*"
+pg_max_connections: 100
+pg_shared_buffers: "512MB"
+pg_effective_cache_size: "1536MB"
+pg_work_mem: "16MB"
+pg_log_min_duration_statement: 1000

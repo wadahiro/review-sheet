@@ -1,0 +1,5 @@
+---
+# Staging overrides for the httpd role (defaults in roles/httpd/defaults/main.yml).
+httpd_server_name: "staging.example.com"
+httpd_max_request_workers: 150
+httpd_log_level: "info"

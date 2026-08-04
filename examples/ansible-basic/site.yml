@@ -1,0 +1,19 @@
+---
+- name: Configure web servers
+  hosts: web
+  become: true
+  # Staged rollout: deploy to 1 host (canary) first, then 30% batches, and abort
+  # the whole run on the first failure. (`serial` / `max_fail_percentage` are real
+  # play attributes — ansible src: playbook/play.py, strategy/linear.py.)
+  serial: ["1", "30%"]
+  max_fail_percentage: 0
+  roles:
+    - nginx
+
+- name: Configure database servers
+  hosts: db
+  become: true
+  serial: ["1", "30%"]
+  max_fail_percentage: 0
+  roles:
+    - postgresql

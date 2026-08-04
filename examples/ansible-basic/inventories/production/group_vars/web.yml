@@ -1,0 +1,5 @@
+---
+# Production overrides for the nginx role (defaults in roles/nginx/defaults/main.yml).
+nginx_server_name: www.example.com
+nginx_worker_connections: 4096
+nginx_client_max_body_size: "50m"

@@ -1,0 +1,76 @@
+# Project metadata. Every httpd_* variable in defaults/main.yml resolves 1:1
+# to a directive in the template, so every row below is named after the
+# directive itself (Apache's own CamelCase spelling) — no dict_key aliases
+# needed, the row's own key already IS the httpd@2.4 dictionary's key.
+#
+# The dictionary binding is declared on the sheet itself in build.yml
+# (`sheets[].dictionaries`) — a data-source fact. Category display order
+# (`categories:`, below) is a display fact and lives here instead: it also
+# guards against a "ghost tab" — a category actually used (e.g. via a typo in
+# some param's `category:`) that isn't in this list now fails the build
+# instead of silently appearing as a new tab (see assemble.ts's fileDrafts).
+#
+# <IfModule mpm_event_module> wraps the MPM tunables below: httpd.ts now
+# extracts the module test itself as its own reviewable/editable row (key
+# `IfModule`, source = the opening tag), so it needs a category and — like
+# every other directive here — a description; both come straight from the
+# httpd@2.4 dictionary, same as Listen/ServerName/etc.
+#
+# Language note: descriptions mostly come from the httpd@2.4 dictionary
+# (official, bilingual en+ja), so those rows switch with the viewer's language
+# toggle. ServerTokens and MaxRequestWorkers instead carry the role's own
+# English-only prose, straight from meta/argument_specs.yml (community,
+# priority 50 — still wins over the dictionary's 30): that provider is
+# matched on this row's key first, which since S2 is the directive, not the
+# variable (httpd_server_tokens/httpd_max_request_workers) argument_specs.yml
+# documents them under — but it falls back to the row's ORIGINAL variable
+# name when the key match misses (see review-sheet's src/providers/
+# argument-specs.ts), so it still reaches these two. No `ja` in
+# argument_specs.yml (Ansible argument specs are English-only), so `ja` mode
+# falls back to the httpd@2.4 dictionary's own Japanese for these two.
+#
+# Include / TypesConfig are origin: embedded (template literals in httpd.conf.j2,
+# not Ansible variables) and have no entry in review-sheet/metadata/httpd@2.4.yml,
+# so their description is authored here directly (Japanese, from httpd.apache.org)
+# rather than added to the shared product dictionary.
+categories: [General, KeepAlive, MPM]
+# Every httpd_* tunable below is now named after the Apache directive itself
+# (the template resolves each `{{ httpd_* }}` 1:1) — the backing Ansible
+# variable is provenance, surfaced via this column.
+under_key:
+  id: ansible_var
+  label: { ja: "Ansible 変数", en: "Ansible variable" }
+params:
+  Listen:                       { category: General }
+  ServerName:                   { category: General }
+  # Description comes from meta/argument_specs.yml's httpd_server_tokens
+  # entry, reached via this row's ORIGINAL variable name (the provider's
+  # `query.key`-then-`query.variable` fallback — see this file's header
+  # comment): no override needed here.
+  ServerTokens:                 { category: General }
+  ServerSignature:              { category: General }
+  TimeOut:                      { category: General }
+  LogLevel:                     { category: General }
+  DocumentRoot:                 { category: General }
+  # Directives hard-coded in the template. Their meaning is a product-level fact
+  # and lives in the dictionary like every other; what THIS role includes is a
+  # remark, since it is a decision the role made.
+  Include:
+    category: General
+    remarks:
+      en: Pulls in the dynamic module load definitions.
+      ja: 動的モジュールの読み込み定義一式を取り込む。
+  TypesConfig:
+    category: General
+  KeepAlive:                    { category: KeepAlive }
+  KeepAliveTimeout:             { category: KeepAlive }
+  MaxKeepAliveRequests:         { category: KeepAlive }
+  IfModule:                     { category: MPM }
+  StartServers:                 { category: MPM }
+  MinSpareThreads:              { category: MPM }
+  MaxSpareThreads:              { category: MPM }
+  ThreadsPerChild:              { category: MPM }
+  # Same as ServerTokens above: description comes from meta/argument_specs.yml's
+  # httpd_max_request_workers entry via the variable-name fallback.
+  MaxRequestWorkers:            { category: MPM }
+  ServerLimit:                  { category: MPM }

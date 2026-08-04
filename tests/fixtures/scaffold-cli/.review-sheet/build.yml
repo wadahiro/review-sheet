@@ -1,0 +1,16 @@
+# Minimal build spec for tests/scaffold-cli.test.ts. Paths are relative to
+# this file's own directory.
+version: 1
+
+metadata:
+  title: "scaffold fixture"
+
+instances: [only]
+
+enrich:
+  project: sheet.yml
+
+sheets:
+  - name: app
+    recipe: ansible
+    defaults: ../roles/app/defaults/main.yml

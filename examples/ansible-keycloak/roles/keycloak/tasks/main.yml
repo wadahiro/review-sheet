@@ -1,0 +1,54 @@
+---
+# Install Keycloak 26.7.0 as a systemd service on the RHEL family, configured via
+# keycloak.conf. Minimal on purpose — the point of this example is the review
+# sheet, not a hardened production role.
+
+- name: Create keycloak system user
+  ansible.builtin.user:
+    name: "{{ keycloak_user }}"
+    system: true
+    shell: /sbin/nologin
+    home: "{{ keycloak_home }}"
+    create_home: false
+
+- name: Ensure install and config directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ keycloak_user }}"
+    group: "{{ keycloak_user }}"
+    mode: "0750"
+  loop:
+    - "{{ keycloak_home }}"
+    - /etc/keycloak/tls
+
+- name: Download and unpack the Keycloak distribution
+  ansible.builtin.unarchive:
+    src: "https://github.com/keycloak/keycloak/releases/download/{{ keycloak_version }}/keycloak-{{ keycloak_version }}.tar.gz"
+    dest: "{{ keycloak_home }}"
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    creates: "{{ keycloak_home }}/bin/kc.sh"
+
+- name: Render keycloak.conf
+  ansible.builtin.template:
+    src: keycloak.conf.j2
+    dest: "{{ keycloak_home }}/conf/keycloak.conf"
+    owner: "{{ keycloak_user }}"
+    group: "{{ keycloak_user }}"
+    mode: "0640"
+  notify: Restart keycloak
+
+- name: Install the systemd unit
+  ansible.builtin.template:
+    src: keycloak.service.j2
+    dest: /etc/systemd/system/keycloak.service
+    mode: "0644"
+  notify: Restart keycloak
+
+- name: Enable and start keycloak
+  ansible.builtin.systemd:
+    name: keycloak
+    enabled: true
+    state: started
+    daemon_reload: true

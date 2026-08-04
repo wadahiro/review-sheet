@@ -1,0 +1,26 @@
+---
+# httpd role — tunable parameters (Apache 2.4, event MPM).
+# Override per environment in inventories/<env>/group_vars/web.yml.
+# Meaning + stock defaults come from review-sheet/metadata/httpd@2.4.yml.
+
+# --- General ---
+httpd_listen: 80
+httpd_server_name: "www.example.com"
+httpd_server_tokens: "Prod"
+httpd_server_signature: "Off"
+httpd_timeout: 60
+httpd_log_level: "warn"
+httpd_document_root: "/var/www/html"
+
+# --- KeepAlive ---
+httpd_keep_alive: "On"
+httpd_keep_alive_timeout: 5
+httpd_max_keep_alive_requests: 100
+
+# --- MPM (event) ---
+httpd_start_servers: 3
+httpd_min_spare_threads: 75
+httpd_max_spare_threads: 250
+httpd_threads_per_child: 25
+httpd_max_request_workers: 400
+httpd_server_limit: 16

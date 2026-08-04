@@ -1,0 +1,6 @@
+---
+# Role infrastructure (not per-environment tunables, so kept out of defaults/ and
+# out of the review sheet). Pinned Keycloak version and install identity.
+keycloak_version: "26.7.0"
+keycloak_user: keycloak
+keycloak_home: /opt/keycloak

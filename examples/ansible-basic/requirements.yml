@@ -1,0 +1,6 @@
+---
+# Ansible collections (installed with: ansible-galaxy collection install -r requirements.yml).
+# community.docker provides the modules the ansible-native Molecule scenario uses
+# in molecule/default/create.yml and destroy.yml.
+collections:
+  - name: community.docker

@@ -1,0 +1,197 @@
+# Project metadata (review-sheet's "project" metadata provider).
+#
+# This file is authored by THIS project, in project terms — it wins over every
+# other metadata source (argument_specs, dictionaries). `import --spec` reads
+# `params` (via the project metadata provider) for
+# description/remarks/dict_key/out_of_scope overrides, plus each param's
+# `category` directly (loadProjectMeta()), to place tunables without a
+# hardcoded META/CATEGORY_ORDER map.
+# `category` is assembler-only: enrich()/the project metadata provider never returns it.
+#
+# Dictionary bindings (which product a sheet's keys match against) stay in
+# build.yml (see that file's `sheets[].dictionaries`) — a data-source fact.
+# `categories:` (top-level tab display order) is a display fact and lives
+# here, per sheet, below — this file covers two sheets (nginx configuration,
+# postgresql configuration), and a tab order belongs to one sheet's tab bar,
+# not the whole spec.
+#
+# `sheets:`, not a flat `params:` — this file backs TWO sheets, so `params:`
+# (and `categories:`) is namespaced per sheet (`sheets.<name>.params`/
+# `sheets.<name>.categories`) rather than one shared table. Nothing here
+# happens to collide today, but a flat table would let a key that leaked from
+# one sheet's extraction into the other's (e.g. an overlay file shared by both
+# roles) silently borrow the wrong sheet's category/description with no error
+# — see review-sheet's CLAUDE.md / SKILL.md "sheets: namespace" section for
+# the incident this closes. A sheet's own declared `categories:` closes the
+# companion incident (a "ghost tab": a category actually used that the
+# declared list doesn't mention, e.g. via a typo, now fails the build instead
+# of silently appearing — see assemble.ts's fileDrafts).
+
+sheets:
+  "nginx configuration":
+    # "Logging" was already used (http.access_log/http.error_log below) but
+    # never listed in build.yml's old `categories:` — silently appended after
+    # the declared tabs (harmless in this case, but exactly the shape of the
+    # ghost-tab bug P7 closes: nothing would have caught a genuine typo the
+    # same way). Added here so the tab list matches what the sheet actually
+    # uses.
+    categories: [Network, Process, Performance, Virtual host, Security, Features, Logging]
+    # Most tunables below are now named after the nginx directive itself (the
+    # template resolves each `{{ nginx_* }}` 1:1 to its directive) — the
+    # backing Ansible variable is provenance, surfaced via this column.
+    under_key:
+      id: ansible_var
+      label: { ja: "Ansible 変数", en: "Ansible variable" }
+    params:
+      # --- nginx tunables (roles/nginx/defaults/main.yml), named after the
+      # nginx directive each `{{ nginx_* }}` variable resolves to 1:1 in the
+      # template (roles/nginx/templates/nginx.conf.j2) — the backing variable
+      # is provenance, shown via under_key above. No dict_key aliases needed
+      # any more: the row's own key IS the nginx dictionary's directive name. ---
+      listen:
+        category: Network
+      server_name:
+        category: Network
+        remarks: Per-environment FQDN
+      worker_processes:
+        category: Performance
+        remarks: auto = number of CPU cores
+      worker_connections:
+        category: Performance
+      keepalive_timeout:
+        category: Performance
+      client_max_body_size:
+        category: Virtual host
+        remarks: Upload size limit
+      root:
+        category: Virtual host
+      # nginx_gzip: the template never interpolates this variable (only tests
+      # it in a Jinja `{% if %}`), so it keeps its own name rather than a
+      # directive's — there is no single directive to name it after (`gzip
+      # on;` only renders conditionally).
+      nginx_gzip:
+        category: Features
+
+      # --- nginx embedded literals (roles/nginx/templates/nginx.conf.j2) ---
+      # Baked into the template, identical across environments (origin: "embedded",
+      # via the "ansible" recipe) — still in review scope. The extracted key is the
+      # directive's position in the file (`http.server.index`); its leaf segment
+      # (`index`) IS the nginx dictionary's directive name, so binding resolves it
+      # without a dict_key alias, and the description comes from the nginx
+      # dictionary like every other product-level fact. Only the category is this
+      # project's.
+      user:                 { category: Process }
+      pid:                  { category: Process }
+      http.include:         { category: Virtual host }
+      http.default_type:    { category: Virtual host }
+      http.sendfile:        { category: Performance }
+      http.access_log:      { category: Logging }
+      http.error_log:       { category: Logging }
+      http.server.index:    { category: Virtual host }
+      http.server.include:
+        category: Security
+        # What this particular include pulls in is a fact about this role, not about
+        # the directive — so it is a remark, while the directive's own meaning stays
+        # in the dictionary.
+        remarks:
+          en: Loads security.conf, the static file defining this role's security headers.
+          ja: このロールのセキュリティヘッダーを定義した静的ファイル security.conf を読み込む。
+      "http.server.location[/].try_files":
+        category: Virtual host
+        remarks:
+          en: Returns 404 when no real file matches the requested URI.
+          ja: リクエストされた URI に対応する実ファイルが無い場合に 404 を返す。
+
+      # --- nginx embedded literals (roles/nginx/files/security.conf, static) ---
+      server_tokens:        { category: Security }
+      # Both rows are the same directive, so the directive's meaning comes from the
+      # dictionary; which header each one sets is this project's decision and stays
+      # here as a remark.
+      "add_header[0]":
+        category: Security
+        remarks:
+          en: Sets X-Frame-Options, stopping the page being embedded in another site's frame (clickjacking protection).
+          ja: X-Frame-Options を設定し、ページが他サイトの frame に埋め込まれることを防ぐ（クリックジャッキング対策）。
+      "add_header[1]":
+        category: Security
+        remarks:
+          en: Sets X-Content-Type-Options, disabling browser MIME-type sniffing.
+          ja: X-Content-Type-Options を設定し、ブラウザによる MIME タイプの自動判定を無効化する。
+      "add_header[2]":
+        category: Security
+        description:
+          en: Adds the Referrer-Policy header that controls how much referrer information is sent on navigation.
+          ja: リクエスト遷移時に送信するリファラー情報の範囲を制御する Referrer-Policy ヘッダーを付与する。
+  "postgresql configuration":
+    categories: [Connections, Memory, Write-Ahead Log, Query planner, Autovacuum, Logging]
+    under_key:
+      id: ansible_var
+      label: { ja: "Ansible 変数", en: "Ansible variable" }
+    params:
+      # --- postgresql tunables (roles/postgresql/defaults/main.yml), named
+      # after the pg_settings directive each `{{ pg_* }}` variable resolves to
+      # 1:1 in the template (the backing pg_* variable is provenance, shown
+      # via under_key above). Only category placement is authored here; every
+      # description + stock default comes from the extracted postgresql@16
+      # dictionary, so this whole block is category assignments and nothing else. ---
+      #
+      # `category` is kept explicit everywhere below rather than left to fall back
+      # to the postgresql@16 dictionary's own `group` (every entry has one): this
+      # sheet's tabs are a deliberately SIMPLIFIED reading of postgresql.conf's
+      # own section headings (one word — "Memory", "Autovacuum" — instead of the
+      # dictionary's "Resource Usage / Memory" style paths), a presentation choice
+      # for this sheet, not a fact the dictionary can state on the project's
+      # behalf.
+      listen_addresses: { category: Connections }
+      port: { category: Connections }
+      # max_connections/shared_buffers: description comes from
+      # meta/argument_specs.yml's pg_max_connections/pg_shared_buffers entries
+      # (community, priority 50 — wins over the postgresql@16 dictionary's
+      # 30), reached via this row's ORIGINAL variable name (the provider's
+      # `query.key`-then-`query.variable` fallback — see that file's own
+      # header comment): no override needed here.
+      max_connections: { category: Connections }
+      shared_buffers: { category: Memory }
+      effective_cache_size: { category: Memory }
+      maintenance_work_mem: { category: Memory }
+      work_mem: { category: Memory }
+      huge_pages: { category: Memory }
+      wal_buffers: { category: Write-Ahead Log }
+      min_wal_size: { category: Write-Ahead Log }
+      max_wal_size: { category: Write-Ahead Log }
+      checkpoint_completion_target: { category: Write-Ahead Log }
+      random_page_cost: { category: Query planner }
+      effective_io_concurrency: { category: Query planner }
+      default_statistics_target: { category: Query planner }
+      autovacuum_max_workers: { category: Autovacuum }
+      autovacuum_naptime: { category: Autovacuum }
+      log_min_duration_statement: { category: Logging }
+
+      # --- decisions about parameters the role does NOT set (materialized rows) ---
+      # Kept here, hand-authored and reviewed in the same PR as the code: an
+      # exclusion needs a written reason, so it is never a one-click act, and this
+      # is the file that already owns per-parameter scope.
+      krb_server_keyfile:
+        category: Connections and Authentication / Authentication
+        out_of_scope:
+          reason:
+            en: Kerberos authentication is not used in this deployment.
+            ja: Kerberos 認証は利用しない構成のため。
+          owner: DBA
+      # Reviewed and deliberately left at the product default — the rationale is a
+      # remark on the row, which is what a parameter sheet records; that the review
+      # happened is recorded by the commit, not by a per-row flag.
+      wal_level:
+        category: Write-Ahead Log / Settings
+        remarks:
+          en: Reviewed and kept at the default — no replication is planned for this system.
+          ja: レビュー済み。レプリケーション予定がないため replica のままとする。
+      log_line_prefix: { category: Logging }
+      log_checkpoints: { category: Logging }
+
+      # --- postgresql embedded literals (roles/postgresql/templates/postgresql.conf.j2) ---
+      # Both directive names ARE in the postgresql@16 dictionary (extracted from
+      # pg_settings), so only category placement is needed here — same as the
+      # tunables above.
+      password_encryption: { category: Connections }
+      dynamic_shared_memory_type: { category: Memory }

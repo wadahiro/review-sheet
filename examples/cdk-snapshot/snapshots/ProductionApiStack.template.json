@@ -1,0 +1,128 @@
+{
+  "Description": "API stack (production)",
+  "Parameters": {
+    "BootstrapVersion": {
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "/cdk-bootstrap/hnb659fds/version",
+      "Description": "Version of the CDK Bootstrap resources in this environment"
+    }
+  },
+  "Resources": {
+    "AppTable815C50BC": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "KeySchema": [
+          { "AttributeName": "pk", "KeyType": "HASH" },
+          { "AttributeName": "sk", "KeyType": "RANGE" }
+        ],
+        "AttributeDefinitions": [
+          { "AttributeName": "pk", "AttributeType": "S" },
+          { "AttributeName": "sk", "AttributeType": "S" }
+        ],
+        "BillingMode": "PROVISIONED",
+        "ProvisionedThroughput": {
+          "ReadCapacityUnits": 50,
+          "WriteCapacityUnits": 25
+        },
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true
+        },
+        "SSESpecification": {
+          "SSEEnabled": true
+        }
+      },
+      "UpdateReplacePolicy": "Retain",
+      "DeletionPolicy": "Retain",
+      "Metadata": {
+        "aws:cdk:path": "ProductionApiStack/AppTable/Resource"
+      }
+    },
+    "TableReadScalingTargetD6E4C6F0": {
+      "Type": "AWS::ApplicationAutoScaling::ScalableTarget",
+      "Properties": {
+        "MaxCapacity": 200,
+        "MinCapacity": 50,
+        "ResourceId": {
+          "Fn::Join": ["", ["table/", { "Ref": "AppTable815C50BC" }]]
+        },
+        "RoleARN": {
+          "Fn::Join": [
+            "",
+            [
+              "arn:aws:iam::123456789012:role/aws-service-role/dynamodb.application-autoscaling.amazonaws.com/",
+              "AWSServiceRoleForApplicationAutoScaling_DynamoDBTable"
+            ]
+          ]
+        },
+        "ScalableDimension": "dynamodb:table:ReadCapacityUnits",
+        "ServiceNamespace": "dynamodb"
+      },
+      "Metadata": {
+        "aws:cdk:path": "ProductionApiStack/AppTable/ReadScaling/Target/Resource"
+      }
+    },
+    "ApiLogGroup2E9F0B3A": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/aws/lambda/production-api",
+        "RetentionInDays": 365
+      },
+      "UpdateReplacePolicy": "Retain",
+      "DeletionPolicy": "Retain",
+      "Metadata": {
+        "aws:cdk:path": "ProductionApiStack/ApiLogGroup/Resource"
+      }
+    },
+    "ApiFunctionServiceRoleB7C1F2D3": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": { "Service": "lambda.amazonaws.com" }
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        ]
+      },
+      "Metadata": {
+        "aws:cdk:path": "ProductionApiStack/ApiFunction/ServiceRole/Resource"
+      }
+    },
+    "ApiFunction4A2B0C1D": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {
+          "S3Bucket": "cdk-hnb659fds-assets-123456789012-ap-northeast-1",
+          "S3Key": "8f2c1d7a3b9e4f60a1c5d8e2b7f4a9c3e6d1b8f5a2c7e4d9b6f3a0c8e5d2b7f4.zip"
+        },
+        "Role": { "Fn::GetAtt": ["ApiFunctionServiceRoleB7C1F2D3", "Arn"] },
+        "Handler": "index.handler",
+        "Runtime": "nodejs20.x",
+        "MemorySize": 1769,
+        "Timeout": 30,
+        "ReservedConcurrentExecutions": 100,
+        "Environment": {
+          "Variables": {
+            "LOG_LEVEL": "info",
+            "TABLE_NAME": { "Ref": "AppTable815C50BC" }
+          }
+        }
+      },
+      "DependsOn": ["ApiFunctionServiceRoleB7C1F2D3"],
+      "Metadata": {
+        "aws:cdk:path": "ProductionApiStack/ApiFunction/Resource"
+      }
+    }
+  },
+  "Outputs": {
+    "ApiFunctionName": {
+      "Value": { "Ref": "ApiFunction4A2B0C1D" }
+    }
+  }
+}

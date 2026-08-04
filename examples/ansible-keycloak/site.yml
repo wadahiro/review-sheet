@@ -1,0 +1,6 @@
+---
+- name: Provision Keycloak
+  hosts: keycloak
+  become: true
+  roles:
+    - keycloak

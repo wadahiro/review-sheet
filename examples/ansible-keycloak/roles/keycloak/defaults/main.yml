@@ -1,0 +1,39 @@
+---
+# Tunable parameters for the keycloak role. Each maps to a key in keycloak.conf
+# (Quarkus, kebab-case) via the template. Per-environment overrides live in
+# inventories/<env>/group_vars/keycloak.yml; anything not overridden there uses
+# the value here (Pattern A). Ansible variables are snake_case, so the review
+# sheet maps them to Keycloak's kebab-case keys via dict_key in sheet.yml.
+
+# --- Database (vendor is fixed to postgres in the template; connection varies) ---
+kc_db_url: "jdbc:postgresql://localhost/keycloak"
+kc_db_username: keycloak
+# Real projects source this from Ansible Vault; kept inline here only as a
+# placeholder. Marked out_of_scope in the sheet (not reviewed as plaintext).
+kc_db_password: "CHANGE_ME"
+
+# --- Hostname ---
+kc_hostname: "localhost"
+kc_hostname_strict: true
+
+# --- HTTP / TLS ---
+kc_http_enabled: false
+kc_http_port: 8080
+kc_https_port: 8443
+kc_https_certificate_file: "/etc/keycloak/tls/tls.crt"
+kc_https_certificate_key_file: "/etc/keycloak/tls/tls.key"
+
+# --- Reverse proxy ---
+kc_proxy_headers: ""
+
+# --- Observability (build-time options) ---
+kc_health_enabled: true
+kc_metrics_enabled: false
+
+# --- Logging ---
+kc_log: "console"
+kc_log_level: "info"
+
+# --- Cache (high availability) ---
+kc_cache: "local"
+kc_cache_stack: ""

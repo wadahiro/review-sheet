@@ -1,0 +1,168 @@
+# Apache httpd 2.4 parameter dictionary — hand-transcribed from httpd.apache.org
+# docs (provenance official). Keyed by the real Apache directive name (CamelCase);
+# the project metadata maps each snake_case Ansible variable to these via dict_key.
+# Only the directives this role actually touches (not every httpd directive),
+# so coverage is "partial" — this dictionary must never be materialized.
+product: httpd
+version: "2.4"
+provenance: official
+coverage: partial
+generated_by: "manual transcription of httpd.apache.org/docs/2.4"
+docs_url: https://httpd.apache.org/docs/2.4/
+parameters:
+  Include:
+    description:
+      en: Includes and expands configuration files matching a path or wildcard pattern.
+      ja: パスまたはワイルドカードに一致する設定ファイルを読み込んで展開する。
+    type: string
+    scope: server config, virtual host, directory
+    docs_url: https://httpd.apache.org/docs/2.4/mod/core.html#include
+  TypesConfig:
+    description:
+      en: Location of the file mapping filename extensions to MIME types (mime.types).
+      ja: ファイル拡張子と MIME タイプの対応表（mime.types）の場所を指定する。
+    default: conf/mime.types
+    type: string
+    scope: server config
+    docs_url: https://httpd.apache.org/docs/2.4/mod/mod_mime.html#typesconfig
+  Listen:
+    description:
+      en: IP addresses and ports the server listens on.
+      ja: サーバーがリッスンする IP アドレスとポート。
+    default: ""
+    type: string
+    scope: server config
+    docs_url: https://httpd.apache.org/docs/2.4/mod/mpm_common.html#listen
+  ServerName:
+    description:
+      en: Hostname and port the server uses to identify itself.
+      ja: サーバーが自分を識別するために使うホスト名とポート。
+    default: ""
+    type: string
+    scope: server config, virtual host
+    docs_url: https://httpd.apache.org/docs/2.4/mod/core.html#servername
+  ServerTokens:
+    description:
+      en: How much detail the Server HTTP response header reveals.
+      ja: Server レスポンスヘッダーが明かす情報量。
+    default: "Full"
+    type: string
+    scope: server config
+    docs_url: https://httpd.apache.org/docs/2.4/mod/core.html#servertokens
+  ServerSignature:
+    description:
+      en: Trailing footer line on server-generated documents.
+      ja: サーバー生成ドキュメント末尾のフッター行。
+    default: "Off"
+    type: string
+    scope: server config, virtual host, directory, .htaccess
+    docs_url: https://httpd.apache.org/docs/2.4/mod/core.html#serversignature
+  TimeOut:
+    description:
+      en: Seconds the server waits for certain events before failing a request.
+      ja: リクエスト失敗と判断するまでの待機秒数。
+    default: 60
+    type: int
+    scope: server config, virtual host
+    docs_url: https://httpd.apache.org/docs/2.4/mod/core.html#timeout
+  LogLevel:
+    description:
+      en: Verbosity of the error log.
+      ja: エラーログの詳細度。
+    default: "warn"
+    type: string
+    scope: server config, virtual host, directory
+    docs_url: https://httpd.apache.org/docs/2.4/mod/core.html#loglevel
+  DocumentRoot:
+    description:
+      en: Directory that forms the main document tree visible from the web.
+      ja: Web から見えるドキュメントツリーのルートディレクトリ。
+    default: "/usr/local/apache2/htdocs"
+    type: string
+    scope: server config, virtual host
+    docs_url: https://httpd.apache.org/docs/2.4/mod/core.html#documentroot
+  KeepAlive:
+    description:
+      en: Enables HTTP persistent connections.
+      ja: HTTP 持続的接続を有効にする。
+    default: "On"
+    type: string
+    scope: server config, virtual host
+    docs_url: https://httpd.apache.org/docs/2.4/mod/core.html#keepalive
+  KeepAliveTimeout:
+    description:
+      en: Seconds the server waits for the next request on a persistent connection.
+      ja: 持続接続で次のリクエストを待つ秒数。
+    default: 5
+    type: int
+    scope: server config, virtual host
+    docs_url: https://httpd.apache.org/docs/2.4/mod/core.html#keepalivetimeout
+  MaxKeepAliveRequests:
+    description:
+      en: Maximum number of requests allowed on a persistent connection.
+      ja: 1 つの持続接続で許可する最大リクエスト数。
+    default: 100
+    type: int
+    scope: server config, virtual host
+    docs_url: https://httpd.apache.org/docs/2.4/mod/core.html#maxkeepaliverequests
+  StartServers:
+    description:
+      en: Number of child server processes created at startup.
+      ja: 起動時に生成する子サーバープロセス数。
+    default: 3
+    type: int
+    scope: server config
+    docs_url: https://httpd.apache.org/docs/2.4/mod/mpm_common.html#startservers
+  MinSpareThreads:
+    description:
+      en: Minimum number of idle worker threads.
+      ja: アイドルワーカースレッドの最小数。
+    default: 75
+    type: int
+    scope: server config
+    docs_url: https://httpd.apache.org/docs/2.4/mod/mpm_common.html#minsparethreads
+  MaxSpareThreads:
+    description:
+      en: Maximum number of idle worker threads.
+      ja: アイドルワーカースレッドの最大数。
+    default: 250
+    type: int
+    scope: server config
+    docs_url: https://httpd.apache.org/docs/2.4/mod/mpm_common.html#maxsparethreads
+  ThreadsPerChild:
+    description:
+      en: Number of worker threads created by each child process.
+      ja: 各子プロセスが生成するワーカースレッド数。
+    default: 25
+    type: int
+    scope: server config
+    docs_url: https://httpd.apache.org/docs/2.4/mod/mpm_common.html#threadsperchild
+  MaxRequestWorkers:
+    description:
+      en: Maximum number of simultaneous request connections served.
+      ja: 同時に処理する最大リクエスト接続数。
+    default: 400
+    type: int
+    scope: server config
+    docs_url: https://httpd.apache.org/docs/2.4/mod/mpm_common.html#maxrequestworkers
+  ServerLimit:
+    description:
+      en: Upper limit on the number of server processes.
+      ja: サーバープロセス数の上限。
+    default: 16
+    type: int
+    scope: server config
+    docs_url: https://httpd.apache.org/docs/2.4/mod/mpm_common.html#serverlimit
+  IfModule:
+    description:
+      en: Encloses directives that apply only if the named module (test can be prefixed with "!" to negate) is loaded.
+      ja: 指定したモジュール（"!" を前置すると否定）が読み込まれている場合にのみ適用されるディレクティブを囲む。
+    type: string
+    scope: server config, virtual host, directory, .htaccess
+    docs_url: https://httpd.apache.org/docs/2.4/mod/core.html#ifmodule
+    # A container, not a setting — see kind's doc comment in dictionary.ts.
+    # This dictionary is coverage: partial and never materialized, so this
+    # has no behavioral effect here; set for the same reason as httpd@2.4's
+    # full dictionary — the entry's meaning shouldn't depend on which
+    # dictionary happens to carry it.
+    kind: container

@@ -1,0 +1,176 @@
+{
+  "metadata": {
+    "title": "Infrastructure Configuration Parameter Sheet",
+    "project": "Production Environment Build",
+    "version": "2.1",
+    "generated_at": "2026-06-17T14:00:00Z",
+    "changelog": [
+      { "version": "1.0", "date": "2026-04-01", "author": "John Smith", "description": "Initial version" },
+      { "version": "2.0", "date": "2026-05-15", "author": "Jane Doe", "description": "Added network settings" },
+      { "version": "2.1", "date": "2026-06-17", "author": "John Smith", "description": "Revised bonding settings" }
+    ]
+  },
+  "sheets": [
+    {
+      "name": "OS Settings",
+      "categories": [
+        {
+          "name": "Network Settings",
+          "categories": [
+            {
+              "name": "bonding",
+              "categories": [
+                {
+                  "name": "bond0",
+                  "file_path": "/etc/sysconfig/network-scripts/ifcfg-bond0",
+                  "params": [
+                    { "key": "BONDING_MASTER", "default": "no", "value": "yes", "description": "Bonding master setting" },
+                    { "key": "BONDING_OPTS", "default": "", "value": "mode=1 miimon=100", "description": "Bonding options" },
+                    { "key": "IPADDR", "default": "", "value": "192.168.1.10", "description": "IP address" },
+                    { "key": "NETMASK", "default": "", "value": "255.255.255.0", "description": "Subnet mask" },
+                    { "key": "GATEWAY", "default": "", "value": "192.168.1.1", "description": "Default gateway" }
+                  ]
+                },
+                {
+                  "name": "bond1",
+                  "file_path": "/etc/sysconfig/network-scripts/ifcfg-bond1",
+                  "params": [
+                    { "key": "BONDING_MASTER", "default": "no", "value": "yes", "description": "Bonding master setting" },
+                    { "key": "BONDING_OPTS", "default": "", "value": "mode=1 miimon=100", "description": "Bonding options" },
+                    { "key": "IPADDR", "default": "", "value": "10.0.0.10", "description": "IP address" },
+                    { "key": "NETMASK", "default": "", "value": "255.255.0.0", "description": "Subnet mask" }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "DNS",
+              "file_path": "/etc/resolv.conf",
+              "params": [
+                { "key": "nameserver (1)", "default": "", "value": "192.168.1.53", "description": "Primary DNS" },
+                { "key": "nameserver (2)", "default": "", "value": "192.168.1.54", "description": "Secondary DNS" },
+                { "key": "search", "default": "", "value": "example.local", "description": "Search domain" }
+              ]
+            },
+            {
+              "name": "Firewall",
+              "file_path": "/etc/firewalld/zones/public.xml",
+              "params": [
+                { "key": "default-zone", "default": "public", "value": "public", "description": "Default zone" },
+                { "key": "service: ssh", "default": "enabled", "value": "enabled", "description": "Allow SSH" },
+                { "key": "service: https", "default": "disabled", "value": "enabled", "description": "Allow HTTPS" },
+                { "key": "port: 8080/tcp", "default": "disabled", "value": "enabled", "description": "Application port" },
+                { "key": "port: 8443/tcp", "default": "disabled", "value": "enabled", "description": "Application SSL port" }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Kernel Parameters",
+          "file_path": "/etc/sysctl.d/99-custom.conf",
+          "params": [
+            { "key": "net.ipv4.tcp_fin_timeout", "default": "60", "value": "5", "description": "TCP FIN timeout value" },
+            { "key": "net.core.somaxconn", "default": "128", "value": "4096", "description": "Maximum socket connection queue length" },
+            { "key": "vm.swappiness", "default": "60", "value": "10", "description": "Swap usage frequency" },
+            { "key": "fs.file-max", "default": "65536", "value": "262144", "description": "System-wide maximum number of file descriptors" }
+          ]
+        },
+        {
+          "name": "Users & Groups",
+          "categories": [
+            {
+              "name": "Application User",
+              "file_path": "/etc/passwd",
+              "params": [
+                { "key": "appuser (UID)", "default": "-", "value": "1001", "description": "Application execution user UID" },
+                { "key": "appuser (shell)", "default": "/bin/bash", "value": "/sbin/nologin", "description": "Login shell" },
+                { "key": "appuser (home)", "default": "/home/appuser", "value": "/opt/app", "description": "Home directory" }
+              ]
+            },
+            {
+              "name": "Group",
+              "file_path": "/etc/group",
+              "params": [
+                { "key": "appgroup (GID)", "default": "-", "value": "1001", "description": "Application group GID" },
+                { "key": "wheel members", "default": "", "value": "admin, operator", "description": "Users allowed to sudo" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Middleware Settings",
+      "categories": [
+        {
+          "name": "Apache HTTPD",
+          "categories": [
+            {
+              "name": "Basic Settings",
+              "file_path": "/etc/httpd/conf/httpd.conf",
+              "params": [
+                { "key": "ServerRoot", "default": "/etc/httpd", "value": "/etc/httpd", "description": "Server root directory" },
+                { "key": "Listen", "default": "80", "value": "8080", "description": "Listen port" },
+                { "key": "ServerName", "default": "localhost", "value": "app.example.local:8080", "description": "Server name" },
+                { "key": "MaxRequestWorkers", "default": "150", "value": "400", "description": "Maximum number of worker processes" },
+                { "key": "KeepAlive", "default": "On", "value": "On", "description": "KeepAlive setting" },
+                { "key": "KeepAliveTimeout", "default": "5", "value": "15", "description": "KeepAlive timeout (seconds)" }
+              ]
+            },
+            {
+              "name": "SSL Settings",
+              "file_path": "/etc/httpd/conf.d/ssl.conf",
+              "params": [
+                { "key": "SSLEngine", "default": "off", "value": "on", "description": "Enable SSL" },
+                { "key": "SSLProtocol", "default": "all -SSLv3", "value": "all -SSLv3 -TLSv1 -TLSv1.1", "description": "Allowed protocols" },
+                { "key": "SSLCertificateFile", "default": "", "value": "/etc/pki/tls/certs/server.crt", "description": "Server certificate path" },
+                { "key": "SSLCertificateKeyFile", "default": "", "value": "/etc/pki/tls/private/server.key", "description": "Private key path" }
+              ]
+            },
+            {
+              "name": "Log Settings",
+              "file_path": "/etc/httpd/conf/httpd.conf",
+              "params": [
+                { "key": "ErrorLog", "default": "logs/error_log", "value": "/var/log/httpd/error_log", "description": "Error log output destination" },
+                { "key": "LogLevel", "default": "warn", "value": "info", "description": "Log level" },
+                { "key": "CustomLog (format)", "default": "common", "value": "combined", "description": "Access log format" }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "PostgreSQL",
+          "categories": [
+            {
+              "name": "Connection Settings",
+              "file_path": "/var/lib/pgsql/data/postgresql.conf",
+              "params": [
+                { "key": "listen_addresses", "default": "localhost", "value": "*", "description": "Listen address" },
+                { "key": "port", "default": "5432", "value": "5432", "description": "Listen port" },
+                { "key": "max_connections", "default": "100", "value": "300", "description": "Maximum number of connections" }
+              ]
+            },
+            {
+              "name": "Memory Settings",
+              "file_path": "/var/lib/pgsql/data/postgresql.conf",
+              "params": [
+                { "key": "shared_buffers", "default": "128MB", "value": "2GB", "description": "Shared buffer size" },
+                { "key": "work_mem", "default": "4MB", "value": "64MB", "description": "Work memory" },
+                { "key": "effective_cache_size", "default": "4GB", "value": "6GB", "description": "Effective cache size" }
+              ]
+            },
+            {
+              "name": "WAL Settings",
+              "file_path": "/var/lib/pgsql/data/postgresql.conf",
+              "params": [
+                { "key": "wal_level", "default": "replica", "value": "replica", "description": "WAL level" },
+                { "key": "max_wal_size", "default": "1GB", "value": "4GB", "description": "Maximum WAL size" },
+                { "key": "checkpoint_completion_target", "default": "0.9", "value": "0.9", "description": "Checkpoint completion target" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+# Project metadata for tests/scaffold-cli.test.ts's sheets: round-trip case
+# (P6). Two sheets, "sheets:"-namespaced: "other" is already fully documented
+# (nothing to fail on), "app" starts with an empty params: — the failure this
+# fixture exists to reproduce is a SINGLE sheet's ("app") strict failure
+# against a project metadata doc that already uses sheets: for its OTHER
+# sheet, which is exactly the shape a per-failure "how many sheets does this
+# error span" heuristic gets wrong (it would emit a flat params: fragment,
+# unpasteable into this file).
+sheets:
+  app:
+    params: {}
+  other:
+    params:
+      known_key:
+        category: General
+        description:
+          en: A known key, already documented.
+          ja: 既知のキー。ドキュメント済み。

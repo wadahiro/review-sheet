@@ -1,0 +1,17 @@
+---
+# Ansible role argument spec — documents a couple of the role's own options.
+# review-sheet's argument-specs provider reads this for `description`
+# (community-grade). It wins over the extracted dictionary (priority 50 > 30), so
+# these two carry the ROLE's wording. Like all Ansible argument specs it is
+# English-only, so in the sheet's Japanese mode they fall back to English while
+# the dictionary-sourced rows switch — a faithful provider-layering demo.
+argument_specs:
+  main:
+    short_description: Install and configure Keycloak.
+    options:
+      kc_hostname:
+        type: str
+        description: Public hostname (or full URL) clients use to reach this Keycloak node.
+      kc_proxy_headers:
+        type: str
+        description: Which reverse-proxy forwarded headers Keycloak trusts (xforwarded or forwarded).

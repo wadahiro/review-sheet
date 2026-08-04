@@ -1,0 +1,15 @@
+---
+# Production overrides for the postgresql role (defaults in roles/postgresql/defaults/main.yml).
+# Tuned for a dedicated 16 GB database host.
+pg_listen_addresses: "*"
+pg_max_connections: 300
+pg_shared_buffers: "4GB"
+pg_effective_cache_size: "12GB"
+pg_maintenance_work_mem: "1GB"
+pg_work_mem: "64MB"
+pg_min_wal_size: "1GB"
+pg_max_wal_size: "4GB"
+pg_random_page_cost: "1.1"
+pg_effective_io_concurrency: 200
+pg_log_min_duration_statement: 500
+pg_log_checkpoints: "on"

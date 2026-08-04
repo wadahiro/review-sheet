@@ -1,0 +1,37 @@
+# {{ ansible_managed }}
+
+# --- Connections ---
+listen_addresses = '{{ pg_listen_addresses }}'
+port = {{ pg_port }}
+max_connections = {{ pg_max_connections }}
+
+# --- Memory ---
+shared_buffers = {{ pg_shared_buffers }}
+effective_cache_size = {{ pg_effective_cache_size }}
+maintenance_work_mem = {{ pg_maintenance_work_mem }}
+work_mem = {{ pg_work_mem }}
+huge_pages = {{ pg_huge_pages }}
+
+# --- Write-Ahead Log ---
+wal_buffers = {{ pg_wal_buffers }}
+min_wal_size = {{ pg_min_wal_size }}
+max_wal_size = {{ pg_max_wal_size }}
+checkpoint_completion_target = {{ pg_checkpoint_completion_target }}
+
+# --- Query planner ---
+random_page_cost = {{ pg_random_page_cost }}
+effective_io_concurrency = {{ pg_effective_io_concurrency }}
+default_statistics_target = {{ pg_default_statistics_target }}
+
+# --- Autovacuum ---
+autovacuum_max_workers = {{ pg_autovacuum_max_workers }}
+autovacuum_naptime = {{ pg_autovacuum_naptime }}
+
+# --- Logging ---
+log_min_duration_statement = {{ pg_log_min_duration_statement }}
+log_line_prefix = '{{ pg_log_line_prefix }}'
+log_checkpoints = {{ pg_log_checkpoints }}
+
+# --- Fixed (role-managed), identical across environments ---
+password_encryption = scram-sha-256
+dynamic_shared_memory_type = posix
