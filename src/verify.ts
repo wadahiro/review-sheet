@@ -78,6 +78,24 @@ function collectValues(data: SheetData): ValueEntry[] {
       const oos = inheritedOOS ?? (cat.out_of_scope ? { reason: pickLang(cat.out_of_scope.reason, "en") } : undefined);
       for (const p of cat.params ?? []) {
         const pOOS = oos ?? (p.out_of_scope ? { reason: pickLang(p.out_of_scope.reason, "en") } : undefined);
+        // additional_sources lives on the PARAMETER, not the instance — collect
+        // it once here regardless of shape, never once per instance (an
+        // instance-shaped param has no single `value` to pair a non-ref entry
+        // against, so the schema only allows `ref` entries there; a ref site's
+        // expectation is the reference text itself, not any one instance's
+        // value — see types.ts's `ParameterBase.additional_sources`).
+        const pushAdditional = (primaryValue: string | undefined) => {
+          for (const a of p.additional_sources ?? []) {
+            out.push({
+              target: { sheet, category: path, param: p.key },
+              value: a.ref ?? primaryValue ?? "",
+              source: a,
+              fileFallback: a.file ?? def,
+              outOfScope: pOOS !== undefined,
+              outOfScopeReason: pOOS?.reason,
+            });
+          }
+        };
         if (p.instances && p.instances.length > 0) {
           for (const inst of p.instances) {
             out.push({
@@ -90,6 +108,7 @@ function collectValues(data: SheetData): ValueEntry[] {
               isDefault: p.origin === "default",
             });
           }
+          pushAdditional(undefined);
         } else if (p.value !== undefined) {
           out.push({
             target: { sheet, category: path, param: p.key },
@@ -100,18 +119,11 @@ function collectValues(data: SheetData): ValueEntry[] {
             outOfScopeReason: pOOS?.reason,
             isDefault: p.origin === "default",
           });
-          // The same value defined in extra files (additional_sources): each is
-          // verified independently against the same expected value.
-          for (const a of p.additional_sources ?? []) {
-            out.push({
-              target: { sheet, category: path, param: p.key },
-              value: p.value,
-              source: a,
-              fileFallback: a.file ?? def,
-              outOfScope: pOOS !== undefined,
-              outOfScopeReason: pOOS?.reason,
-            });
-          }
+          // The same value defined in extra files (additional_sources): each
+          // non-ref entry is verified against the same expected value; a ref
+          // entry is verified against its own reference text instead (see
+          // pushAdditional above).
+          pushAdditional(p.value);
         }
       }
       walk(cat.categories, sheet, path, file, src, oos);
@@ -162,14 +174,28 @@ export function verifySources(data: SheetData, readFile: ReadFile, opts?: Extrac
     }
     const parser = resolveParser(file, raw);
     if (parser) {
+      // A ref site's `entry.value` is the reference text (see collectValues),
+      // passed here as `expected` so a parser's line/anchor fallback confirms
+      // the right line the same way it does for an ordinary value.
       const loc = parser.locate(raw, entry.source ?? {}, entry.value, opts);
+      const isRef = entry.source?.ref !== undefined;
       if ("value" in loc) {
-        if (loc.value === entry.value) {
+        // Equality is the whole-value special case of containment: a
+        // structural-path locate returns the site's ACTUAL value (not an echo
+        // of `expected`), so a composed site like `https://$(env:X)/p` only
+        // matches by `.includes`, never `===`. The line/anchor fallback (below,
+        // via locateLine) already confirms containment itself and echoes
+        // `expected` back, so `.includes` holds there too — one rule covers
+        // both locate paths.
+        const matched = isRef ? loc.value.includes(entry.value) : loc.value === entry.value;
+        if (matched) {
           checks.push(
             loc.fallback === undefined
               ? { target: entry.target, file, status: "ok", message: "verified" }
               : { target: entry.target, file, status: "ok", message: `verified by line fallback — ${loc.fallback}`, fallback: loc.fallback }
           );
+        } else if (isRef) {
+          checks.push({ target: entry.target, file, status: "error", message: `reference "${entry.value}" no longer present — value hardcoded or wiring changed?` });
         } else {
           checks.push({ target: entry.target, file, status: "error", message: `value "${loc.value}", expected "${entry.value}" — stale value?` });
         }
@@ -180,6 +206,8 @@ export function verifySources(data: SheetData, readFile: ReadFile, opts?: Extrac
         checks.push({ target: entry.target, file, status: "unmapped", message: "no line/anchor/path locator (apply will defer to AI)" });
       } else if (loc.status === "warn") {
         checks.push({ target: entry.target, file, status: "warn", message: loc.error });
+      } else if (isRef) {
+        checks.push({ target: entry.target, file, status: "error", message: `reference "${entry.value}" not found (${loc.error}) — value hardcoded or wiring changed?` });
       } else {
         checks.push({ target: entry.target, file, status: "error", message: `value "${entry.value}" not found (${loc.error}) — stale value or wrong line/anchor?` });
       }

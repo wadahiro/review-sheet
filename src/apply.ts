@@ -147,10 +147,15 @@ export function computeApply(
 
       // The same value may be defined in several files (primary `source` plus
       // `additional_sources`). Edit every site; the change is held for the AI
-      // prompt if any one of them cannot be applied.
+      // prompt if any one of them cannot be applied. A `ref` entry is not a
+      // site of the same kind: it holds a *reference expression* to the value,
+      // not the value itself, so writing the suggested value there would
+      // corrupt the file — it is simply excluded, neither applied nor held
+      // (a ref site is not a failed edit; it was never an edit at all).
       const targets: { source?: SourceLocation; file?: string }[] = [{ source: res.source, file: res.file }];
       if (!r.target.instance) {
         for (const a of entry?.param.additional_sources ?? []) {
+          if (a.ref !== undefined) continue;
           targets.push({ source: a, file: a.file ?? entry?.fileFallback });
         }
       }

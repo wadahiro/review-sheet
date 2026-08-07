@@ -114,6 +114,22 @@ export type SheetInputs = {
   // exactly one directive earns a product key; one backing several, or one
   // the template never references at all, keeps its own name).
   keyMap?: KeyMapEntry[];
+  // Reference sites a recipe's substitution scan found (src/substitution.ts's
+  // `bindReferences`): `variable` is a base/overlay layer key (the SAME
+  // extracted identity buildDrafts() below iterates below in passes 1/2,
+  // BEFORE keyMap renames it to a product key), `sites` is every location
+  // elsewhere that references it. Attached to whatever row that variable
+  // produces as `additional_sources` — works whether the row keeps its own
+  // name or was renamed via `keyMap` (the merge that PRODUCED these sites in
+  // the first place is exactly what decided that keyMap entry, so the two
+  // always travel together for a single-backer merge; see substitution.ts's
+  // module doc row 2). A variable named here that produces no draft at all
+  // (in neither the base nor the overlay-only pass) is a producer bug — a
+  // recipe mis-keyed the list against a layer key that doesn't exist — and is
+  // a hard error, same "never drop a row's information in silence" rule as
+  // everywhere else in this file (here it's not a row that's lost, but the
+  // wiring a `ref` site exists to make checkable).
+  referenceSites?: { variable: string; sites: SourceLocation[] }[];
 };
 
 // What a hook is told about the parameter it is looking at. `key` is the key as
@@ -352,6 +368,22 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
   const variableToBound = new Map<string, string>();
   if (si.keyMap) for (const m of si.keyMap) variableToBound.set(m.variable, m.boundKey);
 
+  // referenceSites is keyed by the LAYER key (extractedKey), not the resolved
+  // product key — a variable's own `resolveKey` lookup happens independently,
+  // right alongside this one, in both passes below. `matchedReferenceSites`
+  // tracks which entries actually found a home, so the hard error after both
+  // passes can name exactly the ones that didn't.
+  const referenceSitesByVariable = new Map<string, SourceLocation[]>();
+  if (si.referenceSites) for (const rs of si.referenceSites) referenceSitesByVariable.set(rs.variable, rs.sites);
+  const matchedReferenceSites = new Set<string>();
+
+  function attachReferenceSites(param: Parameter, extractedKey: string): void {
+    const sites = referenceSitesByVariable.get(extractedKey);
+    if (!sites) return;
+    param.additional_sources = sites;
+    matchedReferenceSites.add(extractedKey);
+  }
+
   const drafts: Draft[] = [];
 
   function withUnderKey(param: Parameter, variable: string | undefined): Parameter {
@@ -400,6 +432,7 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
     } else {
       param = { key: paramKey, value: baseEntry.value, source: baseEntry.source, origin: "common" } as SimpleParameter;
     }
+    attachReferenceSites(param, extractedKey);
     pushDraft(paramKey, withUnderKey(param, variable), variable);
   }
 
@@ -413,7 +446,25 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
       const carriers = overlays.filter((o) => o.entries.has(extractedKey));
       const instances = buildOverlayInstances(si.instances, extractedKey, undefined, carriers);
       const param = { key: paramKey, instances, origin: "overlay" } as InstanceParameter;
+      attachReferenceSites(param, extractedKey);
       pushDraft(paramKey, withUnderKey(param, variable), variable);
+    }
+  }
+
+  // A referenceSites entry naming a variable neither pass ever saw is a
+  // producer bug, not a legitimate "nothing to attach to" — the sites it
+  // carries would otherwise vanish with no trace (the wiring info this
+  // feature exists to make checkable, silently dropped). Checked once here,
+  // after both passes, rather than per-pass, since a variable could in
+  // principle appear in either.
+  if (si.referenceSites) {
+    for (const rs of si.referenceSites) {
+      if (matchedReferenceSites.has(rs.variable)) continue;
+      const files = [...new Set(rs.sites.map((s) => s.file ?? "(no file)"))].join(", ");
+      throw new Error(
+        `assemble: sheet "${si.name}" referenceSites names variable "${rs.variable}", which produced no draft in ` +
+          `the base layer or any overlay (sites: ${files})`
+      );
     }
   }
 

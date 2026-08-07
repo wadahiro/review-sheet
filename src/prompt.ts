@@ -21,6 +21,12 @@ export type SourceLocation = {
   // most consumers, but load-bearing for apply.ts/verify.ts (see HELD_REASON_
   // GENERATED and the missing-file warning below).
   generated?: boolean;
+  // This site holds a *reference* to the parameter's value, not the value
+  // itself (e.g. `$(env:SSO_HOST)`) — load-bearing for both cores: verify.ts
+  // checks the located value by containment instead of equality, and
+  // apply.ts never treats the site as a write target. Meaningful only on an
+  // `additional_sources` entry (see types.ts's `ParameterBase`).
+  ref?: string;
 };
 
 export type ParamData = {
@@ -291,17 +297,31 @@ export function buildPromptText(reviews: ReviewItem[], data: SheetData): string 
       // No precise locator (line/anchor/path): tell the agent to find it by key.
       if (!hint) body += `\n  fallback: locate \`${r.target.param}\` in the file and update its value.`;
       // The same value may be defined in several files: list every extra site so
-      // the agent keeps them in sync.
+      // the agent keeps them in sync. A `ref` entry is a different claim (a site
+      // that holds a reference EXPRESSION to this value, not the value itself —
+      // see types.ts's `ParameterBase.additional_sources`), so it is rendered
+      // separately as context, not as another site to edit: editing it would
+      // mean rewiring, not updating a value.
       const entry = r.target.param && r.target.category && !r.target.instance
         ? index.get(`${r.target.sheet}::${r.target.category}::${r.target.param}`)
         : undefined;
       const adds = entry?.param.additional_sources ?? [];
-      if (adds.length > 0) {
+      const valueAdds = adds.filter((a) => a.ref === undefined);
+      const refAdds = adds.filter((a) => a.ref !== undefined);
+      if (valueAdds.length > 0) {
         body += `\n  Also update the same value in:`;
-        for (const a of adds) {
+        for (const a of valueAdds) {
           const aFile = a.file ?? res.file ?? NO_SOURCE;
           const aHint = locationHint({ source: a });
           body += `\n  - ${aFile}${aHint ? ` — ${aHint}` : ""}`;
+        }
+      }
+      if (refAdds.length > 0) {
+        body += `\n  Referenced from (context only — edit the variable, not these):`;
+        for (const a of refAdds) {
+          const aFile = a.file ?? res.file ?? NO_SOURCE;
+          const aHint = locationHint({ source: a });
+          body += `\n  - ${aFile}${aHint ? ` — ${aHint}` : ""} (\`${a.ref}\`) — edit only the variable definition unless the wiring itself is being changed.`;
         }
       }
       const arr = configByFile.get(file) ?? [];

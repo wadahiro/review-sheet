@@ -140,6 +140,24 @@ export type ParameterBase = {
   out_of_scope?: OutOfScope;
   origin?: Origin;
   extra?: Record<string, string>;
+  // Extra definition sites related to this parameter, beyond its primary
+  // `source` (or per-instance `source` on Pattern B). Two kinds, distinguished
+  // by `SourceLocation.ref`:
+  //   - no `ref`: the SAME value, defined again elsewhere and kept in sync on
+  //     a value change (e.g. an Ansible variable defined in defaults/main.yml
+  //     and overridden in several group_vars files) — apply edits the primary
+  //     `source` and each of these; verify checks them all for equality.
+  //     Valid only on a SimpleParameter: "the same value" is undefined
+  //     without a single `value` to compare against (schema-enforced — see
+  //     input.schema.json's `parameter` def).
+  //   - `ref` set: the site holds a *reference expression* to this
+  //     parameter's value, not the value itself (e.g. `$(env:SSO_HOST)` in a
+  //     static config file) — verify checks it by containment instead of
+  //     equality, and apply never writes it.
+  // Use `additional_sources` (no `ref`) — not `instances` — when the value is
+  // identical but defined in more than one place; `instances` is for
+  // genuinely different per-environment values.
+  additional_sources?: SourceLocation[];
 };
 
 export type SimpleParameter = ParameterBase & {
@@ -148,13 +166,6 @@ export type SimpleParameter = ParameterBase & {
   // Where this value lives in the real configuration source, so the AI prompt
   // can target the edit precisely (source-map style).
   source?: SourceLocation;
-  // Extra definition sites that hold the SAME value and must be kept in sync on
-  // a value change (e.g. an Ansible variable defined in defaults/main.yml and
-  // overridden in several group_vars files). apply edits the primary `source`
-  // and each of these; verify checks them all. Use this — not `instances` — when
-  // the value is identical but defined in more than one place. (instances is for
-  // genuinely different per-environment values.)
-  additional_sources?: SourceLocation[];
 };
 
 export type InstanceParameter = ParameterBase & {
@@ -192,6 +203,13 @@ export type SourceLocation = {
   // True when this source location was produced by a code-generation step
   // (rather than authored/extracted from the real config) — informational only.
   generated?: boolean;
+  // This site holds a *reference* to this parameter's value, not the value
+  // itself — the literal reference expression (e.g. `$(env:SSO_HOST)`)
+  // expected to appear in the site's own value. verify checks it by
+  // containment, not equality; apply never treats it as a write target (see
+  // `additional_sources` on `ParameterBase`). Meaningful only on an
+  // `additional_sources` entry, never on a parameter's primary `source`.
+  ref?: string;
 };
 
 export type ColumnDefinition = {

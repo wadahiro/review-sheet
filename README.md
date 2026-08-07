@@ -186,7 +186,8 @@ review traditionally wants. Two files divide the work:
   review, with a mandatory reason), `dict_key` (an explicit rename for a key
   that genuinely doesn't match its dictionary entry any other way) — plus,
   per sheet, `categories` (tab order) and `under_key` (the provenance column,
-  needed once any row is keyed by a product name derived from a template). A
+  needed once any row is keyed by a product name derived from a template, or
+  from a `static_files` entry's own `substitution:` merge — see the skill). A
   spec with more than one sheet nests all of this under `sheets:`, namespaced
   by sheet name, so a key that leaks from one sheet's extraction into
   another's (two roles reading the same `group_vars` file, say) can't borrow
