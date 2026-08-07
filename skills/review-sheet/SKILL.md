@@ -1607,10 +1607,10 @@ did a person choose which settings to include, or did a machine walk the
 product's own list of them? The two generation scripts under `examples/`
 answer this differently for the same reason:
 
-- `examples/ansible-keycloak/review-sheet/metadata/build-dict.ts` walks every
-  `org.keycloak.config.*Options` class via Java reflection inside the official
-  container image — nothing is selected, everything the product's option
-  classes declare comes out.
+- `examples/ansible-keycloak/review-sheet/metadata/extract/` reads Keycloak's
+  own `PropertyMappers` registry inside the official container image — the
+  registry the server itself consults to decide whether a `kc.*` key exists,
+  so nothing is selected and nothing the server accepts is left out.
 - `examples/ansible-basic/review-sheet/metadata/normalize-pg.ts` normalizes a
   `SELECT * FROM pg_settings` dump — PostgreSQL's own enumeration of every GUC
   the running server knows about.
@@ -1635,9 +1635,9 @@ The shape is the same across products even though the source differs:
 1. **Pull the option list out of the product itself, mechanically.** Something
    that *enumerates* the product's real option space, not a curated read of the
    docs:
-   - reflection over the product's own option/config classes inside its
-     container image (`build-dict.ts` — Java reflection on
-     `org.keycloak.config.*Options`);
+   - the product's own key registry inside its container image
+     (`extract/Extract.java` — Keycloak's `PropertyMappers`, the lookup the
+     server resolves every `kc.*` key against);
    - a dump of the product's own settings/catalog table (`normalize-pg.ts` —
      `pg_settings`, which every running PostgreSQL server exposes);
    - an exhaustive `--help`, or a machine-readable schema the product ships
@@ -1671,16 +1671,33 @@ The shape is the same across products even though the source differs:
    dump is impractical to freeze as a fixture.
 4. **Set `provenance: extracted`** on the document, and `generated_by` naming
    the extraction method precisely enough that someone else could reproduce
-   it (`"keycloak-defaults-extractor skill — Java reflection on
-   org.keycloak.config.*Options in quay.io/keycloak/keycloak:26.7.0"`, not
-   just `"reflection"`).
+   it (`"extract/extract.sh — PropertyMappers registry in
+   quay.io/keycloak/keycloak:26.7.0"`, not just `"reflection"`).
+5. **Cross-check the enumeration against a second channel of the product's,
+   and state what is still outside it.** This step is not optional pedantry —
+   it is what separates a real `full` claim from one that only feels
+   mechanical. This example's dictionary was `coverage: full` at 170 keys for
+   months: the extraction reflected over a *hardcoded list* of
+   `org.keycloak.config.*Options` classes, so it silently omitted eight whole
+   classes (`management-*`, `bootstrap-admin-*`, `config-keystore-*`,
+   `telemetry-*`, …) plus every wildcard key (`db-username-<datasource>`,
+   `log-level-<category>`), which are built at mapper-registration time and
+   exist in no Options class at all. Nothing failed; the sheet just quietly
+   stopped being an inventory. Diffing the extraction against
+   `kc.sh start --help-all` / `build --help-all` is what surfaced it, and the
+   check still runs both ways: help lists nothing the extraction misses, and
+   the extraction's extra keys are exactly the ones help hides.
+   Then say in the dictionary header what the extraction genuinely cannot
+   cover — for Keycloak, `spi-<spi>-<provider>-<property>`, which is
+   open-ended because each deployed provider defines its own. A stated gap is
+   a gap a reader can reason about; an unstated one makes `full` a lie.
 
 Real extraction output is rarely already dictionary-shaped, and the
 non-obvious parts of `build-dict.ts` are worth reading before writing your
 own normalizer, because each fixes a real mismatch rather than a hypothetical
 one:
 
-- **Category → `group` mapping.** The reflection output reports Keycloak's
+- **Category → `group` mapping.** The extraction reports Keycloak's
   raw Java enum names (`DATABASE_DATASOURCES`, `HOSTNAME_V2`); `GROUP_LABEL`
   maps them to headings a reviewer reads on the sheet ("Database / Named
   datasources", "Hostname"), with an automatic title-cased fallback for a
@@ -1688,19 +1705,27 @@ one:
   about — an unmapped category degrades to an ugly-but-present label instead
   of silently vanishing.
 - **Unwrapping list-shaped defaults.** Keycloak renders a multi-valued
-  option's default in Quarkus list syntax (`log`'s default reflects as
+  option's default in Quarkus list syntax (`log`'s default extracts as
   `"[console]"`), but `keycloak.conf` itself takes the bare, comma-separated
   form. Left as `"[console]"`, the sheet would compare a real config value
   (`console`) against that bracketed default and report it as changed when it
   is not — `normalizeDefault()` strips the brackets so the default is
   comparable to what actually appears in config.
 - **`provenance: community` for entries the product ships no description
-  for.** Reflection returns an empty string for six keys Keycloak's own
-  `Options` classes never document. Leaving them out means every project
-  using this dictionary hits the strict-metadata gate on the same six keys
-  and writes the same sentence again; `DESC_EXTRA` supplies them once, with
-  `provenance: community` on those entries specifically, so the document's
-  `extracted` claim keeps meaning what it says for the other 700+.
+  for.** The extraction returns an empty string for eight keys Keycloak never
+  documents. Leaving them out means every project using this dictionary hits
+  the strict-metadata gate on the same eight keys and writes the same sentence
+  again; `DESC_EXTRA` supplies them once, with `provenance: community` on
+  those entries specifically, so the document's `extracted` claim keeps
+  meaning what it says for the other 249.
+- **Excluding what is in the registry but is not configuration** — and doing
+  it by name. Four Keycloak keys are internal (two build switches, two
+  placeholders `kc.sh export`/`import` set to signal their own mode). The
+  tempting filter is "drop the hidden ones", which would also drop real
+  options like `db-dialect`; `NOT_CONFIGURATION` lists the four instead, with
+  a reason each, and `build-dict.ts` throws if any of them (or any
+  `DESC_JA`/`DESC_EXTRA` key) no longer exists upstream — so a rename after an
+  upgrade fails the build instead of silently becoming a no-op overlay.
 
 #### Building a `partial` dictionary
 

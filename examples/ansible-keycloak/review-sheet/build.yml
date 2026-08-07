@@ -37,9 +37,9 @@ sheets:
     dictionaries:
       - product: keycloak
         version: "26.7.0"
-        # The dictionary is a genuine full extraction of the product (Java
-        # reflection over org.keycloak.config.*Options in the official
-        # image), and this sheet is already keyed by Keycloak's own config
+        # The dictionary is a genuine full extraction of the product (the
+        # official image's own PropertyMappers registry — every kc.* key the
+        # server accepts), and this sheet is already keyed by Keycloak's own config
         # keys — so the two key spaces are the same one, and expanding the
         # dictionary makes the sheet the exhaustive ledger of what Keycloak
         # can be configured with. Every option the role does not set becomes
