@@ -1,0 +1,41 @@
+{# Realm configuration, imported by `kc.sh start --import-realm` from
+   {{ keycloak_home }}/data/import/. Every value is a reviewable Ansible
+   variable; per-environment overrides live in group_vars.
+
+   Values are quoted even where the field is an Integer or Boolean: this file is
+   a Jinja2 template, and an unquoted {{ var }} is not valid JSON before
+   rendering. Keycloak's importer is Jackson, which coerces "1800" to 1800 and
+   "true" to true, so the rendered file imports as-is. #}
+{
+  "realm": "{{ kc_realm_name }}",
+  "enabled": true,
+  "displayName": "{{ kc_realm_display_name }}",
+  "loginTheme": "{{ kc_realm_login_theme }}",
+  "sslRequired": "{{ kc_realm_ssl_required }}",
+
+  "ssoSessionIdleTimeout": "{{ kc_realm_sso_session_idle_timeout }}",
+  "ssoSessionMaxLifespan": "{{ kc_realm_sso_session_max_lifespan }}",
+  "accessTokenLifespan": "{{ kc_realm_access_token_lifespan }}",
+
+  "registrationAllowed": "{{ kc_realm_registration_allowed }}",
+  "resetPasswordAllowed": "{{ kc_realm_reset_password_allowed }}",
+  "verifyEmail": "{{ kc_realm_verify_email }}",
+  "loginWithEmailAllowed": "{{ kc_realm_login_with_email_allowed }}",
+  "duplicateEmailsAllowed": "{{ kc_realm_duplicate_emails_allowed }}",
+  "rememberMe": "{{ kc_realm_remember_me }}",
+
+  "bruteForceProtected": "{{ kc_realm_brute_force_protected }}",
+  "failureFactor": "{{ kc_realm_failure_factor }}",
+  "waitIncrementSeconds": "{{ kc_realm_wait_increment_seconds }}",
+  "passwordPolicy": "{{ kc_realm_password_policy }}",
+
+  "smtpServer": {
+    "host": "{{ kc_realm_smtp_host }}",
+    "port": "{{ kc_realm_smtp_port }}",
+    "from": "{{ kc_realm_smtp_from }}",
+    "fromDisplayName": "{{ kc_realm_smtp_from_display_name }}",
+    "auth": "{{ kc_realm_smtp_auth }}",
+    "starttls": "{{ kc_realm_smtp_starttls }}",
+    "user": "{{ kc_realm_smtp_user }}"
+  }
+}

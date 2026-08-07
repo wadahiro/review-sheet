@@ -16,6 +16,12 @@ metadata:
 
 instances: [staging, production]
 
+# Keycloak identifies a client by clientId, which is not one of the built-in
+# identity fields (name/id/key), so without this the clients sheet's rows would
+# be source-mapped positionally (clients[0].redirectUris) and a client inserted
+# at the top of the list would silently re-point every reviewed row.
+id_fields: [clientId]
+
 enrich:
   project: sheet.yml
   metadata_dirs: [metadata]
@@ -34,6 +40,12 @@ sheets:
     overlays:
       staging: ../inventories/staging/group_vars/keycloak.yml
       production: ../inventories/production/group_vars/keycloak.yml
+    # defaults/main.yml also holds the realm variables, which keycloak.conf.j2
+    # never references — so the recipe rescues them as rows named after the
+    # variable (it never drops one silently). They belong to the realm sheet
+    # below, not here; excluding them is a statement about WHICH sheet reviews
+    # them, and the recipe fails the build if this pattern stops matching.
+    exclude: ["kc_realm_*", "kc_client_*"]
     dictionaries:
       - product: keycloak
         version: "26.7.0"
@@ -45,3 +57,80 @@ sheets:
         # can be configured with. Every option the role does not set becomes
         # an `origin: default` row, filed under Keycloak's own category.
         materialize: true
+
+  # The same role, the same variables file, a different product surface: what an
+  # admin configures INSIDE Keycloak once it is running. Keyed by the realm
+  # export's own field names (accessTokenLifespan, smtpServer.host), exactly as
+  # the sheet above is keyed by keycloak.conf's — so again no dict_key aliases.
+  #
+  # The realm file is nested JSON, so its rows are source-mapped by `path`
+  # (smtpServer.host) rather than the line+anchor the flat keycloak.conf uses.
+  - name: keycloak realm
+    recipe: ansible
+    defaults: ../roles/keycloak/defaults/main.yml
+    template: ../roles/keycloak/templates/realm-corp.json.j2
+    # tasks/main.yml renders this into {{ keycloak_home }}/data/import/, which
+    # `kc.sh start --import-realm` reads at boot.
+    deployed_path: /opt/keycloak/data/import/realm-corp.json
+    overlays:
+      staging: ../inventories/staging/group_vars/keycloak.yml
+      production: ../inventories/production/group_vars/keycloak.yml
+    # The mirror image of the exclusion above: the server-config variables in
+    # the same defaults file are reviewed by the sheet above, not here. Stated
+    # as an include rather than an exclude because the selector matches the
+    # VARIABLE names (it runs before the template renames rows to their product
+    # key), and "the realm variables" is the shorter, more stable half to name.
+    include: ["kc_realm_*"]
+    dictionaries:
+      - product: keycloak-realm
+        version: "26.7.0"
+        # NO materialize here — and the reason is the interesting part, because
+        # this dictionary IS `coverage: full` and would be allowed to.
+        #
+        # Its field space is a real mechanical enumeration (reflection over
+        # RealmRepresentation), but its WORDS come from the admin console's
+        # message bundles, and the console does not expose every field as a
+        # form control: authentication-flow bindings, browserSecurityHeaders,
+        # the OTP policy fields, the free-form attributes map. Materializing
+        # produced 42 rows the product describes nowhere, which the
+        # strict-metadata gate then failed the build over — correctly. A full
+        # KEY SPACE and a fully DOCUMENTED one are different claims, and only
+        # the first is what `coverage: full` asserts.
+        #
+        # Filling those 42 in would mean writing descriptions no Keycloak
+        # document contains; they would belong in the dictionary marked
+        # `provenance: community` (as the eight undocumented keycloak.conf
+        # options are), and that is a decision to make deliberately, not a
+        # blank to fill so a gate goes quiet. Until then this sheet reviews
+        # what the role sets — which is the ordinary case for a dictionary
+        # whose product ships no per-field documentation.
+
+  # The clients that realm serves — one per protocol. A third sheet rather than
+  # more rows on the realm one because five field names (enabled, description,
+  # attributes, id, name) exist in BOTH RealmRepresentation and
+  # ClientRepresentation: one sheet binding both dictionaries would make every
+  # one of them ambiguous, and bind.ts refuses an ambiguous match rather than
+  # picking a side.
+  #
+  # Each row is keyed by the client object's own path — and because build.yml
+  # declares `id_fields: [clientId]` above, that path addresses the client by
+  # IDENTITY (clients[clientId=corp-web].redirectUris) instead of by position
+  # (clients[0].redirectUris). Adding a client at the top of the list would
+  # otherwise silently re-point every reviewed row at a different client.
+  - name: keycloak clients
+    recipe: ansible
+    defaults: ../roles/keycloak/defaults/main.yml
+    template: ../roles/keycloak/templates/clients-partial-import.json.j2
+    deployed_path: /opt/keycloak/data/import/clients-partial-import.json
+    overlays:
+      staging: ../inventories/staging/group_vars/keycloak.yml
+      production: ../inventories/production/group_vars/keycloak.yml
+    include: ["kc_client_*"]
+    dictionaries:
+      - product: keycloak-client
+        version: "26.7.0"
+        # No materialize: a client's protocol settings live in a free-form
+        # `attributes` map, so the dictionary's attribute half is what the
+        # admin console happens to expose, not an enumeration — and a
+        # materialized row would in any case have no client to belong to.
+

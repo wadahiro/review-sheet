@@ -1,10 +1,13 @@
 # ansible-keycloak
 
-A review sheet for a single **Keycloak 26.7.0** Ansible role, deployed as a
-systemd service on the RHEL family and configured through `keycloak.conf`
-(Quarkus). Two things make it distinctive among the examples: it reviews the
-**product's configuration in the product's own vocabulary** (not the Ansible
-variable names), and its dictionary is **extracted from the product itself**.
+Three review sheets for a single **Keycloak 26.7.0** Ansible role, deployed as a
+systemd service on the RHEL family: the server configuration (`keycloak.conf`,
+Quarkus), the **realm** the role imports at start, and the **clients** in it —
+one OIDC, one SAML.
+Two things make it distinctive among the examples: it reviews the **product's
+configuration in the product's own vocabulary** (not the Ansible variable
+names), and both dictionaries are **extracted from the product itself** — the
+realm one down to its Japanese.
 
 ## What this example demonstrates
 
@@ -91,9 +94,71 @@ variable names), and its dictionary is **extracted from the product itself**.
   ordinary in-scope parameter with `origin: embedded`. `assembleSheets`
   propagates the project metadata's `out_of_scope` object onto the emitted parameter.
 
+- **Three sheets, three key spaces, one role.** The realm sheet reviews what an
+  admin configures INSIDE Keycloak (`accessTokenLifespan`, `smtpServer.host`,
+  `passwordPolicy`), rendered by the same role into `data/import/realm-corp.json`.
+  It is nested JSON, so its rows source-map by structural `path` rather than the
+  `line`+`anchor` the flat `keycloak.conf` uses — the same recipe, two identity
+  rules, because in a structured document the path IS the identity while in a
+  directive format the directive name is (see `productKeyOf` in
+  `src/recipes/ansible.ts`). `sheet.yml` uses the `sheets:` shape: all three
+  sheets share one `defaults/main.yml`, and a flat table would let a key that
+  leaks from one into another borrow the wrong sheet's documentation.
+
+- **Clients are a third sheet because a key space says so.** Five field names —
+  `enabled`, `description`, `attributes`, `id`, `name` — exist in BOTH
+  `RealmRepresentation` and `ClientRepresentation`, so one sheet binding both
+  dictionaries would make every one of them ambiguous, and `bind.ts` refuses an
+  ambiguous match rather than picking a side. Two dictionaries, two sheets, no
+  ambiguity left to resolve.
+
+- **Rows addressed by identity, not position** (`id_fields: [clientId]`). A
+  client row's source map is `clients[clientId=corp-web].redirectUris`, not
+  `clients[0].redirectUris`: `clientId` is not one of the built-in identity
+  fields (name/id/key), so without that one declaration in `build.yml` a client
+  inserted at the top of the list would silently re-point every reviewed row at
+  a different client.
+
+- **No `dict_key` aliases, even for SAML attributes.** A client's protocol
+  settings live in a free-form `attributes` map, and the row extracted as
+  `clients[clientId=corp-saml].attributes["saml.client.signature"]` reaches the
+  dictionary entry `saml.client.signature` through `bind.ts`'s `leaf` tier — the
+  last identity-bearing path segment. 27 of this example's bindings resolve that
+  way, none of them declared.
+
+- **A `full` dictionary that is deliberately NOT materialized.** The realm
+  dictionary is `coverage: full` — its field space is reflection over
+  `RealmRepresentation` — so `materialize` would be allowed. It is not used,
+  because the WORDS come from the admin console's message bundles and the
+  console does not expose every declared field as a form control: expanding it
+  produced 42 rows the product describes nowhere, which the strict-metadata gate
+  rejected. A full key space and a fully documented one are different claims,
+  and `coverage: full` only asserts the first. The contrast with the server
+  sheet above — same project, same gate, one materializes and one cannot — is
+  the point.
+
 - **Bilingual descriptions + language toggle.** Dictionary descriptions are
-  `{ en, ja }` for the reviewed subset, so those rows switch with the viewer's
-  language toggle; keys with no Japanese fall back to English.
+  `{ en, ja }`, so those rows switch with the viewer's language toggle; keys
+  with no Japanese fall back to English. The two sheets get their Japanese
+  differently, which is the more interesting half: the server dictionary has 18
+  hand-translated keys (marked as such), while **74 of the realm dictionary's
+  and 93 of the client dictionary's are Keycloak's own** — the admin console
+  ships a Japanese message bundle, so the translation is the product's
+  statement, not this repo's.
+
+- **Where the product refuses to name a thing, the project does.** Four realm
+  rows (`bruteForceProtected`, `waitIncrementSeconds`, `passwordPolicy`,
+  `smtpServer.starttls`) arrive with no description at all: the console edits
+  each through a control that writes SEVERAL fields at once (one "Brute force
+  mode" selector driving three, one "Encryption" radio driving two), and the
+  extractor refuses to attribute one control's help text to one of the fields it
+  writes. Those four are described in `sheet.yml` — not in the dictionary, since
+  nothing in the product says those words. That split is what the two files are
+  for. The clients sheet has the same edge: `enabled` (a header toggle, not a
+  form field), the flow flags (one "Capability config" checkbox group writing
+  eight fields), and `ifResourceExists` — a partial-import directive, not a
+  `ClientRepresentation` field, and the row that tells a reviewer that re-running
+  the role overwrites whatever an operator changed in the console.
 
 ## Layout
 
@@ -102,15 +167,22 @@ roles/keycloak/
   defaults/main.yml         # kc_* variables (back the reviewed values)
   vars/main.yml             # pinned version + install identity (not reviewed)
   templates/keycloak.conf.j2  # Quarkus key=value; {{ kc_* }} + embedded literal (db=postgres)
+  templates/realm-corp.json.j2  # realm import file; nested JSON, {{ kc_realm_* }}
+  templates/clients-partial-import.json.j2  # OIDC + SAML client, {{ kc_client_* }}
   templates/keycloak.service.j2
   meta/argument_specs.yml   # role's own variable docs (good practice; not used by the sheet)
 inventories/{staging,production}/group_vars/keycloak.yml  # per-env overrides (Pattern B)
 review-sheet/
-  sheet.yml                 # project metadata: categories + out_of_scope, keyed by config key (no aliases)
-  metadata/build-dict.ts    # normalizer: extraction JSON -> dictionary yml
+  sheet.yml                 # project metadata, `sheets:`-namespaced: categories + out_of_scope, keyed by product key (no aliases)
+  metadata/build-dict.ts       # normalizer: server-config extraction JSON -> dictionary yml
+  metadata/build-realm-dict.ts  # same, for the realm half of the realm extraction
+  metadata/build-client-dict.ts # same, for its client half
   metadata/keycloak-defaults-26.7.0.json  # extractor output (product self-description)
+  metadata/keycloak-realm-26.7.0.json     # extractor output (realm/client/user-profile)
   metadata/keycloak@26.7.0.yml            # GENERATED dictionary (257 keys, 18 bilingual)
-  build.yml                 # declarative build spec (config key <- Ansible variable; "ansible" recipe)
+  metadata/keycloak-realm@26.7.0.yml      # GENERATED dictionary (191 keys, 74 bilingual)
+  metadata/keycloak-client@26.7.0.yml     # GENERATED dictionary (142 keys, 93 bilingual)
+  build.yml                 # declarative build spec (three sheets; config key <- Ansible variable; "ansible" recipe)
 ```
 
 ## Run it
@@ -122,16 +194,22 @@ cd examples/ansible-keycloak
 #    Requires Docker; pulls the official image and reads its own config registry.
 #    Via the skill:  /wadahiro-agent-skills:keycloak-config-extractor 26.7.0
 #    Or directly:
-#      bash <skill>/scripts/extract.sh 26.7.0 --server \
-#        > review-sheet/metadata/keycloak-defaults-26.7.0.json
+#      bash <skill>/scripts/extract.sh 26.7.0 -o review-sheet/metadata/
 bun run review-sheet/metadata/build-dict.ts
 #   -> wrote keycloak@26.7.0.yml (257 params, 18 translated, 8 community-described,
 #      11 hidden, 7 deprecated, 4 excluded as non-configuration)
+bun run review-sheet/metadata/build-realm-dict.ts
+#   -> wrote keycloak-realm@26.7.0.yml (191 params, 92 described, 74 bilingual,
+#      92 with a product default, 24 containers, 164 client/user-profile entries excluded)
+bun run review-sheet/metadata/build-client-dict.ts
+#   -> wrote keycloak-client@26.7.0.yml (142 params, 119 described, 93 bilingual,
+#      96 attribute keys, 2 containers)
 
 # 2. Assemble the sheet (map config keys to their variables, enrich, verify).
 bun run ../../src/cli.ts import --spec review-sheet/build.yml -o input.json
-#   -> metadata: 138 parameter(s) enriched (dictionary:544)
-#   -> verify: 24 ok, 0 warn, 0 error, 0 unmapped, 1 out-of-scope, 121 product-default
+#   -> metadata: 191 parameter(s) enriched (dictionary:711, project:10)
+#   -> bindings: 0 alias, 42 exact, 0 prefix, 27 leaf, 0 normalized, 2 none
+#   -> verify: 97 ok, 0 warn, 0 error, 0 unmapped, 1 out-of-scope, 121 product-default
 
 # 3. Generate the HTML (ja default; the in-page toggle switches en/ja).
 bun run ../../src/cli.ts generate -i input.json -o sheet.html --lang ja
