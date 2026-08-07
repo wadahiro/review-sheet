@@ -171,25 +171,25 @@ describe("ansible recipe: equivalence with the hand-written build.ts examples", 
     const expected = stripGeneratedAt(loadExpected("ansible-keycloak"));
     expect(actual).toEqual(expected);
 
-    // 106 = the 18 keys the role sets + 89 materialized rows (of 152
-    // candidates, 63 carry no documented `default` in the dictionary and are
+    // 138 = the 18 keys the role sets + 121 materialized rows (of 239
+    // candidates, 118 carry no documented `default` in the dictionary and are
     // therefore excluded — see assemble.ts's materialize no-default gate and
     // DictionaryMaterialize.includeNoDefault), minus the one the project
     // marks out_of_scope (exempt from enrichment as from strict). Everything
-    // comes from the dictionary — including the six options Keycloak ships no
+    // comes from the dictionary — including the options Keycloak ships no
     // description for, which the dictionary carries with `provenance:
     // community` on the entry so the next project to review this product
     // inherits them instead of writing them again. sheet.yml is left with
     // nothing but this project's own judgements (categories, out_of_scope).
-    expect(report.filled).toBe(106);
-    expect(report.byProvider).toEqual({ dictionary: 416 });
+    expect(report.filled).toBe(138);
+    expect(report.byProvider).toEqual({ dictionary: 544 });
 
     const counts = originCounts(allParams(actual));
     // The dictionary is a real full extraction of the product and the sheet is
     // keyed by the product's own config keys, so materializing (minus the
     // no-default exclusion above) makes this the exhaustive ledger of what
     // Keycloak can be configured with AND documented a real default for.
-    expect(counts).toEqual({ common: 10, overlay: 7, embedded: 1, default: 89, out_of_scope: 1 });
+    expect(counts).toEqual({ common: 10, overlay: 7, embedded: 1, default: 121, out_of_scope: 1 });
   });
 });
 
