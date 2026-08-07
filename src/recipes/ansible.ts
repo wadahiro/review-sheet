@@ -60,6 +60,9 @@
 // recipe's.
 
 import { extractFile } from "../extract.js";
+import type { Entry } from "../parser.js";
+import { structuredFormat } from "../structural.js";
+import { baseFileName } from "../jinja2.js";
 import { registerRecipe, type SheetRecipe, type RecipeIO, type JsonValue } from "../recipe.js";
 import type { SheetInputs, ExtractedMap, ExtractedEntry, ValueLayer, EmbeddedEntry, KeyMapEntry } from "../assemble.js";
 import { layeredRecipe } from "./layered.js";
@@ -94,6 +97,28 @@ const schema = {
 function asString(v: JsonValue | undefined, field: string): string {
   if (typeof v !== "string") throw new Error(`ansible recipe: "${field}" must be a string`);
   return v;
+}
+
+// The product's own name for a template entry, which is not the same kind of
+// thing in every format:
+//
+//   - In a STRUCTURED document (JSON/YAML/TOML/XML) the path IS the identity.
+//     A realm export's `smtpServer.host` is not "host"; there is no such realm
+//     setting, and a sheet row called `host` names nothing a reader can look
+//     up. Keycloak's own admin console agrees — it documents that field as
+//     smtpServer.host.
+//   - In a DIRECTIVE format (Apache, nginx, haproxy, keycloak.conf) the
+//     directive name is the identity and the enclosing block is context, not a
+//     namespace. `StartServers` inside `<IfModule mpm_event_module>` is still
+//     the StartServers directive; keying it `IfModule[…].StartServers` renames
+//     a product key into something the product never calls it (measured: doing
+//     that stranded all six of ansible-httpd's mpm rows from their sheet.yml
+//     entries at once).
+//
+// Embedded literals below always key by path, because they have no variable
+// name to fall back to and a repeated leaf would overwrite itself.
+function productKeyOf(entry: Entry, structured: boolean): string {
+  return structured ? (entry.source.path ?? entry.key) : entry.key;
 }
 
 function readRequired(io: RecipeIO, path: string, what: string): { file: string; content: string } {
@@ -142,6 +167,10 @@ export const ansibleRecipe: SheetRecipe = {
         filePath = template.file;
       }
       const templateEntries = extractFile(template.content, template.file, undefined, io.extractOptions);
+      // A `.j2` resolves to its base format by name (realm-corp.json.j2 -> .json),
+      // which is also what decides whether a row's identity is its path or its
+      // leaf — see productKeyOf.
+      const structured = structuredFormat(baseFileName(template.file)) !== null;
 
       // The template IS the base sequence here (see module doc): a {{ var }}
       // passthrough resolves its value from `defaults`, keyed by the
@@ -163,8 +192,8 @@ export const ansibleRecipe: SheetRecipe = {
         const variable = entry.source.templateVar;
         if (variable === undefined || !defaultsMap.has(variable)) continue;
         const keys = entryKeysByVariable.get(variable);
-        if (keys) keys.push(entry.key);
-        else entryKeysByVariable.set(variable, [entry.key]);
+        if (keys) keys.push(productKeyOf(entry, structured));
+        else entryKeysByVariable.set(variable, [productKeyOf(entry, structured)]);
       }
       for (const [variable, keys] of entryKeysByVariable) {
         const unique = [...new Set(keys)];
@@ -194,7 +223,7 @@ export const ansibleRecipe: SheetRecipe = {
           bound.set(variable, def);
           const unique = new Set(entryKeysByVariable.get(variable) ?? []);
           if (unique.size === 1) {
-            keyMap.push({ boundKey: entry.key, variable });
+            keyMap.push({ boundKey: productKeyOf(entry, structured), variable });
           }
           continue;
         }

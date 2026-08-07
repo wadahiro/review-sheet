@@ -1,0 +1,55 @@
+{# Clients for the corp realm, applied with Keycloak's partial import
+   (POST /admin/realms/{realm}/partialImport). A realm import file holds one
+   realm, so the clients live in their own document rather than inside
+   realm-corp.json.j2 — which is also what keeps each review sheet reading one
+   template.
+
+   Two clients, one per protocol, because the settings a reviewer checks are
+   almost entirely protocol-specific: redirect URIs and flows for OIDC,
+   signature and NameID handling for SAML.
+
+   Values are quoted even where the field is a Boolean or a list, for the same
+   reason as realm-corp.json.j2: an unquoted {{ var }} is not valid JSON before
+   rendering, and Jackson coerces on import. #}
+{
+  "ifResourceExists": "OVERWRITE",
+  "clients": [
+    {
+      "clientId": "corp-web",
+      "name": "{{ kc_client_web_name }}",
+      "protocol": "openid-connect",
+      "enabled": "{{ kc_client_web_enabled }}",
+      "publicClient": "{{ kc_client_web_public }}",
+      "rootUrl": "{{ kc_client_web_root_url }}",
+      "baseUrl": "{{ kc_client_web_base_url }}",
+      "redirectUris": "{{ kc_client_web_redirect_uris }}",
+      "webOrigins": "{{ kc_client_web_web_origins }}",
+      "standardFlowEnabled": "{{ kc_client_web_standard_flow }}",
+      "directAccessGrantsEnabled": "{{ kc_client_web_direct_access_grants }}",
+      "fullScopeAllowed": "{{ kc_client_web_full_scope_allowed }}",
+      "attributes": {
+        "post.logout.redirect.uris": "{{ kc_client_web_post_logout_redirect_uris }}",
+        "backchannel.logout.url": "{{ kc_client_web_backchannel_logout_url }}",
+        "backchannel.logout.session.required": "{{ kc_client_web_backchannel_logout_session_required }}"
+      }
+    },
+    {
+      "clientId": "corp-saml",
+      "name": "{{ kc_client_saml_name }}",
+      "protocol": "saml",
+      "enabled": "{{ kc_client_saml_enabled }}",
+      "adminUrl": "{{ kc_client_saml_admin_url }}",
+      "redirectUris": "{{ kc_client_saml_redirect_uris }}",
+      "frontchannelLogout": "{{ kc_client_saml_frontchannel_logout }}",
+      "attributes": {
+        "saml.client.signature": "{{ kc_client_saml_client_signature }}",
+        "saml.encrypt": "{{ kc_client_saml_encrypt }}",
+        "saml.signature.algorithm": "{{ kc_client_saml_signature_algorithm }}",
+        "saml_signature_canonicalization_method": "{{ kc_client_saml_canonicalization_method }}",
+        "saml_name_id_format": "{{ kc_client_saml_name_id_format }}",
+        "saml_assertion_consumer_url_post": "{{ kc_client_saml_acs_url_post }}",
+        "saml_single_logout_service_url_post": "{{ kc_client_saml_slo_url_post }}"
+      }
+    }
+  ]
+}

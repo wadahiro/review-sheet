@@ -1,60 +1,228 @@
-# Project metadata. This sheet reviews Keycloak's configuration in
-# Keycloak's own vocabulary, so params are keyed by the keycloak.conf key
-# (db-url, hostname-strict, …) — the same key the extracted dictionary uses, so
-# NO dict_key aliases and NO key_prefix are needed. The backing Ansible variable
-# (kc_*) is provenance: the "ansible" recipe reads it from the template and shows it in a
-# secondary column; the value still source-maps to the group_vars/defaults line.
+# Project metadata. Both sheets review Keycloak's configuration in Keycloak's
+# own vocabulary, so params are keyed by the product's own key — the
+# keycloak.conf key (db-url, hostname-strict, …) for one, the realm export's
+# field path (accessTokenLifespan, smtpServer.host) for the other — which is
+# the same key each extracted dictionary uses, so NO dict_key aliases and NO
+# key_prefix are needed anywhere in this file. The backing Ansible variable
+# (kc_*) is provenance: the "ansible" recipe reads it from the template and
+# shows it in a secondary column; the value still source-maps to the
+# group_vars/defaults line.
 #
-# Most rows below also drop `category:` entirely: each key binds (exact tier)
-# to the keycloak@26.7.0 dictionary, whose own `group` already names the tab
-# this project wants (`db` -> group "Database", etc.), so the fallback does
-# the filing for free. `health-enabled`/`metrics-enabled` are the one
-# exception — this project merges the dictionary's separate "Health" and
-# "Metrics" groups into a single "Observability" tab, a display decision the
-# dictionary can't make, so those two keep an explicit `category:`.
+# `sheets:` rather than a flat `params:` because the two sheets share one
+# defaults file. Under a flat table both sheets resolve against the same
+# entries, so a key that leaks from one into the other (a filter that stops
+# matching, a renamed variable) would silently borrow the WRONG sheet's
+# documentation and look legitimate; namespaced, it resolves against a table
+# that never declared it and the ordinary "no category" gate names it.
+#
+# Most rows below drop `category:` entirely: each key binds (exact tier) to its
+# dictionary, whose own `group` already names the tab this project wants, so
+# the fallback does the filing for free. The exceptions are called out where
+# they appear — each is a display decision a dictionary cannot make.
 #
 # The dictionary binding is declared on the sheet itself in build.yml
 # (`sheets[].dictionaries`) — a data-source fact. Category display order and
-# the under_key column (below) are display facts and live here instead: the
-# declared `categories:` list also guards against a "ghost tab" — a category
-# actually used that isn't on it (e.g. via a typo) now fails the build instead
-# of silently appearing as a new tab (see assemble.ts's fileDrafts).
+# the under_key column are display facts and live here instead: the declared
+# `categories:` list also guards against a "ghost tab" — a category actually
+# used that isn't on it (e.g. via a typo) now fails the build instead of
+# silently appearing as a new tab (see assemble.ts's fileDrafts).
 
-categories: [Database, Hostname, "HTTP / TLS", Reverse proxy, Observability, Logging, Cache]
-under_key:
-  id: ansible_var
-  label: { ja: "Ansible variable", en: "Ansible variable" }
+sheets:
+  keycloak configuration:
+    categories: [Database, Hostname, "HTTP / TLS", Reverse proxy, Observability, Logging, Cache]
+    under_key:
+      id: ansible_var
+      label: { ja: "Ansible variable", en: "Ansible variable" }
 
-params:
-  # Embedded literal (db=postgres in the template): a role decision, but still
-  # in review scope — the dictionary's group ("Database") files it correctly
-  # without a category override.
-  db: {}
-  db-url: {}
-  db-username: {}
-  # Secret: sourced from Ansible Vault in real projects. Reviewed at parameter
-  # granularity as out_of_scope so it is shown (for completeness) but never
-  # surfaced or edited as plaintext. Category still falls back to the
-  # dictionary's group ("Database").
-  db-password:
-    out_of_scope:
-      reason:
-        en: A secret held in Ansible Vault — not reviewed as plaintext here.
-        ja: Ansible Vault で管理されるシークレットのため、平文でのレビュー対象外。
-      owner: DBA/Secrets
-  hostname: {}
-  hostname-strict: {}
-  http-enabled: {}
-  http-port: {}
-  https-port: {}
-  https-certificate-file: {}
-  https-certificate-key-file: {}
-  proxy-headers: {}
-  # See the file header: merges the dictionary's separate Health/Metrics
-  # groups into one "Observability" tab, so category is authored here.
-  health-enabled:                { category: Observability }
-  metrics-enabled:               { category: Observability }
-  log: {}
-  log-level: {}
-  cache: {}
-  cache-stack: {}
+    params:
+      # Embedded literal (db=postgres in the template): a role decision, but still
+      # in review scope — the dictionary's group ("Database") files it correctly
+      # without a category override.
+      db: {}
+      db-url: {}
+      db-username: {}
+      # Secret: sourced from Ansible Vault in real projects. Reviewed at parameter
+      # granularity as out_of_scope so it is shown (for completeness) but never
+      # surfaced or edited as plaintext. Category still falls back to the
+      # dictionary's group ("Database").
+      db-password:
+        out_of_scope:
+          reason:
+            en: A secret held in Ansible Vault — not reviewed as plaintext here.
+            ja: Ansible Vault で管理されるシークレットのため、平文でのレビュー対象外。
+          owner: DBA/Secrets
+      hostname: {}
+      hostname-strict: {}
+      http-enabled: {}
+      http-port: {}
+      https-port: {}
+      https-certificate-file: {}
+      https-certificate-key-file: {}
+      proxy-headers: {}
+      # Merges the dictionary's separate Health and Metrics groups into one
+      # "Observability" tab — a display decision the dictionary can't make.
+      health-enabled:                { category: Observability }
+      metrics-enabled:               { category: Observability }
+      log: {}
+      log-level: {}
+      cache: {}
+      cache-stack: {}
+
+  keycloak realm:
+    categories: [General, Login, "Brute force detection", Sessions, "Tokens / Access tokens", Email, Themes]
+    under_key:
+      id: ansible_var
+      label: { ja: "Ansible variable", en: "Ansible variable" }
+
+    params:
+      realm: {}
+      # Embedded literal ("enabled": true in the template) — a role decision,
+      # in review scope like any other row. Keycloak's console never labels
+      # this field (a realm is enabled/disabled from the header toggle, not a
+      # form control), so the description is this project's.
+      enabled:
+        category: General
+        description:
+          en: Whether the realm is enabled. A disabled realm serves no authentication requests.
+          ja: レルムを有効にするか。無効なレルムは一切の認証リクエストを処理しない。
+      displayName: {}
+      loginTheme: {}
+      sslRequired: {}
+
+      ssoSessionIdleTimeout: {}
+      ssoSessionMaxLifespan: {}
+      accessTokenLifespan: {}
+
+      registrationAllowed: {}
+      resetPasswordAllowed: {}
+      verifyEmail: {}
+      loginWithEmailAllowed: {}
+      duplicateEmailsAllowed: {}
+      rememberMe: {}
+
+      # The four rows below are the honest edge of an extracted dictionary, and
+      # the reason a project metadata file still exists next to one.
+      #
+      # Keycloak's admin console edits each of these through a control that
+      # writes SEVERAL realm fields at once — one "Brute force mode" selector
+      # driving bruteForceProtected/permanentLockout/maxTemporaryLockouts, one
+      # "Encryption" radio driving smtpServer.ssl/smtpServer.starttls — or, for
+      # passwordPolicy, through a dedicated policy builder rather than a form
+      # field at all. The extractor refuses to attribute one control's help text
+      # to one of several fields it writes (a wrong description is worse than a
+      # missing one), so these arrive with no description and no group.
+      #
+      # That is not a gap to paper over in the DICTIONARY — nothing in the
+      # product says these words. It is exactly what this file is for: the
+      # project states what it means by them, and only for this project.
+      bruteForceProtected:
+        category: Brute force detection
+        description:
+          en: Whether brute-force protection is enabled for this realm.
+          ja: このレルムでブルートフォース攻撃対策を有効にするか。
+      failureFactor:
+        category: Brute force detection
+      waitIncrementSeconds:
+        category: Brute force detection
+        description:
+          en: How much longer a user is locked out after each additional failed login.
+          ja: ログイン失敗が重なるごとに、ロックアウト時間をどれだけ延長するか（秒）。
+      passwordPolicy:
+        category: Login
+        description:
+          en: The realm's password policy, as Keycloak's policy expression (length, notUsername, passwordHistory, …).
+          ja: レルムのパスワードポリシー。Keycloak のポリシー式で記述する（length / notUsername / passwordHistory など）。
+
+      smtpServer.host: {}
+      smtpServer.port: {}
+      smtpServer.from: {}
+      smtpServer.fromDisplayName: {}
+      smtpServer.auth: {}
+      smtpServer.user: {}
+      smtpServer.starttls:
+        category: Email
+        description:
+          en: Whether to upgrade the SMTP connection with STARTTLS.
+          ja: SMTP 接続を STARTTLS で暗号化するか。
+
+  keycloak clients:
+    # The console's own tabs for a client: Settings holds the endpoints and
+    # flags, Keys/General the SAML signature and encryption settings, Advanced
+    # the logout endpoints. Both clients file into the same set — which is the
+    # point of keying by the product's grouping rather than by protocol.
+    categories: [Import, Settings, General, Advanced, Capability config]
+    under_key:
+      id: ansible_var
+      label: { ja: "Ansible variable", en: "Ansible variable" }
+
+    params:
+      # An embedded literal in the partial-import document, and a real review
+      # item rather than plumbing: OVERWRITE means re-running the role replaces
+      # whatever an operator changed in the console. Not a ClientRepresentation
+      # field, so no dictionary describes it — this project does.
+      ifResourceExists:
+        category: Import
+        description:
+          en: What partial import does when a client already exists — OVERWRITE replaces it, SKIP leaves it alone.
+          ja: 対象が既に存在する場合の partial import の挙動。OVERWRITE は置き換え、SKIP は既存を残す。
+
+      # Keyed by the client's own path. `clientId` is the identity the path
+      # addresses each client BY (build.yml's id_fields), so it is not itself a
+      # reviewable row — it appears here only through the rows it identifies.
+      # Embedded literals: the protocol is what makes each of these two clients
+      # the thing it is, fixed by the role. Keycloak's dictionary describes the
+      # field but gives it no group (the console picks the protocol on the
+      # create screen, not on a settings tab), so the category is this project's.
+      clients[clientId=corp-web].protocol: { category: Settings }
+      clients[clientId=corp-saml].protocol: { category: Settings }
+
+      clients[clientId=corp-web].name: {}
+      clients[clientId=corp-web].rootUrl: {}
+      clients[clientId=corp-web].baseUrl: {}
+      clients[clientId=corp-web].redirectUris: {}
+      clients[clientId=corp-web].webOrigins: {}
+      clients[clientId=corp-web].publicClient: {}
+      # Described by the dictionary but ungrouped there (the console shows it
+      # on the client scope tab, not a settings form), so filed here.
+      clients[clientId=corp-web].fullScopeAllowed: { category: Capability config }
+      clients[clientId=corp-web].attributes["post.logout.redirect.uris"]: {}
+      clients[clientId=corp-web].attributes["backchannel.logout.url"]: {}
+      clients[clientId=corp-web].attributes["backchannel.logout.session.required"]: {}
+
+      clients[clientId=corp-saml].name: {}
+      clients[clientId=corp-saml].adminUrl: {}
+      clients[clientId=corp-saml].redirectUris: {}
+      clients[clientId=corp-saml].frontchannelLogout: {}
+      clients[clientId=corp-saml].attributes["saml.client.signature"]: {}
+      clients[clientId=corp-saml].attributes["saml.encrypt"]: {}
+      clients[clientId=corp-saml].attributes["saml.signature.algorithm"]: {}
+      clients[clientId=corp-saml].attributes.saml_signature_canonicalization_method: {}
+      clients[clientId=corp-saml].attributes.saml_name_id_format: {}
+      clients[clientId=corp-saml].attributes.saml_assertion_consumer_url_post: {}
+      clients[clientId=corp-saml].attributes.saml_single_logout_service_url_post: {}
+
+      # Same edge as the realm sheet's four: the console edits a client's
+      # `enabled` from a header toggle and its flow flags from one "Capability
+      # config" checkbox group writing eight fields at once, so the extractor
+      # attributes that group's help text to none of them. Described here.
+      clients[clientId=corp-web].enabled:
+        category: Settings
+        description:
+          en: Whether the client is enabled. A disabled client cannot obtain tokens.
+          ja: クライアントを有効にするか。無効なクライアントはトークンを取得できない。
+      clients[clientId=corp-saml].enabled:
+        category: Settings
+        description:
+          en: Whether the client is enabled. A disabled client cannot obtain assertions.
+          ja: クライアントを有効にするか。無効なクライアントはアサーションを取得できない。
+      clients[clientId=corp-web].standardFlowEnabled:
+        category: Capability config
+        description:
+          en: Enables the OIDC authorization code flow for this client.
+          ja: このクライアントで OIDC 認可コードフローを有効にする。
+      clients[clientId=corp-web].directAccessGrantsEnabled:
+        category: Capability config
+        description:
+          en: Enables the resource owner password credentials grant. Normally left off.
+          ja: リソースオーナーパスワードクレデンシャルグラントを有効にする。通常は無効のままにする。
+

@@ -7,3 +7,20 @@ kc_proxy_headers: "xforwarded"
 kc_metrics_enabled: true
 kc_cache: "local"
 kc_log_level: "info"
+
+# Realm: looser than production so testers can self-serve.
+kc_realm_display_name: "Corp SSO (staging)"
+kc_realm_registration_allowed: true
+kc_realm_sso_session_idle_timeout: 3600
+kc_realm_smtp_host: "smtp-staging.example.internal"
+kc_realm_smtp_from: "noreply-staging@example.com"
+
+# Clients: staging endpoints.
+kc_client_web_root_url: "https://app-staging.example.com"
+kc_client_web_redirect_uris: "https://app-staging.example.com/*"
+kc_client_web_web_origins: "https://app-staging.example.com"
+kc_client_web_post_logout_redirect_uris: "https://app-staging.example.com/"
+kc_client_saml_admin_url: "https://sp-staging.example.com/saml"
+kc_client_saml_redirect_uris: "https://sp-staging.example.com/*"
+kc_client_saml_acs_url_post: "https://sp-staging.example.com/saml/acs"
+kc_client_saml_slo_url_post: "https://sp-staging.example.com/saml/slo"

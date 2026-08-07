@@ -8,3 +8,15 @@ kc_metrics_enabled: true
 kc_cache: "ispn"
 kc_cache_stack: "kubernetes"
 kc_log_level: "warn"
+
+# Realm: stricter sessions, mandatory email verification.
+kc_realm_verify_email: true
+kc_realm_sso_session_idle_timeout: 900
+kc_realm_sso_session_max_lifespan: 28800
+kc_realm_access_token_lifespan: 120
+kc_realm_password_policy: "length(14) and notUsername and passwordHistory(5) and specialChars(1)"
+kc_realm_failure_factor: 10
+
+# Clients: production endpoints; SAML assertions encrypted as well as signed.
+kc_client_web_direct_access_grants: false
+kc_client_saml_encrypt: true

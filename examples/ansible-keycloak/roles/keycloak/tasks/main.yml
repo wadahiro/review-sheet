@@ -39,6 +39,32 @@
     mode: "0640"
   notify: Restart keycloak
 
+- name: Ensure the realm import directory exists
+  ansible.builtin.file:
+    path: "{{ keycloak_home }}/data/import"
+    state: directory
+    owner: "{{ keycloak_user }}"
+    group: "{{ keycloak_user }}"
+    mode: "0750"
+
+- name: Render the realm import file
+  ansible.builtin.template:
+    src: realm-corp.json.j2
+    dest: "{{ keycloak_home }}/data/import/realm-corp.json"
+    owner: "{{ keycloak_user }}"
+    group: "{{ keycloak_user }}"
+    mode: "0640"
+  notify: Restart keycloak
+
+- name: Render the client partial-import file
+  ansible.builtin.template:
+    src: clients-partial-import.json.j2
+    dest: "{{ keycloak_home }}/data/import/clients-partial-import.json"
+    owner: "{{ keycloak_user }}"
+    group: "{{ keycloak_user }}"
+    mode: "0640"
+  notify: Restart keycloak
+
 - name: Install the systemd unit
   ansible.builtin.template:
     src: keycloak.service.j2

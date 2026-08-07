@@ -165,31 +165,69 @@ describe("ansible recipe: equivalence with the hand-written build.ts examples", 
     expect(counts).toEqual({ common: 10, overlay: 6, embedded: 3, default: 0, out_of_scope: 0 });
   });
 
-  it("ansible-keycloak: keycloak configuration (every row keyMap-resolved)", () => {
+  it("ansible-keycloak: server config + realm + clients, three sheets off one role", () => {
     const { input, report } = buildActual("ansible-keycloak");
     const actual = stripGeneratedAt(jsonRoundTrip(input));
     const expected = stripGeneratedAt(loadExpected("ansible-keycloak"));
     expect(actual).toEqual(expected);
 
-    // 138 = the 18 keys the role sets + 121 materialized rows (of 239
-    // candidates, 118 carry no documented `default` in the dictionary and are
-    // therefore excluded — see assemble.ts's materialize no-default gate and
-    // DictionaryMaterialize.includeNoDefault), minus the one the project
-    // marks out_of_scope (exempt from enrichment as from strict). Everything
-    // comes from the dictionary — including the options Keycloak ships no
-    // description for, which the dictionary carries with `provenance:
-    // community` on the entry so the next project to review this product
-    // inherits them instead of writing them again. sheet.yml is left with
-    // nothing but this project's own judgements (categories, out_of_scope).
-    expect(report.filled).toBe(138);
-    expect(report.byProvider).toEqual({ dictionary: 544 });
+    // 191 = the server sheet's 138 (18 keys the role sets + 121 materialized
+    // rows, of 239 candidates — 118 carry no documented `default` and are
+    // excluded by assemble.ts's materialize no-default gate — minus the one
+    // the project marks out_of_scope, exempt from enrichment as from strict)
+    // plus the realm sheet's 25 and the clients sheet's 28.
+    expect(report.filled).toBe(191);
+    // project:10 is every row Keycloak's admin console declines to name on its
+    // own: the realm's four (each edited through a control writing SEVERAL
+    // fields at once, so the extractor attributes that control's help text to
+    // none of them) and the clients' equivalent, plus the `enabled` literals
+    // the console shows as a header toggle rather than a form field, plus
+    // `ifResourceExists`, which is a partial-import directive and not a
+    // ClientRepresentation field at all. Everything else — all three sheets —
+    // comes from the three extracted dictionaries.
+    expect(report.byProvider).toEqual({ dictionary: 711, project: 10 });
 
-    const counts = originCounts(allParams(actual));
-    // The dictionary is a real full extraction of the product and the sheet is
-    // keyed by the product's own config keys, so materializing (minus the
-    // no-default exclusion above) makes this the exhaustive ledger of what
-    // Keycloak can be configured with AND documented a real default for.
-    expect(counts).toEqual({ common: 10, overlay: 7, embedded: 1, default: 121, out_of_scope: 1 });
+    const server = input.sheets.find((s) => s.name === "keycloak configuration");
+    const realm = input.sheets.find((s) => s.name === "keycloak realm");
+    const clients = input.sheets.find((s) => s.name === "keycloak clients");
+    expect(server && realm && clients).toBeTruthy();
+
+    // The server dictionary is a real full extraction and the sheet is keyed by
+    // the product's own config keys, so materializing (minus the no-default
+    // exclusion above) makes it the exhaustive ledger of what Keycloak can be
+    // configured with AND documented a real default for.
+    expect(originCounts(allParams({ sheets: [server] }))).toEqual({
+      common: 10,
+      overlay: 7,
+      embedded: 1,
+      default: 121,
+      out_of_scope: 1,
+    });
+    // The realm sheet is NOT materialized, and default: 0 is the assertion that
+    // it stays that way. Its dictionary is `coverage: full` and would be
+    // allowed to — but the words come from the admin console, which does not
+    // expose every declared field as a form control, so expanding it produced
+    // 42 rows the product describes nowhere and the strict gate rejected them.
+    // See build.yml for the full reasoning.
+    expect(originCounts(allParams({ sheets: [realm] }))).toEqual({
+      common: 14,
+      overlay: 10,
+      embedded: 1,
+      default: 0,
+      out_of_scope: 0,
+    });
+    // Clients are a third sheet, not more rows on the realm one: five field
+    // names exist in both RealmRepresentation and ClientRepresentation, so a
+    // single sheet binding both dictionaries would make each of them
+    // ambiguous. embedded: 3 = the two `protocol` literals (what makes each
+    // client the thing it is) plus `ifResourceExists`.
+    expect(originCounts(allParams({ sheets: [clients] }))).toEqual({
+      common: 15,
+      overlay: 10,
+      embedded: 3,
+      default: 0,
+      out_of_scope: 0,
+    });
   });
 });
 
