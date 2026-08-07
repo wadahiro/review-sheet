@@ -225,6 +225,56 @@ Use this **only when the value is identical** across the files. The single
 different value, that site is reported as a `FAIL`/held (never silently
 mis-edited) — fix it by hand or drop it from the list. For genuinely different
 per-environment values, use `instances[]` (Pattern B), not `additional_sources`.
+This rule — and the "on a simple parameter" restriction above — is about entries
+with no `ref`; see below for the other kind.
+
+#### The other kind of site: a *reference*, not a duplicate (`source.ref`)
+
+An `additional_sources` entry can instead mark a **reference site**: a place
+that holds a *reference expression* pointing at this parameter's value (e.g.
+`$(env:SSO_SESSION_IDLE_TIMEOUT)`), not the value itself. Set `source.ref` to
+that literal expression. This is what `layered`'s
+["Reference substitution in `static_files`"](#reference-substitution-in-static_files-substitution)
+declaration produces automatically — you'd rarely hand-author one — but the
+model shape is worth knowing either way:
+
+```jsonc
+{
+  "key": "ssoSessionIdleTimeout",
+  "value": "1800",
+  "source": { "file": "envs/production.env", "line": 12, "anchor": "SSO_SESSION_IDLE_TIMEOUT=" },
+  "additional_sources": [
+    { "file": "config/keycloak/poc.yml", "path": "ssoSessionIdleTimeout",
+      "anchor": "$(env:SSO_SESSION_IDLE_TIMEOUT)", "ref": "$(env:SSO_SESSION_IDLE_TIMEOUT)" }
+  ]
+}
+```
+
+`ref` changes what both checks mean:
+
+- **`verify`** requires the resolved value to **contain** `ref`, not equal it
+  — equality is just the whole-value special case of containment (a composed
+  site like `https://$(env:SSO_SAML_HOST)/saml/acs` never equals the bare
+  reference text, only contains it). A mismatch is reported as `reference
+  "$(env:X)" no longer present — value hardcoded or wiring changed?` rather
+  than "stale value" — someone hardcoded the value into the reference site,
+  renamed the variable, or deleted the line, and the sheet's "this field is
+  fed by this variable" claim is now false.
+- **`apply` never writes a `ref` site.** It's filtered out of the edit
+  targets entirely — not held, not reported as skipped: writing the
+  suggested value there would corrupt the file, so it was never an edit
+  target to begin with.
+- **The AI prompt** renders `ref` entries separately from ordinary
+  additional sources, as context rather than something to edit: "Referenced
+  from `<file>:<line>` (`` `<ref text>` ``) — edit only the variable
+  definition unless the wiring itself is being changed."
+
+`ref` entries are valid on **both** parameter shapes — `additional_sources`
+lives on `ParameterBase`, not just `SimpleParameter`, precisely so a Pattern B
+(`instances`) row can carry one too (a merged `substitution:` row usually is
+Pattern B). A **non**-`ref` entry stays valid only on a `SimpleParameter`,
+since "the same value, defined again elsewhere" is meaningless without a
+single `value` to compare it against — schema-enforced, not just convention.
 
 ### Out-of-scope parameters (`out_of_scope`)
 
@@ -399,9 +449,12 @@ turns YAML into a sheet. Check the built-ins before writing anything:
   `examples/cdk-snapshot/review-sheet/build.yml`.
 - `layered` — the same base+overlay engine `ansible` wraps, minus the
   Ansible-only extras (no `template`, no `deployed_path` — so every row keeps
-  its extracted identity as its key; there is nothing here to derive a
-  product key FROM). Use it directly whenever the layering has nothing
-  Ansible about it at all — a plain `.env` base + per-environment overrides, a
+  its extracted identity as its key by default; there is nothing in the
+  layering itself to derive a product key FROM). The one exception is a
+  `static_files` entry's own opt-in `substitution:` declaration, which CAN
+  produce a `keyMap` entry — see "Reference substitution in `static_files`"
+  below. Use `layered` directly whenever the layering has nothing Ansible
+  about it at all — a plain `.env` base + per-environment overrides, a
   Terraform root module's `variables.tf` + per-environment `.tfvars`, a
   container image's Dockerfile + task definition. `recipe: ansible` on such a
   sheet still works, it just reads oddly. Accepts `defaults` / `overlays` /
@@ -431,6 +484,16 @@ in `defaults`'s own order.
 
 `under_key` (sheet.yml) is required the moment ANY row in the sheet resolves
 to a product key this way — nothing to declare if no row does.
+
+This `{{ var }}` → `keyMap` binding is `ansible`'s own reference mechanism —
+a template value that is a reference into `defaults`/overlays, recognized
+from the template's parse tree. A `static_files` entry can carry the same
+kind of reference (a value that is a reference into the sheet's OTHER
+layers, e.g. keycloak-config-cli's `$(env:X)`), but recognized from the
+value's *text* instead — that is `substitution:`, and it is **`layered`-only**
+(not available on `ansible` sheets): see "Reference substitution in
+`static_files`" below for why and what to do if you hit its "unknown field"
+error under an `ansible` sheet.
 
 #### `defaults`/`overlays` vs. `static_files`: they key differently
 
@@ -487,6 +550,105 @@ defaults:
 The collision error itself proposes a block shaped exactly like this
 whenever the colliding entries' structural paths share a distinguishable
 prefix — paste it in as the source's own `key:` field.
+
+#### Reference substitution in `static_files` (`substitution:`)
+
+A `static_files` entry sometimes doesn't hold a literal — it holds a
+**reference** into the sheet's own base/overlay layers. keycloak-config-cli's
+realm export is the motivating case: the static realm YAML has
+`ssoSessionIdleTimeout: $(env:SSO_SESSION_IDLE_TIMEOUT)`, and the real
+per-environment values live in `default.env`/`local.env`/... — separate
+files this same sheet already reads as `defaults`/`overlays`. Read the way
+`static_files` always has been, that produces TWO rows for one piece of
+wiring: an `origin: embedded` row holding a reference string nobody can
+review (`$(env:SSO_SESSION_IDLE_TIMEOUT)`), and a separate `origin: overlay`
+row named after the env var holding the real values — nothing in the model
+says the two are the same field. Declaring `substitution:` on that static
+file merges them into one row (see `src/substitution.ts`'s module doc for
+the implementation-level walkthrough this section summarizes):
+
+```yaml
+static_files:
+  - path: ../../config/keycloak/poc.yml
+    format: yaml
+    substitution:
+      pattern: '\$\(env:([A-Za-z_][A-Za-z0-9_]*)\)'
+```
+
+`pattern` is an ordinary regex with **exactly one capturing group** — the
+captured text IS the layer key (a `defaults`/overlay entry) the reference
+points at. Zero or more than one capturing group is a hard load-time error
+naming the count found (a non-capturing `(?:...)` group is fine and doesn't
+count). Nothing here is `$(env:X)`-specific — `${X}`, `%{X}`, `@X@` are just
+a different pattern, no code change needed. Declared per static file, not
+per sheet: which file carries references is a fact about that file.
+
+Every entry the file yields — after that file's own `key` transform and the
+sheet's `include`/`exclude` selector, i.e. exactly the entries that would
+otherwise become plain `origin: embedded` rows — is classified against the
+pattern:
+
+| Value shape | Result |
+|---|---|
+| No match | Untouched — an ordinary embedded row, exactly as without `substitution:`. |
+| Whole value is one reference, the captured key resolves in the base layer or any overlay, and it's the only whole-value site backing that key | **Merged.** The embedded row is removed; a `keyMap` entry renames the layer key's row to the static file's product key (surfaced via `under_key`); the static file's line becomes a `ref` additional source on the merged row. |
+| Whole value is one reference, key resolves, but **several** whole-value sites reference the same key | **Merged, without a keyMap entry** — no single product key can honestly claim the row (the same one-backer rule `ansible` already applies to `{{ var }}`, above). The row keeps the variable's own name; every site is recorded as a `ref` additional source; a warning names the variable and every site. |
+| Reference is a substring of the value (composed — e.g. a URL built from the var) | **Not merged** — the embedded row stays exactly as today; it's a genuinely distinct reviewable thing. The site is still recorded as a `ref` additional source on the *variable's own row*, so the wiring is checked even though the row's shape didn't change. One summary warning per file lists every composed entry. |
+| Whole-value reference, but the captured key resolves in **no** layer | **Not merged, warned per site** — the row stays embedded (never drop a row); the variable may legitimately be pipeline-supplied rather than defined in any file this sheet reads. |
+
+A declared pattern that matches nothing anywhere in the file is a warning
+too — the same stance `keyglob.ts`'s `unmatchedPatterns` and
+`keytransform.ts`'s unmatched drop patterns take: a rule that matched
+nothing is reported, never silent. `import --spec` also prints one summary
+tally line per sheet (`substitution: N merged, M composed left embedded, K
+dangling`).
+
+A merged row: keyed by the **product field path** (the static file entry's
+own key — `ssoSessionIdleTimeout`, `smtpServer.host`), with the backing
+variable surfaced through the sheet's `under_key` column exactly like
+`ansible`'s own `{{ var }}` binding above; `origin` stays derived from the
+base/overlay layers (`overlay`/`common`) — the value genuinely still comes
+from there, nothing embedded remains about it; the static file's own line is
+recorded as a `ref`-marked entry in `additional_sources` (see "One value
+defined in several files" above for the general shape, including what `ref`
+changes about how `verify`/`apply`/the AI prompt treat that site).
+
+**The payoff:** the "this env var feeds this field" wiring, which a project
+today can only write as prose in `sheet.yml`, becomes a machine-checked
+claim. `verify` fails the build if someone later hardcodes a value into the
+static file or renames the env var — the same way any other stale source map
+fails, instead of staying silently true only in a comment.
+
+**Not available on `ansible`.** `ansible.ts` delegates its `static_files`
+reading to `layered.ts`, but validates a sheet's fields against its *own*
+schema (spec.ts validates each sheet against its recipe's own schema, never a
+delegate's), and that schema was deliberately not extended with
+`substitution:` — `ansible` already has its own reference mechanism for this
+same problem (`{{ var }}` → `keyMap`, see "How a template row gets its name"
+above), and how the two would interact on one sheet (a `{{ var }}` resolving
+to a static-file entry that ALSO matches a `substitution:` pattern) is
+undesigned, so it's rejected outright rather than guessed at. Today, writing
+`substitution:` under an `ansible` sheet's `static_files` entry fails with a
+generic ajv `additionalProperties` rejection (`must NOT have additional
+property "substitution"`) at spec-load time — nothing in that error mentions
+this section, so if you hit it: `substitution:` is `layered`-only; switch the
+sheet's `recipe:` to `layered` (dropping `template`/`deployed_path`) if the
+shape is genuinely a plain base+overlay one, or resolve the reference by hand
+if both mechanisms are genuinely needed on the same sheet.
+
+**Migration is opt-in.** Nothing changes until a static file declares
+`substitution:` — output is byte-identical without it. The moment it merges
+even one row, three existing machine checks fire, no prose needed:
+
+1. The sheet now has a `keyMap` entry — `sheet.yml` must declare `under_key`
+   for that sheet, or the build hard-fails naming the sheet (the exact same
+   gate `ansible`'s `{{ var }}` binding already trips).
+2. `unusedProjectParams` (`import --spec`'s report) names every `sheet.yml`
+   entry keyed by the now-removed env-var row — delete them or fold their
+   `description`/`out_of_scope`/`remarks` into the merged row's own entry.
+3. The merged row goes through the ordinary strict-metadata gate like any
+   other row — an undescribed row still fails the build with a paste-able
+   scaffold.
 
 `instances:` at the top of `build.yml` is the project's ordered environment
 list, and every sheet's default. A sheet whose own environment set genuinely

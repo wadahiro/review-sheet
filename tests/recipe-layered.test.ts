@@ -4,10 +4,14 @@
 // by tests/recipe-ansible.test.ts (the three examples' input.json comparison
 // already exercises the delegation).
 
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, beforeEach } from "bun:test";
 import { getRecipe, type RecipeIO } from "../src/recipe";
 import "../src/recipes/index";
 import type { ValueLayer } from "../src/assemble";
+import { stubNonBuiltInProviders } from "./only-builtin-providers.js";
+import { assembleFromSpec } from "../src/assemble-spec";
+import { loadBuildSpec } from "../src/spec";
+import type { InstanceParameter, SimpleParameter } from "../src/types";
 
 function layeredRecipe() {
   const r = getRecipe("layered");
@@ -338,5 +342,286 @@ describe("layered recipe: include/exclude apply to the final (post-transform) ke
       console.warn = original;
     }
     expect(warnings.join("\n")).toContain("nope_*");
+  });
+});
+
+// T6: static_files' opt-in `substitution:` declaration (see
+// SKILL.md) — a regex that recognizes a value as a reference
+// into the sheet's own base/overlay layers and merges it in, using the SAME
+// keyMap/under_key vocabulary the "ansible" recipe already uses for
+// `{{ var }}`. PoC-shaped fixture: one whole-value reference (merges), one
+// composed reference (stays embedded, gains a ref site on the var's own
+// row), one dangling reference (stays embedded, warns), one plain literal
+// (untouched).
+describe("layered recipe: static_files substitution (T6 — opt-in reference merge)", () => {
+  // keycloak-config-cli's own syntax — same PATTERN as tests/substitution.test.ts.
+  const PATTERN = String.raw`\$\(env:([A-Za-z_][A-Za-z0-9_]*)\)`;
+
+  const files: Record<string, string> = {
+    "/r/default.env": "SSO_SAML_HOST=sso.example.com\n",
+    "/r/poc.yml": [
+      "ssoSessionIdleTimeout: $(env:SSO_SESSION_IDLE_TIMEOUT)",
+      "redirectUris:",
+      "  - https://$(env:SSO_SAML_HOST)/saml/acs",
+      "pipelineSecret: $(env:PIPELINE_SECRET)",
+      "sslRequired: external",
+      "",
+    ].join("\n"),
+  };
+  const io: RecipeIO = {
+    readFile: (p) => files[p] ?? null,
+    specDir: "/r",
+    resolve: (p) => `/r/${p.split("/").pop()}`,
+    // SSO_SESSION_IDLE_TIMEOUT lives only in the "local" overlay — a
+    // whole-value reference resolves via base OR overlay (see
+    // substitution.ts's resolvesInLayers), and this is the shape the design
+    // doc's own PoC example uses (a per-environment session timeout).
+    instances: ["local"],
+  };
+
+  function load(withSubstitution: boolean) {
+    return layeredRecipe().load(
+      {
+        name: "realm",
+        recipe: "layered",
+        defaults: "default.env",
+        overlays: { local: "local.env" },
+        static_files: [{ path: "poc.yml", ...(withSubstitution ? { substitution: { pattern: PATTERN } } : {}) }],
+      },
+      io
+    );
+  }
+
+  const localFiles: Record<string, string> = { ...files, "/r/local.env": "SSO_SESSION_IDLE_TIMEOUT=300\n" };
+  const ioWithLocal: RecipeIO = { ...io, readFile: (p) => localFiles[p] ?? null };
+
+  function loadWithLocal(withSubstitution: boolean) {
+    return layeredRecipe().load(
+      {
+        name: "realm",
+        recipe: "layered",
+        defaults: "default.env",
+        overlays: { local: "local.env" },
+        static_files: [{ path: "poc.yml", ...(withSubstitution ? { substitution: { pattern: PATTERN } } : {}) }],
+      },
+      ioWithLocal
+    );
+  }
+
+  it("row 2 — merges the whole-value reference into a keyMap entry, keyed by the field path, and drops the embedded row", () => {
+    const si = loadWithLocal(true);
+    expect(si.embedded.map((e) => e.key)).not.toContain("ssoSessionIdleTimeout");
+    expect(si.keyMap).toEqual([{ boundKey: "ssoSessionIdleTimeout", variable: "SSO_SESSION_IDLE_TIMEOUT" }]);
+  });
+
+  it("row 2 — the merged row's ref site is filed under the VARIABLE, pointing at the static file", () => {
+    const si = loadWithLocal(true);
+    const rs = si.referenceSites?.find((r) => r.variable === "SSO_SESSION_IDLE_TIMEOUT");
+    expect(rs).toBeDefined();
+    expect(rs!.sites).toEqual([
+      {
+        file: "/r/poc.yml",
+        line: 1,
+        path: "ssoSessionIdleTimeout",
+        ref: "$(env:SSO_SESSION_IDLE_TIMEOUT)",
+        anchor: "$(env:SSO_SESSION_IDLE_TIMEOUT)",
+      },
+    ]);
+  });
+
+  it("row 4 — a composed value's row stays embedded, keyed by its structural path, AND the referenced variable's row gets a checked ref site", () => {
+    const si = loadWithLocal(true);
+    expect(si.embedded.map((e) => e.key)).toContain("redirectUris[0]");
+    const rs = si.referenceSites?.find((r) => r.variable === "SSO_SAML_HOST");
+    expect(rs).toBeDefined();
+    expect(rs!.sites[0].ref).toBe("$(env:SSO_SAML_HOST)");
+    expect(rs!.sites[0].path).toBe("redirectUris[0]");
+  });
+
+  it("row 5 — a dangling reference survives embedded, unmerged, with a warning naming the missing variable", () => {
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (m: string) => warnings.push(m);
+    let si: ReturnType<typeof loadWithLocal>;
+    try {
+      si = loadWithLocal(true);
+    } finally {
+      console.warn = original;
+    }
+    expect(si.embedded.map((e) => e.key)).toContain("pipelineSecret");
+    expect(warnings.join("\n")).toContain("PIPELINE_SECRET");
+  });
+
+  it("row 1 — a plain literal is left completely untouched", () => {
+    const si = loadWithLocal(true);
+    const literal = si.embedded.find((e) => e.key === "sslRequired");
+    expect(literal?.value).toBe("external");
+  });
+
+  it("emits one summary tally line for the sheet, naming merged/composed/dangling counts", () => {
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (m: string) => warnings.push(m);
+    try {
+      loadWithLocal(true);
+    } finally {
+      console.warn = original;
+    }
+    const tally = warnings.find((w) => w.includes("substitution:") && w.includes("merged,"));
+    expect(tally).toBeDefined();
+    expect(tally).toContain("1 merged, 1 composed left embedded, 1 dangling");
+  });
+
+  it("opt-in guarantee: with no substitution: declared, the static file is read exactly as before (no keyMap, no referenceSites)", () => {
+    const withoutSub = loadWithLocal(false);
+    expect(withoutSub.keyMap).toBeUndefined();
+    expect(withoutSub.referenceSites).toBeUndefined();
+    expect(withoutSub.embedded.map((e) => e.key).sort()).toEqual(
+      ["pipelineSecret", "redirectUris[0]", "sslRequired", "ssoSessionIdleTimeout"].sort()
+    );
+    // And the WITH-substitution run must not have touched anything this run
+    // didn't also produce, other than the merge itself — same literal/
+    // composed/dangling rows survive unchanged either way.
+    const withSub = loadWithLocal(true);
+    expect(withSub.embedded.find((e) => e.key === "sslRequired")).toEqual(
+      withoutSub.embedded.find((e) => e.key === "sslRequired")
+    );
+  });
+});
+
+// T6 (ansible reachability): ansible.ts delegates static_files reading to
+// layeredRecipe.load(), but validates a sheet's OWN fields against its OWN
+// schema (spec.ts validates per-recipe, never against a delegate's schema —
+// see spec.ts's per-sheet loop) — and ansible's static_files item schema
+// (recipes/ansible.ts) was deliberately NOT extended with `substitution`.
+// `substitution:` is therefore unreachable from an `ansible` sheet: declaring
+// it is rejected at spec-validation time, before ansibleRecipe.load() (and
+// therefore layeredRecipe.load()) ever runs.
+describe("layered recipe: substitution is NOT reachable from the ansible recipe (T6 scope decision)", () => {
+  const SPEC_PATH = "/r/build.yml";
+  const BUILD_YML = `
+version: 1
+instances: [local]
+sheets:
+  - name: app
+    recipe: ansible
+    defaults: defaults.yml
+    static_files:
+      - path: poc.yml
+        substitution:
+          pattern: '\\$\\(env:([A-Za-z_][A-Za-z0-9_]*)\\)'
+`;
+  const files: Record<string, string> = {
+    [SPEC_PATH]: BUILD_YML,
+    "/r/defaults.yml": "kc_hostname: localhost\n",
+    "/r/poc.yml": "sslRequired: external\n",
+  };
+  const readFile = (p: string): string | null => files[p] ?? null;
+
+  it("rejects the field as unknown for the ansible recipe's own static_files schema", () => {
+    expect(() => loadBuildSpec(SPEC_PATH, { readFile })).toThrow(/substitution/);
+  });
+});
+
+// T6 end-to-end: the migration signal (design's Q7) — the moment a sheet
+// gains a keyMap entry (via substitution merging one), assemble.ts's existing
+// "keyMap without under_key" hard error fires exactly as it does for
+// ansible's `{{ var }}` binding. This is not this recipe's own check —
+// proving it fires end to end (through the real spec -> assembleFromSpec
+// path) is the point.
+describe("layered recipe: substitution end to end via assembleFromSpec (T6 — the under_key migration signal)", () => {
+  beforeEach(stubNonBuiltInProviders);
+
+  const SPEC_PATH = "/r/build.yml";
+  const BUILD_YML = `
+version: 1
+instances: [local]
+enrich:
+  project: sheet.yml
+sheets:
+  - name: realm
+    recipe: layered
+    defaults: default.env
+    overlays: { local: local.env }
+    static_files:
+      - path: poc.yml
+        substitution:
+          pattern: '\\$\\(env:([A-Za-z_][A-Za-z0-9_]*)\\)'
+`;
+  const POC_YML = [
+    "ssoSessionIdleTimeout: $(env:SSO_SESSION_IDLE_TIMEOUT)",
+    "sslRequired: external",
+    "",
+  ].join("\n");
+
+  const NO_UNDER_KEY_PROJECT = `
+categories: [Realm]
+params:
+  sslRequired:
+    category: Realm
+    description: SSL requirement
+`;
+
+  const WITH_UNDER_KEY_PROJECT = `
+under_key:
+  id: env_var
+  label: { en: "Env var", ja: "環境変数" }
+categories: [Realm]
+params:
+  ssoSessionIdleTimeout:
+    category: Realm
+    description: Session idle timeout
+  sslRequired:
+    category: Realm
+    description: SSL requirement
+`;
+
+  function filesWith(projectYaml: string): Record<string, string> {
+    return {
+      [SPEC_PATH]: BUILD_YML,
+      "/r/sheet.yml": projectYaml,
+      "/r/default.env": "SSO_SESSION_IDLE_TIMEOUT=1800\n",
+      "/r/local.env": "SSO_SESSION_IDLE_TIMEOUT=300\n",
+      "/r/poc.yml": POC_YML,
+    };
+  }
+
+  it("fails, naming the sheet, when sheet.yml declares no under_key", () => {
+    const readFile = (p: string): string | null => filesWith(NO_UNDER_KEY_PROJECT)[p] ?? null;
+    const spec = loadBuildSpec(SPEC_PATH, { readFile });
+    expect(() => assembleFromSpec(spec, { readFile, specDir: "/r" })).toThrow(/"realm".*keyMap.*under_key/);
+  });
+
+  it("succeeds once under_key is declared — the merged row is keyed by the field path, carries the under_key extra, and a ref additional source", () => {
+    const readFile = (p: string): string | null => filesWith(WITH_UNDER_KEY_PROJECT)[p] ?? null;
+    const spec = loadBuildSpec(SPEC_PATH, { readFile });
+    const input = assembleFromSpec(spec, { readFile, specDir: "/r" });
+
+    const allParams = input.sheets[0].categories.flatMap((c) => c.params ?? []);
+    expect(allParams.map((p) => p.key).sort()).toEqual(["sslRequired", "ssoSessionIdleTimeout"]);
+
+    const merged = allParams.find((p) => p.key === "ssoSessionIdleTimeout") as InstanceParameter;
+    // Pattern B: SSO_SESSION_IDLE_TIMEOUT is set in both defaults and the
+    // local overlay, so the merged row still carries its per-instance shape.
+    expect(merged.origin).toBe("overlay");
+    expect(merged.extra?.env_var).toBe("SSO_SESSION_IDLE_TIMEOUT");
+    expect(merged.additional_sources).toEqual([
+      {
+        file: "/r/poc.yml",
+        line: 1,
+        path: "ssoSessionIdleTimeout",
+        ref: "$(env:SSO_SESSION_IDLE_TIMEOUT)",
+        anchor: "$(env:SSO_SESSION_IDLE_TIMEOUT)",
+      },
+    ]);
+
+    // The un-referenced literal is unaffected by any of this.
+    const literal = allParams.find((p) => p.key === "sslRequired") as SimpleParameter;
+    expect(literal.origin).toBe("embedded");
+    expect(literal.value).toBe("external");
+
+    // The under_key column itself is now on the model, same mechanism
+    // ansible's own {{ var }} binding uses.
+    expect(input.columns).toEqual([{ field: "env_var", header: "Env var", place: "under_key" }]);
   });
 });

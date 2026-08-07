@@ -1,8 +1,10 @@
 // Layered recipe: the IaC-agnostic core every "one base file + per-instance
-// overlay files" project shape reduces to — no Jinja2, no deployed_path, no
-// keyMap (every row keeps its extracted identity as its key — see
-// assemble.ts's SheetInputs.keyMap; a plain base+overlay layer has no
-// template to derive a product key from). Split out of "ansible" (see that file's module
+// overlay files" project shape reduces to — no Jinja2, no deployed_path. Every
+// row keeps its extracted identity as its key (see assemble.ts's
+// SheetInputs.keyMap; a plain base+overlay layer has no template to derive a
+// product key from) UNLESS a static file's own `substitution:` declaration
+// (see below) recognizes and merges it — the one, opt-in exception. Split out
+// of "ansible" (see that file's module
 // doc for the thin specialization it keeps on top of this) because a real
 // share of PoC use never touched any Ansible concept at all: a plain
 // base+overlay `.env` set (a Keycloak realm's non-Ansible config) and a
@@ -40,13 +42,25 @@
 // `include`/`exclude` (src/keyglob.ts) apply to the FINAL (post-transform)
 // key, across every source this recipe reads — same semantics "ansible" has
 // always had, just shared here so both recipes mean the same thing by it.
+//
+// A static file may also declare `substitution: { pattern }` (src/substitution.ts):
+// an opt-in regex that recognizes a value as a reference into the sheet's own
+// base/overlay layers (e.g. keycloak-config-cli's `$(env:X)`) and, where it
+// safely can, merges the static-file row into the row the reference points
+// at — see substitution.ts's module doc for the five-way classification. This
+// is the one way `layered` CAN produce a `keyMap` entry (previously never —
+// see the historical note that used to sit here): the merge behaves exactly
+// like the "ansible" recipe's own `{{ var }}` -> product-key binding
+// (deliberate convergence, see the design's Q1), it is just recognized from a
+// value's TEXT instead of a template's parse tree.
 
 import { extractFile, type Format } from "../extract.js";
 import type { ExtractOptions } from "../parser.js";
 import { registerRecipe, type SheetRecipe, type RecipeIO, type JsonValue } from "../recipe.js";
-import type { SheetInputs, ExtractedMap, EmbeddedEntry, ValueLayer } from "../assemble.js";
+import type { SheetInputs, ExtractedMap, EmbeddedEntry, KeyMapEntry, ValueLayer } from "../assemble.js";
 import { makeKeySelector, type KeySelector } from "../keyglob.js";
 import { makeKeyTransformer, selectKeySource, keyTransformSchema, type KeyTransform } from "../keytransform.js";
+import { compileSubstitution, bindReferences, type ReferenceSite } from "../substitution.js";
 
 export type SourceSpec = { path: string; format?: Format; key?: KeyTransform };
 
@@ -64,6 +78,18 @@ const sourceSchema = {
 
 const sourceOrListSchema = { oneOf: [sourceSchema, { type: "array", items: sourceSchema, minItems: 1 }] };
 
+// `pattern` is the only field: see substitution.ts's compileSubstitution for
+// the "exactly one capturing group" check — that is a runtime validation
+// (the group count depends on the regex text, ajv can't check it), not a
+// schema one. additionalProperties: false, same spec-strictness rule as
+// everywhere else — a typo'd field here must not silently do nothing.
+const substitutionSchema = {
+  type: "object",
+  required: ["pattern"],
+  properties: { pattern: { type: "string" } },
+  additionalProperties: false,
+};
+
 const schema = {
   type: "object",
   properties: {
@@ -74,7 +100,12 @@ const schema = {
       items: {
         type: "object",
         required: ["path"],
-        properties: { path: { type: "string" }, format: { type: "string" }, key: keyTransformSchema },
+        properties: {
+          path: { type: "string" },
+          format: { type: "string" },
+          key: keyTransformSchema,
+          substitution: substitutionSchema,
+        },
         additionalProperties: false,
       },
     },
@@ -265,14 +296,18 @@ export function buildMapFromSources(
   return out;
 }
 
-type StaticFileSpec = { path: string; format?: Format; key?: KeyTransform };
+type SubstitutionFieldSpec = { pattern: string };
+
+type StaticFileSpec = { path: string; format?: Format; key?: KeyTransform; substitution?: SubstitutionFieldSpec };
 
 function staticFileSpecs(v: JsonValue | undefined): StaticFileSpec[] {
   return asArray(v).map((item) => {
     const o = asObject(item);
     const format = typeof o.format === "string" ? (o.format as Format) : undefined;
     const key = o.key === undefined ? undefined : (o.key as unknown as KeyTransform);
-    return { path: asString(o.path, "static_files[].path"), format, key };
+    const substitution =
+      o.substitution === undefined ? undefined : { pattern: asString(asObject(o.substitution).pattern, "static_files[].substitution.pattern") };
+    return { path: asString(o.path, "static_files[].path"), format, key, substitution };
   });
 }
 
@@ -280,22 +315,45 @@ function staticFileSpecs(v: JsonValue | undefined): StaticFileSpec[] {
 // leaf key) — unlike defaults/overlays, whose entries are historically flat
 // Ansible-style variables keyed by their leaf name. Preserves the "ansible"
 // recipe's own long-standing static_files behaviour when no `key` is given.
+//
+// Reference substitution runs PER FILE, right here, rather than as a
+// separate pass over the merged embedded list — bindReferences (substitution.ts)
+// needs to know exactly which entries came from ONE substitution-declaring
+// file, and only that file's entries should ever be classified/merged; a
+// file with no `substitution:` field is untouched, exactly as before this
+// feature existed (the byte-identical-when-unused guarantee — see
+// SKILL.md's "Reference substitution in static_files").
 function buildEmbeddedFromStaticFiles(
   io: RecipeIO,
   specs: StaticFileSpec[],
   selector: KeySelector,
   extractOptions: ExtractOptions | undefined,
+  baseMap: ExtractedMap,
+  overlayLayers: Extract<ValueLayer, { kind: "overlay" }>[],
   warn: (message: string) => void
-): EmbeddedEntry[] {
-  const out: EmbeddedEntry[] = [];
+): { embedded: EmbeddedEntry[]; keyMap: KeyMapEntry[]; referenceSites: ReferenceSite[] } {
+  const embedded: EmbeddedEntry[] = [];
+  const keyMap: KeyMapEntry[] = [];
+  // Merged PER VARIABLE across every substitution-declaring static file in
+  // this sheet — two different static files could each reference the same
+  // layer key (unlikely, but nothing rules it out), and a variable's
+  // referenceSites entry must carry every site regardless of which file
+  // found it (assemble.ts's buildDrafts attaches by variable, not by file).
+  const referenceSitesByVariable = new Map<string, ReferenceSite["sites"]>();
+  let mergedTotal = 0;
+  let composedTotal = 0;
+  let danglingTotal = 0;
+  let sawSubstitution = false;
+
   for (const sf of specs) {
     const { file, content } = readRequired(io, sf.path, "static file");
     const transformer = sf.key ? makeKeyTransformer(sf.key) : undefined;
+    const fileEntries: EmbeddedEntry[] = [];
     for (const e of extractFile(content, file, sf.format, extractOptions)) {
       const key = transformer ? transformer.apply(selectKeySource(sf.key!.from, e.key, e.source.path)) : (e.source.path ?? e.key);
       if (key === undefined) continue;
       if (!selector.select(key)) continue;
-      out.push({ key, value: e.value, source: { file, line: e.source.line, path: e.source.path } });
+      fileEntries.push({ key, value: e.value, source: { file, line: e.source.line, path: e.source.path } });
     }
     if (transformer) {
       const unmatched = transformer.unmatchedDropPatterns();
@@ -303,8 +361,41 @@ function buildEmbeddedFromStaticFiles(
         warn(`static file: key transform pattern matched nothing in ${file}: ${unmatched.join(", ")}`);
       }
     }
+
+    if (!sf.substitution) {
+      embedded.push(...fileEntries);
+      continue;
+    }
+
+    // compileSubstitution throws (naming the capture-group count found) on a
+    // malformed pattern — a build.yml authoring mistake, propagated straight
+    // up as a load()-time error like every other spec validation in this file.
+    sawSubstitution = true;
+    const compiled = compileSubstitution(sf.substitution.pattern);
+    const result = bindReferences({ embedded: fileEntries, baseMap, overlayLayers, compiled });
+    embedded.push(...result.embedded);
+    keyMap.push(...result.keyMap);
+    for (const site of result.referenceSites) {
+      const existing = referenceSitesByVariable.get(site.variable);
+      if (existing) existing.push(...site.sites);
+      else referenceSitesByVariable.set(site.variable, [...site.sites]);
+    }
+    for (const w of result.warnings) warn(w);
+    mergedTotal += result.tally.merged;
+    composedTotal += result.tally.composed;
+    danglingTotal += result.tally.dangling + result.tally.danglingComposed;
   }
-  return out;
+
+  // One summary line for the whole sheet, not one per file — a reader wants
+  // "what did substitution do to this sheet", and per-file bindReferences
+  // warnings (dangling references, multi-backer merges, matched-nothing)
+  // already named exactly where each individual finding came from.
+  if (sawSubstitution) {
+    warn(`substitution: ${mergedTotal} merged, ${composedTotal} composed left embedded, ${danglingTotal} dangling`);
+  }
+
+  const referenceSites: ReferenceSite[] = [...referenceSitesByVariable].map(([variable, sites]) => ({ variable, sites }));
+  return { embedded, keyMap, referenceSites };
 }
 
 export const layeredRecipe: SheetRecipe = {
@@ -345,7 +436,15 @@ export const layeredRecipe: SheetRecipe = {
       })
     );
 
-    const embedded = buildEmbeddedFromStaticFiles(io, staticFileSpecs(sheetSpec.static_files), selector, io.extractOptions, warn);
+    const staticFilesResult = buildEmbeddedFromStaticFiles(
+      io,
+      staticFileSpecs(sheetSpec.static_files),
+      selector,
+      io.extractOptions,
+      baseMap,
+      overlayLayers,
+      warn
+    );
 
     // A pattern that matched nothing means the filter is not doing what its
     // author thinks — most likely rows are missing from the sheet.
@@ -360,7 +459,9 @@ export const layeredRecipe: SheetRecipe = {
       ...(filePath ? { filePath } : {}),
       instances: io.instances,
       layers: [{ kind: "base", entries: baseMap }, ...overlayLayers],
-      embedded,
+      embedded: staticFilesResult.embedded,
+      ...(staticFilesResult.keyMap.length > 0 ? { keyMap: staticFilesResult.keyMap } : {}),
+      ...(staticFilesResult.referenceSites.length > 0 ? { referenceSites: staticFilesResult.referenceSites } : {}),
     };
   },
 };

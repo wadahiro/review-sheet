@@ -239,6 +239,104 @@ describe("validateInput", () => {
     };
     expect(() => validateInput(data)).toThrow();
   });
+
+  it("accepts a ref-only additional_sources entry on an instance parameter", () => {
+    const data = {
+      sheets: [
+        {
+          name: "Test",
+          categories: [
+            {
+              name: "Category 1",
+              params: [
+                {
+                  key: "param1",
+                  instances: [{ name: "dev", value: "val1" }],
+                  additional_sources: [
+                    { file: "poc.yml", path: "ssoSessionIdleTimeout", ref: "$(env:SSO_SESSION_IDLE_TIMEOUT)" },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const result = validateInput(data);
+    expect(result.sheets[0].categories[0].params![0].additional_sources).toHaveLength(1);
+  });
+
+  it("rejects a non-ref additional_sources entry on an instance parameter", () => {
+    const data = {
+      sheets: [
+        {
+          name: "Test",
+          categories: [
+            {
+              name: "Category 1",
+              params: [
+                {
+                  key: "param1",
+                  instances: [{ name: "dev", value: "val1" }],
+                  additional_sources: [{ file: "other.yml", line: 3 }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(() => validateInput(data)).toThrow();
+  });
+
+  it("accepts mixed ref and non-ref additional_sources entries on a simple parameter", () => {
+    const data = {
+      sheets: [
+        {
+          name: "Test",
+          categories: [
+            {
+              name: "Category 1",
+              params: [
+                {
+                  key: "param1",
+                  value: "val1",
+                  additional_sources: [
+                    { file: "same-value.yml", line: 2 },
+                    { file: "poc.yml", path: "x", ref: "$(env:X)" },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const result = validateInput(data);
+    expect(result.sheets[0].categories[0].params![0].additional_sources).toHaveLength(2);
+  });
+
+  it("accepts ref inside a source def (primary source)", () => {
+    const data = {
+      sheets: [
+        {
+          name: "Test",
+          categories: [
+            {
+              name: "Category 1",
+              params: [
+                { key: "param1", value: "val1", source: { file: "f.yml", ref: "$(env:X)" } },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const result = validateInput(data);
+    expect((result.sheets[0].categories[0].params![0] as { source?: { ref?: string } }).source?.ref).toBe(
+      "$(env:X)"
+    );
+  });
 });
 
 describe("validateReview", () => {

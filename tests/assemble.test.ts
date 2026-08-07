@@ -1076,3 +1076,116 @@ sheets:
     ).toThrow(/typo sheet name/);
   });
 });
+
+// T5: SheetInputs.referenceSites — a recipe's substitution scan (src/substitution.ts)
+// hands assembleSheets() a variable-keyed list of reference sites, and
+// buildDrafts() attaches them (as `additional_sources`) to whatever row that
+// variable ends up producing. Uses a `ref: string` marker on each site so
+// verify/apply (T2/T3) can tell it apart from a same-value additional source
+// — irrelevant to attachment itself, so these fixtures just carry `ref` for
+// realism, not because assemble.ts inspects it.
+describe("SheetInputs.referenceSites: attaching additional_sources from a substitution scan", () => {
+  const refSite = (file: string, ref: string) => ({ file, line: 3, anchor: ref, path: ref, ref });
+
+  it("a Pattern A row (base-only key) carries the sites", () => {
+    const sites = [refSite("poc.yml", "$(env:DB_HOST)")];
+    const inputs: SheetInputs[] = [
+      {
+        name: "app",
+        instances: [],
+        layers: [{ kind: "base", entries: map([["db_host", entry("localhost")]]) }],
+        embedded: [],
+        referenceSites: [{ variable: "db_host", sites }],
+      },
+    ];
+    const result = assembleSheets(inputs, baseOpts());
+    const dbHost = result.sheets[0].categories[0].params!.find((p) => p.key === "db_host") as SimpleParameter;
+    expect(dbHost.origin).toBe("common");
+    expect(dbHost.additional_sources).toEqual(sites);
+  });
+
+  it("a Pattern B row (base + overlay) carries the sites", () => {
+    const sites = [refSite("poc.yml", "$(env:DB_HOST)")];
+    const inputs: SheetInputs[] = [
+      {
+        name: "app",
+        instances: ["staging"],
+        layers: [
+          { kind: "base", entries: map([["db_host", entry("localhost")]]) },
+          { kind: "overlay", instance: "staging", entries: map([["db_host", entry("staging-db")]]) },
+        ],
+        embedded: [],
+        referenceSites: [{ variable: "db_host", sites }],
+      },
+    ];
+    const result = assembleSheets(inputs, baseOpts());
+    const dbHost = result.sheets[0].categories[0].params!.find((p) => p.key === "db_host") as InstanceParameter;
+    expect(dbHost.origin).toBe("overlay");
+    expect(dbHost.additional_sources).toEqual(sites);
+  });
+
+  it("an overlay-only key (never in base) carries the sites too", () => {
+    const sites = [refSite("poc.yml", "$(env:DB_PORT)")];
+    const inputs: SheetInputs[] = [
+      {
+        name: "app",
+        instances: ["staging"],
+        layers: [
+          { kind: "base", entries: map([]) },
+          { kind: "overlay", instance: "staging", entries: map([["db_port", entry("5432")]]) },
+        ],
+        embedded: [],
+        referenceSites: [{ variable: "db_port", sites }],
+      },
+    ];
+    const result = assembleSheets(inputs, baseOpts());
+    const dbPort = result.sheets[0].categories[0].params!.find((p) => p.key === "db_port") as InstanceParameter;
+    expect(dbPort.additional_sources).toEqual(sites);
+  });
+
+  it("a referenceSites entry naming a variable that produces no draft at all is a hard error", () => {
+    const inputs: SheetInputs[] = [
+      {
+        name: "app",
+        instances: [],
+        layers: [{ kind: "base", entries: map([["db_host", entry("localhost")]]) }],
+        embedded: [],
+        referenceSites: [{ variable: "no_such_variable", sites: [refSite("poc.yml", "$(env:X)")] }],
+      },
+    ];
+    expect(() => assembleSheets(inputs, baseOpts())).toThrow(/no_such_variable.*produced no draft/);
+  });
+
+  it("a keyMap'd row still gets BOTH the under_key extra and the sites", () => {
+    const boundProjectFiles: Record<string, string> = {
+      "bound-project.yml": `
+under_key:
+  id: ansible_var
+  label: { en: "Ansible variable", ja: "Ansible 変数" }
+params:
+  bound_key_mapped:
+    category: Database
+    description: Bound key via keyMap
+`,
+    };
+    const sites = [refSite("poc.yml", "$(env:KC_DB_URL)")];
+    const inputs: SheetInputs[] = [
+      {
+        name: "app",
+        instances: [],
+        layers: [{ kind: "base", entries: map([["kc_db_url", entry("jdbc:postgresql://localhost/kc")]]) }],
+        embedded: [],
+        keyMap: [{ boundKey: "bound_key_mapped", variable: "kc_db_url" }],
+        referenceSites: [{ variable: "kc_db_url", sites }],
+      },
+    ];
+    const result = assembleSheets(inputs, {
+      projectPath: "bound-project.yml",
+      readFile: (p) => boundProjectFiles[p] ?? null,
+      strictMetadata: false,
+    });
+    const mapped = result.sheets[0].categories[0].params!.find((p) => p.key === "bound_key_mapped") as SimpleParameter;
+    expect(mapped.extra?.ansible_var).toBe("kc_db_url");
+    expect(mapped.additional_sources).toEqual(sites);
+  });
+});
