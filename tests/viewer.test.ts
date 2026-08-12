@@ -580,3 +580,71 @@ describe("viewer: search scope", () => {
   });
 });
 
+
+// Anchor ids used to be built by replacing every run of non-[a-zA-Z0-9] with a
+// single "-". On the sheets this tool exists for, that is the entire category
+// name: 「接続設定」, 「認証」 and 「メモリ」 all collapsed to `nav-1--`, so the
+// nav highlighted three entries at once and a jump landed on whichever came
+// first in the document. Nothing caught it, because every fixture until now was
+// named in ASCII.
+describe("viewer: anchor ids for non-ASCII names", () => {
+  const cat = (name: string, key: string) => ({
+    name,
+    params: [{ key, value: "x", description: "d", source: { file: "d.yml", line: 1, anchor: "x" } }],
+  });
+  const JA = {
+    metadata: { generated_at: "2026-01-01T00:00:00Z" },
+    sheets: [
+      {
+        name: "設定",
+        categories: [cat("接続設定", "host"), cat("認証", "user"), cat("メモリ", "heap")],
+      },
+    ],
+  } as unknown as ParameterSheetInput;
+  const PAYLOAD = { metadata: JA.metadata, versions: [{ version: "current", sheets: JA.sheets }] };
+
+  function mount(): HTMLElement {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: PAYLOAD, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    return host;
+  }
+
+  it("gives three Japanese categories three different ids", () => {
+    const host = mount();
+    const ids = [...host.querySelectorAll("[id^='nav-']")].map((e) => e.id);
+
+    expect(ids.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("givesevery parameter row an id of its own", () => {
+    const host = mount();
+    const ids = [...host.querySelectorAll("tr[id]")].map((e) => e.id);
+
+    expect(ids.length).toBe(3);
+    expect(new Set(ids).size).toBe(3);
+  });
+
+  it("keeps the name readable in the id rather than encoding it away", () => {
+    const host = mount();
+    const ids = [...host.querySelectorAll("[id^='nav-']")].map((e) => e.id);
+
+    // Non-ASCII is legal in an HTML id and in a CSS identifier, and these ids
+    // are resolved with getElementById and never put in a URL — so percent-
+    // encoding a Japanese name would cost nine characters per character and buy
+    // nothing.
+    expect(ids.some((id) => id.includes("接続設定"))).toBe(true);
+    expect(ids.every((id) => !/%/.test(id))).toBe(true);
+  });
+
+  it("escapes only what a selector would choke on, and reversibly", () => {
+    const host = mount();
+    for (const el of [...host.querySelectorAll("[id^='nav-']")] as HTMLElement[]) {
+      expect(el.id).not.toMatch(/\s/);
+      expect(host.querySelector(`#${el.id}`)).toBe(el);
+      expect(document.getElementById(el.id)).toBe(el);
+    }
+  });
+});
