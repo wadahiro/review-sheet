@@ -1937,13 +1937,36 @@ function highlightMatch(text: string, q: string): Array<string | VNode> {
 
 // Stable DOM id for a category, shared by the rendered header and the nav jump
 // targets.
+//
+// Escaping, not stripping. Replacing every run of non-[a-zA-Z0-9] with a single
+// "-" collapsed the entire name on the sheets this tool is for: 「接続設定」,
+// 「認証」 and 「メモリ」 all became `nav-1--`, so the nav highlighted three
+// entries at once and a jump landed on whichever came first in the document.
+// The escape below is reversible and therefore injective — two different names
+// cannot produce one id — which is the property that was missing.
+//
+// Non-ASCII is left ALONE rather than percent-encoded. It is legal in an HTML
+// id and in a CSS identifier, and encoding it costs nine characters per
+// Japanese character for no gain: these ids are resolved with getElementById
+// and never appear in a URL (location.hash carries the sheet index, nothing
+// else). So a Japanese category keeps its own name in the id, and only the
+// ASCII punctuation that a CSS selector would choke on is escaped.
+//
+// `_` escapes itself, or `_5F` and a literal `_` would collide and the mapping
+// would stop being injective — which is the whole point.
+function encodeIdPart(s: string): string {
+  return s.replace(/[^A-Za-z0-9\u00A0-\uFFFF-]/g, (c) =>
+    c === "_" ? "_5F" : `_${c.codePointAt(0)!.toString(16).toUpperCase().padStart(2, "0")}`
+  );
+}
+
 function navAnchorId(sheetIndex: number, path: string): string {
-  return `nav-${sheetIndex}-${path.replace(/[^a-zA-Z0-9]+/g, "-")}`;
+  return `nav-${sheetIndex}-${encodeIdPart(path)}`;
 }
 
 // Stable DOM id for a parameter row.
 function paramAnchorId(sheetIndex: number, path: string, key: string): string {
-  return `${navAnchorId(sheetIndex, path)}--${key.replace(/[^a-zA-Z0-9]+/g, "-")}`;
+  return `${navAnchorId(sheetIndex, path)}--${encodeIdPart(key)}`;
 }
 
 // Flatten every sheet's categories (depth-first); used by the outline and search.
