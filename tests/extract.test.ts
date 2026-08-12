@@ -294,3 +294,26 @@ describe("buildInputWithReport — per-file report", () => {
     expect(input.sheets).toHaveLength(0);
   });
 });
+
+// A null scalar states that there is no value, in every format that has one:
+// YAML's `key:` with nothing after it, JSON's `"key": null`. Extracting it as
+// the four characters "null" invents a value no format means, and on a
+// machine-rendered artifact (a terraform plan writes null for every unset
+// argument) that fabrication is the bulk of the file.
+describe("extract: null scalars", () => {
+  it("does not turn a YAML key with no value into the text \"null\"", () => {
+    const entries = extractFile("a: 1\nb:\nc: 3\n", "/x.yml");
+    expect(entries.map((e) => e.key)).toEqual(["a", "c"]);
+    expect(entries.some((e) => e.value === "null")).toBe(false);
+  });
+
+  it("does not turn an explicit JSON null into the text \"null\"", () => {
+    const entries = extractFile('{"a": 1, "b": null, "c": "3"}', "/x.json");
+    expect(entries.map((e) => e.key)).toEqual(["a", "c"]);
+  });
+
+  it("still extracts the STRING \"null\", which is a real value", () => {
+    const entries = extractFile('{"a": "null"}', "/x.json");
+    expect(entries.map((e) => [e.key, e.value])).toEqual([["a", "null"]]);
+  });
+});

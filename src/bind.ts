@@ -27,7 +27,8 @@
 // possible and fall back to the explicit alias only when it must.
 
 import { parseSteps } from "./structural.js";
-import type { DictionaryBinding, Provenance } from "./metadata.js";
+import { makeKeyTransformer, type KeyTransformer } from "./keytransform.js";
+import type { DictionaryBinding, LangProvenance } from "./metadata.js";
 import { findDictionary, type DictionaryDoc, type DictionaryParam } from "./providers/dictionary.js";
 
 // How a key ended up bound, in the order bindKey() tries them:
@@ -41,6 +42,19 @@ import { findDictionary, type DictionaryDoc, type DictionaryParam } from "./prov
 //   prefix     - the raw key, with the binding's own `key_prefix` stripped,
 //                IS a dictionary key, verbatim. A project namespacing
 //                convention (`nginx_`, `httpd_`) peeled off before matching.
+//   derived    - the raw key, rewritten by the binding's own `key_steps`
+//                (metadata.ts's DictionaryBinding), IS a dictionary key,
+//                verbatim. `key_prefix` peels a fixed namespace off the
+//                front; this handles the case where the row's identity is
+//                legitimately RICHER than the dictionary's and the surplus
+//                is in the middle: a Terraform plan's
+//                `aws_lb_listener.https.ssl_policy` and
+//                `aws_lb_listener.http_redirect.ssl_policy` are two rows —
+//                two real resources — against one documented
+//                `aws_lb_listener.ssl_policy`. Below `prefix` because it is
+//                the more powerful and so the less specific statement, and
+//                above `leaf` because a caller that went to the trouble of
+//                declaring the rewrite means it.
 //   leaf       - the last identity-bearing segment of a dotted/bracketed
 //                structural path (see leafKey()) IS a dictionary key,
 //                verbatim. Handles a repeated or nested structural leaf
@@ -55,7 +69,7 @@ import { findDictionary, type DictionaryDoc, type DictionaryParam } from "./prov
 //                `Timeout` and `TimeOut` (unlikely, but not this module's
 //                problem to prevent) still prefers whichever one actually
 //                matches exactly.
-export type BindMethod = "alias" | "exact" | "prefix" | "leaf" | "normalized";
+export type BindMethod = "alias" | "exact" | "prefix" | "derived" | "leaf" | "normalized";
 
 // A resolved binding. `entry` is the dictionary's own DictionaryParam,
 // unfiltered — including `kind: "container"` entries. A container (Apache's
@@ -71,11 +85,14 @@ export type Binding = {
   entry: DictionaryParam;
   method: BindMethod;
   // The bound dictionary DOCUMENT's own provenance (providers/dictionary.ts's
-  // DictionaryDoc.provenance), carried alongside `entry` so a consumer (the
-  // dictionary metadata provider) can compute `entry.provenance ?? docProvenance
-  // ?? "community"` without re-loading or re-searching the document itself —
-  // bindKey() already had it in hand while resolving.
-  docProvenance?: Provenance;
+  // DictionaryDoc.provenance — LangProvenance, type-only change from this
+  // module's point of view: bind.ts carries it, never interprets it),
+  // carried alongside `entry` so a consumer (the dictionary metadata
+  // provider) can resolve `entry.provenance` layered over `docProvenance`
+  // per language (see providers/dictionary.ts's provenanceFor) without
+  // re-loading or re-searching the document itself — bindKey() already had
+  // it in hand while resolving.
+  docProvenance?: LangProvenance;
 };
 
 export type BindMatch = { product: string; version: string; dictKey: string };
@@ -100,7 +117,25 @@ export function isBindError(result: Binding | undefined | BindError): result is 
 // One declared dictionary binding, paired with its already-loaded document.
 // bindKey() is pure (no fs access), so loading `<product>@<version>.yml` off
 // ctx.metadataDirs stays the caller's job (see providers/dictionary.ts).
-export type BindSource = { binding: DictionaryBinding; doc: DictionaryDoc };
+export type BindSource = {
+  binding: DictionaryBinding;
+  doc: DictionaryDoc;
+  // Built once per source, NOT per bindKey() call, because a KeyTransformer is
+  // stateful: it remembers which "drop" steps never matched anything so the
+  // caller can report a rewrite that silently applied to nothing. Rebuilding
+  // it per key would reset that memory every time. bindKey() itself stays
+  // pure — it only calls apply(). Use makeBindSource() rather than building
+  // this by hand.
+  keyTransformer?: KeyTransformer;
+};
+
+// The one place a DictionaryBinding becomes a BindSource, so `key_steps` is
+// compiled identically for every caller (loadBindSources below, and tests).
+export function makeBindSource(binding: DictionaryBinding, doc: DictionaryDoc): BindSource {
+  return binding.key_steps
+    ? { binding, doc, keyTransformer: makeKeyTransformer({ steps: binding.key_steps }) }
+    : { binding, doc };
+}
 
 // The project's own `dict_key` declaration for this parameter:
 //   undefined - not declared. The alias tier is skipped; matching proceeds
@@ -119,7 +154,7 @@ export type ProjectDictKey = string | null | undefined;
 // and why this is the order. Exported so a caller building a per-method
 // tally (assemble.ts's BindingReport) enumerates every possible method
 // without re-deriving this list.
-export const BIND_METHODS: readonly BindMethod[] = ["alias", "exact", "prefix", "leaf", "normalized"];
+export const BIND_METHODS: readonly BindMethod[] = ["alias", "exact", "prefix", "derived", "leaf", "normalized"];
 const TIERS = BIND_METHODS;
 
 // The three delimiter conventions this project's key spaces actually use:
@@ -174,11 +209,12 @@ export function leafKey(key: string): string {
 // that tier does not apply to this key/binding at all (no dict_key declared,
 // key_prefix does not match, or the leaf is identical to the raw key).
 function candidateForMethod(
-  method: "alias" | "exact" | "prefix" | "leaf",
+  method: "alias" | "exact" | "prefix" | "derived" | "leaf",
   key: string,
   dictKey: ProjectDictKey,
-  binding: DictionaryBinding
+  source: BindSource
 ): string | undefined {
+  const binding = source.binding;
   switch (method) {
     case "alias":
       return typeof dictKey === "string" ? dictKey : undefined;
@@ -186,6 +222,14 @@ function candidateForMethod(
       return key;
     case "prefix":
       return binding.key_prefix && key.startsWith(binding.key_prefix) ? key.slice(binding.key_prefix.length) : undefined;
+    case "derived": {
+      // undefined when no rewrite is declared, when a "drop" step did not
+      // match, and when the rewrite is the identity — the last so a declared
+      // transform that happens to leave a key alone does not restate the
+      // `exact` tier under a different name in the report.
+      const derived = source.keyTransformer?.apply(key);
+      return derived !== undefined && derived !== key ? derived : undefined;
+    }
     case "leaf": {
       const leaf = leafKey(key);
       return leaf !== key ? leaf : undefined;
@@ -195,9 +239,9 @@ function candidateForMethod(
 
 // Every verbatim candidate (alias/exact/prefix/leaf), normalized and
 // deduplicated, for the normalized tier.
-function normalizedCandidates(key: string, dictKey: ProjectDictKey, binding: DictionaryBinding): string[] {
-  const raw = (["alias", "exact", "prefix", "leaf"] as const)
-    .map((m) => candidateForMethod(m, key, dictKey, binding))
+function normalizedCandidates(key: string, dictKey: ProjectDictKey, source: BindSource): string[] {
+  const raw = (["alias", "exact", "prefix", "derived", "leaf"] as const)
+    .map((m) => candidateForMethod(m, key, dictKey, source))
     .filter((v): v is string => v !== undefined);
   return [...new Set(raw.map(normalizeKey))];
 }
@@ -266,13 +310,13 @@ export function bindKey(key: string, dictKey: ProjectDictKey, sources: readonly 
     for (const source of sources) {
       if (method === "normalized") {
         const index = normalizedIndex(source.doc);
-        for (const candidate of normalizedCandidates(key, dictKey, source.binding)) {
+        for (const candidate of normalizedCandidates(key, dictKey, source)) {
           for (const dictKeyHit of index.get(candidate) ?? []) {
             hits.push({ source, dictKeyHit });
           }
         }
       } else {
-        const candidate = candidateForMethod(method, key, dictKey, source.binding);
+        const candidate = candidateForMethod(method, key, dictKey, source);
         if (candidate !== undefined && Object.hasOwn(source.doc.parameters, candidate)) {
           hits.push({ source, dictKeyHit: candidate });
         }
@@ -321,6 +365,6 @@ export function loadBindSources(
           `(searched: ${metadataDirs.length > 0 ? metadataDirs.join(", ") : "no metadata dirs configured"})`
       );
     }
-    return { binding, doc };
+    return makeBindSource(binding, doc);
   });
 }

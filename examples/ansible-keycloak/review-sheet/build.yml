@@ -84,26 +84,23 @@ sheets:
     dictionaries:
       - product: keycloak-realm
         version: "26.7.0"
-        # NO materialize here — and the reason is the interesting part, because
-        # this dictionary IS `coverage: full` and would be allowed to.
+        # Materialized, and getting here was the whole argument. This
+        # dictionary is `coverage: full` over RealmRepresentation, but a full
+        # KEY SPACE and a fully DOCUMENTED one are different claims and only
+        # the first is what `coverage: full` asserts — so the gate refused,
+        # correctly, over 47 fields that had a product default and no product
+        # wording in any language.
         #
-        # Its field space is a real mechanical enumeration (reflection over
-        # RealmRepresentation), but its WORDS come from the admin console's
-        # message bundles, and the console does not expose every field as a
-        # form control: authentication-flow bindings, browserSecurityHeaders,
-        # the OTP policy fields, the free-form attributes map. Materializing
-        # produced 42 rows the product describes nowhere, which the
-        # strict-metadata gate then failed the build over — correctly. A full
-        # KEY SPACE and a fully DOCUMENTED one are different claims, and only
-        # the first is what `coverage: full` asserts.
-        #
-        # Filling those 42 in would mean writing descriptions no Keycloak
-        # document contains; they would belong in the dictionary marked
-        # `provenance: community` (as the eight undocumented keycloak.conf
-        # options are), and that is a decision to make deliberately, not a
-        # blank to fill so a gate goes quiet. Until then this sheet reviews
-        # what the role sets — which is the ordinary case for a dictionary
-        # whose product ships no per-field documentation.
+        # Forty-seven became thirteen without writing a word of it: the words
+        # were in the admin console all along, behind wrappers that derive
+        # their message key from a prop and behind three map-typed fields whose
+        # contents were collapsed into an opaque blob. `browserSecurityHeaders`
+        # alone was hiding seven security headers that Keycloak documents in
+        # both languages. The remaining thirteen are in
+        # metadata/keycloak-realm@26.7.0.overlay.yml under
+        # `provenance: community`, and the header there records, per field, why
+        # the product says nothing — which is the part worth keeping.
+        materialize: true
 
   # The clients that realm serves — one per protocol. A third sheet rather than
   # more rows on the realm one because five field names (enabled, description,

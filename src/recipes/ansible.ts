@@ -65,15 +65,27 @@ import { structuredFormat } from "../structural.js";
 import { baseFileName } from "../jinja2.js";
 import { registerRecipe, type SheetRecipe, type RecipeIO, type JsonValue } from "../recipe.js";
 import type { SheetInputs, ExtractedMap, ExtractedEntry, ValueLayer, EmbeddedEntry, KeyMapEntry } from "../assemble.js";
-import { layeredRecipe } from "./layered.js";
+import { layeredRecipe, sourceOrListSchema } from "./layered.js";
 
 const schema = {
   type: "object",
   required: ["defaults"],
   properties: {
-    defaults: { type: "string" },
+    // `defaults`/`overlays` take layered.ts's SHARED shapes, not copies of
+    // them: `load` below hands both straight to `layeredRecipe.load`, which
+    // has accepted a list of sources for a while, so declaring `{ type:
+    // "string" }` here restricted nothing — it only refused, with a "must be
+    // string" message, a declaration the code would have handled. (Found by a
+    // sheet that genuinely needs two: a systemd unit template interpolates
+    // both the role's defaults/ and its vars/.)
+    defaults: sourceOrListSchema,
     template: { type: "string" },
     deployed_path: { type: "string" },
+    // `static_files` deliberately does NOT take layered's shape. Its
+    // per-file `substitution:` is a scope decision (T6) — unreachable from an
+    // ansible sheet on purpose, guarded by a test in recipe-layered.test.ts —
+    // so this one stays a narrower local schema, and narrowing is the point
+    // rather than drift. Widen it only by revisiting that decision.
     static_files: {
       type: "array",
       items: {
@@ -83,7 +95,7 @@ const schema = {
         additionalProperties: false,
       },
     },
-    overlays: { type: "object", additionalProperties: { type: "string" } },
+    overlays: { type: "object", additionalProperties: sourceOrListSchema },
     include: { type: "array", items: { type: "string" } },
     exclude: { type: "array", items: { type: "string" } },
     // under_key (the backing-variable column) lives in the project metadata

@@ -35,6 +35,7 @@ type Raw = {
   type: string;
   deprecated: boolean;
   default?: string | number | boolean | unknown[];
+  keys_expanded?: boolean;
   label?: LangText;
   description?: LangText;
   group?: LangText;
@@ -106,7 +107,11 @@ for (const raw of Object.values(doc.parameters)) {
   // group would pin the tabs to one language while every other tab in this
   // project reads English.
   if (raw.group?.en || raw.group?.ja) entry.group = raw.group.en ?? raw.group.ja;
-  if (isContainer(raw.type)) {
+  // A map whose keys the extractor turned into rows of their own (it says so
+  // with keys_expanded, having checked it rather than left it to convention) is
+  // a container in the same sense: browserSecurityHeaders is not a setting, its
+  // seven keys are.
+  if (isContainer(raw.type) || raw.keys_expanded === true) {
     entry.kind = "container";
     containers++;
   }

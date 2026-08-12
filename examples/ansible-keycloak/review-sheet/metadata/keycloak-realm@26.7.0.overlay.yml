@@ -1,0 +1,100 @@
+# Hand-authored overlay for keycloak-realm@26.7.0.yml — never written by
+# build-realm-dict.ts, and never touched by regenerating it. The loader
+# (findDictionary(), src/providers/dictionary.ts) merges this onto the
+# generated base and fails loudly if the base ever starts supplying a language
+# this file also fills.
+#
+# Every key below is a realm field that HAS a product default and NO product
+# wording, in either language. That combination is what blocks `materialize`:
+# the sheet would print a default it cannot explain. There are thirteen, down
+# from forty-seven, and the reduction came from the extractor rather than from
+# writing prose — the remainder is what the admin console genuinely never says.
+#
+# Which is worth recording, because "the console has no text for it" has three
+# different causes here and only the last is a shortcoming of this file:
+#
+#   - the seven Bindings flow fields: the console edits all seven through ONE
+#     generic modal whose target field the admin picks at runtime, so there are
+#     not seven controls to carry seven help texts. `browserFlowHelp` does
+#     exist in the message bundle, but it belongs to a client's
+#     authenticationFlowBindingOverrides.browser — borrowing it would put a
+#     confident wrong sentence on a review sheet.
+#   - bruteForceProtected / permanentLockout: one composite mode select writes
+#     both fields at once, and it is labelled for the mode, not the fields.
+#   - the three attributes.* keys and notBefore: the console does not expose
+#     them as realm settings at all. The probe found them; nothing describes
+#     them.
+#
+# So this is community text under `provenance: community`, and the viewer will
+# label it as such — not a translation of anything official, and deliberately
+# not phrased as if it were.
+product: keycloak-realm
+version: "26.7.0"
+provenance: community
+parameters:
+  # ---- Authentication flow bindings --------------------------------------
+  # Each names the built-in flow Keycloak runs for one entry point. The value
+  # is a flow ALIAS, so a realm that has copied a built-in flow to customise it
+  # points here at the copy — which is exactly why these are worth reviewing.
+  browserFlow:
+    description:
+      en: The authentication flow Keycloak runs for an interactive browser login to this realm.
+      ja: このレルムへのブラウザーによる対話的ログインで実行される認証フロー。
+  registrationFlow:
+    description:
+      en: The flow Keycloak runs when a user registers an account themselves.
+      ja: ユーザーが自分でアカウントを登録するときに実行されるフロー。
+  directGrantFlow:
+    description:
+      en: "The flow Keycloak runs for a Direct Access Grant — the OAuth 2.0 Resource Owner Password Credentials token request, where credentials reach Keycloak through the client rather than through a browser."
+      ja: "Direct Access Grant（OAuth 2.0 リソースオーナーパスワードクレデンシャル）のトークン要求で実行されるフロー。認証情報はブラウザーではなくクライアント経由で渡される。"
+  resetCredentialsFlow:
+    description:
+      en: The flow Keycloak runs when a user asks to reset a forgotten credential.
+      ja: ユーザーが忘れた認証情報のリセットを要求したときに実行されるフロー。
+  clientAuthenticationFlow:
+    description:
+      en: The flow Keycloak runs to authenticate the CLIENT itself on the token endpoint — not the user.
+      ja: トークンエンドポイントでクライアント自身を認証するために実行されるフロー。ユーザーの認証ではない。
+  dockerAuthenticationFlow:
+    description:
+      en: The flow Keycloak runs for the Docker registry v2 authentication protocol.
+      ja: Docker レジストリー v2 認証プロトコルで実行されるフロー。
+  firstBrokerLoginFlow:
+    description:
+      en: The flow Keycloak runs the first time a user authenticates through an identity provider, before an account is linked to or created for them.
+      ja: アイデンティティープロバイダー経由で初めて認証されたときに実行されるフロー。アカウントの紐付けまたは作成の前に実行される。
+
+  # ---- Brute force detection ---------------------------------------------
+  # The console shows these two as one "lockout mode" select, which is why
+  # neither field is labelled on its own.
+  bruteForceProtected:
+    description:
+      en: Whether the realm counts failed login attempts per user and locks the account once the failure threshold is reached.
+      ja: ユーザーごとにログイン失敗回数を数え、しきい値に達したらアカウントをロックするかどうか。
+  permanentLockout:
+    description:
+      en: When brute force detection locks an account, whether the lock is permanent — an administrator has to re-enable the user — instead of expiring after a wait.
+      ja: ブルートフォース検知によるロックを永久ロックにするかどうか。有効にすると待機時間で自動解除されず、管理者がユーザーを再度有効化する必要がある。
+
+  # ---- Keys inside the realm's attributes map ----------------------------
+  # These reach the dictionary because the probe found them in a fresh realm,
+  # not because the console shows them. Each has a real product default.
+  attributes.oauth2DeviceCodeLifespan:
+    description:
+      en: How long, in seconds, a device code stays valid in the OAuth 2.0 Device Authorization Grant.
+      ja: OAuth 2.0 デバイス認可グラントでデバイスコードが有効な秒数。
+  attributes.oauth2DevicePollingInterval:
+    description:
+      en: The minimum interval, in seconds, a device must wait between polls of the token endpoint during the Device Authorization Grant.
+      ja: デバイス認可グラントで、デバイスがトークンエンドポイントをポーリングする最小間隔（秒）。
+  attributes.realmReusableOtpCode:
+    description:
+      en: Whether an OTP code may be used more than once while it is still inside its validity window.
+      ja: OTP コードを有効期間内に複数回使用できるようにするかどうか。
+
+  # ---- Revocation --------------------------------------------------------
+  notBefore:
+    description:
+      en: "Tokens issued for this realm before this time are treated as revoked; 0 means nothing is revoked. It is set by the Revocation action in the admin console, not by ordinary configuration — a value other than 0 in a config file is a deliberate cut-off date."
+      ja: "この時刻より前に発行されたこのレルムのトークンを失効扱いにする。0 は失効なしを意味する。通常の設定ではなく管理コンソールの「失効」操作で設定される値であり、設定ファイルに 0 以外があるなら意図的な失効基準時刻である。"

@@ -108,6 +108,7 @@ type Messages = {
   outOfScope: string;
   outOfScopeOwner: string;
   hideOutOfScope: string;
+  showDefaults: (n: number) => string;
   // Origin (viewer-only marker in the key cell). An `embedded` row is tagged
   // with the FILE its literal lives in (originEmbedded is only the fallback when
   // it has no source); a `default` row says "not set here" — deliberately not
@@ -151,6 +152,13 @@ type Messages = {
   // preview, and doubles as the disabled-affordance tooltip.
   applySkippedGenerated: string;
   themeToggle: string;
+  // Collapsed-by-default materialize categories (a category where every row,
+  // recursively, sits at the product default — see app.ts's
+  // categoryDefaultSummary). The count is shown whether the category is open
+  // or closed, so the ledger never looks smaller than it is.
+  searchScopeAll: string;
+  searchScopeSet: string;
+  searchScopeHint: string;
 };
 
 const ja: Messages = {
@@ -246,6 +254,9 @@ const ja: Messages = {
   outOfScope: "レビュー対象外",
   outOfScopeOwner: "所管: ",
   hideOutOfScope: "対象外を隠す",
+  // 「未設定」であって「未使用」ではない — 製品の既定値はいま実際に効いている。
+  // 欠けているのはこのプロジェクトからの表明のほう。
+  showDefaults: (n: number) => `未設定の行を表示（製品既定値 ${n} 件）`,
   originEmbedded: "組み込み",
   originDefault: "未設定",
   originDefaultTip: "この構成では設定していない（効いている値は製品のデフォルト値）",
@@ -277,6 +288,9 @@ const ja: Messages = {
   applyHeldPromptCopy: "AIプロンプトをコピー",
   applySkippedGenerated: "生成ファイルのため直接適用できません",
   themeToggle: "テーマ切り替え",
+  searchScopeAll: "未設定を含む",
+  searchScopeSet: "設定済みのみ",
+  searchScopeHint: "Ctrl/⌘+K で切替",
 };
 
 const en: Messages = {
@@ -372,6 +386,9 @@ const en: Messages = {
   outOfScope: "Out of review scope",
   outOfScopeOwner: "Owned by: ",
   hideOutOfScope: "Hide out-of-scope",
+  // "not set", not "unused": the product's default is in force on these rows.
+  // What is absent is any statement from THIS project.
+  showDefaults: (n: number) => `Show unset rows (${n} product defaults)`,
   originEmbedded: "embedded",
   originDefault: "not set",
   originDefaultTip: "Not set here — the value in effect is the product's own default",
@@ -403,6 +420,9 @@ const en: Messages = {
   applyHeldPromptCopy: "Copy AI prompt",
   applySkippedGenerated: "Cannot apply directly: source file is generated",
   themeToggle: "Toggle theme",
+  searchScopeAll: "including unset",
+  searchScopeSet: "set rows only",
+  searchScopeHint: "Ctrl/⌘+K to switch",
 };
 
 const messages: Record<Lang, Messages> = { ja, en };

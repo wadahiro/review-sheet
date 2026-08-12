@@ -35,6 +35,7 @@ export type { EnrichOptions, EnrichReport } from "./enrich.js";
 export { registerMetadataProvider, listMetadataProviders, getMetadataProvider, resolveMetadata, pickLang } from "./metadata.js";
 export type {
   Provenance,
+  LangProvenance,
   LangText,
   DictionaryBinding,
   MetadataQuery,

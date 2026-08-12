@@ -171,6 +171,21 @@ export function extractTree(content: string, opts?: ExtractOptions): Entry[] {
   const visit = (node: Node | null, segs: Seg[], keyAnchor?: string, skipField?: string): void => {
     if (node === null) return;
     if (isScalar(node)) {
+      // A null scalar is the document stating there is NO value here — YAML's
+      // `key:` with nothing after it, JSON's `"key": null`. It is not a row: a
+      // row asserts "this parameter is set to this", and `String(null)` used to
+      // make that assertion with the four characters "null", a value no format
+      // anywhere actually means. That is inventing data, not preserving it,
+      // which is why this is a skip and not the silent row-drop this project
+      // otherwise refuses — there was never a value to lose.
+      //
+      // It matters most for machine-rendered artifacts, where absence is
+      // spelled out rather than omitted: a `terraform plan` writes every
+      // argument a resource HAS, null for each one unset, so 86 of one sheet's
+      // 301 "configured" rows were unset arguments claiming to hold the string
+      // "null" — and the ones with a documented default were being kept out of
+      // the "not set (product default)" section by their own fake value.
+      if (node.value === null) return;
       const range = node.range;
       out.push({
         categoryPath: segs.slice(0, -1).map(segCatName),

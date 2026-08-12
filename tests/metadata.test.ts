@@ -125,8 +125,10 @@ describe("resolveMetadata — LangText per-language-key merge (description/remar
     };
     const result = resolveMetadata({ key: "k" }, ctx(), [high, low]);
     expect(result?.description).toEqual({ en: "x", ja: "z" });
-    // provenance follows the FIRST provider to fill any language key.
-    expect(result?.provenance).toBe("project");
+    // provenance is credited PER LANGUAGE, truthfully: `en` came from
+    // `high` (project), `ja` came from `low` (community) — never the old
+    // "whichever provider filled the field first" approximation.
+    expect(result?.provenance).toEqual({ en: "project", ja: "community" });
     // one provider touched by each, even though `low` only filled `ja`
     // (its `en` was already claimed by `high`).
     expect(result?.contributions).toEqual({ high: 1, low: 1 });
@@ -165,8 +167,12 @@ describe("resolveMetadata — LangText per-language-key merge (description/remar
     };
     const result = resolveMetadata({ key: "k" }, ctx(), [project, nativeChannel]);
     expect(result?.description).toEqual({ en: "English description from Terraform/Ansible", ja: "日本語の説明" });
-    // provenance still credits the project — it filled the first language key.
-    expect(result?.provenance).toBe("project");
+    // provenance now reads truthfully split per language: `ja` traces to
+    // the project (sheet.yml), `en` traces to the native channel — the
+    // exact case this whole per-language merge exists for. Before this
+    // task, provenance would have wrongly said "project" for both, since
+    // the project happened to run first.
+    expect(result?.provenance).toEqual({ en: "community", ja: "project" });
     expect(result?.contributions).toEqual({ project: 1, "argument-specs": 1 });
   });
 
@@ -205,6 +211,36 @@ describe("resolveMetadata — LangText per-language-key merge (description/remar
     expect(result?.description).toBe("H");
     expect(result?.provenance).toBe("machine");
     expect(result?.contributions).toEqual({ high: 1 });
+  });
+
+  it("a per-language provenance map that agrees on both languages collapses to the bare scalar", () => {
+    // A single provider may itself return a { en, ja } LangProvenance object
+    // (e.g. a dictionary provider forwarding a merged per-language claim —
+    // see providers/dictionary.ts's provenanceFor/collapseProvenance). When
+    // both languages agree, the output must be indistinguishable from a
+    // provider that just returned the bare scalar — this is what keeps
+    // every unmigrated (all-scalar) dictionary's output byte-identical.
+    const uniform: MetadataProvider = {
+      name: "uniform",
+      priority: 100,
+      resolve: () => ({ description: { en: "E", ja: "J" }, provenance: { en: "official", ja: "official" } }),
+    };
+    const result = resolveMetadata({ key: "k" }, ctx(), [uniform]);
+    expect(result?.description).toEqual({ en: "E", ja: "J" });
+    expect(result?.provenance).toBe("official");
+  });
+
+  it("only one language ever gets a description: provenance collapses to that language's scalar", () => {
+    const jaOnly: MetadataProvider = {
+      name: "ja-only",
+      priority: 100,
+      resolve: () => ({ description: { ja: "J" }, provenance: "extracted" }),
+    };
+    const result = resolveMetadata({ key: "k" }, ctx(), [jaOnly]);
+    expect(result?.description).toEqual({ ja: "J" });
+    // Nothing to disagree with (`en` was never filled by anyone) — bare
+    // scalar, not `{ ja: "extracted" }`.
+    expect(result?.provenance).toBe("extracted");
   });
 
   it("behaves the same way for remarks", () => {

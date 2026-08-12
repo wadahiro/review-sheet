@@ -9,6 +9,7 @@
 // resolves its own via the `RecipeIO.resolve` it is handed.
 
 import Ajv, { type ErrorObject } from "ajv";
+import { keyTransformSchema } from "./keytransform.js";
 import { parse } from "yaml";
 import { dirname, resolve as resolvePath } from "node:path";
 import { getRecipe, listRecipes, type JsonValue } from "./recipe.js";
@@ -117,6 +118,9 @@ const dictionariesSchema = {
       product: { type: "string" },
       version: { type: "string" },
       key_prefix: { type: "string" },
+      // Only the `steps` half of a recipe's `key:` — there is no `from:` to
+      // choose here, the input is always the row's own key.
+      key_steps: keyTransformSchema.properties.steps,
       materialize: {
         // `true` (expand everything) or a narrowing object — see
         // DictionaryMaterialize in assemble.ts.
@@ -126,7 +130,6 @@ const dictionariesSchema = {
             type: "object",
             properties: {
               groups: { type: "array", items: { type: "string" }, minItems: 1 },
-              defaultsCategory: { type: "string" },
               includeNoDefault: { type: "boolean" },
             },
             additionalProperties: false,
@@ -142,7 +145,50 @@ const dictionariesSchema = {
 // strip a sheet down to its recipe-specific fields before validating those
 // against `recipe.schema` (below), and as the exact set a bare object
 // literal declares for reuse in the permissive first pass.
-const COMMON_SHEET_FIELDS = ["name", "recipe", "instances", "dictionaries"] as const;
+const COMMON_SHEET_FIELDS = ["name", "recipe", "instances", "dictionaries", "component"] as const;
+
+// Reviewer-facing text: one language, or both.
+const langTextSchema = {
+  oneOf: [
+    { type: "string" },
+    { type: "object", properties: { en: { type: "string" }, ja: { type: "string" } }, additionalProperties: false, minProperties: 1 },
+  ],
+};
+
+// Every sheet declares what it covers. Two forms, and which one a sheet uses is
+// a fact about its SOURCE, not a preference:
+//
+//   - a literal `{ id, name?, purpose? }` — the sheet covers one component, and
+//     nothing in its sources says which; a human names it.
+//   - a `{ from, steps, names }` transform — the sheet's artifact holds several
+//     components and carries their identity in the source path (a Terraform
+//     plan's `module.aurora.*`). Only a recipe that reads a structured artifact
+//     accepts this, so its schema is the recipe's own (see recipes/snapshot.ts)
+//     and this one only has to admit the shape.
+//
+// OPTIONAL in the spec, mandatory in the model: a sheet that declares nothing
+// still has exactly one component, named after the sheet (assemble-spec.ts), so
+// every row carries one and the scoping rules have no special case.
+//
+// Requiring the declaration was tried and abandoned. It does not prevent the
+// failure it looked like it prevented — a sheet that really holds two Keycloak
+// instances passes just as happily with one `component:` written on it, because
+// no schema can tell how many things a config file describes. So it bought
+// uniformity and a place for `purpose`, at the cost of a line in every spec
+// anyone ever writes, plus 52 test fixtures. Uniformity belongs in the model,
+// where it is free.
+const componentSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    name: langTextSchema,
+    purpose: langTextSchema,
+    from: { enum: ["key", "path"] },
+    steps: { type: "array" },
+    names: { type: "object" },
+  },
+  additionalProperties: false,
+};
 
 const specSchema = {
   type: "object",
@@ -189,6 +235,7 @@ const specSchema = {
           recipe: { type: "string" },
           instances: { type: "array", items: { type: "string" }, minItems: 1 },
           dictionaries: dictionariesSchema,
+          component: componentSchema,
         },
         // Deliberately NOT additionalProperties: false — a sheet entry also
         // carries its recipe's own fields (`defaults`/`overlays`/`template`/

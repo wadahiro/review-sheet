@@ -1,12 +1,17 @@
 # nginx 1.26 parameter dictionary — a product-level reference (not tied to this
 # project's variable names), consulted via review-sheet's "dictionary" metadata
-# provider. Hand-transcribed from the nginx docs, so provenance is "official".
+# provider. The English below is hand-transcribed from the nginx docs
+# ("official"); the Japanese is this repo's own translation, since nginx
+# publishes no Japanese documentation to transcribe ("community") — hence the
+# per-language provenance map below rather than one scalar for the whole file.
 # Only a hand-picked dozen directives (not every nginx directive), so
 # coverage is "partial" — this dictionary must never be materialized (see
 # build.yml's "materialize" comment).
 product: nginx
 version: "1.26"
-provenance: official
+provenance:
+  en: official     # transcribed from nginx.org/en/docs
+  ja: community     # this repo's own translation — nginx publishes no Japanese docs
 coverage: partial
 generated_by: "manual transcription of nginx.org/en/docs"
 docs_url: https://nginx.org/en/docs/

@@ -55,9 +55,10 @@ function localizeOutOfScope(oos: OutOfScope | undefined, lang: Lang): OutOfScope
   return oos === undefined ? undefined : { ...oos, reason: pickLang(oos.reason, lang) ?? "" };
 }
 function localizeParam(p: ParamData, lang: Lang): ParamData {
-  if (p.description === undefined && p.remarks === undefined && p.out_of_scope === undefined) return p;
+  if (p.label === undefined && p.description === undefined && p.remarks === undefined && p.out_of_scope === undefined) return p;
   return {
     ...p,
+    label: pickLang(p.label, lang),
     description: pickLang(p.description, lang),
     remarks: pickLang(p.remarks, lang),
     out_of_scope: localizeOutOfScope(p.out_of_scope, lang),
@@ -66,6 +67,10 @@ function localizeParam(p: ParamData, lang: Lang): ParamData {
 function localizeCategory(c: CategoryData, lang: Lang): CategoryData {
   return {
     ...c,
+    // `name` is identity and is never touched; `display` is what the reader
+    // sees, resolved here alongside every other LangText so the language
+    // toggle switches a component's heading live — see types.ts's Category.
+    display: (c.label ? pickLang(c.label, lang) : undefined) ?? c.name,
     out_of_scope: localizeOutOfScope(c.out_of_scope, lang),
     params: c.params?.map((p) => localizeParam(p, lang)),
     categories: c.categories?.map((sc) => localizeCategory(sc, lang)),
@@ -299,13 +304,20 @@ function forEachParam(
 
 // Every row's state in one sheet, for the progress counter: an exhaustive
 // ledger is only useful if you can see how much of it is still unlooked-at.
+// Only the rows the sheet is currently SHOWING. A denominator counting rows the
+// reader cannot see is one they cannot reach: "0 / 6" beside five tickable rows
+// never completes, and the missing one is invisible by construction. The unset
+// toggle defines the document's scope, and everything follows it — body,
+// outline, search, print, and this.
 function sheetRowStates(
   sheet: SheetData["sheets"][number],
   sessions: Record<string, SessionCheck>,
-  reviews: ReviewItem[]
+  reviews: ReviewItem[],
+  showDefaults: boolean
 ): RowState[] {
   const out: RowState[] = [];
   forEachParam(sheet.categories, (p) => {
+    if (!showDefaults && effectiveOrigin(p) === "default") return;
     out.push(rowStateOf(p, sheet.name, sessions, reviews));
   });
   return out;
@@ -1112,11 +1124,12 @@ function saveOutlineOpen(open: boolean): void {
   try { localStorage.setItem("rs-outline-open", open ? "1" : "0"); } catch { /* ignore */ }
 }
 
+
 // ============================================================
 // Parameter table component
 // ============================================================
 
-function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, filterUndecided, sessionChecks, decisionsEnabled, onDecide, categoryOutOfScope, onOpenReview, diff, t }: {
+function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, filterUndecided, sessionChecks, decisionsEnabled, onDecide, categoryOutOfScope, onOpenReview, diff, t }: {
   params: ParamData[];
   sheetName: string;
   // The sheet's declared review axis (see Sheet.instances).
@@ -1130,6 +1143,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   showComments: boolean;
   filterCommented: boolean;
   hideOutOfScope: boolean;
+  showDefaults: boolean;
   filterUndecided: boolean;
   sessionChecks: Record<string, SessionCheck>;
   decisionsEnabled: boolean;
@@ -1294,6 +1308,13 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   // Visible params under the "commented only" / "hide out-of-scope" /
   // "undecided only" filters.
   const visibleParams = params.filter((param) => {
+    // A row nobody set, sitting at the product's own default. Hidden unless
+    // asked for: on a sheet whose dictionary is a full extraction these are the
+    // majority (121 of 144 on one Keycloak sheet), and the reader's first
+    // question is what this project DECIDED. They live in their ordinary
+    // category rather than a tree of their own, so turning them on puts each
+    // one beside the settings it relates to.
+    if (!showDefaults && effectiveOrigin(param) === "default") return false;
     if (hideOutOfScope && rowOutOfScope(param)) return false;
     // The triage loop: show what still needs a decision, click through it,
     // watch it empty out.
@@ -1397,15 +1418,24 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
             // e.g. a secret — shown read-only; the out-of-scope row styling wins.
             return { kind: "review", value: common, target: { ...baseTarget(param), instance: name }, field: "value", className: "rs-col-value rs-same-as-default", isCode: true, copyable: false, sharedRow: true };
           }
-          const isDefault = common === def;
+          // "Nothing is set here" and "what is set equals the default" are two
+          // different facts, and only the first one is `usesDefault`. This used
+          // to test `common === def` alone, which blanked the cell of a
+          // deliberately written directive whenever its value happened to match
+          // the product's — httpd's `ProxyRequests Off`, a line that exists to
+          // say this host is NOT a forward proxy, read as "not set" and left a
+          // reviewer to work the truth out of the remarks. `origin` is the fact
+          // that decides it, and the model has carried it all along.
+          const isUnset = effectiveOrigin(param) === "default";
+          const isSameAsDefault = common === def;
           return {
             kind: "review",
-            value: isDefault ? "" : common,
+            value: isUnset ? "" : common,
             target: { ...baseTarget(param), instance: name },
             field: "value",
-            className: `rs-col-value ${isDefault ? "rs-cell-unset" : "rs-changed rs-cell-common"}`,
+            className: `rs-col-value ${isUnset ? "rs-cell-unset" : isSameAsDefault ? "rs-same-as-default" : "rs-changed rs-cell-common"}`,
             isCode: true,
-            copyable: !isDefault,
+            copyable: !isUnset,
             unsetLabel: t.usesDefault,
             sharedRow: true,
           };
@@ -1519,7 +1549,19 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     // otherwise the enclosing (possibly out-of-scope) category's applies.
     const oos = rowOutOfScope(param);
     const tag = originTag(param, t);
+    // The product's own name for this setting, when it has one. Shown as the
+    // row's heading with the KEY demoted to a sub-line, because those are two
+    // different jobs: the label is what a reviewer recognises (Keycloak's
+    // console says 「署名アルゴリズム」), the key is where the value lives
+    // (`attributes["saml.signature.algorithm"]`, which verify and apply
+    // resolve by) and can never be dropped.
+    //
+    // A label that merely repeats the description is not shown twice — 18 of
+    // this Keycloak extraction's fields carry a name and no help text, so
+    // their description IS the label.
+    const label = typeof param.label === "string" ? param.label : undefined;
     const keySubline: (VNode | null)[] = [];
+    if (label) keySubline.push(html`<span class="rs-key-subline"><code>${param.key}</code></span>` as VNode);
     if (sublineText) keySubline.push(html`<span class="rs-key-subline"><code>${sublineText}</code></span>` as VNode);
     if (tag) keySubline.push(html`<span class="rs-key-subline"><span class="rs-origin-tag" title=${tag.title}>${tag.label}</span></span>` as VNode);
     if (oos) {
@@ -1532,9 +1574,9 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     return html`
     <tr key=${param.key} id=${paramAnchorId(sheetIndex, categoryPath, param.key)}
         class=${`rs-param-row ${oos ? "rs-row-excluded" : ""} ${paramHasReview(param) ? "rs-has-review" : ""} ${rd && rd !== "unchanged" ? `rs-diff-row-${rd}` : ""}`}>
-      <${ReviewableCell} value=${param.key} target=${baseTarget(param)} field="key"
+      <${ReviewableCell} value=${label ?? param.key} target=${baseTarget(param)} field="key"
         reviews=${reviews} reviewEnabled=${reviewEnabled} onOpenReview=${onOpenReview}
-        className="rs-col-key" isCode=${true} t=${t} badge=${rowBadge} subline=${keySubline.length > 0 ? keySubline : null} />
+        className="rs-col-key" isCode=${!label} t=${t} badge=${rowBadge} subline=${keySubline.length > 0 ? keySubline : null} />
       ${normalLines.map((line) => renderCell(line.cell(param), line.key))}
     </tr>
     ${renderInlineComments(param, 1 + normalLines.length)}
@@ -1693,7 +1735,36 @@ function HeaderInlineComment({ target, reviews, t }: {
 // Category component (recursive)
 // ============================================================
 
-function CategorySection({ category, sheetName, sheetInstances, sheetIndex, sheetFilePath, parentPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, filterUndecided, sessionChecks, decisionsEnabled, onDecide, inheritedOutOfScope, onOpenReview, diff, t }: {
+// A category counts as materialize noise — and collapses by default, body and
+// outline alike — when its ENTIRE subtree (its own params plus every
+// descendant category's, recursively) sits at `origin: "default"`: a setting
+// the project configures NOWHERE, shown at the product's own default so the
+// sheet stays the exhaustive ledger materialize exists to produce. This is
+// checked structurally, off the rows themselves, and deliberately NEVER by
+// the category's own name/label: `DictionaryMaterialize.defaultsCategory` is
+// an ordinary build-time string (`既定値（未使用）`, `Product defaults
+// (unused)`, or whatever a project's build.yml sets it to), so matching
+// against it would silently stop collapsing the moment someone switches
+// `--lang` or a project renames the category — do not "simplify" this back to
+// a name check. An empty subtree (no params anywhere under it) does not
+// qualify: there is nothing to collapse, and vacuous truth is not materialize
+// noise.
+function categoryDefaultSummary(category: CategoryData): { count: number; allDefault: boolean } {
+  let count = 0;
+  let allDefault = true;
+  for (const p of category.params ?? []) {
+    count++;
+    if (effectiveOrigin(p) !== "default") allDefault = false;
+  }
+  for (const sub of category.categories ?? []) {
+    const s = categoryDefaultSummary(sub);
+    count += s.count;
+    if (!s.allDefault) allDefault = false;
+  }
+  return { count, allDefault };
+}
+
+function CategorySection({ category, sheetName, sheetInstances, sheetIndex, sheetFilePath, parentPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, filterUndecided, sessionChecks, decisionsEnabled, onDecide, inheritedOutOfScope, onOpenReview, diff, t }: {
   category: CategoryData;
   sheetName: string;
   sheetInstances?: string[];
@@ -1707,6 +1778,7 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
   showComments: boolean;
   filterCommented: boolean;
   hideOutOfScope: boolean;
+  showDefaults: boolean;
   filterUndecided: boolean;
   sessionChecks: Record<string, SessionCheck>;
   decisionsEnabled: boolean;
@@ -1721,6 +1793,11 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
 }) {
   const effOutOfScope = category.out_of_scope ?? inheritedOutOfScope;
   if (hideOutOfScope && effOutOfScope) return null;
+  // With unset rows hidden, a category made entirely of them has nothing to
+  // show — and a heading over an empty table reads as a rendering bug. This is
+  // not a small case: 15 of the Keycloak configuration sheet's 21 groups are
+  // whole feature areas (Vault, Telemetry, OpenAPI) this project never touches.
+  if (!showDefaults && categoryDefaultSummary(category).allDefault) return null;
   const categoryPath = parentPath ? `${parentPath}/${category.name}` : category.name;
   const catStatus = diff?.get(catKey(sheetName, categoryPath));
   const catTarget = { sheet: sheetName, category: categoryPath };
@@ -1739,12 +1816,13 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
     for (const p of undecidedHere) onDecide(sheetName, p.key, { status: "ok" });
   };
 
+
   return html`
     <div id=${navAnchorId(sheetIndex, categoryPath)} class=${`rs-category rs-depth-${depth} ${effOutOfScope ? "rs-out-of-scope" : ""}`} style=${`--rs-depth:${depth}`}>
       <div class="rs-category-header">
         <${HeadingTag}>
           ${category.tag && html`<span class="rs-cat-tag">${category.tag}</span>`}
-          <span class=${`rs-cat-label ${catStatus === "removed" ? "rs-diff-strike" : ""}`}>${category.name}</span>
+          <span class=${`rs-cat-label ${catStatus === "removed" ? "rs-diff-strike" : ""}`}>${category.display ?? category.name}</span>
           ${effOutOfScope && html`<span class="rs-oos-badge">${t.outOfScope}</span>`}
           ${diff && diffBadge(catStatus)}
           ${category.file_path && category.file_path !== sheetFilePath && category.file_path !== category.name && html`<span class="rs-cat-filepath">${category.file_path}</span>`}
@@ -1778,7 +1856,7 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
         <${ParamTable} params=${category.params} sheetName=${sheetName} sheetInstances=${sheetInstances} sheetIndex=${sheetIndex} categoryPath=${categoryPath}
                        depth=${depth}
                        columns=${columns} reviews=${reviews} reviewEnabled=${reviewEnabled}
-                       showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope}
+                       showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
                        filterUndecided=${filterUndecided} sessionChecks=${sessionChecks}
                        decisionsEnabled=${decisionsEnabled} onDecide=${onDecide}
                        categoryOutOfScope=${effOutOfScope}
@@ -1789,11 +1867,12 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
         <${CategorySection} key=${sub.name} category=${sub} sheetName=${sheetName} sheetInstances=${sheetInstances} sheetIndex=${sheetIndex}
                             sheetFilePath=${sheetFilePath} parentPath=${categoryPath} depth=${depth + 1}
                             columns=${columns} reviews=${reviews} reviewEnabled=${reviewEnabled}
-                            showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope}
+                            showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
                             filterUndecided=${filterUndecided} sessionChecks=${sessionChecks}
                             decisionsEnabled=${decisionsEnabled} onDecide=${onDecide}
                             inheritedOutOfScope=${effOutOfScope}
-                            onOpenReview=${onOpenReview} diff=${diff} t=${t} />
+                            onOpenReview=${onOpenReview} diff=${diff}
+                            t=${t} />
       `)}
     </div>
   `;
@@ -1815,6 +1894,17 @@ type NavEntry = {
   fallbackId?: string;
   search: string;
   text: string; // original-case haystack, used to show the matched snippet
+  // The real structural category path a jump into this entry lands inside —
+  // NOT `path` above, which for a "comment" entry is a display string ("cat /
+  // param"), not something navAnchorId/collapseKey can address. Undefined
+  // when the entry has no enclosing category (a sheet-level comment). Used
+  // solely to auto-expand a collapsed category on jump (see App's
+  // a hidden unset row) — never rendered.
+  categoryPath?: string;
+  // Set only on "category" entries: whether this category qualifies as
+  // materialize noise (categoryDefaultSummary) and, if so, its recursive row
+  // count — carried here so the outline can both hide its collapsed
+  // descendants and show the same count the body shows.
 };
 
 // A short excerpt of `text` around the query match, so a result makes clear why
@@ -1857,13 +1947,21 @@ function paramAnchorId(sheetIndex: number, path: string, key: string): string {
 }
 
 // Flatten every sheet's categories (depth-first); used by the outline and search.
-function collectNav(data: SheetData): NavEntry[] {
+function collectNav(data: SheetData, showDefaults: boolean): NavEntry[] {
   const out: NavEntry[] = [];
   data.sheets.forEach((sheet, sheetIndex) => {
     const walk = (cats: CategoryData[], parentPath: string, depth: number) => {
       cats.forEach((c) => {
         const path = parentPath ? `${parentPath}/${c.name}` : c.name;
-        out.push({ kind: "category", sheetIndex, sheetName: sheet.name, path, name: c.name, depth, id: navAnchorId(sheetIndex, path), search: `${sheet.name} ${path}`.toLowerCase(), text: `${sheet.name} / ${path}` });
+        // The outline must agree with the body about what exists. A category of
+        // nothing but unset rows renders nothing while they are hidden, so an
+        // entry for it would jump to a heading that is not there.
+        if (!showDefaults && categoryDefaultSummary(c).allDefault) return;
+        out.push({
+          kind: "category", sheetIndex, sheetName: sheet.name, path, name: c.display ?? c.name, depth,
+          id: navAnchorId(sheetIndex, path), search: `${sheet.name} ${path}`.toLowerCase(), text: `${sheet.name} / ${path}`,
+          categoryPath: path,
+        });
         if (c.categories) walk(c.categories, path, depth + 1);
       });
     };
@@ -1874,13 +1972,22 @@ function collectNav(data: SheetData): NavEntry[] {
 
 // Flatten every parameter (key + value(s) + description) for search; jumps to
 // the parameter row, falling back to its category when no row is rendered.
-function collectParams(data: SheetData): NavEntry[] {
+// Search sees what the reader sees. A result for a row the document is not
+// showing is noise at best, and at worst it lands a jump on an element that is
+// not in the DOM. The palette can widen its own scope (see NavPalette) — which
+// widens the DOCUMENT, so the two never disagree about what exists.
+//
+// Excluding them silently would be its own failure: "no match" would read as
+// "this product has no such setting" when the setting is there, at its default.
+// The palette says which scope it is in, always.
+function collectParams(data: SheetData, showDefaults: boolean): NavEntry[] {
   const out: NavEntry[] = [];
   data.sheets.forEach((sheet, sheetIndex) => {
     const walk = (cats: CategoryData[], parentPath: string, depth: number) => {
       cats.forEach((c) => {
         const path = parentPath ? `${parentPath}/${c.name}` : c.name;
         (c.params ?? []).forEach((p) => {
+          if (!showDefaults && effectiveOrigin(p) === "default") return;
           const value = p.value ?? (p.instances ?? []).map((i) => `${i.name} ${i.value}`).join(" ");
           const extra = Object.values(p.extra ?? {}).join(" ");
           const text = `${p.key} = ${value} ${p.default ? `(default ${p.default})` : ""} ${pickLang(p.description, "en") ?? ""} ${pickLang(p.remarks, "en") ?? ""} ${extra}`.replace(/\s+/g, " ").trim();
@@ -1890,6 +1997,7 @@ function collectParams(data: SheetData): NavEntry[] {
             fallbackId: navAnchorId(sheetIndex, path),
             search: `${text} ${sheet.name} ${path}`.toLowerCase(),
             text,
+            categoryPath: path,
           });
         });
         if (c.categories) walk(c.categories, path, depth + 1);
@@ -1901,10 +2009,13 @@ function collectParams(data: SheetData): NavEntry[] {
 }
 
 function NavOutline({ entries, sheets, currentId, onJump, onClose, diff, t }: {
+  // Already filtered to hide the descendants of a collapsed materialize
+  // category — consistent with the body,
+  // which renders nothing under a collapsed heading either.
   entries: NavEntry[];
   sheets: SheetData["sheets"];
   currentId: string | null;
-  onJump: (sheetIndex: number, id: string, fallbackId?: string) => void;
+  onJump: (sheetIndex: number, id: string, fallbackId?: string, sheetName?: string, categoryPath?: string) => void;
   onClose: () => void;
   diff?: DiffStatusMap;
   t: Messages;
@@ -1924,12 +2035,13 @@ function NavOutline({ entries, sheets, currentId, onJump, onClose, diff, t }: {
             ${entries.filter((e) => e.sheetIndex === si).map((e) => {
               const es = e.kind === "category" ? diff?.get(catKey(e.sheetName, e.path)) : undefined;
               return html`
-              <button key=${e.id}
-                      class=${`rs-outline-item ${currentId === e.id ? "rs-outline-current" : ""} ${es === "removed" ? "rs-diff-strike" : ""}`}
-                      style=${`padding-left:${0.75 + (e.depth - 1) * 0.85}rem`}
-                      onClick=${() => onJump(e.sheetIndex, e.id)}>
-                ${e.name} ${diff && diffBadge(es)}
-              </button>
+              <div class=${`rs-outline-row ${currentId === e.id ? "rs-outline-current" : ""}`} key=${e.id}
+                   style=${`padding-left:${0.75 + (e.depth - 1) * 0.85}rem`}>
+                <button class=${`rs-outline-item ${es === "removed" ? "rs-diff-strike" : ""}`}
+                        onClick=${() => onJump(e.sheetIndex, e.id, undefined, e.sheetName, e.categoryPath)}>
+                  ${e.name} ${diff && diffBadge(es)}
+                </button>
+              </div>
             `;
             })}
           </div>
@@ -1940,10 +2052,16 @@ function NavOutline({ entries, sheets, currentId, onJump, onClose, diff, t }: {
   `;
 }
 
-function NavPalette({ entries, onJump, onClose, t }: {
+function NavPalette({ entries, onJump, onClose, showDefaults, onToggleDefaults, t }: {
   entries: NavEntry[];
-  onJump: (sheetIndex: number, id: string, fallbackId?: string) => void;
+  onJump: (sheetIndex: number, id: string, fallbackId?: string, sheetName?: string, categoryPath?: string) => void;
   onClose: () => void;
+  // The document-wide unset-rows toggle, surfaced here because "I cannot find
+  // it" is exactly when a reader needs to widen the scope. Deliberately the
+  // SAME state as the filter menu's: a search-only scope would let the palette
+  // list rows the sheet behind it does not have.
+  showDefaults: boolean;
+  onToggleDefaults: () => void;
   t: Messages;
 }) {
   const [query, setQuery] = useState("");
@@ -1962,16 +2080,27 @@ function NavPalette({ entries, onJump, onClose, t }: {
     if (e.isComposing || e.keyCode === 229) return;
     if (e.key === "ArrowDown") { e.preventDefault(); setSel((s) => Math.min(s + 1, results.length - 1)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)); }
-    else if (e.key === "Enter") { e.preventDefault(); const r = results[clampedSel]; if (r) onJump(r.sheetIndex, r.id, r.fallbackId); }
+    else if (e.key === "Enter") { e.preventDefault(); const r = results[clampedSel]; if (r) onJump(r.sheetIndex, r.id, r.fallbackId, r.sheetName, r.categoryPath); }
+    // The shortcut that opened the palette widens it on a second press: the
+    // moment a reader wants unset rows is the moment a search came up short,
+    // and reaching for the mouse then is the interruption. The chip in the
+    // header shows which scope is active, so this never changes silently.
+    else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); onToggleDefaults(); }
     else if (e.key === "Escape") { e.preventDefault(); onClose(); }
   };
 
   return html`
     <div class="rs-palette-overlay" onClick=${onClose}>
       <div class="rs-palette" onClick=${(e: Event) => e.stopPropagation()}>
-        <input ref=${inputRef} class="rs-palette-input" type="text" placeholder=${t.navSearchPlaceholder}
-               value=${query} onInput=${(e: Event) => { setQuery((e.target as HTMLInputElement).value); setSel(0); }}
-               onKeyDown=${onKeyDown} />
+        <div class="rs-palette-inputrow">
+          <input ref=${inputRef} class="rs-palette-input" type="text" placeholder=${t.navSearchPlaceholder}
+                 value=${query} onInput=${(e: Event) => { setQuery((e.target as HTMLInputElement).value); setSel(0); }}
+                 onKeyDown=${onKeyDown} />
+          <button type="button" class=${`rs-palette-scope ${showDefaults ? "rs-palette-scope-all" : ""}`}
+                  title=${t.searchScopeHint} onClick=${onToggleDefaults}>
+            ${showDefaults ? t.searchScopeAll : t.searchScopeSet}
+          </button>
+        </div>
         <div class="rs-palette-list">
           ${results.length === 0
             ? html`<div class="rs-palette-empty">${t.navNoResults}</div>`
@@ -1981,7 +2110,7 @@ function NavPalette({ entries, onJump, onClose, t }: {
                 return html`
                   <button key=${`${r.kind}:${r.id}`}
                           class=${`rs-palette-item ${i === clampedSel ? "rs-palette-sel" : ""}`}
-                          onMouseEnter=${() => setSel(i)} onClick=${() => onJump(r.sheetIndex, r.id, r.fallbackId)}>
+                          onMouseEnter=${() => setSel(i)} onClick=${() => onJump(r.sheetIndex, r.id, r.fallbackId, r.sheetName, r.categoryPath)}>
                     <span class="rs-palette-name">
                       ${r.kind === "param" ? html`<span class="rs-palette-kind">${t.fieldKey}</span>` : ""}
                       ${r.kind === "comment" ? html`<span class="rs-palette-kind">${t.memo}</span>` : ""}
@@ -2116,6 +2245,13 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
   }, []);
   const [filterCommented, setFilterCommented] = useState(false);
   const [hideOutOfScope, setHideOutOfScope] = useState(false);
+  // Rows nobody set, at the product's own default. Off by default: the sheet's
+  // first job is to show what this project DECIDED, and on a materialized sheet
+  // the unset rows outnumber the decided ones several times over. The count in
+  // the label is what keeps the ledger claim visible while they are hidden —
+  // "there are 121 more, all at the product default" is the statement, and
+  // enumerating them on screen is not required to make it.
+  const [showDefaults, setShowDefaults] = useState(false);
   const [filterUndecided, setFilterUndecided] = useState(false);
   const [sessionChecks, setSessionChecks] = useState<Record<string, SessionCheck>>(() => loadSessionChecks(storageKey));
   const [showComments, setShowComments] = useState(false);
@@ -2148,6 +2284,17 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
     });
   }, []);
 
+
+  // Print what is on screen. An earlier version force-expanded every collapsed
+  // category via beforeprint/afterprint, reasoning that a printed ledger must
+  // be complete. That was the wrong default once unset rows became a document-
+  // wide toggle: a reader who has hidden them has said what this printout is
+  // FOR, and handing them 198 pages they deliberately collapsed is not
+  // completeness, it is ignoring the instruction. Completeness is still one
+  // click away — turn the rows on, then print — and the toggle's own label
+  // carries the count either way, so a printout that omits them still says how
+  // many were omitted.
+
   // Apply-to-files replaces Export as the primary action only when a serve
   // backend can actually write. Everything else keeps the same slot in both
   // modes, so a reader who saw a delivered sheet last week finds the same
@@ -2156,11 +2303,23 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
   // Display-only "show comments" is not counted: the badge means "rows are
   // being hidden from you".
   const activeFilters = [filterCommented, hideOutOfScope, filterUndecided].filter(Boolean).length;
+  // Every unset row in the document, for the toggle's own label.
+  const defaultRowCount = data.sheets.reduce((n, sheet) => {
+    const walk = (cats: CategoryData[]): number =>
+      cats.reduce(
+        (m, c) =>
+          m +
+          (c.params ?? []).filter((p) => effectiveOrigin(p) === "default").length +
+          walk(c.categories ?? []),
+        0
+      );
+    return n + walk(sheet.categories);
+  }, 0);
 
   const progress = useMemo(() => {
     const sheet = activeSheet >= 0 ? data.sheets[activeSheet] : undefined;
-    return sheet ? checkProgress(sheetRowStates(sheet, sessionChecks, reviews)) : null;
-  }, [activeSheet, data, sessionChecks, reviews]);
+    return sheet ? checkProgress(sheetRowStates(sheet, sessionChecks, reviews, showDefaults)) : null;
+  }, [activeSheet, data, sessionChecks, reviews, showDefaults]);
 
   // Expose the sticky tab bar's height so document-flow sticky table headers can
   // stick just below it.
@@ -2176,8 +2335,8 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
   }, []);
 
   // --- Heading navigation (outline + command palette) ---
-  const categoryEntries = useMemo(() => collectNav(data), [data]);
-  const paramEntries = useMemo(() => collectParams(data), [data]);
+  const categoryEntries = useMemo(() => collectNav(data, showDefaults), [data, showDefaults]);
+  const paramEntries = useMemo(() => collectParams(data, showDefaults), [data, showDefaults]);
   // Review comments are searchable too; each jumps to its target row/category.
   const commentEntries = useMemo<NavEntry[]>(() => {
     if (diffMode) return []; // synthetic diff reviews are not searchable comments
@@ -2201,6 +2360,7 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
         name: r.comment || text, depth: 1, id, fallbackId,
         search: `${text} ${r.target.sheet} ${cat ?? ""} ${param ?? ""}`.toLowerCase(),
         text,
+        categoryPath: cat,
       });
     });
     return out;
@@ -2217,7 +2377,9 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
 
   useEffect(() => { saveOutlineOpen(outlineOpen); }, [outlineOpen]);
 
-  const jumpToNav = useCallback((sheetIndex: number, id: string, fallbackId?: string) => {
+
+
+  const jumpToNav = useCallback((sheetIndex: number, id: string, fallbackId?: string, sheetName?: string, categoryPath?: string) => {
     setPaletteOpen(false);
     // Instant jump (no smooth animation) so far-away targets land immediately.
     // Fall back to the category when the exact row is not rendered (e.g. a
@@ -2240,8 +2402,11 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
       setCurrentNavId(fallbackId ?? id);
       spySuppressUntil.current = Date.now() + 700;
     };
-    if (sheetIndex !== activeSheet) {
-      setActiveSheet(sheetIndex);
+    const sheetChanged = sheetIndex !== activeSheet;
+    if (sheetChanged) setActiveSheet(sheetIndex);
+    // Switching sheets only takes effect on the next render, so the target
+    // isn't in the DOM yet this tick.
+    if (sheetChanged) {
       requestAnimationFrame(() => requestAnimationFrame(scroll));
     } else {
       scroll();
@@ -2443,6 +2608,10 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
                 ? html`<${MenuCheck} label=${t.undecidedOnly} checked=${filterUndecided} onToggle=${() => setFilterUndecided(!filterUndecided)} />`
                 : null}
               <${MenuCheck} label=${t.hideOutOfScope} checked=${hideOutOfScope} onToggle=${() => setHideOutOfScope(!hideOutOfScope)} />
+              ${defaultRowCount > 0 && html`
+                <${MenuCheck} label=${t.showDefaults(defaultRowCount)} checked=${showDefaults}
+                              onToggle=${() => setShowDefaults(!showDefaults)} />
+              `}
             <//>
 
             ${/* The one thing the session exists to produce, and the only filled
@@ -2594,10 +2763,11 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
                 <${CategorySection} key=${cat.name} category=${cat} sheetName=${sheet.name} sheetInstances=${sheet.instances} sheetIndex=${idx}
                                     sheetFilePath=${sheet.file_path} parentPath="" depth=${1}
                                     columns=${data.columns} reviews=${reviews} reviewEnabled=${effReviewEnabled}
-                                    showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope}
+                                    showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
                                     filterUndecided=${filterUndecided} sessionChecks=${sessionChecks}
                                     decisionsEnabled=${decisionsEnabled} onDecide=${handleDecide}
-                                    onOpenReview=${openReview} diff=${diff} t=${t} />
+                                    onOpenReview=${openReview} diff=${diff}
+                                    t=${t} />
               `)}
             </section>
           `;
@@ -2610,7 +2780,8 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
       `}
 
       ${paletteOpen && html`
-        <${NavPalette} entries=${paletteEntries} onJump=${jumpToNav} onClose=${() => setPaletteOpen(false)} t=${t} />
+        <${NavPalette} entries=${paletteEntries} onJump=${jumpToNav} onClose=${() => setPaletteOpen(false)}
+                       showDefaults=${showDefaults} onToggleDefaults=${() => setShowDefaults((v) => !v)} t=${t} />
       `}
 
       ${modalTarget && html`

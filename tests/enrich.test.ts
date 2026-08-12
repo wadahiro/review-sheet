@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { enrich, ScaffoldableBuildError, renderScaffold } from "../src/enrich";
+import { enrich, ScaffoldableBuildError, renderScaffold, formatProvenance } from "../src/enrich";
 import { getMetadataProvider } from "../src/metadata";
 import type { SimpleParameter } from "../src/types";
 import "../src/providers/index";
@@ -172,7 +172,11 @@ describe("enrich", () => {
       ja: "Maximum concurrent connections (from dictionary, should lose to argument_specs).",
     });
     expect(pgMax.default).toBe("100");
-    expect(pgMax.extra?.provenance).toBe("community");
+    // `en` truthfully traces to argument-specs (community) and `ja` to the
+    // dictionary (extracted) — a genuine two-provider split, not the old
+    // "whichever provider filled the field first" approximation, which
+    // would have wrongly reported the whole thing as "community".
+    expect(pgMax.extra?.provenance).toBe("en: community / ja: extracted");
   });
 
   it("nativeLang: 'ja' routes argument-specs' text into the ja slot instead of en", () => {
@@ -305,7 +309,9 @@ describe("enrich: EnrichOptions.variables (argument_specs.yml reachable after a 
       en: "Maximum concurrent connections (from argument_specs).",
       ja: "Maximum concurrent connections (from dictionary, should lose to argument_specs).",
     });
-    expect(param.extra?.provenance).toBe("community");
+    // Same truthful split as the non-renamed case above: en/community from
+    // argument-specs, ja/extracted from the dictionary.
+    expect(param.extra?.provenance).toBe("en: community / ja: extracted");
   });
 
   it("a `variables` entry for a DIFFERENT sheet has no effect (per-sheet, not global)", () => {
@@ -385,5 +391,87 @@ parameters:
     // Still valid, paste-able YAML.
     const parsed = parseYaml(scaffold) as { params: Record<string, unknown> };
     expect(Object.keys(parsed.params)).toEqual(["widget_mystery"]);
+  });
+});
+
+// formatProvenance: the string form written into extra.provenance (a plain
+// string field — see the doc comment in src/enrich.ts). Covers every shape
+// LangProvenance can take, independent of the full enrich() pipeline above.
+describe("formatProvenance", () => {
+  it("a scalar passes through unchanged — today's output, for every unmigrated dictionary", () => {
+    expect(formatProvenance("official")).toBe("official");
+    expect(formatProvenance("community")).toBe("community");
+  });
+
+  it("a map where both languages agree collapses to the bare token", () => {
+    expect(formatProvenance({ en: "extracted", ja: "extracted" })).toBe("extracted");
+  });
+
+  it("a map with only one language present renders that language's bare token", () => {
+    expect(formatProvenance({ en: "official" })).toBe("official");
+    expect(formatProvenance({ ja: "community" })).toBe("community");
+  });
+
+  it("a genuinely split map renders the fixed-order joined string", () => {
+    expect(formatProvenance({ en: "official", ja: "community" })).toBe("en: official / ja: community");
+    // Fixed order (en before ja) regardless of key insertion order.
+    expect(formatProvenance({ ja: "community", en: "official" })).toBe("en: official / ja: community");
+  });
+});
+
+// End-to-end proof that the overlay merge (T3, findDictionary in
+// providers/dictionary.ts) reaches a materialized/enriched row with NO change
+// to enrich() itself — findDictionary is the one function loadBindSources
+// (which this standalone bind pass runs through) loads a whole dictionary
+// with, so the merge already happened before the dictionary provider (or
+// enrich) ever sees this key.
+describe("enrich: overlay-merged dictionary text reaches the sheet unchanged by consumer", () => {
+  const WIDGET_BASE = `
+product: widget
+version: "1"
+provenance: extracted
+parameters:
+  db:
+    description: The database vendor.
+    default: dev-file
+`;
+  const WIDGET_OVERLAY = `
+product: widget
+version: "1"
+provenance: community
+parameters:
+  db:
+    description:
+      ja: 使用するデータベースベンダー。
+`;
+  const overlayFiles: Record<string, string> = {
+    "sheet.yml": "params:\n  widget_db: {}\n",
+    "metadata/widget@1.yml": WIDGET_BASE,
+    "metadata/widget@1.overlay.yml": WIDGET_OVERLAY,
+  };
+  const overlayReadFile = (p: string): string | null => overlayFiles[p] ?? null;
+
+  it("a materialized row carries the overlay's ja text and split provenance", () => {
+    const input: ParameterSheetInput = {
+      sheets: [
+        {
+          name: "widget",
+          categories: [{ name: "General", params: [{ key: "widget_db", value: "postgresql", source: { file: "x.yml", line: 1 } }] }],
+        },
+      ],
+    };
+    const { input: out } = enrich(input, {
+      readFile: overlayReadFile,
+      project: "sheet.yml",
+      metadataDirs: ["metadata"],
+      dictionaries: [{ product: "widget", version: "1", key_prefix: "widget_" }],
+      providers: [getMetadataProvider("project")!, getMetadataProvider("dictionary")!],
+    });
+    const row = out.sheets[0].categories[0].params![0];
+    expect(row.description).toEqual({ en: "The database vendor.", ja: "使用するデータベースベンダー。" });
+    // en falls through to the doc's own "extracted"; ja is the overlay's
+    // "community" gap-fill — exactly the split provenance the design exists
+    // to make representable, reaching the sheet with no enrich.ts change.
+    expect(row.extra?.provenance).toBe("en: extracted / ja: community");
   });
 });

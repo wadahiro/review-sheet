@@ -1,11 +1,17 @@
-# Apache httpd 2.4 parameter dictionary — hand-transcribed from httpd.apache.org
-# docs (provenance official). Keyed by the real Apache directive name (CamelCase);
-# the project metadata maps each snake_case Ansible variable to these via dict_key.
-# Only the directives this role actually touches (not every httpd directive),
-# so coverage is "partial" — this dictionary must never be materialized.
+# Apache httpd 2.4 parameter dictionary — the English below is hand-transcribed
+# from httpd.apache.org docs ("official"); the Japanese is this repo's own
+# translation, since Apache publishes no Japanese documentation to transcribe
+# ("community") — hence the per-language provenance map below rather than one
+# scalar for the whole file. Keyed by the real Apache directive name
+# (CamelCase); the project metadata maps each snake_case Ansible variable to
+# these via dict_key. Only the directives this role actually touches (not
+# every httpd directive), so coverage is "partial" — this dictionary must
+# never be materialized.
 product: httpd
 version: "2.4"
-provenance: official
+provenance:
+  en: official     # transcribed from httpd.apache.org/docs/2.4
+  ja: community     # this repo's own translation — Apache publishes no Japanese docs
 coverage: partial
 generated_by: "manual transcription of httpd.apache.org/docs/2.4"
 docs_url: https://httpd.apache.org/docs/2.4/

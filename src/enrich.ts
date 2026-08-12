@@ -9,7 +9,7 @@
 // purely documentation, source maps are unaffected.
 
 import "./providers/index.js";
-import { resolveMetadata, type MetadataContext, type MetadataProvider, type DictionaryBinding } from "./metadata.js";
+import { resolveMetadata, type MetadataContext, type MetadataProvider, type DictionaryBinding, type LangProvenance } from "./metadata.js";
 import { loadProjectMeta, paramsForSheet, checkProjectMetaSheets, type ProjectMetaDoc } from "./providers/project.js";
 import { bindKey, isBindError, loadBindSources, type Binding, type BindSource } from "./bind.js";
 import { pickLang, type ParameterSheetInput, type Category, type Parameter } from "./types.js";
@@ -294,6 +294,31 @@ function fillExtra(param: Parameter, field: string, value: string | undefined): 
   return true;
 }
 
+// Render a resolved LangProvenance for `extra.provenance`, which is a plain
+// string field (input.schema.json's `extra` is `additionalProperties:
+// {type: string}` — a map value would not be schema-valid). A scalar, or a
+// per-language map with nothing to disagree with (both languages equal, or
+// only one language resolved at all), renders as today's bare token — this
+// is what keeps every unmigrated dictionary's `extra.provenance` output
+// byte-identical. Only a genuine split renders the joined form.
+//
+// Deliberately NOT i18n'd (see src/html/i18n.ts): `extra` values are static
+// strings baked in at generate time, so the in-page language toggle cannot
+// re-resolve them the way it re-resolves `description`/`remarks` (LangText,
+// resolved live by the viewer's localizeSheets). A project that wants a
+// reader-facing provenance column can already declare one (`columns:` with
+// `field: extra.provenance`); this string is what it will show.
+export function formatProvenance(p: LangProvenance): string {
+  if (typeof p === "string") return p;
+  const { en, ja } = p;
+  if (en !== undefined && ja !== undefined && en !== ja) return `en: ${en} / ja: ${ja}`;
+  // Only one language resolved (or both agree, which resolveMetadata/the
+  // dictionary provider already collapse to a bare string before this point
+  // — this branch mainly covers "only one language has a description at
+  // all", not a genuine tie): show whichever side is present.
+  return en ?? ja ?? "community";
+}
+
 function enrichParam(
   param: Parameter,
   sheet: string,
@@ -312,6 +337,10 @@ function enrichParam(
 
   let wrote = false;
   if (resolved) {
+    if (resolved.label !== undefined && param.label === undefined) {
+      param.label = resolved.label;
+      wrote = true;
+    }
     if (resolved.description !== undefined && param.description === undefined) {
       param.description = resolved.description;
       wrote = true;
@@ -337,7 +366,7 @@ function enrichParam(
     // pass actually supplied a description (a preset description keeps no
     // extra.provenance, since enrich contributed nothing to it).
     if (resolved.provenance !== undefined && resolved.description !== undefined && param.description === resolved.description) {
-      if (fillExtra(param, "provenance", resolved.provenance)) wrote = true;
+      if (fillExtra(param, "provenance", formatProvenance(resolved.provenance))) wrote = true;
     }
 
     for (const [name, count] of Object.entries(resolved.contributions)) {

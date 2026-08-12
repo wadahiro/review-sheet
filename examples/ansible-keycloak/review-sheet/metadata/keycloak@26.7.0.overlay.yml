@@ -1,0 +1,145 @@
+# Hand-authored overlay for keycloak@26.7.0.yml — never written by
+# build-dict.ts, and never touched by regenerating it (see that script's
+# header comment). Maintained by whoever reviews this example's Keycloak
+# sheet; the loader (findDictionary(), src/providers/dictionary.ts) merges
+# this onto the generated base at build time and fails loudly if the base
+# ever starts supplying a language this file also fills.
+#
+# Keycloak itself ships English only — its PropertyMappers registry, which
+# build-dict.ts extracts from, has no Japanese strings to extract. Everything
+# below is therefore either:
+#   - a Japanese translation of an English description the base already has
+#     (fills only `ja`) — the 18 keys that used to be build-dict.ts's
+#     DESC_JA map, or
+#   - a description for a key Keycloak documents in NEITHER language (fills
+#     both `en` and `ja`, under this file's doc-level `provenance: community`
+#     — genuinely community-authored, not a translation of anything official)
+#     — the 8 keys (+ 2 <datasource> wildcard variants) that used to be
+#     DESC_EXTRA.
+#
+# Before this file existed, both lived inside build-dict.ts as TypeScript
+# constants, so a Japanese-only reviewer adding one more translation was
+# editing a generator script and re-running it just to change prose. Moving
+# the prose here means adding a translation is a YAML edit — no script
+# touched, no regeneration needed — while the base dictionary stays a clean,
+# wholesale-regeneratable extraction of the product's own English.
+#
+# The two `<datasource>` wildcard entries near the bottom are written out
+# verbatim rather than composed — see the comment just above them.
+product: keycloak
+version: "26.7.0"
+provenance: community
+parameters:
+  # ---- Japanese translations of the base's own English (ja only) ----------
+  # Technical terms (JDBC, PEM, TLS, HTTP…) and option values (dev-file,
+  # xforwarded…) are kept as-is, matching this repo's translation convention.
+  db:
+    description:
+      ja: 使用するデータベースベンダー。本番モードでは 'dev-file' 既定は使わず明示指定する（build 時に確定）。
+  db-url:
+    description:
+      ja: "データベースの完全な JDBC URL。未指定ならベンダー既定の URL（例: postgres なら jdbc:postgresql://localhost/keycloak）。"
+  db-username:
+    description:
+      ja: データベースユーザーのユーザー名。
+  db-password:
+    description:
+      ja: データベースユーザーのパスワード。
+  hostname:
+    description:
+      ja: サーバーを公開するアドレス。完全な URL、またはホスト名のみを指定する。
+  hostname-strict:
+    description:
+      ja: リクエストヘッダーからのホスト名動的解決を無効化する。本番では true 推奨。
+  http-enabled:
+    description:
+      ja: HTTP リスナーを有効化する。開発モードでは既定で有効。TLS 終端を前段のリバースプロキシに任せる場合に有効化する。
+  http-port:
+    description:
+      ja: 使用する HTTP ポート。
+  https-port:
+    description:
+      ja: 使用する HTTPS ポート。
+  https-certificate-file:
+    description:
+      ja: PEM 形式のサーバー証明書（またはチェーン）のファイルパス。
+  https-certificate-key-file:
+    description:
+      ja: PEM 形式の秘密鍵のファイルパス。
+  proxy-headers:
+    description:
+      ja: サーバーが受け入れるプロキシヘッダー（xforwarded / forwarded）。誤設定はセキュリティリスクになりうる。
+  log:
+    description:
+      ja: 有効化するログハンドラーをカンマ区切りで指定する（console / file / syslog）。
+  log-level:
+    description:
+      ja: ルートカテゴリのログレベル、または category:level のカンマ区切りリスト。
+  health-enabled:
+    description:
+      ja: ヘルスチェックエンドポイントを公開するか（build 時に確定）。
+  metrics-enabled:
+    description:
+      ja: メトリクスを公開するか（build 時に確定）。
+  cache:
+    description:
+      ja: 高可用性のためのキャッシュ機構。本番では既定で ispn（分散 Infinispan）。
+  cache-stack:
+    description:
+      ja: クラスタ通信とノード検出に使う既定スタック。
+  # ---- Community-authored descriptions for keys Keycloak documents in -----
+  # ---- neither language (en + ja) ------------------------------------------
+  # The base has no description at all for these — not "extracted" text in
+  # one language, but nothing. Both languages here carry this file's
+  # doc-level `provenance: community`, which is honest: neither is a
+  # transcription of a Keycloak document.
+  db-dialect:
+    description:
+      en: JDBC dialect Hibernate uses for the chosen database; normally inferred from `db`.
+      ja: 選択したデータベースに対して Hibernate が使う JDBC ダイアレクト。通常は `db` から推論される。
+  db-pool-acquisition-timeout:
+    description:
+      en: How long a request waits for a free connection from the pool before failing.
+      ja: コネクションプールから接続を取得できるまでの待機時間。超過するとリクエストは失敗する。
+  log-console-enabled:
+    description:
+      en: Whether the console log handler is enabled (also implied by listing `console` in `log`).
+      ja: コンソールログハンドラーを有効にするか（`log` に `console` を列挙した場合も有効になる）。
+  log-file-enabled:
+    description:
+      en: Whether the file log handler is enabled (also implied by listing `file` in `log`).
+      ja: ファイルログハンドラーを有効にするか（`log` に `file` を列挙した場合も有効になる）。
+  log-syslog-enabled:
+    description:
+      en: Whether the syslog handler is enabled (also implied by listing `syslog` in `log`).
+      ja: syslog ハンドラーを有効にするか（`log` に `syslog` を列挙した場合も有効になる）。
+  tracing-headers:
+    description:
+      en: Extra headers attached to outgoing OpenTelemetry trace exports.
+      ja: OpenTelemetry のトレース送信に付与する追加ヘッダー。
+  telemetry-logs-headers:
+    description:
+      en: Extra headers attached to outgoing OpenTelemetry log exports.
+      ja: OpenTelemetry のログ送信に付与する追加ヘッダー。
+  telemetry-metrics-headers:
+    description:
+      en: Extra headers attached to outgoing OpenTelemetry metric exports.
+      ja: OpenTelemetry のメトリクス送信に付与する追加ヘッダー。
+  # ---- The two <datasource> wildcard variants of the community-described --
+  # ---- base keys above ------------------------------------------------------
+  # build-dict.ts used to compose these from their base entry via
+  # wildcardDescription(), prefixing Keycloak's own "Used for named
+  # <datasource>. " wording. That composition can't run in a static YAML
+  # file, and a generator hook just to keep composing two lines is not worth
+  # keeping a hook alive for — so they are written out verbatim here instead,
+  # matching the prefix Keycloak itself puts on the variants it DOES
+  # describe. If db-dialect's or db-pool-acquisition-timeout's own text above
+  # changes, update these two to match by hand.
+  db-dialect-<datasource>:
+    description:
+      en: Used for named <datasource>. JDBC dialect Hibernate uses for the chosen database; normally inferred from `db`.
+      ja: 名前付き <datasource> 用。選択したデータベースに対して Hibernate が使う JDBC ダイアレクト。通常は `db` から推論される。
+  db-pool-acquisition-timeout-<datasource>:
+    description:
+      en: Used for named <datasource>. How long a request waits for a free connection from the pool before failing.
+      ja: 名前付き <datasource> 用。コネクションプールから接続を取得できるまでの待機時間。超過するとリクエストは失敗する。

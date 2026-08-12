@@ -119,7 +119,25 @@ export type OutOfScope = {
 export type Origin = "overlay" | "common" | "embedded" | "default";
 
 export type Category = {
+  // IDENTITY, not display text. It is what `sheet::category::param` is keyed by
+  // (prompt.ts's source index, every ReviewTarget, every apply target, the
+  // viewer's anchors), so it must not move: renaming a category re-points every
+  // pending review at nothing.
+  //
+  // For almost every category this is also what a reader sees, because the name
+  // is a language-independent constant either way — a literal the project wrote
+  // in sheet.yml, or a product's own group ("Write-Ahead Log"). `label` exists
+  // for the one case where it cannot be: a component, whose name a project
+  // writes in both languages.
   name: string;
+  // Display text, when it differs from the identity. Falls back to `name`.
+  //
+  // A LangText, and switched live by the viewer like `description`/`remarks` —
+  // which is precisely what `name` must never be. Splitting them is what lets a
+  // component be called "Keycloak DB" in Japanese and "Keycloak database" in
+  // English while both builds produce the SAME review targets, and what lets
+  // someone fix a wording without invalidating a review already in progress.
+  label?: LangText;
   tag?: string;
   file_path?: string;
   source_file?: string;
@@ -131,7 +149,14 @@ export type Category = {
 };
 
 export type ParameterBase = {
+  // IDENTITY. verify/apply resolve a row by it, every review target names it,
+  // and it is what the configuration file actually calls this setting.
   key: string;
+  // What the PRODUCT calls it where a human meets it — a Keycloak admin-console
+  // label. Display only, filled by enrich from the bound dictionary, and never
+  // a substitute for the key: a reviewer needs both, one to recognise the
+  // setting and one to find it in the file.
+  label?: LangText;
   description?: LangText;
   default?: string;
   remarks?: LangText;

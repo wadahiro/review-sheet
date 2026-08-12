@@ -2262,30 +2262,79 @@ code {
   cursor: pointer;
 }
 
+/* The caret and the label are siblings, not nested: the caret toggles, the
+   label navigates. The ROW carries the indentation, the hover and the
+   current-item accent, so the highlight spans the full width including the
+   caret gutter — putting them on the label instead left the accent floating
+   past the caret and the hover stopping short of the row's left edge. */
+.rs-outline-row {
+  display: flex;
+  align-items: center;
+  border-left: 2px solid transparent;
+}
+
+.rs-outline-row:hover {
+  background: var(--rs-primary-light);
+}
+
+.rs-outline-row:hover .rs-outline-item,
+.rs-palette-inputrow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--rs-border);
+}
+.rs-palette-inputrow .rs-palette-input {
+  flex: 1;
+  border-bottom: none;
+}
+/* The scope is a control, not a status line: it says which rows are being
+   searched AND changes them, so it reads as a button even at rest. */
+.rs-palette-scope {
+  flex: none;
+  margin-right: 0.6rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  white-space: nowrap;
+  color: var(--rs-muted);
+  background: var(--rs-subtle);
+  border: 1px solid var(--rs-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.rs-palette-scope:hover { color: var(--rs-fg); }
+.rs-palette-scope-all {
+  color: var(--rs-accent);
+  border-color: var(--rs-accent);
+  background: transparent;
+}
+
+
+
+
 .rs-outline-item {
   display: block;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   text-align: left;
   border: none;
-  border-left: 2px solid transparent;
   background: transparent;
   color: var(--rs-text-secondary);
-  padding: 0.25rem 0.75rem;
+  padding: 0.25rem 0.5rem 0.25rem 0.15rem;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.rs-outline-item:hover {
-  background: var(--rs-primary-light);
-  color: var(--rs-primary);
-}
-
 .rs-outline-current {
-  color: var(--rs-primary);
   background: var(--rs-primary-light);
   border-left-color: var(--rs-primary);
+}
+
+.rs-outline-current .rs-outline-item {
+  color: var(--rs-primary);
   font-weight: 600;
 }
 
@@ -2641,6 +2690,22 @@ td.rs-col-check {
   border-radius: 4px;
   padding: 0.05rem 0.4rem;
   letter-spacing: 0.02em;
+}
+
+
+
+
+
+.rs-outline-count {
+  font-size: 0.68rem;
+  color: var(--rs-text-muted);
+}
+
+/* Printing must produce the complete ledger regardless of what is collapsed
+   on screen (see App's beforeprint/afterprint handling in app.ts, which
+   mounts every collapsed category's content for the duration of the print) —
+   the toggle itself is the one thing to hide, since it is inert on paper. */
+@media print {
 }
 
 /* ============================================================

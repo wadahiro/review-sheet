@@ -13,11 +13,34 @@
    "field": "access",
    "type": "Map<String, Boolean>",
    "deprecated": false,
-   "default": {
-    "view": true,
-    "configure": true,
-    "manage": true
-   }
+   "keys_expanded": true
+  },
+  "ClientRepresentation.access.configure": {
+   "representation": "ClientRepresentation",
+   "field": "access.configure",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "access",
+   "default": true,
+   "undocumented": true
+  },
+  "ClientRepresentation.access.manage": {
+   "representation": "ClientRepresentation",
+   "field": "access.manage",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "access",
+   "default": true,
+   "undocumented": true
+  },
+  "ClientRepresentation.access.view": {
+   "representation": "ClientRepresentation",
+   "field": "access.view",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "access",
+   "default": true,
+   "undocumented": true
   },
   "ClientRepresentation.adminUrl": {
    "representation": "ClientRepresentation",
@@ -73,24 +96,7 @@
    "field": "attributes",
    "type": "Map<String, String>",
    "deprecated": false,
-   "default": {
-    "realm_client": "false",
-    "client.secret.creation.time": "1786069848"
-   },
-   "label": {
-    "en": "Resource attribute",
-    "ja": "リソース属性"
-   },
-   "description": {
-    "en": "The attributes associated with the resource.",
-    "ja": "リソースに関連付けられた属性。"
-   },
-   "ui": {
-    "file": "clients/authorization/ResourceDetails.tsx",
-    "linked_by": "name-attr",
-    "label_key": "resourceAttribute",
-    "help_key": "resourceAttributeHelp"
-   }
+   "keys_expanded": true
   },
   "ClientRepresentation.attributes.access.token.header.type.rfc9068": {
    "representation": "ClientRepresentation",
@@ -402,8 +408,8 @@
     "ja": "クライアントシークレット認証に使用できる方法。client_secret_basicに設定した場合、このクライアントを認証する際に、クライアントシークレットをHTTPの「Authorization: Basic」ヘッダーで送信する必要があります。client_secret_postに設定した場合、クライアントシークレットをリクエストボディのパラメーターとしてclient_idと共に送信する必要があります。空の場合、Authorizationヘッダーとリクエストボディーの両方のパラメーターが許可されます。"
    },
    "group": {
-    "en": "Settings",
-    "ja": "設定"
+    "en": "Credentials",
+    "ja": "クレデンシャル"
    },
    "ui": {
     "file": "clients/credentials/Credentials.tsx",
@@ -798,8 +804,8 @@
     "ja": "JWK形式のアイデンティティープロバイダーキーが保存されるURL。詳細はJWK仕様を参照してください。外部Keycloakアイデンティティープロバイダーを使用する場合は、ブローカーであるKeycloakが「http://broker-keycloak:8180」で実行されており、レルムが「test」であると仮定すると、「http://broker-keycloak:8180/realms/test/protocol/openid-connect/certs」のようなURLを使用できます。"
    },
    "group": {
-    "en": "Settings",
-    "ja": "設定"
+    "en": "Keys",
+    "ja": "鍵"
    },
    "ui": {
     "file": "clients/keys/Keys.tsx",
@@ -2142,8 +2148,8 @@
     "ja": "ドキュメントに署名するために使用する署名アルゴリズム。「SHA1」ベースのアルゴリズムは非推奨であり、将来的に削除される可能性があります。「*_SHA1」の代わりに、より安全なアルゴリズムを使用することを推奨します。"
    },
    "group": {
-    "en": "Settings",
-    "ja": "設定"
+    "en": "Credentials",
+    "ja": "クレデンシャル"
    },
    "ui": {
     "file": "clients/credentials/SignedJWT.tsx",
@@ -2167,8 +2173,8 @@
     "ja": "JWTの最大有効期限。トークンは認証直前に生成する必要があります。この期間を過ぎると、古すぎるため無効とみなされます。未定義の場合、デフォルト値は60秒です。"
    },
    "group": {
-    "en": "Settings",
-    "ja": "設定"
+    "en": "Credentials",
+    "ja": "クレデンシャル"
    },
    "ui": {
     "file": "clients/credentials/SignedJWT.tsx",
@@ -2242,8 +2248,8 @@
     "ja": "有効とした場合は、アイデンティティープロバイダーの公開鍵が指定されたJWKS URLからダウンロードされます。アイデンティティープロバイダーが新しい鍵ペアを生成する際に、新しい鍵が常に再ダウンロードされるため、柔軟性が大幅に向上します。無効とした場合は、KeycloakのDBの公開鍵（または証明書）が使用されるため、アイデンティティープロバイダーの鍵ペアが変更された際には、常にKeycloakのDBに新しい鍵をインポートする必要があります。"
    },
    "group": {
-    "en": "Settings",
-    "ja": "設定"
+    "en": "Keys",
+    "ja": "鍵"
    },
    "ui": {
     "file": "clients/keys/Keys.tsx",
@@ -2367,8 +2373,8 @@
     "ja": "OFFの場合、指定されたクライアント証明書のサブジェクトDNは、RFC8705仕様で規定されている「サブジェクトDN」プロパティーで指定されたDNと完全に一致する必要があります。サブジェクトDNは、RFC4514またはRFC1779の形式です。ONの場合、指定されたクライアント証明書のサブジェクトDNは、「サブジェクトDN」プロパティーで指定された正規表現と一致する必要があります。"
    },
    "group": {
-    "en": "Settings",
-    "ja": "設定"
+    "en": "Credentials",
+    "ja": "クレデンシャル"
    },
    "ui": {
     "file": "clients/credentials/X509.tsx",
@@ -2390,8 +2396,8 @@
     "en": "Subject DN of the root Certificate Authority (CA) that issued the certificate for the client (trust anchor). The CA Subject DN can be in the RFC4514 or RFC1779 format."
    },
    "group": {
-    "en": "Settings",
-    "ja": "設定"
+    "en": "Credentials",
+    "ja": "クレデンシャル"
    },
    "ui": {
     "file": "clients/credentials/X509.tsx",
@@ -2415,8 +2421,8 @@
     "ja": "クライアント証明書のサブジェクトDNを検証するための正規表現。あらゆる種類の表現に一致させるには、「(.*?)(?:$)」を使用します。"
    },
    "group": {
-    "en": "Settings",
-    "ja": "設定"
+    "en": "Credentials",
+    "ja": "クレデンシャル"
    },
    "ui": {
     "file": "clients/credentials/X509.tsx",
@@ -2430,7 +2436,7 @@
    "field": "authenticationFlowBindingOverrides",
    "type": "Map<String, String>",
    "deprecated": false,
-   "default": {}
+   "keys_expanded": true
   },
   "ClientRepresentation.authenticationFlowBindingOverrides.browser": {
    "representation": "ClientRepresentation",
@@ -2558,8 +2564,8 @@
     "ja": "Keycloakサーバーに対してこのクライアントの認証に使用するクライアント認証方法を設定します"
    },
    "group": {
-    "en": "Settings",
-    "ja": "設定"
+    "en": "Credentials",
+    "ja": "クレデンシャル"
    },
    "ui": {
     "file": "clients/credentials/Credentials.tsx",
@@ -2629,12 +2635,12 @@
    "type": "List<String>",
    "deprecated": false,
    "default": [
-    "web-origins",
     "acr",
-    "roles",
-    "profile",
     "basic",
-    "email"
+    "email",
+    "profile",
+    "roles",
+    "web-origins"
    ]
   },
   "ClientRepresentation.defaultRoles": {
@@ -2721,6 +2727,10 @@
     "en": "Allows you to disable all restrictions.",
     "ja": "全ての制限の無効を許可します。"
    },
+   "group": {
+    "en": "Scope",
+    "ja": "スコープ"
+   },
    "ui": {
     "file": "clients/scopes/DedicatedScope.tsx",
     "linked_by": "realm-prop",
@@ -2732,25 +2742,7 @@
    "representation": "ClientRepresentation",
    "field": "id",
    "type": "String",
-   "deprecated": false,
-   "label": {
-    "en": "Client scopes",
-    "ja": "クライアントスコープ"
-   },
-   "description": {
-    "en": "The scopes associated with this resource.",
-    "ja": "このリソースに関連付けられたスコープです。"
-   },
-   "group": {
-    "en": "Login",
-    "ja": "ログイン"
-   },
-   "ui": {
-    "file": "clients/authorization/policy/ClientScope.tsx",
-    "linked_by": "object-key",
-    "label_key": "clientScopes",
-    "help_key": "clientsClientScopesHelp"
-   }
+   "deprecated": false
   },
   "ClientRepresentation.implicitFlowEnabled": {
    "representation": "ClientRepresentation",
@@ -2813,25 +2805,7 @@
    "field": "notBefore",
    "type": "Integer",
    "deprecated": false,
-   "default": 0,
-   "label": {
-    "en": "Start time",
-    "ja": "開始時間"
-   },
-   "description": {
-    "en": "Defines the time before which the policy MUST NOT be granted. Only granted if the current date/time is after or equal to this value.",
-    "ja": "ポリシーを許可しない日時を定義します。現在日時がこの値より後か、等しい場合にのみ許可されます。"
-   },
-   "group": {
-    "en": "Login",
-    "ja": "ログイン"
-   },
-   "ui": {
-    "file": "clients/authorization/policy/Time.tsx",
-    "linked_by": "name-attr",
-    "label_key": "startTime",
-    "help_key": "startTimeHelp"
-   }
+   "default": 0
   },
   "ClientRepresentation.optionalClientScopes": {
    "representation": "ClientRepresentation",
@@ -2840,10 +2814,10 @@
    "deprecated": false,
    "default": [
     "address",
-    "phone",
-    "organization",
+    "microprofile-jwt",
     "offline_access",
-    "microprofile-jwt"
+    "organization",
+    "phone"
    ]
   },
   "ClientRepresentation.origin": {
@@ -2933,7 +2907,8 @@
    "representation": "ClientRepresentation",
    "field": "registeredNodes",
    "type": "Map<String, Integer>",
-   "deprecated": false
+   "deprecated": false,
+   "keys_expanded": true
   },
   "ClientRepresentation.registrationAccessToken": {
    "representation": "ClientRepresentation",
@@ -2996,21 +2971,7 @@
    "representation": "ClientRepresentation",
    "field": "type",
    "type": "String",
-   "deprecated": false,
-   "label": {
-    "en": "Type",
-    "ja": "タイプ"
-   },
-   "description": {
-    "en": "The type of this resource. It can be used to group different resource instances with the same type.",
-    "ja": "このリソースのタイプ。同じタイプの異なるリソースインスタンスをグループ化するために使用できます。"
-   },
-   "ui": {
-    "file": "clients/authorization/ResourceDetails.tsx",
-    "linked_by": "name-attr",
-    "label_key": "type",
-    "help_key": "resourceDetailsTypeHelp"
-   }
+   "deprecated": false
   },
   "ClientRepresentation.useTemplateConfig": {
    "representation": "ClientRepresentation",
@@ -3269,8 +3230,8 @@
     "ja": "作成または更新リクエストのJSON表現を含めるかどうかを設定します。"
    },
    "group": {
-    "en": "Events",
-    "ja": "イベント"
+    "en": "Admin events settings",
+    "ja": "管理イベントの設定"
    },
    "ui": {
     "file": "realm-settings/event-config/EventConfigForm.tsx",
@@ -3284,7 +3245,20 @@
    "field": "adminEventsEnabled",
    "type": "Boolean",
    "deprecated": false,
-   "default": false
+   "default": false,
+   "label": {
+    "en": "Save events",
+    "ja": "イベントの保存"
+   },
+   "group": {
+    "en": "Admin events settings",
+    "ja": "管理イベントの設定"
+   },
+   "ui": {
+    "file": "realm-settings/event-config/EventConfigForm.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "saveEvents"
+   }
   },
   "RealmRepresentation.adminPermissionsClient": {
    "representation": "RealmRepresentation",
@@ -3345,7 +3319,8 @@
    "representation": "RealmRepresentation",
    "field": "applicationScopeMappings",
    "type": "Map<String, ScopeMappingRepresentation>>",
-   "deprecated": true
+   "deprecated": true,
+   "keys_expanded": true
   },
   "RealmRepresentation.applications": {
    "representation": "RealmRepresentation",
@@ -3358,16 +3333,7 @@
    "field": "attributes",
    "type": "Map<String, String>",
    "deprecated": false,
-   "default": {
-    "cibaBackchannelTokenDeliveryMode": "poll",
-    "cibaExpiresIn": "120",
-    "cibaAuthRequestedUserHint": "login_hint",
-    "oauth2DeviceCodeLifespan": "600",
-    "oauth2DevicePollingInterval": "5",
-    "parRequestUriLifespan": "60",
-    "cibaInterval": "5",
-    "realmReusableOtpCode": "false"
-   }
+   "keys_expanded": true
   },
   "RealmRepresentation.attributes.acr.loa.map": {
    "representation": "RealmRepresentation",
@@ -3387,6 +3353,110 @@
     "file": "realm-settings/GeneralTab.tsx",
     "linked_by": "name-attr",
     "label_key": "acrToLoAMapping"
+   }
+  },
+  "RealmRepresentation.attributes.cibaAuthRequestedUserHint": {
+   "representation": "RealmRepresentation",
+   "field": "attributes.cibaAuthRequestedUserHint",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "attributes",
+   "default": "login_hint",
+   "label": {
+    "en": "Authentication Requested User Hint",
+    "ja": "認証リクエストユーザー特定ヒント"
+   },
+   "description": {
+    "en": "The way of identifying the end-user for whom authentication is being requested. Currently only \"login_hint\" is supported.",
+    "ja": "認証が要求されるエンドユーザーを識別する方法。現在「login_hint」のみがサポートされています。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/CibaPolicy.tsx",
+    "linked_by": "name-attr",
+    "label_key": "cibaAuthRequestedUserHint",
+    "help_key": "cibaAuthRequestedUserHintHelp"
+   }
+  },
+  "RealmRepresentation.attributes.cibaBackchannelTokenDeliveryMode": {
+   "representation": "RealmRepresentation",
+   "field": "attributes.cibaBackchannelTokenDeliveryMode",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "attributes",
+   "default": "poll",
+   "label": {
+    "en": "Backchannel Token Delivery Mode",
+    "ja": "バックチャネルトークンデリバリーモード"
+   },
+   "description": {
+    "en": "Specifies how the CD (Consumption Device) gets the authentication result and related tokens. This mode will be used by default for the CIBA clients, which do not have other mode explicitly set.",
+    "ja": "CD（Consumption Device）が認証結果と関連トークンを取得する方法を指定します。CIBAクライアントでは、他のモードが明示的に設定されていない場合、このモードがデフォルトで使用されます。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/CibaPolicy.tsx",
+    "linked_by": "name-attr",
+    "label_key": "cibaBackchannelTokenDeliveryMode",
+    "help_key": "cibaBackchannelTokenDeliveryModeHelp"
+   }
+  },
+  "RealmRepresentation.attributes.cibaExpiresIn": {
+   "representation": "RealmRepresentation",
+   "field": "attributes.cibaExpiresIn",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "attributes",
+   "default": "120",
+   "label": {
+    "en": "Expires In",
+    "ja": "有効期限"
+   },
+   "description": {
+    "en": "The expiration time of the \"auth_req_id\" in seconds since the authentication request was received.",
+    "ja": "認証リクエストを受信してからの「auth_req_id」の有効期限（秒）。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/CibaPolicy.tsx",
+    "linked_by": "name-attr",
+    "label_key": "cibaExpiresIn",
+    "help_key": "cibaExpiresInHelp"
+   }
+  },
+  "RealmRepresentation.attributes.cibaInterval": {
+   "representation": "RealmRepresentation",
+   "field": "attributes.cibaInterval",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "attributes",
+   "default": "5",
+   "label": {
+    "en": "Interval",
+    "ja": "間隔"
+   },
+   "description": {
+    "en": "The minimum amount of time in seconds that the CD (Consumption Device) must wait between polling requests to the token endpoint. If set to 0, the CD must use 5 as the default value according to the CIBA specification.",
+    "ja": "CD（Consumption Device）がトークンエンドポイントへ送信するポーリングリクエストの最小待機時間（秒単位）。0に設定されている場合、CDはCIBAの仕様に従いデフォルト値として5秒待機する必要があります。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/CibaPolicy.tsx",
+    "linked_by": "name-attr",
+    "label_key": "cibaInterval",
+    "help_key": "cibaIntervalHelp"
    }
   },
   "RealmRepresentation.attributes.credentialOfferLifespanS": {
@@ -3461,6 +3531,24 @@
     "label_key": "frontendUrl",
     "help_key": "frontendUrlHelp"
    }
+  },
+  "RealmRepresentation.attributes.oauth2DeviceCodeLifespan": {
+   "representation": "RealmRepresentation",
+   "field": "attributes.oauth2DeviceCodeLifespan",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "attributes",
+   "default": "600",
+   "undocumented": true
+  },
+  "RealmRepresentation.attributes.oauth2DevicePollingInterval": {
+   "representation": "RealmRepresentation",
+   "field": "attributes.oauth2DevicePollingInterval",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "attributes",
+   "default": "5",
+   "undocumented": true
   },
   "RealmRepresentation.attributes.oid4vci.batch_credential_issuance.batch_size": {
    "representation": "RealmRepresentation",
@@ -3695,6 +3783,15 @@
     "help_key": "parRequestUriLifespanHelp"
    }
   },
+  "RealmRepresentation.attributes.realmReusableOtpCode": {
+   "representation": "RealmRepresentation",
+   "field": "attributes.realmReusableOtpCode",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "attributes",
+   "default": "false",
+   "undocumented": true
+  },
   "RealmRepresentation.attributes.saml.signature.algorithm": {
    "representation": "RealmRepresentation",
    "field": "attributes.saml.signature.algorithm",
@@ -3790,14 +3887,194 @@
    "field": "browserSecurityHeaders",
    "type": "Map<String, String>",
    "deprecated": false,
-   "default": {
-    "contentSecurityPolicyReportOnly": "",
-    "xContentTypeOptions": "nosniff",
-    "referrerPolicy": "no-referrer",
-    "xRobotsTag": "none",
-    "xFrameOptions": "SAMEORIGIN",
-    "contentSecurityPolicy": "frame-src 'self'; frame-ancestors 'self'; object-src 'none';",
-    "strictTransportSecurity": "max-age=31536000; includeSubDomains"
+   "keys_expanded": true
+  },
+  "RealmRepresentation.browserSecurityHeaders.contentSecurityPolicy": {
+   "representation": "RealmRepresentation",
+   "field": "browserSecurityHeaders.contentSecurityPolicy",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "browserSecurityHeaders",
+   "default": "frame-src 'self'; frame-ancestors 'self'; object-src 'none';",
+   "label": {
+    "en": "Content-Security-Policy",
+    "ja": "Content-Security-Policy"
+   },
+   "description": {
+    "en": "Default value prevents pages from being included by non-origin iframes.",
+    "ja": "デフォルト値は、非オリジンのiframeによってページが含まれないようにします。"
+   },
+   "docs_url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy",
+   "group": {
+    "en": "Headers",
+    "ja": "ヘッダー"
+   },
+   "ui": {
+    "file": "realm-settings/security-defences/HeadersForm.tsx",
+    "linked_by": "name-attr+callsite",
+    "label_key": "contentSecurityPolicy",
+    "help_key": "contentSecurityPolicyHelp"
+   }
+  },
+  "RealmRepresentation.browserSecurityHeaders.contentSecurityPolicyReportOnly": {
+   "representation": "RealmRepresentation",
+   "field": "browserSecurityHeaders.contentSecurityPolicyReportOnly",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "browserSecurityHeaders",
+   "default": "",
+   "label": {
+    "en": "Content-Security-Policy-Report-Only",
+    "ja": "Content-Security-Policy-Report-Only"
+   },
+   "description": {
+    "en": "For testing Content Security Policies",
+    "ja": "コンテンツセキュリティーポリシーのテストについての詳細は です"
+   },
+   "docs_url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy-Report-Only",
+   "group": {
+    "en": "Headers",
+    "ja": "ヘッダー"
+   },
+   "ui": {
+    "file": "realm-settings/security-defences/HeadersForm.tsx",
+    "linked_by": "name-attr+callsite",
+    "label_key": "contentSecurityPolicyReportOnly",
+    "help_key": "contentSecurityPolicyReportOnlyHelp"
+   }
+  },
+  "RealmRepresentation.browserSecurityHeaders.referrerPolicy": {
+   "representation": "RealmRepresentation",
+   "field": "browserSecurityHeaders.referrerPolicy",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "browserSecurityHeaders",
+   "default": "no-referrer",
+   "label": {
+    "en": "Referrer Policy",
+    "ja": "リファラーポリシー"
+   },
+   "description": {
+    "en": "Default value prevents pages from being included."
+   },
+   "docs_url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy",
+   "group": {
+    "en": "Headers",
+    "ja": "ヘッダー"
+   },
+   "ui": {
+    "file": "realm-settings/security-defences/HeadersForm.tsx",
+    "linked_by": "name-attr+callsite",
+    "label_key": "referrerPolicy",
+    "help_key": "referrerPolicyHelp"
+   }
+  },
+  "RealmRepresentation.browserSecurityHeaders.strictTransportSecurity": {
+   "representation": "RealmRepresentation",
+   "field": "browserSecurityHeaders.strictTransportSecurity",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "browserSecurityHeaders",
+   "default": "max-age=31536000; includeSubDomains",
+   "label": {
+    "en": "HTTP Strict Transport Security (HSTS)",
+    "ja": "HTTP Strict Transport Security（HSTS）"
+   },
+   "description": {
+    "en": "The Strict-Transport-Security HTTP header tells browsers to always use HTTPS. Once a browser sees this header, it will only visit the site over HTTPS for the time specified (1 year) at max-age, including the subdomains.",
+    "ja": "Strict-Transport-Security HTTPヘッダーは、ブラウザーに常にHTTPSを使用するよう指示します。ブラウザーがこのヘッダーを認識すると、max-ageで指定された期間（1年間）の間、サブドメインを含め、サイトへのアクセスはHTTPSのみになります。"
+   },
+   "docs_url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security",
+   "group": {
+    "en": "Headers",
+    "ja": "ヘッダー"
+   },
+   "ui": {
+    "file": "realm-settings/security-defences/HeadersForm.tsx",
+    "linked_by": "name-attr+callsite",
+    "label_key": "strictTransportSecurity",
+    "help_key": "strictTransportSecurityHelp"
+   }
+  },
+  "RealmRepresentation.browserSecurityHeaders.xContentTypeOptions": {
+   "representation": "RealmRepresentation",
+   "field": "browserSecurityHeaders.xContentTypeOptions",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "browserSecurityHeaders",
+   "default": "nosniff",
+   "label": {
+    "en": "X-Content-Type-Options",
+    "ja": "X-Content-Type-Options"
+   },
+   "description": {
+    "en": "The default value prevents Internet Explorer and Google Chrome from MIME-sniffing a response away from the declared content-type.",
+    "ja": "デフォルト値により、Internet ExplorerとGoogle Chromeは宣言されたコンテンツタイプとは異なる応答をMIMEスニッフィングできなくなります。"
+   },
+   "docs_url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options",
+   "group": {
+    "en": "Headers",
+    "ja": "ヘッダー"
+   },
+   "ui": {
+    "file": "realm-settings/security-defences/HeadersForm.tsx",
+    "linked_by": "name-attr+callsite",
+    "label_key": "xContentTypeOptions",
+    "help_key": "xContentTypeOptionsHelp"
+   }
+  },
+  "RealmRepresentation.browserSecurityHeaders.xFrameOptions": {
+   "representation": "RealmRepresentation",
+   "field": "browserSecurityHeaders.xFrameOptions",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "browserSecurityHeaders",
+   "default": "SAMEORIGIN",
+   "label": {
+    "en": "X-Frame-Options",
+    "ja": "X-Frame-Options"
+   },
+   "description": {
+    "en": "Default value prevents pages from being included by non-origin iframes.",
+    "ja": "デフォルト値は、非オリジンのiframeによってページが含まれないようにします。"
+   },
+   "docs_url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options",
+   "group": {
+    "en": "Headers",
+    "ja": "ヘッダー"
+   },
+   "ui": {
+    "file": "realm-settings/security-defences/HeadersForm.tsx",
+    "linked_by": "name-attr+callsite",
+    "label_key": "xFrameOptions",
+    "help_key": "xFrameOptionsHelp"
+   }
+  },
+  "RealmRepresentation.browserSecurityHeaders.xRobotsTag": {
+   "representation": "RealmRepresentation",
+   "field": "browserSecurityHeaders.xRobotsTag",
+   "type": "String",
+   "deprecated": false,
+   "nested_in": "browserSecurityHeaders",
+   "default": "none",
+   "label": {
+    "en": "X-Robots-Tag",
+    "ja": "X-Robots-Tag"
+   },
+   "description": {
+    "en": "Prevent pages from appearing in search engines.",
+    "ja": "ページが検索エンジンに表示されないようにします。"
+   },
+   "docs_url": "https://developers.google.com/search/docs/advanced/robots/robots_meta_tag",
+   "group": {
+    "en": "Headers",
+    "ja": "ヘッダー"
+   },
+   "ui": {
+    "file": "realm-settings/security-defences/HeadersForm.tsx",
+    "linked_by": "name-attr+callsite",
+    "label_key": "xRobotsTag",
+    "help_key": "xRobotsTagHelp"
    }
   },
   "RealmRepresentation.bruteForceProtected": {
@@ -3822,8 +4099,8 @@
     "ja": "「倍数」は、失敗回数が「{{failureFactor}}」の倍数である場合にのみ待機時間を増加させます。「線形」は、「{{failureFactor}}」から始まる新しい失敗ごとに待機時間を増加させます。"
    },
    "group": {
-    "en": "General",
-    "ja": "一般"
+    "en": "Brute force detection",
+    "ja": "ブルートフォースの検出"
    },
    "ui": {
     "file": "realm-settings/security-defences/BruteForceDetection.tsx",
@@ -3917,7 +4194,8 @@
    "representation": "RealmRepresentation",
    "field": "clientScopeMappings",
    "type": "Map<String, ScopeMappingRepresentation>>",
-   "deprecated": false
+   "deprecated": false,
+   "keys_expanded": true
   },
   "RealmRepresentation.clientScopes": {
    "representation": "RealmRepresentation",
@@ -4045,15 +4323,7 @@
    "representation": "RealmRepresentation",
    "field": "defaultRole",
    "type": "RoleRepresentation",
-   "deprecated": false,
-   "default": {
-    "id": "b09dcc7c-eca8-4e12-b470-d88b91c225e0",
-    "name": "default-roles-rs-probe",
-    "description": "${role_default-roles}",
-    "composite": true,
-    "clientRole": false,
-    "containerId": "afa85fe1-a995-42a6-946d-a43d29b90f12"
-   }
+   "deprecated": false
   },
   "RealmRepresentation.defaultRoles": {
    "representation": "RealmRepresentation",
@@ -4234,7 +4504,20 @@
    "field": "eventsEnabled",
    "type": "Boolean",
    "deprecated": false,
-   "default": false
+   "default": false,
+   "label": {
+    "en": "Save events",
+    "ja": "イベントの保存"
+   },
+   "group": {
+    "en": "Admin events settings",
+    "ja": "管理イベントの設定"
+   },
+   "ui": {
+    "file": "realm-settings/event-config/EventConfigForm.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "saveEvents"
+   }
   },
   "RealmRepresentation.eventsExpiration": {
    "representation": "RealmRepresentation",
@@ -4259,8 +4542,8 @@
     "ja": "どのリスナーがレルムのイベントを受け取るかを設定します。"
    },
    "group": {
-    "en": "Events",
-    "ja": "イベント"
+    "en": "Event listeners",
+    "ja": "イベントリスナー"
    },
    "ui": {
     "file": "realm-settings/event-config/EventListenersForm.tsx",
@@ -4284,8 +4567,8 @@
     "ja": "検出するまでの失敗回数。"
    },
    "group": {
-    "en": "General",
-    "ja": "一般"
+    "en": "Brute force detection",
+    "ja": "ブルートフォースの検出"
    },
    "ui": {
     "file": "realm-settings/security-defences/BruteForceDetection.tsx",
@@ -4384,7 +4667,8 @@
    "representation": "RealmRepresentation",
    "field": "localizationTexts",
    "type": "Map<String, String>>",
-   "deprecated": false
+   "deprecated": false,
+   "keys_expanded": true
   },
   "RealmRepresentation.loginTheme": {
    "representation": "RealmRepresentation",
@@ -4440,14 +4724,50 @@
    "field": "maxDeltaTimeSeconds",
    "type": "Integer",
    "deprecated": false,
-   "default": 43200
+   "default": 43200,
+   "label": {
+    "en": "Failure reset time",
+    "ja": "ログイン失敗回数のリセット時間"
+   },
+   "description": {
+    "en": "When will failure count be reset?",
+    "ja": "いつ失敗回数がリセットされるか。"
+   },
+   "group": {
+    "en": "Brute force detection",
+    "ja": "ブルートフォースの検出"
+   },
+   "ui": {
+    "file": "realm-settings/security-defences/BruteForceDetection.tsx",
+    "linked_by": "name-attr+callsite",
+    "label_key": "maxDeltaTimeSeconds",
+    "help_key": "maxDeltaTimeSecondsHelp"
+   }
   },
   "RealmRepresentation.maxFailureWaitSeconds": {
    "representation": "RealmRepresentation",
    "field": "maxFailureWaitSeconds",
    "type": "Integer",
    "deprecated": false,
-   "default": 900
+   "default": 900,
+   "label": {
+    "en": "Max wait",
+    "ja": "最大待機時間"
+   },
+   "description": {
+    "en": "Max time a user will be locked out.",
+    "ja": "ユーザーがロックアウトされる最大待機時間。"
+   },
+   "group": {
+    "en": "Brute force detection",
+    "ja": "ブルートフォースの検出"
+   },
+   "ui": {
+    "file": "realm-settings/security-defences/BruteForceDetection.tsx",
+    "linked_by": "name-attr+callsite",
+    "label_key": "maxFailureWaitSeconds",
+    "help_key": "maxFailureWaitSecondsHelp"
+   }
   },
   "RealmRepresentation.maxSecondaryAuthFailures": {
    "representation": "RealmRepresentation",
@@ -4464,8 +4784,8 @@
     "ja": "永久ロックアウトがトリガーされる二段階認証の失敗回数。一時的なロックアウトのブルートフォースモードでもアカウントはロックされます。値が0の場合は、この動作は無効になります。"
    },
    "group": {
-    "en": "General",
-    "ja": "一般"
+    "en": "Brute force detection",
+    "ja": "ブルートフォースの検出"
    },
    "ui": {
     "file": "realm-settings/security-defences/BruteForceDetection.tsx",
@@ -4489,8 +4809,8 @@
     "ja": "ユーザーが永続的にロックアウトされる前に許可される一時的なロックアウトの回数。"
    },
    "group": {
-    "en": "General",
-    "ja": "一般"
+    "en": "Brute force detection",
+    "ja": "ブルートフォースの検出"
    },
    "ui": {
     "file": "realm-settings/security-defences/BruteForceDetection.tsx",
@@ -4504,7 +4824,25 @@
    "field": "minimumQuickLoginWaitSeconds",
    "type": "Integer",
    "deprecated": false,
-   "default": 60
+   "default": 60,
+   "label": {
+    "en": "Minimum quick login wait",
+    "ja": "クイックログイン失敗時の最小待機時間"
+   },
+   "description": {
+    "en": "How long to wait after a quick login failure.",
+    "ja": "クイックログイン失敗後にどれくらいの時間待機するか設定します。"
+   },
+   "group": {
+    "en": "Brute force detection",
+    "ja": "ブルートフォースの検出"
+   },
+   "ui": {
+    "file": "realm-settings/security-defences/BruteForceDetection.tsx",
+    "linked_by": "name-attr+callsite",
+    "label_key": "minimumQuickLoginWaitSeconds",
+    "help_key": "minimumQuickLoginWaitSecondsHelp"
+   }
   },
   "RealmRepresentation.notBefore": {
    "representation": "RealmRepresentation",
@@ -4680,49 +5018,171 @@
    "field": "otpPolicyAlgorithm",
    "type": "String",
    "deprecated": false,
-   "default": "HmacSHA1"
+   "default": "HmacSHA1",
+   "label": {
+    "en": "OTP hash algorithm",
+    "ja": "OTPハッシュアルゴリズム"
+   },
+   "description": {
+    "en": "Hashing algorithm used to generate the OTP",
+    "ja": "OTPを生成するために使用するハッシュアルゴリズム"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/OtpPolicy.tsx",
+    "linked_by": "name-attr",
+    "label_key": "otpHashAlgorithm",
+    "help_key": "otpHashAlgorithmHelp"
+   }
   },
   "RealmRepresentation.otpPolicyCodeReusable": {
    "representation": "RealmRepresentation",
    "field": "otpPolicyCodeReusable",
    "type": "Boolean",
    "deprecated": false,
-   "default": false
+   "default": false,
+   "label": {
+    "en": "Reusable token",
+    "ja": "再利用可能なトークン"
+   },
+   "description": {
+    "en": "Possibility to use the same OTP code again after successful authentication.",
+    "ja": "認証が成功した後、同じOTPコードを再度使用できるようになります。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/OtpPolicy.tsx",
+    "linked_by": "name-attr",
+    "label_key": "otpPolicyCodeReusable",
+    "help_key": "otpPolicyCodeReusableHelp"
+   }
   },
   "RealmRepresentation.otpPolicyDigits": {
    "representation": "RealmRepresentation",
    "field": "otpPolicyDigits",
    "type": "Integer",
    "deprecated": false,
-   "default": 6
+   "default": 6,
+   "label": {
+    "en": "Number of digits",
+    "ja": "桁数"
+   },
+   "description": {
+    "en": "How many digits should the OTP have?",
+    "ja": "OTPを何桁にする必要があるか。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/OtpPolicy.tsx",
+    "linked_by": "name-attr",
+    "label_key": "otpPolicyDigits",
+    "help_key": "otpPolicyDigitsHelp"
+   }
   },
   "RealmRepresentation.otpPolicyInitialCounter": {
    "representation": "RealmRepresentation",
    "field": "otpPolicyInitialCounter",
    "type": "Integer",
    "deprecated": false,
-   "default": 0
+   "default": 0,
+   "label": {
+    "en": "Initial counter",
+    "ja": "初期カウンター"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/OtpPolicy.tsx",
+    "linked_by": "name-attr",
+    "label_key": "initialCounter",
+    "help_key": "initialCounterHelp"
+   }
   },
   "RealmRepresentation.otpPolicyLookAheadWindow": {
    "representation": "RealmRepresentation",
    "field": "otpPolicyLookAheadWindow",
    "type": "Integer",
    "deprecated": false,
-   "default": 1
+   "default": 1,
+   "label": {
+    "en": "Look around window",
+    "ja": "許容時間枠"
+   },
+   "description": {
+    "en": "How far around (extra token periods or counts) should the server look just in case the token generator and server are out of time sync or counter sync?",
+    "ja": "トークンジェネレーターとサーバーが時間同期または回数同期していない場合に備えて、サーバーが許容する必要がある誤差の範囲（トークンの期間または回数）。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/OtpPolicy.tsx",
+    "linked_by": "name-attr",
+    "label_key": "lookAround",
+    "help_key": "lookAroundHelp"
+   }
   },
   "RealmRepresentation.otpPolicyPeriod": {
    "representation": "RealmRepresentation",
    "field": "otpPolicyPeriod",
    "type": "Integer",
    "deprecated": false,
-   "default": 30
+   "default": 30,
+   "label": {
+    "en": "OTP Token period",
+    "ja": "OTPトークンの期間"
+   },
+   "description": {
+    "en": "How many seconds should an OTP token be valid? Defaults to 30 seconds.",
+    "ja": "OTPトークンが有効な秒数を設定します。デフォルトは30秒です。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/OtpPolicy.tsx",
+    "linked_by": "name-attr",
+    "label_key": "otpPolicyPeriod",
+    "help_key": "otpPolicyPeriodHelp"
+   }
   },
   "RealmRepresentation.otpPolicyType": {
    "representation": "RealmRepresentation",
    "field": "otpPolicyType",
    "type": "String",
    "deprecated": false,
-   "default": "totp"
+   "default": "totp",
+   "label": {
+    "en": "OTP type",
+    "ja": "OTPタイプ"
+   },
+   "description": {
+    "en": "totp is Time-Based One Time Password. 'hotp' is a counter base one time password in which the server keeps a counter to hash against.",
+    "ja": "「totp」は時間ベースのワンタイムパスワードです。「hotp」はサーバーでハッシュ値計算対象としてカウンターを保持するカウンターベースのワンタイムパスワードです。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/OtpPolicy.tsx",
+    "linked_by": "name-attr",
+    "label_key": "otpType",
+    "help_key": "otpTypeHelp"
+   }
   },
   "RealmRepresentation.otpSupportedApplications": {
    "representation": "RealmRepresentation",
@@ -4787,8 +5247,8 @@
     "ja": "クイックログイン失敗があまりにも頻繁に発生した場合は、ユーザーをロックアウトします。"
    },
    "group": {
-    "en": "General",
-    "ja": "一般"
+    "en": "Brute force detection",
+    "ja": "ブルートフォースの検出"
    },
    "ui": {
     "file": "realm-settings/security-defences/BruteForceDetection.tsx",
@@ -5041,7 +5501,7 @@
    "field": "smtpServer",
    "type": "Map<String, String>",
    "deprecated": false,
-   "default": {}
+   "keys_expanded": true
   },
   "RealmRepresentation.smtpServer.allowutf8": {
    "representation": "RealmRepresentation",
@@ -5467,7 +5927,8 @@
    "representation": "RealmRepresentation",
    "field": "socialProviders",
    "type": "Map<String, String>",
-   "deprecated": true
+   "deprecated": true,
+   "keys_expanded": true
   },
   "RealmRepresentation.sslRequired": {
    "representation": "RealmRepresentation",
@@ -5728,97 +6189,347 @@
    "field": "waitIncrementSeconds",
    "type": "Integer",
    "deprecated": false,
-   "default": 60
+   "default": 60,
+   "label": {
+    "en": "Wait increment",
+    "ja": "連続失敗時の待機時間"
+   },
+   "description": {
+    "en": "When the failure threshold is met, how long should the user be locked out?",
+    "ja": "失敗回数が閾値に達した場合に、ユーザーがロックアウトされる時間。"
+   },
+   "group": {
+    "en": "Brute force detection",
+    "ja": "ブルートフォースの検出"
+   },
+   "ui": {
+    "file": "realm-settings/security-defences/BruteForceDetection.tsx",
+    "linked_by": "name-attr+callsite",
+    "label_key": "waitIncrementSeconds",
+    "help_key": "waitIncrementSecondsHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyAcceptableAaguids": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyAcceptableAaguids",
    "type": "List<String>",
    "deprecated": false,
-   "default": []
+   "default": [],
+   "label": {
+    "en": "Acceptable AAGUIDs",
+    "ja": "許容可能なAAGUID"
+   },
+   "description": {
+    "en": "The list of allowed AAGUIDs of which an authenticator can be registered. An AAGUID is a 128-bit identifier indicating the authenticator's type (e.g., make and model). This option needs the Attestation conveyance preference to be configured (normally `Direct`) to ensure a trusted AAGUID is passed. Default attestation `None` is not reliable, and can anonymize the AAGUID to zero value.",
+    "ja": "登録可能なオーセンティケーターのAAGUIDのリスト。AAGUIDは、オーセンティケーターの種類（メーカーやモデルなど）を示す128ビットの識別子です。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyAcceptableAaguids",
+    "help_key": "webAuthnPolicyAcceptableAaguidsHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyAttestationConveyancePreference": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyAttestationConveyancePreference",
    "type": "String",
    "deprecated": false,
-   "default": "not specified"
+   "default": "not specified",
+   "label": {
+    "en": "Attestation conveyance preference",
+    "ja": "アテステーション伝達設定"
+   },
+   "description": {
+    "en": "Communicates to an authenticator the preference of how to generate an attestation statement. None is used by specification if not specified.",
+    "ja": "認証ステートメントを生成する方法の優先順位をオーセンティケーターに通知します。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyAttestationConveyancePreference",
+    "help_key": "webAuthnPolicyAttestationConveyancePreferenceHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyAuthenticatorAttachment": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyAuthenticatorAttachment",
    "type": "String",
    "deprecated": false,
-   "default": "not specified"
+   "default": "not specified",
+   "label": {
+    "en": "Authenticator Attachment",
+    "ja": "オーセンティケーターアタッチメント"
+   },
+   "description": {
+    "en": "Communicates to an authenticator an acceptable attachment pattern.",
+    "ja": "受け入れ可能なアタッチメントパターンでオーセンティケーターと通信します。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyAuthenticatorAttachment",
+    "help_key": "webAuthnPolicyAuthenticatorAttachmentHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyAvoidSameAuthenticatorRegister": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyAvoidSameAuthenticatorRegister",
    "type": "Boolean",
    "deprecated": false,
-   "default": false
+   "default": false,
+   "label": {
+    "en": "Avoid same authenticator registration",
+    "ja": "オーセンティケーターの重複登録の回避"
+   },
+   "description": {
+    "en": "Avoid registering an authenticator that has already been registered.",
+    "ja": "すでに登録されているオーセンティケーターの登録を避けるかどうかを設定します。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyAvoidSameAuthenticatorRegister",
+    "help_key": "webAuthnPolicyAvoidSameAuthenticatorRegisterHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyCreateTimeout": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyCreateTimeout",
    "type": "Integer",
    "deprecated": false,
-   "default": 0
+   "default": 0,
+   "label": {
+    "en": "Timeout",
+    "ja": "タイムアウト"
+   },
+   "description": {
+    "en": "The timeout value for creating the user's public key credential in seconds. If set to 0, this timeout option is not adapted.",
+    "ja": "ユーザーの公開鍵クレデンシャルの作成に対するタイムアウト値（秒単位）。0に設定すると、このタイムアウトオプションは適応されません。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyCreateTimeout",
+    "help_key": "webAuthnPolicyCreateTimeoutHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyExtraOrigins": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyExtraOrigins",
    "type": "List<String>",
    "deprecated": false,
-   "default": []
+   "default": [],
+   "label": {
+    "en": "Extra Origins",
+    "ja": "エクストラオリジン"
+   },
+   "description": {
+    "en": "The list of extra origins for non-web applications.",
+    "ja": "非Webアプリケーションの追加オリジンのリスト。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyExtraOrigins",
+    "help_key": "webAuthnPolicyExtraOriginsHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyPasswordlessAcceptableAaguids": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyPasswordlessAcceptableAaguids",
    "type": "List<String>",
    "deprecated": false,
-   "default": []
+   "default": [],
+   "label": {
+    "en": "Acceptable AAGUIDs",
+    "ja": "許容可能なAAGUID"
+   },
+   "description": {
+    "en": "The list of allowed AAGUIDs of which an authenticator can be registered. An AAGUID is a 128-bit identifier indicating the authenticator's type (e.g., make and model). This option needs the Attestation conveyance preference to be configured (normally `Direct`) to ensure a trusted AAGUID is passed. Default attestation `None` is not reliable, and can anonymize the AAGUID to zero value.",
+    "ja": "登録可能なオーセンティケーターのAAGUIDのリスト。AAGUIDは、オーセンティケーターの種類（メーカーやモデルなど）を示す128ビットの識別子です。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyAcceptableAaguids",
+    "help_key": "webAuthnPolicyAcceptableAaguidsHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyPasswordlessAttestationConveyancePreference": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyPasswordlessAttestationConveyancePreference",
    "type": "String",
    "deprecated": false,
-   "default": "not specified"
+   "default": "not specified",
+   "label": {
+    "en": "Attestation conveyance preference",
+    "ja": "アテステーション伝達設定"
+   },
+   "description": {
+    "en": "Communicates to an authenticator the preference of how to generate an attestation statement. None is used by specification if not specified.",
+    "ja": "認証ステートメントを生成する方法の優先順位をオーセンティケーターに通知します。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyAttestationConveyancePreference",
+    "help_key": "webAuthnPolicyAttestationConveyancePreferenceHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyPasswordlessAuthenticatorAttachment": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyPasswordlessAuthenticatorAttachment",
    "type": "String",
    "deprecated": false,
-   "default": "not specified"
+   "default": "not specified",
+   "label": {
+    "en": "Authenticator Attachment",
+    "ja": "オーセンティケーターアタッチメント"
+   },
+   "description": {
+    "en": "Communicates to an authenticator an acceptable attachment pattern.",
+    "ja": "受け入れ可能なアタッチメントパターンでオーセンティケーターと通信します。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyAuthenticatorAttachment",
+    "help_key": "webAuthnPolicyAuthenticatorAttachmentHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister",
    "type": "Boolean",
    "deprecated": false,
-   "default": false
+   "default": false,
+   "label": {
+    "en": "Avoid same authenticator registration",
+    "ja": "オーセンティケーターの重複登録の回避"
+   },
+   "description": {
+    "en": "Avoid registering an authenticator that has already been registered.",
+    "ja": "すでに登録されているオーセンティケーターの登録を避けるかどうかを設定します。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyAvoidSameAuthenticatorRegister",
+    "help_key": "webAuthnPolicyAvoidSameAuthenticatorRegisterHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyPasswordlessCreateTimeout": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyPasswordlessCreateTimeout",
    "type": "Integer",
    "deprecated": false,
-   "default": 0
+   "default": 0,
+   "label": {
+    "en": "Timeout",
+    "ja": "タイムアウト"
+   },
+   "description": {
+    "en": "The timeout value for creating the user's public key credential in seconds. If set to 0, this timeout option is not adapted.",
+    "ja": "ユーザーの公開鍵クレデンシャルの作成に対するタイムアウト値（秒単位）。0に設定すると、このタイムアウトオプションは適応されません。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyCreateTimeout",
+    "help_key": "webAuthnPolicyCreateTimeoutHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyPasswordlessExtraOrigins": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyPasswordlessExtraOrigins",
    "type": "List<String>",
    "deprecated": false,
-   "default": []
+   "default": [],
+   "label": {
+    "en": "Extra Origins",
+    "ja": "エクストラオリジン"
+   },
+   "description": {
+    "en": "The list of extra origins for non-web applications.",
+    "ja": "非Webアプリケーションの追加オリジンのリスト。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyExtraOrigins",
+    "help_key": "webAuthnPolicyExtraOriginsHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyPasswordlessMediation": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyPasswordlessMediation",
    "type": "String",
-   "deprecated": false
+   "deprecated": false,
+   "label": {
+    "en": "Passkey Mediation"
+   },
+   "description": {
+    "en": "Controls how the browser presents the passkey selection dialog when the login page loads."
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyMediation",
+    "help_key": "webAuthnPolicyMediationHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyPasswordlessPasskeysEnabled": {
    "representation": "RealmRepresentation",
@@ -5849,28 +6560,98 @@
    "field": "webAuthnPolicyPasswordlessRequireResidentKey",
    "type": "String",
    "deprecated": false,
-   "default": "not specified"
+   "default": "not specified",
+   "label": {
+    "en": "Require discoverable credential",
+    "ja": "検出可能なクレデンシャルの要求"
+   },
+   "description": {
+    "en": "Deprecated, use 'Discoverable credential' instead. It tells an authenticator whether to create a public key credential as a Discoverable Credential.",
+    "ja": "オーセンティケーターに、公開鍵クレデンシャルを検出可能なクレデンシャルとして作成するかどうかを指示します。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyRequireResidentKey",
+    "help_key": "webAuthnPolicyRequireResidentKeyHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyPasswordlessResidentKey": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyPasswordlessResidentKey",
    "type": "String",
    "deprecated": false,
-   "default": "required"
+   "default": "required",
+   "label": {
+    "en": "Discoverable credential"
+   },
+   "description": {
+    "en": "Tells the authenticator to what extent a discoverable credential (resident key) is desired when registering. Replaces and takes precedence over the deprecated 'Require discoverable credential' option."
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyResidentKey",
+    "help_key": "webAuthnPolicyResidentKeyHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyPasswordlessRpEntityName": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyPasswordlessRpEntityName",
    "type": "String",
    "deprecated": false,
-   "default": "keycloak"
+   "default": "keycloak",
+   "label": {
+    "en": "Relying party entity name",
+    "ja": "リライングパーティーエンティティー名"
+   },
+   "description": {
+    "en": "Human-readable server name as WebAuthn Relying Party",
+    "ja": "WebAuthnリライングパーティーとしての人間が読み取れるサーバー名"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyRpEntityName",
+    "help_key": "webAuthnPolicyRpEntityNameHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyPasswordlessRpId": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyPasswordlessRpId",
    "type": "String",
    "deprecated": false,
-   "default": ""
+   "default": "",
+   "label": {
+    "en": "Relying party ID",
+    "ja": "リライングパーティーエンティティーID"
+   },
+   "description": {
+    "en": "The WebAuthn Relying Party ID (RpID). It must be the origin's effective domain, e.g. 'company.com' or 'auth.company.com'.",
+    "ja": "これは、WebAuthnリライングパーティーとしてのIDです。オリジンの有効なドメインでなければなりません。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyRpId",
+    "help_key": "webAuthnPolicyRpIdHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyPasswordlessSignatureAlgorithms": {
    "representation": "RealmRepresentation",
@@ -5880,42 +6661,148 @@
    "default": [
     "ES256",
     "RS256"
-   ]
+   ],
+   "label": {
+    "en": "Signature algorithms",
+    "ja": "署名アルゴリズム"
+   },
+   "description": {
+    "en": "The signature algorithms that should be used for the Authentication Assertion.",
+    "ja": "認証アサーションに使用すべき署名アルゴリズム。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicySignatureAlgorithms",
+    "help_key": "webAuthnPolicySignatureAlgorithmsHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyPasswordlessUserVerificationRequirement": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyPasswordlessUserVerificationRequirement",
    "type": "String",
    "deprecated": false,
-   "default": "required"
+   "default": "required",
+   "label": {
+    "en": "User verification requirement",
+    "ja": "ユーザー検証要件"
+   },
+   "description": {
+    "en": "Communicates to an authenticator whether to require to verify a user.",
+    "ja": "ユーザー検証を要求するかどうかをオーセンティケーターに伝えます。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyUserVerificationRequirement",
+    "help_key": "webAuthnPolicyUserVerificationRequirementHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyRequireResidentKey": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyRequireResidentKey",
    "type": "String",
    "deprecated": false,
-   "default": "not specified"
+   "default": "not specified",
+   "label": {
+    "en": "Require discoverable credential",
+    "ja": "検出可能なクレデンシャルの要求"
+   },
+   "description": {
+    "en": "Deprecated, use 'Discoverable credential' instead. It tells an authenticator whether to create a public key credential as a Discoverable Credential.",
+    "ja": "オーセンティケーターに、公開鍵クレデンシャルを検出可能なクレデンシャルとして作成するかどうかを指示します。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyRequireResidentKey",
+    "help_key": "webAuthnPolicyRequireResidentKeyHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyResidentKey": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyResidentKey",
    "type": "String",
    "deprecated": false,
-   "default": "not specified"
+   "default": "not specified",
+   "label": {
+    "en": "Discoverable credential"
+   },
+   "description": {
+    "en": "Tells the authenticator to what extent a discoverable credential (resident key) is desired when registering. Replaces and takes precedence over the deprecated 'Require discoverable credential' option."
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyResidentKey",
+    "help_key": "webAuthnPolicyResidentKeyHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyRpEntityName": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyRpEntityName",
    "type": "String",
    "deprecated": false,
-   "default": "keycloak"
+   "default": "keycloak",
+   "label": {
+    "en": "Relying party entity name",
+    "ja": "リライングパーティーエンティティー名"
+   },
+   "description": {
+    "en": "Human-readable server name as WebAuthn Relying Party",
+    "ja": "WebAuthnリライングパーティーとしての人間が読み取れるサーバー名"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyRpEntityName",
+    "help_key": "webAuthnPolicyRpEntityNameHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyRpId": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyRpId",
    "type": "String",
    "deprecated": false,
-   "default": ""
+   "default": "",
+   "label": {
+    "en": "Relying party ID",
+    "ja": "リライングパーティーエンティティーID"
+   },
+   "description": {
+    "en": "The WebAuthn Relying Party ID (RpID). It must be the origin's effective domain, e.g. 'company.com' or 'auth.company.com'.",
+    "ja": "これは、WebAuthnリライングパーティーとしてのIDです。オリジンの有効なドメインでなければなりません。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyRpId",
+    "help_key": "webAuthnPolicyRpIdHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicySignatureAlgorithms": {
    "representation": "RealmRepresentation",
@@ -5925,20 +6812,57 @@
    "default": [
     "ES256",
     "RS256"
-   ]
+   ],
+   "label": {
+    "en": "Signature algorithms",
+    "ja": "署名アルゴリズム"
+   },
+   "description": {
+    "en": "The signature algorithms that should be used for the Authentication Assertion.",
+    "ja": "認証アサーションに使用すべき署名アルゴリズム。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicySignatureAlgorithms",
+    "help_key": "webAuthnPolicySignatureAlgorithmsHelp"
+   }
   },
   "RealmRepresentation.webAuthnPolicyUserVerificationRequirement": {
    "representation": "RealmRepresentation",
    "field": "webAuthnPolicyUserVerificationRequirement",
    "type": "String",
    "deprecated": false,
-   "default": "not specified"
+   "default": "not specified",
+   "label": {
+    "en": "User verification requirement",
+    "ja": "ユーザー検証要件"
+   },
+   "description": {
+    "en": "Communicates to an authenticator whether to require to verify a user.",
+    "ja": "ユーザー検証を要求するかどうかをオーセンティケーターに伝えます。"
+   },
+   "group": {
+    "en": "Policies",
+    "ja": "ポリシー"
+   },
+   "ui": {
+    "file": "authentication/policies/WebauthnPolicy.tsx",
+    "linked_by": "name-attr+template",
+    "label_key": "webAuthnPolicyUserVerificationRequirement",
+    "help_key": "webAuthnPolicyUserVerificationRequirementHelp"
+   }
   },
   "UPAttribute.annotations": {
    "representation": "UPAttribute",
    "field": "annotations",
    "type": "Map<String, Object>",
-   "deprecated": false
+   "deprecated": false,
+   "keys_expanded": true
   },
   "UPAttribute.defaultValue": {
    "representation": "UPAttribute",
@@ -5992,7 +6916,8 @@
    "representation": "UPAttribute",
    "field": "validations",
    "type": "Map<String, Object>>",
-   "deprecated": false
+   "deprecated": false,
+   "keys_expanded": true
   },
   "UPAttributePermissions.edit": {
    "representation": "UPAttributePermissions",
@@ -6170,7 +7095,8 @@
    "representation": "UPGroup",
    "field": "annotations",
    "type": "Map<String, Object>",
-   "deprecated": false
+   "deprecated": false,
+   "keys_expanded": true
   },
   "UPGroup.displayDescription": {
    "representation": "UPGroup",

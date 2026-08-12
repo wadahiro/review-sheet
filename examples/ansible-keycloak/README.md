@@ -12,8 +12,9 @@ realm one down to its Japanese.
 ## What this example demonstrates
 
 - **The sheet is the full inventory of the product.** `materialize` expands the
-  extracted dictionary: of its 257 Keycloak options, 18 are set by the role and
-  121 more become rows at Keycloak's own default (`origin: default`, filed under
+  extracted dictionary on the server AND realm sheets. Of the server
+  dictionary's 257 Keycloak options, 18 are set by the role and 121 more become
+  rows at Keycloak's own default (`origin: default`, filed under
   Keycloak's own category); the remaining 118 have no documented default, which
   materialize excludes rather than invent one for. This is the case materialize
   is made for — the dictionary is a genuine full extraction (Keycloak's own
@@ -126,35 +127,47 @@ realm one down to its Japanese.
   last identity-bearing path segment. 27 of this example's bindings resolve that
   way, none of them declared.
 
-- **A `full` dictionary that is deliberately NOT materialized.** The realm
+- **A gate that was right, and what it cost to satisfy it.** The realm
   dictionary is `coverage: full` — its field space is reflection over
-  `RealmRepresentation` — so `materialize` would be allowed. It is not used,
-  because the WORDS come from the admin console's message bundles and the
-  console does not expose every declared field as a form control: expanding it
-  produced 42 rows the product describes nowhere, which the strict-metadata gate
-  rejected. A full key space and a fully documented one are different claims,
-  and `coverage: full` only asserts the first. The contrast with the server
-  sheet above — same project, same gate, one materializes and one cannot — is
-  the point.
+  `RealmRepresentation` — so `materialize` was always allowed. It still
+  failed, over 47 fields that had a product default and no product wording in
+  any language: a full key space and a fully documented one are different
+  claims, and `coverage: full` only asserts the first.
+
+  The interesting part is that 47 became 13 without anyone writing a
+  description. The words were in the admin console the whole time, missed by
+  the extractor in three ways — components that derive their message key from a
+  prop rather than stating it, a tab attributed by a naming convention that
+  `SecurityDefenses` did not match (so its 16 fields were filed under
+  "General", confidently and wrongly), and three map-typed fields whose
+  contents were collapsed into an opaque blob. `browserSecurityHeaders` alone
+  was one undescribed row hiding seven security headers — X-Frame-Options, CSP,
+  HSTS — that Keycloak documents fully in English and Japanese. The remaining
+  13 are in `keycloak-realm@26.7.0.overlay.yml` under
+  `provenance: community`, whose header records per field why the product says
+  nothing. The realm sheet now materializes: 87 rows at Keycloak's own default.
+
+  The moral is not "fill the blanks until the gate goes quiet". It is that a
+  gate refusing 47 rows was a measurement of the extractor, and reading it that
+  way recovered documentation the product already shipped.
 
 - **Bilingual descriptions + language toggle.** Dictionary descriptions are
   `{ en, ja }`, so those rows switch with the viewer's language toggle; keys
   with no Japanese fall back to English. The two sheets get their Japanese
   differently, which is the more interesting half: the server dictionary has 18
-  hand-translated keys (marked as such), while **74 of the realm dictionary's
-  and 93 of the client dictionary's are Keycloak's own** — the admin console
+  hand-translated keys (marked as such), while **119 of the realm dictionary's
+  and 89 of the client dictionary's are Keycloak's own** — the admin console
   ships a Japanese message bundle, so the translation is the product's
   statement, not this repo's.
 
-- **Where the product refuses to name a thing, the project does.** Four realm
-  rows (`bruteForceProtected`, `waitIncrementSeconds`, `passwordPolicy`,
-  `smtpServer.starttls`) arrive with no description at all: the console edits
-  each through a control that writes SEVERAL fields at once (one "Brute force
-  mode" selector driving three, one "Encryption" radio driving two), and the
-  extractor refuses to attribute one control's help text to one of the fields it
-  writes. Those four are described in `sheet.yml` — not in the dictionary, since
-  nothing in the product says those words. That split is what the two files are
-  for. The clients sheet has the same edge: `enabled` (a header toggle, not a
+- **Where the product refuses to name a thing, the project does.** Some realm
+  rows arrive with no description at all: the console edits them through a
+  control that writes SEVERAL fields at once (one "Brute force mode" selector,
+  one "Encryption" radio), and the extractor refuses to attribute one control's
+  help text to one of the fields it writes — a wrong description on a review
+  sheet is worse than a missing one. Those are described in `sheet.yml` — not
+  in the dictionary, since nothing in the product says those words. That split
+  is what the two files are for. The clients sheet has the same edge: `enabled` (a header toggle, not a
   form field), the flow flags (one "Capability config" checkbox group writing
   eight fields), and `ifResourceExists` — a partial-import directive, not a
   `ClientRepresentation` field, and the row that tells a reviewer that re-running
@@ -180,8 +193,9 @@ review-sheet/
   metadata/keycloak-defaults-26.7.0.json  # extractor output (product self-description)
   metadata/keycloak-realm-26.7.0.json     # extractor output (realm/client/user-profile)
   metadata/keycloak@26.7.0.yml            # GENERATED dictionary (257 keys, 18 bilingual)
-  metadata/keycloak-realm@26.7.0.yml      # GENERATED dictionary (191 keys, 74 bilingual)
-  metadata/keycloak-client@26.7.0.yml     # GENERATED dictionary (142 keys, 93 bilingual)
+  metadata/keycloak-realm@26.7.0.yml      # GENERATED dictionary (205 keys, 119 bilingual)
+  metadata/keycloak-realm@26.7.0.overlay.yml # HAND-WRITTEN; the 13 fields the product describes nowhere
+  metadata/keycloak-client@26.7.0.yml     # GENERATED dictionary (145 keys, 89 bilingual)
   build.yml                 # declarative build spec (three sheets; config key <- Ansible variable; "ansible" recipe)
 ```
 
@@ -199,17 +213,17 @@ bun run review-sheet/metadata/build-dict.ts
 #   -> wrote keycloak@26.7.0.yml (257 params, 18 translated, 8 community-described,
 #      11 hidden, 7 deprecated, 4 excluded as non-configuration)
 bun run review-sheet/metadata/build-realm-dict.ts
-#   -> wrote keycloak-realm@26.7.0.yml (191 params, 92 described, 74 bilingual,
-#      92 with a product default, 24 containers, 164 client/user-profile entries excluded)
+#   -> wrote keycloak-realm@26.7.0.yml (205 params, 141 described, 119 bilingual,
+#      102 with a product default, 31 containers, 167 client/user-profile entries excluded)
 bun run review-sheet/metadata/build-client-dict.ts
-#   -> wrote keycloak-client@26.7.0.yml (142 params, 119 described, 93 bilingual,
-#      96 attribute keys, 2 containers)
+#   -> wrote keycloak-client@26.7.0.yml (145 params, 115 described, 89 bilingual,
+#      96 attribute keys, 6 containers)
 
 # 2. Assemble the sheet (map config keys to their variables, enrich, verify).
 bun run ../../src/cli.ts import --spec review-sheet/build.yml -o input.json
-#   -> metadata: 191 parameter(s) enriched (dictionary:711, project:10)
+#   -> metadata: 278 parameter(s) enriched (dictionary:1059, project:10)
 #   -> bindings: 0 alias, 42 exact, 0 prefix, 27 leaf, 0 normalized, 2 none
-#   -> verify: 97 ok, 0 warn, 0 error, 0 unmapped, 1 out-of-scope, 121 product-default
+#   -> verify: 97 ok, 0 warn, 0 error, 0 unmapped, 1 out-of-scope, 208 product-default
 
 # 3. Generate the HTML (ja default; the in-page toggle switches en/ja).
 bun run ../../src/cli.ts generate -i input.json -o sheet.html --lang ja
