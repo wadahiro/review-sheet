@@ -762,14 +762,17 @@ the product's real documentation and either fix the dictionary (add the
 missing `default`) or set `includeNoDefault: true` deliberately.
 
 Materialized rows are filed two levels deep, never as flat top-level tabs:
-one parent category (named "Product defaults (unused)" by default, in
+one parent category (named "Product defaults (not set)" by default, in
 `enrich.lang`; override with `defaultsCategory`) holding one subcategory per
 dictionary `group`. A sheet's own hand-declared categories are unaffected —
 they stay flat, single-level tabs exactly as before. This matters once a
 dictionary is genuinely large: httpd@2.4's 729 directives span 100+ Apache
 modules, and 100+ flat top-level tabs is not something a reviewer can
-navigate — nested under one nameable parent, they read as "the stuff nobody
-touched", collapsed out of the way of the rows that actually need a decision.
+navigate — nested under one nameable parent, they read as "the settings this
+project states nothing about", out of the way of the rows that need a
+decision. The label says "not set" rather than "unused" deliberately: the
+product's default IS in effect on these rows, and calling that unused inverts
+what the reader should take away.
 
 ```yaml
 sheets:
@@ -1609,8 +1612,10 @@ ever prints as the advisory comment checklist above.
 
 ### Authoring a product dictionary
 
-A dictionary is `metadata/<product>@<version>.yml`, bound to a SHEET's key
-namespace from that sheet's own `build.yml` declaration:
+A dictionary is `metadata/<product>@<version>.yml`, optionally joined by a
+hand-authored `<product>@<version>.overlay.yml` next to it (see "Translations:
+the overlay file" below) — bound to a SHEET's key namespace from that sheet's
+own `build.yml` declaration:
 
 ```yaml
 sheets:
@@ -1709,7 +1714,12 @@ parameter whose description is all you have is a perfectly good entry.
 - `docs_url` — a deep link to that **specific** setting's own doc anchor, not
   just the product's docs root; that is what makes "read more" useful from the
   sheet.
-- `provenance` — per-entry override of the document-level claim; see below.
+- `provenance` — per-entry override of the document-level claim, and — like
+  `description` — per LANGUAGE: a plain `Provenance` scalar, or a `{ en?,
+  ja? }` map when the two languages' wording genuinely comes from different
+  places. See "Provenance" below for the exact resolution order, and why it
+  deliberately does not fall back across languages the way `description`
+  does.
 - `kind` — `"value"` (default, omitted is fine) or `"container"`. Most of a
   product's option space has a value; a few entries are pure syntax (Apache's
   `<IfModule>`/`<VirtualHost>`, a block that only groups other directives) —
@@ -1732,11 +1742,75 @@ being true:
   over an image's option classes). Prefer this over `machine`, which the type
   accepts but no shipped dictionary uses.
 - `community` — a team or third-party wording with no product statement behind
-  it. This is the one to set per entry: an `extracted` dictionary whose Japanese
-  or whose gap-filling prose you wrote yourself needs `provenance: community` on
-  those entries, so the document's `extracted` claim keeps covering only what was
-  genuinely extracted.
+  it.
 - `project` — set automatically for anything the project's own `sheet.yml` says.
+
+**It is per language** — `Provenance | { en?: Provenance; ja?: Provenance }`,
+the same shape `description` already has — settable at both levels exactly
+like `description` is: once on the document (the default every entry falls
+back to), and overridden per entry wherever that default stops being true:
+
+```yaml
+# the real examples/ansible-basic/review-sheet/metadata/nginx@1.26.yml
+provenance:
+  en: official     # transcribed from nginx.org/en/docs
+  ja: community     # this repo's own translation — nginx publishes no Japanese docs
+```
+
+One document-level line like this covers all 19 of that file's entries — the
+natural extension of the existing "document-level default, per-entry
+override" contract, not 19 identical per-entry overrides.
+
+**Why this exists.** A description's two languages routinely trace to two
+different sources, and a single scalar cannot say so — it has to pick one
+answer for both. Before this shape existed, that was a real, measured
+misreport, not a hypothetical one: `nginx@1.26` and `httpd@2.4` each declared
+`provenance: official` for the WHOLE document while carrying a hand-written
+Japanese translation on all 19 of their entries — neither vendor publishes
+Japanese documentation, so `official` was true of the English and false of
+the Japanese sitting right next to it. `keycloak@26.7.0` declared
+`provenance: extracted` (a mechanical reflection over the server's own
+option registry) over 28 entries whose Japanese text — and, for 10 of them,
+the English too — a reviewer had hand-written, because Keycloak itself ships
+no Japanese and does not document those 10 keys in any language; `extracted`
+was never true of a single one of those 28 strings. Neither dictionary was
+lying on purpose — the model simply had no way to say "English from the
+vendor, Japanese from us" — so **check your own dictionaries for this same
+shape**: any file where `ja` was added by hand onto an `official`/`extracted`
+document is currently over-claiming for every language it didn't actually
+get from the product.
+
+**Resolution, per language, four tiers, each checked in full before falling
+through to the next** (`provenanceFor`, `src/providers/dictionary.ts`):
+
+1. the entry's own provenance MAP's key for this language
+2. the entry's own provenance SCALAR (claims every language)
+3. the document's provenance MAP's key for this language
+4. the document's provenance SCALAR (claims every language)
+5. `"community"` — the safe default when nothing above says otherwise
+
+This is deliberately **not** the fallback `description` gets from `pickLang`
+(types.ts). `pickLang` shows the OTHER language's text when the target
+language has no prose of its own — right for prose, because showing
+something beats showing nothing. Provenance is a trust claim, not prose: the
+origin of a Japanese translation is never answered by the origin of the
+English text sitting next to it in the same entry. An entry's
+`provenance: { en: official }` (silent on `ja`) falls through to the
+DOCUMENT's own default for `ja` — never sideways to read the entry's own
+`en` value — because reading it sideways would let a document that is
+honest about its English silently vouch for a Japanese translation it never
+made a claim about (exactly the keycloak `db` case: `en` has no entry
+override, so it reads the document's `extracted`; `ja` is a hand-written
+`community` override that must never borrow `en`'s claim).
+
+This is also the one to set per entry when it disagrees with the document:
+an `extracted` dictionary whose Japanese, or whose gap-filling English, you
+wrote yourself needs `provenance: community` (or, when only one language
+needs it, `{ ja: community }`) on those entries specifically, so the
+document's `extracted` claim keeps covering only what was genuinely
+extracted. On the sheet, a uniform result still renders as today's bare
+token (`extracted`); a genuine split renders both in a fixed order:
+`en: extracted / ja: community`.
 
 `provenance` and `coverage` are independent axes, and it is easy to conflate
 them: `provenance` is about how much the **wording** is worth, `coverage` is
@@ -1873,21 +1947,29 @@ one:
   (`console`) against that bracketed default and report it as changed when it
   is not — `normalizeDefault()` strips the brackets so the default is
   comparable to what actually appears in config.
-- **`provenance: community` for entries the product ships no description
-  for.** The extraction returns an empty string for eight keys Keycloak never
-  documents. Leaving them out means every project using this dictionary hits
-  the strict-metadata gate on the same eight keys and writes the same sentence
-  again; `DESC_EXTRA` supplies them once, with `provenance: community` on
-  those entries specifically, so the document's `extracted` claim keeps
-  meaning what it says for the other 249.
+- **No `description` at all for entries the product ships no text for —
+  and leave it that way.** The extraction returns an empty string for eight
+  keys Keycloak never documents (`db-dialect`, `db-pool-acquisition-timeout`,
+  three `log-*-enabled` toggles, three `telemetry-*-headers` keys, plus their
+  two `<datasource>` wildcard variants); `build-dict.ts` writes those entries
+  with no `description` field at all rather than inventing placeholder
+  English of its own. The gap-filling English, and every Japanese
+  translation, is the OVERLAY's job now (`keycloak@26.7.0.overlay.yml`, under
+  its own doc-level `provenance: community` — see "Translations: the overlay
+  file" below), not this script's: that split is what lets a translation be
+  added with a YAML edit and no regeneration, and what stops regeneration
+  from ever clobbering one.
 - **Excluding what is in the registry but is not configuration** — and doing
   it by name. Four Keycloak keys are internal (two build switches, two
   placeholders `kc.sh export`/`import` set to signal their own mode). The
   tempting filter is "drop the hidden ones", which would also drop real
   options like `db-dialect`; `NOT_CONFIGURATION` lists the four instead, with
-  a reason each, and `build-dict.ts` throws if any of them (or any
-  `DESC_JA`/`DESC_EXTRA` key) no longer exists upstream — so a rename after an
-  upgrade fails the build instead of silently becoming a no-op overlay.
+  a reason each, and `build-dict.ts` throws if any of them no longer exists
+  upstream — so a rename after an upgrade fails the build instead of
+  silently becoming a no-op exclusion. (The equivalent guard for the
+  overlay's translation keys is no longer this script's job — the loader's
+  own stale-key check, "Translations: the overlay file" below, runs it for
+  every dictionary on every build instead of only at generation time.)
 
 #### Building a `partial` dictionary
 
@@ -1910,6 +1992,109 @@ growing it over time (more directives transcribed as the project's sheets grow
 to cover them) is a normal, incremental edit — it just never becomes the
 "materialize this product's full option space" input until a genuine
 mechanical extraction replaces it.
+
+#### Translations: the overlay file
+
+A translation — or any other hand-written prose about a product — is a fact
+about the PRODUCT, not about this project: the next project that reviews the
+same nginx/httpd/keycloak version should inherit it, not re-write it from
+scratch. That is the same split this skill already argues for the dictionary
+as a whole ("About the product" → the dictionary, "About this project" →
+`sheet.yml`, at the top of this section) — it used to leave a translation
+with nowhere honest to go. Writing it straight into a GENERATED base file
+made that file's own `# GENERATED … do not edit by hand.` header a lie the
+moment a human edited underneath it; writing it into `sheet.yml` privatized a
+shareable asset and made every project translate the same product's
+descriptions over again. The overlay is the third option: hand-authored,
+shared like the rest of the dictionary, and safe across regeneration.
+
+**When you need one, and when you don't.** A hand-authored dictionary with no
+generator behind it — `nginx@1.26.yml`, `httpd@2.4.yml`, nobody's script
+rewrites these — needs no overlay at all: a doc-level `provenance: { en: …,
+ja: … }` map (above) is the entire fix, since there is nothing regenerating
+the file out from under a hand-added Japanese line. An overlay earns its keep
+only for the other case: a dictionary a script writes wholesale
+(`build-dict.ts` → `keycloak@26.7.0.yml`), where a hand edit under the base's
+own `# GENERATED` header would simply be overwritten the next time someone
+re-runs the extraction after a product upgrade.
+
+**File and fields.** `<product>@<version>.overlay.yml`, sitting next to the
+base on any of the sheet's `metadata_dirs` — and more than one is legal, on
+purpose: a project-local metadata dir can overlay a shared team dictionary
+without forking it. An overlay entry may set only `description`, `docs_url`,
+and `provenance` — documentation prose. `default`/`type`/`scope`/`group`/
+`kind`/`since`/`until` are refused outright (an "unknown field" error naming
+it, with a "did you mean" hint for a close typo): those are product facts
+the extraction owns, and letting an overlay set them would let a community
+claim reshape `materialize`'s inventory ledger. A key the base doesn't have
+is refused too — the base is the inventory; the overlay only annotates it,
+never extends it.
+
+**The merge is fill-only**, and it happens once, inside the loader
+(`findDictionary()`, `src/providers/dictionary.ts`) — so `bind.ts`,
+`materialize`, and the dictionary provider all see the already-merged result
+with no change of their own. Per entry, per language: if the base (or an
+earlier overlay) already has text for that language, it is an error, never a
+silent overwrite —
+
+```
+the dictionary now supplies ja for "db" — drop it from the overlay.
+```
+
+— and a key the overlay names that the base no longer has is the same kind
+of error, naming the key and suggesting the nearest real one:
+
+```
+overlay names a key keycloak@26.7.0 no longer has: "db-charset" — renamed
+or removed upstream; fix or drop it.
+```
+
+**Why regeneration can't destroy a translation.** The generator writes only
+the base and does not know overlays exist — `build-dict.ts` never reads
+`keycloak@26.7.0.overlay.yml` — so re-running it after a Keycloak upgrade
+cannot silently drop a hand-written translation; the safety comes from the
+generator physically not owning that file, not from anyone's discipline
+about which file they edit. The reverse hazard is caught the same way, in
+the opposite direction: if the product starts shipping a language the
+overlay had been filling, the very next build fails loudly, naming every
+offending key with the fix spelled out (drop it from the overlay) — never a
+stale community translation silently shadowing the product's newer official
+text.
+
+**On a version upgrade**, rename the overlay alongside the regenerated base
+(`keycloak@26.7.0.overlay.yml` → `keycloak@26.8.0.overlay.yml`); the first
+build against the new base re-runs the stale-language guard over every
+carried-over translation. That rename IS the review checkpoint — there is no
+separate "re-audit the translations" step to remember.
+
+**Worked example**, the real `db` entry
+(`examples/ansible-keycloak/review-sheet/metadata/`):
+
+```yaml
+# keycloak@26.7.0.yml — GENERATED by build-dict.ts, English only
+parameters:
+  db:
+    description: The database vendor. In production mode the default value of 'dev-file' is deprecated, you should explicitly specify the db instead.
+    default: dev-file
+    scope: build-time
+    group: Database
+    docs_url: https://www.keycloak.org/server/all-config
+```
+
+```yaml
+# keycloak@26.7.0.overlay.yml — hand-authored, never written by build-dict.ts
+provenance: community
+parameters:
+  db:
+    description:
+      ja: 使用するデータベースベンダー。本番モードでは 'dev-file' 既定は使わず明示指定する（build 時に確定）。
+```
+
+After the merge, `db`'s `en` still falls through `provenanceFor`'s tiers to
+the base document's own `extracted`; only `ja` carries the overlay's
+`community`. The row's `extra.provenance` reads `en: extracted / ja:
+community` — not the single `extracted` that, before this file existed,
+vouched for a translation Keycloak never wrote.
 
 #### `renderDictionary()`
 
@@ -1952,7 +2137,14 @@ plus a `provenance`. Give it a priority relative to the table above, and registe
 it with `registerMetadataProvider` (see the plugin section for where the module
 goes). Return `description` / `remarks` as the full `{ en, ja }` map, never
 collapsed to one language — the viewer resolves the display language at render
-time.
+time. `provenance` may be the same per-language shape (`Provenance | { en?:
+Provenance; ja?: Provenance }` — see "Provenance" above) whenever your own
+source's trust level genuinely differs by language; a plain scalar still
+works unchanged when it doesn't. `resolveMetadata` credits each language of
+`description` to whichever provider actually supplied that language's text
+(not just whichever provider ran first), so a per-language `provenance` on
+your result is read correctly even when another provider fills the other
+language.
 
 ## Authoring source maps (the important part)
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { bindKey, normalizeKey, leafKey, isBindError, loadBindSources, type BindSource, type Binding, type BindError } from "../src/bind";
+import { bindKey, makeBindSource, normalizeKey, leafKey, isBindError, loadBindSources, type BindSource, type Binding, type BindError } from "../src/bind";
 import type { DictionaryDoc } from "../src/providers/dictionary";
 
 function doc(product: string, version: string, parameters: DictionaryDoc["parameters"]): DictionaryDoc {
@@ -286,6 +286,31 @@ parameters:
   });
 });
 
+// bindKey() carries Binding.docProvenance through verbatim — it never
+// interprets it (see bind.ts's Binding doc comment); the dictionary provider
+// is the one place it gets resolved per language (providers/dictionary.ts's
+// provenanceFor). This is the type-only widening from Provenance to
+// LangProvenance actually exercised end to end, with a real doc-level map.
+describe("bindKey: docProvenance carries a LangProvenance map through unchanged", () => {
+  it("a per-language doc-level provenance map survives bindKey() verbatim", () => {
+    const withMap: BindSource = {
+      binding: { product: "nginx", version: "1.26" },
+      doc: { product: "nginx", version: "1.26", provenance: { en: "official", ja: "community" }, parameters: { listen: { description: "Listen port" } } },
+    };
+    const result = bindKey("listen", undefined, [withMap]) as Binding;
+    expect(result.docProvenance).toEqual({ en: "official", ja: "community" });
+  });
+
+  it("a scalar doc-level provenance still survives bindKey() verbatim (regression)", () => {
+    const withScalar: BindSource = {
+      binding: { product: "postgresql", version: "16" },
+      doc: { product: "postgresql", version: "16", provenance: "extracted", parameters: { work_mem: { description: "Sort/hash memory" } } },
+    };
+    const result = bindKey("work_mem", undefined, [withScalar]) as Binding;
+    expect(result.docProvenance).toBe("extracted");
+  });
+});
+
 describe("isBindError", () => {
   it("distinguishes a Binding from a BindError from undefined", () => {
     const binding = bindKey("TimeOut", undefined, [HTTPD]);
@@ -297,5 +322,85 @@ describe("isBindError", () => {
     expect(isBindError(binding)).toBe(false);
     expect(isBindError(error)).toBe(true);
     expect(isBindError(none)).toBe(false);
+  });
+});
+
+// The `derived` tier: a declarative rewrite from the ROW key to the dictionary
+// key, for the case `key_prefix` cannot express — the row's identity is richer
+// than the dictionary's and the surplus is in the MIDDLE, not the front.
+//
+// The motivating shape is a Terraform plan. Two ALB listeners are two rows
+// (`aws_lb_listener.https.ssl_policy`, `aws_lb_listener.http_redirect.ssl_policy`)
+// because they are two real resources, while the AWS provider documents one
+// `aws_lb_listener.ssl_policy`. Without this tier neither binds: `exact` and
+// `prefix` miss, and `leafKey` returns the bare `ssl_policy`, which is not a
+// key of a dictionary keyed by resource type.
+describe("bindKey: derived tier", () => {
+  const AWS_PARAMS: DictionaryDoc["parameters"] = {
+    "aws_lb_listener.ssl_policy": { description: "TLS policy" },
+    "aws_lb.idle_timeout": { description: "Idle timeout" },
+    ssl_policy: { description: "A bare leaf entry, deliberately also present" },
+  };
+  // Strip the resource INSTANCE out of the middle: aws_<type>.<instance>.<arg>
+  // -> aws_<type>.<arg>. Anchored front-to-back, so a key that is not of this
+  // shape drops out of the tier rather than getting a mangled rewrite.
+  const STEPS = [{ pattern: "^(aws_[a-z0-9_]+)\\.[^.]+\\.(.+)$", replace: "$1.$2", on_no_match: "drop" as const }];
+
+  function awsSource(): BindSource {
+    return makeBindSource({ product: "aws", version: "5.100.0", key_steps: STEPS }, doc("aws", "5.100.0", AWS_PARAMS));
+  }
+
+  it("binds a row whose key carries a resource instance the dictionary does not", () => {
+    const r = bindKey("aws_lb_listener.https.ssl_policy", undefined, [awsSource()]) as Binding;
+    expect(r.method).toBe("derived");
+    expect(r.dictKey).toBe("aws_lb_listener.ssl_policy");
+  });
+
+  it("binds two different instances of one resource type to the same entry", () => {
+    const a = bindKey("aws_lb_listener.https.ssl_policy", undefined, [awsSource()]) as Binding;
+    const b = bindKey("aws_lb_listener.http_redirect.ssl_policy", undefined, [awsSource()]) as Binding;
+    expect(a.dictKey).toBe(b.dictKey);
+    expect(b.method).toBe("derived");
+  });
+
+  it("does not outrank an exact match", () => {
+    // `aws_lb.idle_timeout` IS a dictionary key verbatim, and the rewrite
+    // does not apply to it (two segments, no instance in the middle). The
+    // assertion that matters is the METHOD: a two-segment row must report as
+    // `exact`, so the report never credits `derived` for a bind the rewrite
+    // had no part in.
+    const r = bindKey("aws_lb.idle_timeout", undefined, [awsSource()]) as Binding;
+    expect(r.method).toBe("exact");
+    expect(r.dictKey).toBe("aws_lb.idle_timeout");
+  });
+
+  it("is tried before leaf, so a bare-leaf entry cannot steal a qualified row", () => {
+    // `ssl_policy` exists in this dictionary too. The row means the listener's
+    // ssl_policy, and `derived` running first is what says so.
+    const r = bindKey("aws_lb_listener.https.ssl_policy", undefined, [awsSource()]) as Binding;
+    expect(r.dictKey).toBe("aws_lb_listener.ssl_policy");
+  });
+
+  it("drops out of the tier when the pattern does not match, instead of mangling the key", () => {
+    // No instance segment: the rewrite cannot apply. `something.ssl_policy`
+    // must not silently become a hit on aws_lb_listener.ssl_policy.
+    const r = bindKey("something.ssl_policy", undefined, [awsSource()]);
+    expect(isBindError(r)).toBe(false);
+    expect((r as Binding | undefined)?.dictKey).toBe("ssl_policy"); // via the leaf tier, correctly
+  });
+
+  it("reports a rewrite that never matched any key, rather than tolerating it", () => {
+    const src = makeBindSource(
+      { product: "aws", version: "5.100.0", key_steps: [{ pattern: "^never_matches\\.(.+)$", replace: "$1", on_no_match: "drop" }] },
+      doc("aws", "5.100.0", AWS_PARAMS)
+    );
+    bindKey("aws_lb.idle_timeout", undefined, [src]);
+    expect(src.keyTransformer?.unmatchedDropPatterns()).toEqual(["^never_matches\\.(.+)$"]);
+  });
+
+  it("has no transformer at all when the binding declares no key_steps", () => {
+    const src = makeBindSource({ product: "aws", version: "5.100.0" }, doc("aws", "5.100.0", AWS_PARAMS));
+    expect(src.keyTransformer).toBeUndefined();
+    expect(bindKey("aws_lb_listener.https.ssl_policy", undefined, [src])?.method).toBe("leaf");
   });
 });

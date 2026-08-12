@@ -465,6 +465,15 @@ async function runSpecImport(opts: {
         }
       }
     }
+    // A declared key_steps rewrite that reached no row at all. Not folded into
+    // the tally above: a tally shows how many rows bound, and the failure here
+    // is that rows the author expected to bind are sitting in the `none`
+    // bucket with nothing naming the reason.
+    for (const u of binding.unmatchedKeySteps) {
+      console.error(
+        `sheet "${u.sheet}": key_steps for ${u.product}@${u.version} matched no row: ${u.patterns.join(", ")}`
+      );
+    }
 
     // Row-level detail, opt-in via --bind-report: one document (rows + a
     // method summary), like `diff --format json` — a consumer branches on a

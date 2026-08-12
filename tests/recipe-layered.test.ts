@@ -625,3 +625,56 @@ params:
     expect(input.columns).toEqual([{ field: "env_var", header: "Env var", place: "under_key" }]);
   });
 });
+
+// A static file's keys used to be its structural paths, which never collide —
+// so nothing checked. A `key:` transform can rename them, and two rows landing
+// on one key silently became one row. Scoped by component, because that is
+// what a component is for.
+describe("layered recipe: static-file key collisions", () => {
+  const TWO_CLIENTS = JSON.stringify({
+    clients: [
+      { clientId: "app-a", protocol: "openid-connect" },
+      { clientId: "app-b", protocol: "saml" },
+    ],
+  });
+  const STRIP_CLIENT = {
+    from: "path" as const,
+    steps: [{ pattern: "^clients\\[clientId=([^\\]]+)\\]\\.(.+)$", replace: "$2", on_no_match: "drop" as const }],
+  };
+  const BY_CLIENT = {
+    from: "path" as const,
+    steps: [{ pattern: "^clients\\[clientId=([^\\]]+)\\]\\..*$", replace: "$1", on_no_match: "drop" as const }],
+  };
+
+  function load(component?: Record<string, unknown>) {
+    const files: Record<string, string> = { "/p/clients.json": TWO_CLIENTS };
+    const io = {
+      readFile: (p: string) => files[p] ?? null,
+      specDir: "/p",
+      resolve: (p: string) => `/p/${p.replace(/^\.\//, "")}`,
+      instances: ["staging"],
+      extractOptions: { idFields: ["clientId"] },
+      ...(component ? { component } : {}),
+    };
+    const layeredRecipe = getRecipe("layered")!;
+    return layeredRecipe.load(
+      { name: "S", static_files: [{ path: "clients.json", format: "json", key: STRIP_CLIENT }] } as never,
+      io as never
+    );
+  }
+
+  it("fails when a rename collapses two rows onto one key", () => {
+    // No component: both clients share one scope, so the two `protocol` rows
+    // are a genuine collision.
+    expect(() => load()).toThrow(/protocol/);
+  });
+
+  it("accepts the same rename once each row belongs to its own component", () => {
+    const si = load(BY_CLIENT);
+    // Two rows with the SAME key, told apart by the component each carries —
+    // which is why the component rides on the entry and not in a map keyed by
+    // the key. A map could hold only one of these.
+    expect(si.embedded.map((e) => e.key)).toEqual(["protocol", "protocol"]);
+    expect(si.embedded.map((e) => e.component)).toEqual(["app-a", "app-b"]);
+  });
+});

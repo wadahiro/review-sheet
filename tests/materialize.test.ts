@@ -5,7 +5,8 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { stubNonBuiltInProviders } from "./only-builtin-providers.js";
 import { assembleSheets, assembleSheetsWithReport, type AssembleOpts, type SheetDictionaryBinding, type SheetInputs } from "../src/assemble";
-import type { Parameter, ParameterSheetInput, SimpleParameter } from "../src/types";
+import { pickLang } from "../src/types";
+import type { Category, Parameter, ParameterSheetInput, SimpleParameter } from "../src/types";
 
 // The metadata provider registry is a process-wide singleton (see
 // assemble.test.ts for the full rationale).
@@ -234,29 +235,39 @@ describe("materialize", () => {
     expect(categoryOf(input, "no_group_setting")).toBe("Uncategorized"); // no group
     expect(categoryOf(input, "work_mem")).toBe("Tuning"); // project metadata wins
     expect(categoryOf(input, "db_max_conn")).toBe("Tuning");
-    // A project-declared category stays a single, flat, top-level tab.
-    // Materialized rows nest under ONE parent (so a large dictionary doesn't
-    // flatten into dozens of top-level tabs) — see fileDrafts in assemble.ts.
-    expect((input.sheets[0].categories ?? []).map((c) => c.name)).toEqual(["Tuning", "Product defaults (unused)"]);
-    const tuning = input.sheets[0].categories!.find((c) => c.name === "Tuning")!;
-    expect(tuning.categories).toBeUndefined(); // never nested
-    const defaults = input.sheets[0].categories!.find((c) => c.name === "Product defaults (unused)")!;
-    expect(defaults.params).toBeUndefined(); // the parent carries no rows of its own
-    expect((defaults.categories ?? []).map((c) => c.name)).toEqual([
+    // Every category is a flat, top-level tab, whatever the origin of the rows
+    // in it. There is no parent segregating unset rows: a category is the
+    // product's grouping of related settings, and a reviewer looking at
+    // "Write-Ahead Log" wants the whole of it.
+    expect((input.sheets[0].categories ?? []).map((c) => c.name)).toEqual([
+      "Tuning",
       "Connections",
       "Write-Ahead Log",
       "Uncategorized",
     ]);
+    for (const c of input.sheets[0].categories ?? []) expect(c.categories).toBeUndefined();
   });
 
-  it("names the materialize parent category in Japanese when opts.lang is ja", () => {
-    const input = assembleSheets(sheetInputs(["db_max_conn"]), opts({ lang: "ja" }));
-    expect((input.sheets[0].categories ?? []).map((c) => c.name)).toContain("既定値（未使用）");
+  // A materialized row is filed by the SAME rule as a row the project set: the
+  // dictionary's own `group`. There is no parent category segregating rows by
+  // origin, in any language — a category is the product's grouping of related
+  // settings, and splitting it by whether this project happened to set a value
+  // puts an ALB's two timeouts in two different trees.
+  it("files a materialized row under its dictionary group, beside the rows the project set", () => {
+    const input = assembleSheets(sheetInputs(["db_max_conn"]), opts());
+    const tuning = (input.sheets[0].categories ?? []).find((c) => c.name === "Tuning")!;
+    const keys = (tuning.params ?? []).map((p) => p.key);
+    // db_max_conn is set by the project, work_mem is materialized: same category,
+    // side by side, which is the whole point.
+    expect(keys).toContain("db_max_conn");
+    expect(keys).toContain("work_mem");
   });
 
-  it("honors a per-binding defaultsCategory override", () => {
-    const input = assembleSheets(sheetInputs(["db_max_conn"]), dictOpts({ defaultsCategory: "Unreviewed" }));
-    expect((input.sheets[0].categories ?? []).map((c) => c.name)).toEqual(["Tuning", "Unreviewed"]);
+  it("keeps origin as the only thing separating a materialized row from a set one", () => {
+    const input = assembleSheets(sheetInputs(["db_max_conn"]), opts());
+    const byKey = new Map(params(input).map((p) => [p.key, p]));
+    expect(byKey.get("db_max_conn")?.origin).not.toBe("default");
+    expect(byKey.get("work_mem")?.origin).toBe("default");
   });
 
   it("applies the project metadata's out_of_scope to a materialized row", () => {
@@ -315,6 +326,7 @@ describe("materialize", () => {
         version: "1",
         total: 8, // every key in DICT_YAML's parameters, covered or not
         containerSkipped: 1, // container_setting only
+        unitAbsent: 0, // this dictionary declares no units — a single product
         materialized: 4, // work_mem, wal_level, no_group_setting, listen_directive
         groupExcluded: 0, // no groups filter set
         unknownGroups: [],
@@ -338,10 +350,9 @@ describe("materialize groups filter", () => {
     // An ungrouped entry never matches a named filter — excluded like any
     // group that wasn't listed.
     expect(all.some((p) => p.key === "no_group_setting")).toBe(false);
-    // The parent category still exists, but only holds the one named group —
-    // no empty "Connections"/"Memory"/"Uncategorized" subcategories.
-    const defaults = input.sheets[0].categories!.find((c) => c.name === "Product defaults (unused)")!;
-    expect((defaults.categories ?? []).map((c) => c.name)).toEqual(["Write-Ahead Log"]);
+    // Only the named group's category appears — no empty
+    // "Connections"/"Uncategorized" tabs conjured by a filter that excluded them.
+    expect((input.sheets[0].categories ?? []).map((c) => c.name)).toEqual(["Tuning", "Write-Ahead Log"]);
   });
 
   it("counts entries the filter excluded", () => {
@@ -374,8 +385,8 @@ describe("materialize groups filter", () => {
 
   it("omitted groups keeps the historical behavior: every group materialized", () => {
     const input = assembleSheets(sheetInputs(["db_max_conn"]), opts());
-    const defaults = input.sheets[0].categories!.find((c) => c.name === "Product defaults (unused)")!;
-    expect((defaults.categories ?? []).map((c) => c.name)).toEqual([
+    expect((input.sheets[0].categories ?? []).map((c) => c.name)).toEqual([
+      "Tuning",
       "Connections",
       "Write-Ahead Log",
       "Uncategorized",
@@ -517,5 +528,250 @@ parameters:
     expect(report.noDefault).toBe(0);
     expect(report.noDefaultKeys).toEqual([]);
     expect(report.materialized).toBe(2); // accept_filter, error_document
+  });
+});
+
+// A component is the OUTERMOST level of a row's path: a row belongs first to
+// the thing it was built for, and only then to the product's own taxonomy of
+// settings. It does not out-rank the category — it contains it.
+describe("recipe-derived component", () => {
+  // Every path a key appears under. With one ledger per component, a key can
+  // legitimately appear more than once — set by one component, materialized as
+  // a default in another — so a helper returning "the" path would pick one of
+  // them arbitrarily and the test would read as if the other did not exist.
+  const pathsOf = (input: ParameterSheetInput, key: string, origin?: string): string[][] => {
+    const out: string[][] = [];
+    const walk = (cats: Category[] | undefined, trail: string[]): void => {
+      for (const c of cats ?? []) {
+        for (const p of c.params ?? []) {
+          if (p.key === key && (origin === undefined || p.origin === origin)) out.push([...trail, c.name]);
+        }
+        walk(c.categories, [...trail, c.name]);
+      }
+    };
+    walk(input.sheets[0].categories, []);
+    return out;
+  };
+  const pathOf = (input: ParameterSheetInput, key: string): string[] => pathsOf(input, key)[0] ?? [];
+
+  // The level appears only once there is something to tell apart. A sheet
+  // covering ONE component IS that component, so naming it above every category
+  // adds a level that says nothing — and makes every row's identity a level
+  // deeper for no reader-visible gain.
+  it("does not appear at all when the sheet has one component", () => {
+    const si = sheetInputs(["wal_level", "work_mem"]);
+    si[0].componentOf = new Map([
+      ["wal_level", "primary database"],
+      ["work_mem", "primary database"],
+    ]);
+    const input = assembleSheets(si, opts());
+    expect(pathOf(input, "wal_level")).toEqual(["Write-Ahead Log"]);
+    expect(pathOf(input, "work_mem")).toEqual(["Tuning"]);
+  });
+
+  it("nests the dictionary's own grouping underneath it once there are two", () => {
+    const si = sheetInputs(["wal_level", "work_mem"]);
+    si[0].componentOf = new Map([
+      ["wal_level", "primary database"],
+      ["work_mem", "replica"],
+    ]);
+    const input = assembleSheets(si, opts());
+    expect(pathOf(input, "wal_level")).toEqual(["primary database", "Write-Ahead Log"]);
+  });
+
+  it("nests the project's own category: underneath it too", () => {
+    const si = sheetInputs(["wal_level", "work_mem"]);
+    si[0].componentOf = new Map([
+      ["wal_level", "primary database"],
+      ["work_mem", "replica"],
+    ]);
+    const input = assembleSheets(si, opts());
+    // work_mem carries `category: Tuning` in the shared project fixture. It is
+    // SET by the replica; `primary database` does not set it, so that component
+    // materializes its own default row — which is the per-component ledger
+    // working, not a stray duplicate.
+    expect(pathsOf(input, "work_mem", "common")).toEqual([["replica", "Tuning"]]);
+    expect(pathsOf(input, "work_mem", "default")).toEqual([["primary database", "Tuning"]]);
+  });
+
+  it("leaves a row with no component exactly where it was", () => {
+    const si = sheetInputs(["wal_level"]);
+    const input = assembleSheets(si, opts());
+    expect(pathOf(input, "wal_level")).toEqual(["Write-Ahead Log"]);
+  });
+
+  // A row with NO project category and NO binding is a hard error — the one
+  // discipline keeping project metadata honest. It used to be defeated by the
+  // component level: the component was prepended BEFORE the empty-path check,
+  // so the path came out length 1 and the row landed silently under the
+  // component heading. The guard therefore held on a single-component sheet
+  // (collapsed to length 0) and stopped holding the moment a second component
+  // appeared — a build-breaking omission turning into a silent one because a
+  // sibling was added elsewhere. Both sides are asserted so a future collapse
+  // rule cannot quietly restore the hole on one of them.
+  it("still fails a row with no category once a component level exists", () => {
+    const si = sheetInputs(["orphan_key"]);
+    si[0].componentOf = new Map([["orphan_key", "primary database"]]);
+    si[0].layers[0].entries.set("second_component_row", { value: "set", source: { file: "base.yml", line: 2 } });
+    si[0].componentOf.set("second_component_row", "replica");
+    expect(() => assembleSheets(si, opts())).toThrow(/have no category/);
+  });
+
+  it("fails the same row when the sheet has a single component", () => {
+    const si = sheetInputs(["orphan_key"]);
+    si[0].componentOf = new Map([["orphan_key", "primary database"]]);
+    expect(() => assembleSheets(si, opts())).toThrow(/have no category/);
+  });
+
+  // `category: null` is the project SAYING the row belongs to no category —
+  // it is about the component as a whole (a Keycloak client's Enabled toggle
+  // lives in the page header, above the tab strip). Distinct from an absent
+  // `category:`, exactly as `dict_key: null` is distinct from an absent one:
+  // the position has to be declared and can never be fallen into, which is
+  // what the two tests above enforce.
+  const NULL_CATEGORY_PROJECT = `
+params:
+  orphan_key:
+    category: null
+`;
+
+  const nullCategoryOpts = (): AssembleOpts =>
+    opts({
+      projectPath: "null-category.yml",
+      readFile: (path: string) => (path === "null-category.yml" ? NULL_CATEGORY_PROJECT : readFile(path)),
+    });
+
+  it("files a `category: null` row directly under its component, above every category", () => {
+    const si = sheetInputs(["orphan_key"]);
+    si[0].layers[0].entries.set("wal_level", { value: "set", source: { file: "base.yml", line: 2 } });
+    si[0].componentOf = new Map([
+      ["orphan_key", "primary database"],
+      ["wal_level", "replica"],
+    ]);
+    const input = assembleSheets(si, nullCategoryOpts());
+
+    expect(pathOf(input, "orphan_key")).toEqual(["primary database"]);
+    // The sibling still nests under the component the ordinary way, so this is
+    // a position ALONGSIDE categories, not a replacement for them. (Its `default`
+    // twin under "primary database" is the per-component ledger, not a stray.)
+    expect(pathsOf(input, "wal_level", "common")).toEqual([["replica", "Write-Ahead Log"]]);
+  });
+
+  // A sheet with one component IS that component, so the level is collapsed
+  // and there is nothing above its categories — `Sheet.categories` holds every
+  // row and a sheet root carries no params. Reported as its own message rather
+  // than as an undeclared category, which the scaffold would offer to fix by
+  // writing a name.
+  it("rejects `category: null` on a sheet with no component level", () => {
+    const si = sheetInputs(["orphan_key"]);
+    si[0].componentOf = new Map([["orphan_key", "primary database"]]);
+    expect(() => assembleSheets(si, nullCategoryOpts())).toThrow(/no component level to file it under/);
+  });
+});
+
+// The failure this scoping exists for, reproduced. A sheet holding two
+// components of the same product used ONE `covered` set, so either component
+// setting an option marked it covered for both — and the other component's
+// unset option vanished from the ledger with nothing reported. On a sheet whose
+// point is "nothing is silently missing", that is the worst kind of bug: the
+// row looks singular and correct.
+describe("materialize: one ledger per component", () => {
+  function twoComponents(): SheetInputs[] {
+    return [
+      {
+        name: "db",
+        instances: [],
+        layers: [
+          {
+            kind: "base",
+            entries: new Map([
+              // Only the PRIMARY sets wal_level. The replica sets something else
+              // entirely, so wal_level is unset FOR THE REPLICA.
+              ["primary.wal_level", { value: "replica", source: { file: "b.yml", line: 1 } }],
+              ["replica.work_mem", { value: "8MB", source: { file: "b.yml", line: 2 } }],
+            ]),
+          },
+        ],
+        embedded: [],
+        componentOf: new Map([
+          ["primary.wal_level", "primary"],
+          ["replica.work_mem", "replica"],
+        ]),
+      },
+    ];
+  }
+
+  it("materializes an option for the component that does not set it, even when another does", () => {
+    const input = assembleSheets(twoComponents(), opts());
+    const all = params(input);
+    // wal_level is set on `primary` (so not materialized there) and unset on
+    // `replica` (so materialized there). One sheet, two answers.
+    const walRows = all.filter((p) => p.key === "wal_level" || p.key.endsWith(".wal_level"));
+    expect(walRows.length).toBeGreaterThan(1);
+    expect(walRows.some((p) => p.origin === "default")).toBe(true);
+  });
+
+  it("gives each component its own report, rather than one for the sheet", () => {
+    const { materializeReports } = assembleSheetsWithReport(twoComponents(), opts());
+    expect(materializeReports.length).toBe(2);
+  });
+});
+
+// Two components of one product share their FIELD NAMES — two Keycloak clients
+// both have `redirectUris[0]` — so a flat project table hands one component's
+// remarks to the other, looking authored rather than leaked. Same leak
+// `sheets:` closed one level up (providers/project.ts).
+describe("project metadata: namespaced by component", () => {
+  const PROJECT = `
+sheets:
+  db:
+    params:
+      wal_level:
+        category: Tuning
+        description: { en: What the write-ahead log records }
+    components:
+      replica:
+        params:
+          wal_level:
+            remarks: { en: Higher on the replica, because it feeds the standby }
+`;
+
+  // Embedded entries, not base-map ones: a Map cannot hold two rows named
+  // `wal_level`, which is exactly why a component travels ON the entry. This
+  // is the shape a static file with a `key:` transform produces.
+  function twoComponents(): SheetInputs[] {
+    return [
+      {
+        name: "db",
+        instances: [],
+        layers: [{ kind: "base", entries: new Map() }],
+        embedded: [
+          { key: "wal_level", value: "replica", source: { file: "b.yml", line: 1 }, component: "primary" },
+          { key: "wal_level", value: "logical", source: { file: "b.yml", line: 2 }, component: "replica" },
+        ],
+      },
+    ];
+  }
+
+  function build(): ParameterSheetInput {
+    return assembleSheets(twoComponents(), {
+      ...opts(),
+      readFile: (p: string) => (p === "/p/sheet.yml" ? PROJECT : opts().readFile(p)),
+      projectPath: "/p/sheet.yml",
+    });
+  }
+
+  it("gives the remark to the component that declared it, and to no other", () => {
+    const rows = params(build()).filter((p) => p.key === "wal_level");
+    expect(rows.length).toBe(2);
+    const withRemark = rows.filter((r) => r.remarks !== undefined);
+    expect(withRemark.length).toBe(1);
+    expect(pickLang(withRemark[0].remarks, "en")).toContain("Higher on the replica");
+  });
+
+  it("still shares what is true of the field itself", () => {
+    // The description lives in the sheet-wide table once; both rows get it.
+    const rows = params(build()).filter((p) => p.key === "wal_level");
+    expect(rows.every((r) => pickLang(r.description, "en") === "What the write-ahead log records")).toBe(true);
   });
 });

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "bun:test";
+import { Window } from "happy-dom";
 import { generateHtml } from "../src/html/generate";
 import simpleFixture from "./fixtures/simple.json";
 import multiInstanceFixture from "./fixtures/multi-instance.json";
@@ -100,5 +101,42 @@ describe("generateHtml", () => {
     };
     const html = await generateHtml(input);
     expect(html).toContain('"capabilities":{"apply":false}');
+  });
+});
+
+// Every test above asserts on the HTML as a STRING, which is why a broken JSX
+// template once shipped a file containing all the right substrings and a blank
+// page: htm threw at mount, nothing rendered, and no test noticed because the
+// viewer suite renders the Preact tree directly rather than the bundle.
+//
+// This one executes the generated bundle. It does not test any feature — it
+// tests that the thing we hand to a reader comes up at all.
+describe("generateHtml: the bundle actually runs", () => {
+  async function renderBundle(html: string): Promise<{ text: string; errors: string[] }> {
+    const window = new Window({ url: "http://localhost/" });
+    const errors: string[] = [];
+    // happy-dom's Event is not the DOM lib's Event, and the listener signature
+    // is all this needs — typed structurally rather than imported, so the test
+    // does not depend on happy-dom's internal type layout.
+    (window as unknown as { addEventListener: (t: string, l: (e: { message?: string }) => void) => void })
+      .addEventListener("error", (e) => errors.push(String(e.message ?? e)));
+    const realError = console.error;
+    console.error = (...a: unknown[]) => errors.push(a.join(" "));
+    try {
+      window.document.write(html);
+      await new Promise((r) => setTimeout(r, 400));
+      return { text: (window.document.body.textContent ?? "").trim(), errors };
+    } finally {
+      console.error = realError;
+    }
+  }
+
+  it("mounts without throwing and puts the sheet on the page", async () => {
+    const html = await generateHtml(multiInstanceFixture as ParameterSheetInput);
+    const { text, errors } = await renderBundle(html);
+    expect(errors).toEqual([]);
+    // A blank page is ~0 characters; a rendered sheet is thousands. The exact
+    // number is not the assertion — "something is there" is.
+    expect(text.length).toBeGreaterThan(200);
   });
 });

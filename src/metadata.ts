@@ -4,6 +4,7 @@
 // registry in parser.ts (array registry, replace-by-name, priority-sorted at
 // resolve time, self-registering providers).
 
+import type { KeyTransformStep } from "./keytransform.js";
 import { pickLang, type LangText } from "./types.js";
 import { sharedRegistry } from "./registry.js";
 import type { Binding } from "./bind.js";
@@ -13,9 +14,78 @@ export type { LangText };
 
 export type Provenance = "official" | "community" | "machine" | "extracted" | "project";
 
+// A provenance claim, per language, in the same shape LangText already uses:
+// a plain scalar claims/covers EVERY language ("this whole description came
+// from one place"), while a `{ en?, ja? }` object lets a claim differ per
+// language — needed because a description's two languages can genuinely come
+// from two different sources (a product's own English docs transcribed here
+// vs. this repo's own Japanese translation; see providers/dictionary.ts and
+// this module's resolveMetadata). `LangProvenance` is a strict supertype of
+// `Provenance` (every existing scalar value is still valid everywhere this
+// type is used), which is what keeps every pre-existing dictionary/provider
+// loading unchanged.
+export type LangProvenance = Provenance | { en?: Provenance; ja?: Provenance };
+
+// One language key of a LangProvenance-shaped map.
+type LangKey = "en" | "ja";
+
+// Reduce a per-language provenance pair to the bare scalar whenever there is
+// nothing to disagree with: both languages equal, or only one language has a
+// value at all. Only a GENUINE split (two languages, two different values)
+// stays a map. This is what makes T2's dictionary provider (every existing
+// dictionary has one scalar `provenance:` for the whole document, so both
+// languages always resolve to the SAME value) produce byte-identical output
+// to today, and what lets resolveMetadata's provByLang bookkeeping below
+// collapse back to "just credit the one provider" in the common case where a
+// single provider supplied the whole description.
+//
+// Not expected to be called with neither key defined by either of this
+// module's own callers (resolveMetadata guards on that below; dictionary.ts's
+// provenanceFor always resolves to a defined value, defaulting to
+// "community") — the "community" fallback here exists only to keep this a
+// total function rather than one that throws on an input no caller reaches.
+export function collapseProvenance(p: { en?: Provenance; ja?: Provenance }): LangProvenance {
+  const { en, ja } = p;
+  if (en === undefined && ja === undefined) return "community";
+  if (en === undefined) return ja as Provenance;
+  if (ja === undefined) return en;
+  return en === ja ? en : { en, ja };
+}
+
+// Extract one language's provenance out of a single provider's OWN
+// LangProvenance result (metadata.ts has only this one layer to resolve — the
+// entry/document layering with a "community" default belongs to
+// providers/dictionary.ts's provenanceFor, which is a separate, deeper
+// resolution for the dictionary provider specifically). A scalar result
+// speaks for every language; an object result is read at exactly that
+// language's key, with NO fallback to the other key — the same
+// deliberately-not-`pickLang` stance dictionary.ts's provenanceFor documents:
+// which provider is credited for `ja` must never be answered by what
+// happened to fill `en`.
+function provenanceForLang(p: LangProvenance | undefined, lang: LangKey): Provenance | undefined {
+  if (p === undefined) return undefined;
+  return typeof p === "string" ? p : p[lang];
+}
+
 // A binding from a project parameter key namespace to one dictionary snapshot
 // file (<product>@<version>.yml, found on metadataDirs).
-export type DictionaryBinding = { product: string; version: string; key_prefix?: string };
+export type DictionaryBinding = {
+  product: string;
+  version: string;
+  key_prefix?: string;
+  // A declarative rewrite from the ROW key to the dictionary key, for the case
+  // `key_prefix` cannot express: the row's identity legitimately carries more
+  // than the dictionary's does. A Terraform plan names two ALB listeners
+  // `aws_lb_listener.https.ssl_policy` and `aws_lb_listener.http_redirect.ssl_policy`
+  // — two rows, because they are two resources — while the provider documents
+  // one `aws_lb_listener.ssl_policy`. Stripping the instance is wiring, so it
+  // is declared once here rather than as one `dict_key` alias per row.
+  //
+  // Same steps grammar as a recipe's `key:` (keytransform.ts), and the same
+  // discipline: a step that never matches any key is reported, never silently
+  // tolerated.
+  key_steps?: KeyTransformStep[];
+};
 
 export type MetadataQuery = {
   key: string;
@@ -45,6 +115,9 @@ export type MetadataQuery = {
 };
 
 export type MetadataResult = {
+  // The product's own display name for this setting (a Keycloak admin-console
+  // label). Display only — see DictionaryParam.label.
+  label?: LangText;
   description?: LangText;
   default?: string;
   remarks?: LangText;
@@ -52,7 +125,7 @@ export type MetadataResult = {
   type?: string;
   scope?: string;
   out_of_scope?: { reason: LangText; owner?: string };
-  provenance: Provenance;
+  provenance: LangProvenance;
 };
 
 export type MetadataContext = {
@@ -112,6 +185,7 @@ export function getMetadataProvider(name: string): MetadataProvider | undefined 
 }
 
 export type ResolvedMetadata = {
+  label?: LangText;
   description?: LangText;
   default?: string;
   remarks?: LangText;
@@ -119,7 +193,7 @@ export type ResolvedMetadata = {
   type?: string;
   scope?: string;
   out_of_scope?: { reason: LangText; owner?: string };
-  provenance?: Provenance;
+  provenance?: LangProvenance;
   contributions: Record<string, number>;
 };
 
@@ -134,15 +208,22 @@ const PLAIN_MERGE_FIELDS = ["default", "docs_url", "type", "scope", "out_of_scop
 // argument_specs `description:`, so it is no longer duplicated in sheet.yml),
 // and enrichment needs `en` and `ja` to be able to come from two different
 // providers for the SAME parameter.
-const LANG_FIELDS = ["description", "remarks"] as const;
+// `label` joins them for the same reason: a product supplies both languages of
+// its own display name (Keycloak ships a Japanese admin console), while a
+// project overriding one language of it must not blank the other.
+const LANG_FIELDS = ["label", "description", "remarks"] as const;
 type LangField = (typeof LANG_FIELDS)[number];
 
 // Merge one provider's LangText value for `field` into `merged`, per
-// language key, first-wins. Returns whether this provider actually
-// contributed anything new (for `contributions` bookkeeping — one count per
-// FIELD the provider touched, never one per language key: filling `en` and
-// `ja` from the same provider's single result is one act of documentation,
-// not two).
+// language key, first-wins. Returns WHICH language keys this call actually
+// filled (empty when the field was already locked or nothing new landed) —
+// used for two things by the caller: `contributions` bookkeeping (one count
+// per FIELD the provider touched, never one per language key: filling `en`
+// and `ja` from the same provider's single result is one act of
+// documentation, not two) and, for `description` specifically, crediting
+// PER-LANGUAGE provenance to whichever provider actually supplied that
+// language's text (see resolveMetadata's provByLang below) — the truthful
+// answer this function used to only approximate.
 //
 // Semantics for a plain `string` value (a language-agnostic, complete
 // description — the shape every native channel this task targets uses,
@@ -171,8 +252,8 @@ type LangField = (typeof LANG_FIELDS)[number];
 //     "for", so it fills gaps uniformly rather than special-casing `en`).
 //   - Once both `en` and `ja` are filled (by any combination of providers),
 //     the field is complete and no further provider is consulted for it.
-function mergeLangField(merged: ResolvedMetadata, locked: Set<LangField>, field: LangField, value: LangText): boolean {
-  if (locked.has(field)) return false;
+function mergeLangField(merged: ResolvedMetadata, locked: Set<LangField>, field: LangField, value: LangText): LangKey[] {
+  if (locked.has(field)) return [];
 
   const current = merged[field];
 
@@ -180,15 +261,22 @@ function mergeLangField(merged: ResolvedMetadata, locked: Set<LangField>, field:
     if (typeof value === "string") {
       merged[field] = value;
       locked.add(field);
-      return true;
+      return ["en", "ja"];
     }
     const obj: { en?: string; ja?: string } = {};
-    if (value.en !== undefined) obj.en = value.en;
-    if (value.ja !== undefined) obj.ja = value.ja;
-    if (obj.en === undefined && obj.ja === undefined) return false;
+    const filled: LangKey[] = [];
+    if (value.en !== undefined) {
+      obj.en = value.en;
+      filled.push("en");
+    }
+    if (value.ja !== undefined) {
+      obj.ja = value.ja;
+      filled.push("ja");
+    }
+    if (filled.length === 0) return [];
     merged[field] = obj;
     if (obj.en !== undefined && obj.ja !== undefined) locked.add(field);
-    return true;
+    return filled;
   }
 
   // A field only ever reaches this point as a partial `{ en?, ja? }` object:
@@ -196,17 +284,17 @@ function mergeLangField(merged: ResolvedMetadata, locked: Set<LangField>, field:
   // having survived the `locked` check above is never itself a string.
   const partial = current as { en?: string; ja?: string };
   const incoming = typeof value === "string" ? { en: value, ja: value } : value;
-  let contributed = false;
+  const filled: LangKey[] = [];
   if (partial.en === undefined && incoming.en !== undefined) {
     partial.en = incoming.en;
-    contributed = true;
+    filled.push("en");
   }
   if (partial.ja === undefined && incoming.ja !== undefined) {
     partial.ja = incoming.ja;
-    contributed = true;
+    filled.push("ja");
   }
   if (partial.en !== undefined && partial.ja !== undefined) locked.add(field);
-  return contributed;
+  return filled;
 }
 
 export function resolveMetadata(
@@ -217,6 +305,19 @@ export function resolveMetadata(
   const sorted = [...providers].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
   const merged: ResolvedMetadata = { contributions: {} };
   const lockedLangFields = new Set<LangField>();
+  // Which provider's provenance answers "where did description's `en`/`ja`
+  // actually come from" — filled as `description` gets filled, per language
+  // key, and NEVER reassigned once set (mergeLangField only ever reports a
+  // language key as newly-filled once, the first time some provider's text
+  // lands in that slot). This replaces the old "first contributor wins the
+  // whole field" approximation: when `en` and `ja` land from two different
+  // providers (sheet.yml's `ja` + a native channel's `en`, the case
+  // mergeLangField exists for), each language is now credited to the
+  // provider that actually supplied IT, not to whichever provider happened
+  // to run first. Collapsed to a bare scalar below when both languages agree
+  // (the overwhelmingly common case, and every case this repo's shipped
+  // examples hit today), so unsplit output is byte-identical to before.
+  const provByLang: { en?: Provenance; ja?: Provenance } = {};
   let any = false;
 
   for (const provider of sorted) {
@@ -237,24 +338,31 @@ export function resolveMetadata(
     for (const field of LANG_FIELDS) {
       const value = result[field];
       if (value === undefined) continue;
-      const wasUnset = merged[field] === undefined;
-      if (!mergeLangField(merged, lockedLangFields, field, value)) continue;
+      const filledLangs = mergeLangField(merged, lockedLangFields, field, value);
+      if (filledLangs.length === 0) continue;
       count++;
-      // provenance tracks `description` specifically (see ResolvedMetadata).
-      // With per-language merging, several providers can now genuinely
-      // contribute to the same description (one supplies `ja`, another
-      // `en`) — so "the provenance of description" is taken to mean the
-      // provider that filled its FIRST language key, i.e. the
-      // highest-priority contributor, mirroring what field-level
-      // first-wins already credited before this change. A later provider
-      // that only plugs a remaining gap does not reassign it.
-      if (field === "description" && wasUnset) merged.provenance = result.provenance;
+      // provenance tracks `description` specifically (see ResolvedMetadata):
+      // remarks never drove it, before or after this change.
+      if (field === "description") {
+        for (const lang of filledLangs) {
+          provByLang[lang] = provenanceForLang(result.provenance, lang);
+        }
+      }
     }
 
     if (count > 0) {
       merged.contributions[provider.name] = (merged.contributions[provider.name] ?? 0) + count;
       any = true;
     }
+  }
+
+  // Collapse per-language credit down to a scalar whenever both languages
+  // trace to the same provenance — including the case where only one
+  // language ever got a description at all (nothing to disagree with).
+  // provByLang stays empty (and merged.provenance stays undefined, as
+  // before) whenever no provider ever contributed a description.
+  if (provByLang.en !== undefined || provByLang.ja !== undefined) {
+    merged.provenance = collapseProvenance(provByLang);
   }
 
   return any ? merged : undefined;

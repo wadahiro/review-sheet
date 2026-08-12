@@ -171,12 +171,13 @@ describe("ansible recipe: equivalence with the hand-written build.ts examples", 
     const expected = stripGeneratedAt(loadExpected("ansible-keycloak"));
     expect(actual).toEqual(expected);
 
-    // 191 = the server sheet's 138 (18 keys the role sets + 121 materialized
+    // 278 = the server sheet's 138 (18 keys the role sets + 121 materialized
     // rows, of 239 candidates — 118 carry no documented `default` and are
     // excluded by assemble.ts's materialize no-default gate — minus the one
     // the project marks out_of_scope, exempt from enrichment as from strict)
-    // plus the realm sheet's 25 and the clients sheet's 28.
-    expect(report.filled).toBe(191);
+    // plus the realm sheet's 112 (25 the role sets + 87 materialized, of 150
+    // candidates) and the clients sheet's 28.
+    expect(report.filled).toBe(278);
     // project:10 is every row Keycloak's admin console declines to name on its
     // own: the realm's four (each edited through a control writing SEVERAL
     // fields at once, so the extractor attributes that control's help text to
@@ -185,7 +186,7 @@ describe("ansible recipe: equivalence with the hand-written build.ts examples", 
     // `ifResourceExists`, which is a partial-import directive and not a
     // ClientRepresentation field at all. Everything else — all three sheets —
     // comes from the three extracted dictionaries.
-    expect(report.byProvider).toEqual({ dictionary: 711, project: 10 });
+    expect(report.byProvider).toEqual({ dictionary: 1059, project: 10 });
 
     const server = input.sheets.find((s) => s.name === "keycloak configuration");
     const realm = input.sheets.find((s) => s.name === "keycloak realm");
@@ -203,17 +204,18 @@ describe("ansible recipe: equivalence with the hand-written build.ts examples", 
       default: 121,
       out_of_scope: 1,
     });
-    // The realm sheet is NOT materialized, and default: 0 is the assertion that
-    // it stays that way. Its dictionary is `coverage: full` and would be
-    // allowed to — but the words come from the admin console, which does not
-    // expose every declared field as a form control, so expanding it produced
-    // 42 rows the product describes nowhere and the strict gate rejected them.
-    // See build.yml for the full reasoning.
+    // The realm sheet materializes too, which it could not do until the
+    // extractor stopped losing the console's own words: 47 fields had a product
+    // default and no product wording, the strict gate refused them, and the
+    // count is now 13 — all of them in the dictionary's community overlay,
+    // each with a recorded reason why the product says nothing. 87 of the 150
+    // candidate fields carry a documented default; the rest have none and the
+    // no-default gate excludes them. See build.yml.
     expect(originCounts(allParams({ sheets: [realm] }))).toEqual({
       common: 14,
       overlay: 10,
       embedded: 1,
-      default: 0,
+      default: 87,
       out_of_scope: 0,
     });
     // Clients are a third sheet, not more rows on the realm one: five field

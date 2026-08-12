@@ -26,7 +26,15 @@ import { getRecipe, type RecipeIO } from "./recipe.js";
 import type { ExtractOptions } from "./parser.js";
 import { loadBuildSpec, specDirOf, type BuildSpec } from "./spec.js";
 import type { EnrichReport } from "./enrich.js";
-import type { ParameterSheetInput } from "./types.js";
+import type { LangText, ParameterSheetInput } from "./types.js";
+
+// A sheet's `component:` (spec.ts). `id` marks the literal form; `from`/`steps`
+// the derived one, which only a structured-artifact recipe reads.
+type ComponentDecl = { id?: string; name?: LangText | string; purpose?: LangText | string; from?: string; steps?: unknown };
+
+function asLangText(v: LangText | string): LangText {
+  return typeof v === "string" ? { en: v, ja: v } : v;
+}
 
 export type SpecAssembleOpts = {
   readFile: (path: string) => string | null; // sync, like every other injected I/O here
@@ -81,6 +89,7 @@ export function assembleFromSpecWithReport(
     specDir: opts.specDir,
     resolve: resolvePathOpt,
     extractOptions,
+    lang: opts.lang ?? spec.enrich?.lang,
   };
 
   const inputs: SheetInputs[] = [];
@@ -108,8 +117,38 @@ export function assembleFromSpecWithReport(
     // stays unaware the override mechanism exists at all (see spec.ts and
     // findings #10).
     const instances = sheetSpec.instances ?? spec.instances;
-    const io: RecipeIO = { ...baseIo, instances };
-    inputs.push(recipe.load(sheetSpec, io));
+    const component = sheetSpec.component as ComponentDecl | undefined;
+    const io: RecipeIO = { ...baseIo, instances, component };
+    const si = recipe.load(sheetSpec, io);
+    // A LITERAL component declaration says the same thing about every row on
+    // the sheet, so it is applied here rather than in each recipe: a recipe
+    // that reads a flat config file has nothing to contribute to the answer.
+    // A DERIVED one (`from`/`steps`) is the recipe's to resolve, because only
+    // it knows the artifact — if the recipe already produced componentOf, that
+    // is what happened and this leaves it alone.
+    // Every sheet has exactly one component unless something says otherwise:
+    // a declared literal, or — when the sheet declares nothing — the sheet
+    // itself, which is what a single-component sheet has always meant. Giving
+    // it an identity here rather than leaving `componentOf` empty is what keeps
+    // the scoping rules free of a "no components" case; the level is collapsed
+    // for a single one anyway (assemble.ts), so nothing is displayed for it.
+    //
+    // A DERIVED declaration (`from`/`steps`) is the recipe's to resolve, since
+    // only it knows the artifact — if the recipe already produced componentOf,
+    // that is what happened, and this leaves it alone.
+    if (si.componentOf === undefined) {
+      const id = component?.id ?? sheetSpec.name;
+      const keys = new Set<string>();
+      for (const layer of si.layers) for (const k of layer.entries.keys()) keys.add(k);
+      // Embedded literals are rows too. Leaving them out made them belong to no
+      // component, so materialize's per-component `covered` set never saw them
+      // and re-materialized each one as an unset default beside the row that
+      // sets it — 20 phantom rows on one example.
+      for (const e of si.embedded) keys.add(e.key);
+      si.componentOf = new Map([...keys].map((k) => [k, id]));
+      if (component?.name !== undefined) si.componentLabels = new Map([[id, asLangText(component.name)]]);
+    }
+    inputs.push(si);
     if (sheetSpec.dictionaries) dictionaries[sheetSpec.name] = sheetSpec.dictionaries;
   }
 

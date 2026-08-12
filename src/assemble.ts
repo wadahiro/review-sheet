@@ -25,6 +25,8 @@ import { enrich, type EnrichReport, type ScaffoldEntry, ScaffoldableBuildError, 
 import {
   loadProjectMeta,
   paramsForSheet,
+  paramForRow,
+  componentParamsForSheet,
   categoriesForSheet,
   underKeyForSheet,
   checkProjectMetaSheets,
@@ -46,6 +48,7 @@ import type {
   ColumnDefinition,
   SheetMetadata,
   Capabilities,
+  LangText,
 } from "./types.js";
 
 // `origin: "embedded"` marks a base-layer entry whose position relative to its
@@ -57,7 +60,13 @@ import type {
 // parameter — right for a literal that lives in a genuinely separate file
 // (e.g. a static drop-in) but wrong for one interleaved in the base file/
 // template itself.
-export type ExtractedEntry = { value: string; source: SourceLocation; origin?: "embedded" };
+// `component` travels ON the entry rather than being looked up by key. A
+// key-indexed map cannot answer the question once two components legitimately
+// share a key name: two Keycloak clients both have a `protocol`, and that is
+// the whole point of giving each client a component — one map entry keyed
+// `protocol` can only hold one of them, and the other row loses its component
+// silently.
+export type ExtractedEntry = { value: string; source: SourceLocation; origin?: "embedded"; component?: string };
 // Insertion order is significant: it drives Pattern A/B emission order.
 export type ExtractedMap = Map<string, ExtractedEntry>;
 
@@ -65,7 +74,7 @@ export type ValueLayer =
   | { kind: "base"; entries: ExtractedMap }
   | { kind: "overlay"; instance: string; entries: ExtractedMap };
 
-export type EmbeddedEntry = { key: string; value: string; source: SourceLocation };
+export type EmbeddedEntry = { key: string; value: string; source: SourceLocation; component?: string };
 
 // A binding from a bound (product) key to the variable that backs it, e.g.
 // { boundKey: "db-url", variable: "kc_db_url" }.
@@ -114,6 +123,31 @@ export type SheetInputs = {
   // exactly one directive earns a product key; one backing several, or one
   // the template never references at all, keeps its own name).
   keyMap?: KeyMapEntry[];
+  // The COMPONENT each row belongs to, keyed the same way `layers` is (the
+  // extracted key, before keyMap renames anything).
+  //
+  // A component is one purpose-bearing instantiation of a product surface —
+  // "the external SSO node", "the ALB for service AAAA", "the Keycloak
+  // database". It is what somebody NAMED because a requirement asked for it,
+  // and nothing but a human knows it: a Terraform provider hands out resource
+  // types, and which Aurora cluster is "the Keycloak database" exists only in
+  // the head of whoever wrote the module. A rendered artifact often carries the
+  // name (a plan's `module.aurora.*`), which is what makes it derivable rather
+  // than hand-listed.
+  //
+  // It is a SCOPE, not a label: row keys are unique within a component, and
+  // materialize's "what does this project already cover" set is per component
+  // — without which one ALB setting `idle_timeout` marks that option covered
+  // for every other ALB on the sheet, and their unset options vanish from the
+  // ledger with no report.
+  // Fallback for rows whose entry carries no `component` of its own: the
+  // literal, whole-sheet declaration (assemble-spec.ts), where every row
+  // belongs to the same one and a map is the cheapest way to say so.
+  componentOf?: Map<string, string>;
+  // Display text for a component id (see componentOf). The id is identity and
+  // must not move; this is what a reader sees, resolved per language by the
+  // viewer like every other LangText. Absent = show the id.
+  componentLabels?: Map<string, LangText>;
   // Reference sites a recipe's substitution scan found (src/substitution.ts's
   // `bindReferences`): `variable` is a base/overlay layer key (the SAME
   // extracted identity buildDrafts() below iterates below in passes 1/2,
@@ -194,10 +228,12 @@ export type DictionaryMaterialize =
       // that parses "what modules are actually active", which is its own,
       // format-specific problem — left for later if a project actually needs it.
       groups?: string[];
-      // Display name for the parent category materialized rows are filed under
-      // (see fileDrafts). Omitted = a built-in default in `opts.lang` (see
-      // DEFAULT_MATERIALIZE_CATEGORY below).
-      defaultsCategory?: string;
+      // REMOVED. A materialized row is filed under the SAME category as any
+      // other row of its kind (the dictionary's own `group`), not under a
+      // parent that segregates it by origin — see materializeDrafts. Kept in
+      // the type only so a spec that still declares it fails loudly at schema
+      // validation rather than being silently ignored.
+      defaultsCategory?: never;
       // Opt-in: also materialize dictionary entries that carry no `default`.
       // Default false — see materializeDrafts' `noDefault` gate for why an
       // entry with no documented default is excluded by default (asserting
@@ -237,6 +273,10 @@ export type MaterializeReport = {
   version: string;
   total: number;
   containerSkipped: number;
+  // Entries belonging to a unit this component does not use (see
+  // DictionaryParam.unit) — an option of something that is not here, rather
+  // than an option nobody set. 0 for a dictionary that declares no units.
+  unitAbsent: number;
   materialized: number;
   // How many otherwise-eligible entries the `groups` filter left out. 0 when
   // no filter was given (never omitted, so a caller can print it unconditionally
@@ -297,27 +337,36 @@ const EMPTY_PROJECT_META: ProjectMetaDoc = { params: {} };
 // still declare its category in the project metadata or fail the build.
 //
 // A PATH, not a single name: a materialized row is filed two levels deep —
-// under one parent category for "product defaults nobody reviewed yet", then
+// under one parent category for "the project sets nothing here", then
 // under a subcategory per dictionary `group` (see fileDrafts) — so that
 // materializing a large dictionary (httpd@2.4's 100+ modules) doesn't flatten
 // into 100+ top-level tabs alongside the project's own, hand-declared,
 // actually-reviewable categories.
-type Draft = { key: string; param: Parameter; variable?: string; fallbackCategoryPath?: string[] };
+type Draft = { key: string; param: Parameter; variable?: string; fallbackCategoryPath?: string[]; component?: string };
 
 // Category of last resort for a materialized row whose dictionary carries no
 // `group`. Model-level (like extract.ts's DEFAULT_CATEGORY), not a UI string.
 const UNCATEGORIZED = "Uncategorized";
 
-// The parent category every materialized row is filed under, keyed by
-// `opts.lang` (categories are plain strings in this model, not LangText — see
-// types.ts's Category — so there is no per-viewer language switch for it;
-// this only picks which language the BUILD writes). A project that wants
-// different wording (or a different lang from the sheet's own strings) sets
-// `DictionaryMaterialize.defaultsCategory` explicitly.
-const DEFAULT_MATERIALIZE_CATEGORY: Record<"ja" | "en", string> = {
-  ja: "既定値（未使用）",
-  en: "Product defaults (unused)",
-};
+// Materialized rows used to be filed under a parent category of their own
+// ("Product defaults (not set)"), segregating every unset row from every set
+// one. That was wrong twice over.
+//
+// It cut across the product's own taxonomy, which is the taxonomy the
+// categories ARE: an ALB's `idle_timeout` and its `client_keep_alive` are two
+// timeouts on one load balancer, and reviewing the first while the second sits
+// in a different top-level tree hides the relationship a reviewer needs. Rows
+// are related to their neighbours, not to other rows that happen to share an
+// origin.
+//
+// And it duplicated categories visibly: a group with both set and unset rows
+// appeared twice in the outline under the same name, once in each tree, which
+// reads as a bug because it is one.
+//
+// So a materialized row is filed by its dictionary `group`, exactly like a row
+// the project set. What separates them is `origin: "default"`, which the row
+// already carries, and the viewer hides them behind one toggle (off by
+// default, with a count) — a display concern, handled where display is.
 
 // Per-row naming (S2): no sheet-wide switch — a row whose extracted key has a
 // keyMap entry is filed under the product key, with the extracted key
@@ -395,15 +444,22 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
 
   // Every draft goes through the hooks here, so `keyFor`/`mapParam` see base
   // params, overlay-only params and embedded literals alike.
-  function pushDraft(key: string, param: Parameter, variable?: string): void {
+  function pushDraft(key: string, param: Parameter, variable?: string, extractedKey?: string, entryComponent?: string): void {
     const ctx: ParamContext = { sheet: si.name, key, variable };
+    // Looked up by the EXTRACTED key — the one the RECIPE saw and computed
+    // `componentOf` against — not by the key after keyMap renamed the row to a
+    // product key. Passing only the renamed key silently lost every row a
+    // substitution merge had renamed: the Keycloak client whose signature
+    // setting arrives as `SSO_SAML_CLIENT_SIGNATURE` and is filed under the
+    // field path landed in no component at all, alone at the top of its sheet.
+    const component = entryComponent ?? si.componentOf?.get(extractedKey ?? key);
     if (hooks?.keyFor) {
       ctx.key = hooks.keyFor(ctx);
       param.key = ctx.key;
     }
     const mapped = hooks?.mapParam ? hooks.mapParam(param, ctx) : param;
     if (mapped === null) return;
-    drafts.push({ key: mapped.key, param: mapped, variable });
+    drafts.push({ key: mapped.key, param: mapped, variable, component });
   }
 
   // 1) Base-layer keys, in insertion order.
@@ -419,7 +475,7 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
         source: baseEntry.source,
         origin: "embedded",
       } as SimpleParameter;
-      pushDraft(extractedKey, param);
+      pushDraft(extractedKey, param, undefined, undefined, baseEntry.component);
       continue;
     }
     const { paramKey, variable } = resolveKey(extractedKey, variableToBound);
@@ -433,7 +489,7 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
       param = { key: paramKey, value: baseEntry.value, source: baseEntry.source, origin: "common" } as SimpleParameter;
     }
     attachReferenceSites(param, extractedKey);
-    pushDraft(paramKey, withUnderKey(param, variable), variable);
+    pushDraft(paramKey, withUnderKey(param, variable), variable, extractedKey, baseEntry.component);
   }
 
   // 2) Keys that appear only in overlays, never in base: Pattern B limited to
@@ -447,7 +503,7 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
       const instances = buildOverlayInstances(si.instances, extractedKey, undefined, carriers);
       const param = { key: paramKey, instances, origin: "overlay" } as InstanceParameter;
       attachReferenceSites(param, extractedKey);
-      pushDraft(paramKey, withUnderKey(param, variable), variable);
+      pushDraft(paramKey, withUnderKey(param, variable), variable, extractedKey, ov.entries.get(extractedKey)?.component);
     }
   }
 
@@ -471,7 +527,7 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
   // 3) Embedded literals, appended after all base-derived params, in order.
   for (const e of si.embedded) {
     const param = { key: e.key, value: e.value, source: e.source, origin: "embedded" } as SimpleParameter;
-    pushDraft(e.key, param);
+    pushDraft(e.key, param, undefined, undefined, e.component);
   }
 
   return drafts;
@@ -498,7 +554,18 @@ export type BindReportMethod = BindMethod | "none";
 export type BindReportRow =
   | { sheet: string; key: string; method: BindMethod; dictKey: string; product: string; version: string }
   | { sheet: string; key: string; method: "none" };
-export type BindingReport = { rows: BindReportRow[]; byMethod: Record<BindReportMethod, number> };
+// A `key_steps` rewrite whose "drop" pattern matched no row on the sheet that
+// declared it. The author declared wiring that is not there, and every row
+// they meant to bind quietly did not — the same class of mistake as an
+// include/exclude pattern that selected nothing, and reported the same way
+// rather than left to be noticed in the tally.
+export type UnmatchedKeySteps = { sheet: string; product: string; version: string; patterns: string[] };
+
+export type BindingReport = {
+  rows: BindReportRow[];
+  byMethod: Record<BindReportMethod, number>;
+  unmatchedKeySteps: UnmatchedKeySteps[];
+};
 
 function emptyByMethod(): Record<BindReportMethod, number> {
   const out = {} as Record<BindReportMethod, number>;
@@ -531,9 +598,8 @@ function bindDrafts(
 ): Map<string, Binding> {
   const bindings = new Map<string, Binding>();
   if (bindSources.length === 0) return bindings;
-  const sheetParams = paramsForSheet(projectMeta, sheetName);
   for (const d of drafts) {
-    const dictKey = sheetParams[d.key]?.dict_key;
+    const dictKey = paramForRow(projectMeta, sheetName, d.component, d.key)?.dict_key;
     const result = bindKey(d.key, dictKey, bindSources);
     if (result === undefined) {
       reportRows.push({ sheet: sheetName, key: d.key, method: "none" });
@@ -567,7 +633,16 @@ function materializeDrafts(
   // `draftBindings` (the single bind pass), not re-derived from the drafts here.
   draftBindings: Map<string, Binding>,
   binding: SheetDictionaryBinding,
-  opts: AssembleOpts
+  opts: AssembleOpts,
+  // The component this expansion is FOR, and the draft keys belonging to it.
+  // Materialize answers "what does this project not set", and that question has
+  // an answer only per component: two ALBs on one sheet each have their own
+  // unset options, and a sheet-wide `covered` set let either one's value mark
+  // the option covered for both — deleting the other's row from the ledger with
+  // no report, which is the exact failure this whole file refuses elsewhere.
+  // undefined = the sheet has no components; the whole sheet is the scope.
+  component: string | undefined,
+  componentKeys: Set<string> | undefined
 ): { drafts: Draft[]; report: MaterializeReport; bindings: Map<string, Binding> } {
   // binding.materialize is truthy whenever this is called (see the caller in
   // assembleSheetsWithReport) — `true` means "expand everything", an object
@@ -615,8 +690,18 @@ function materializeDrafts(
   // row stands for "this project never sets this directive at all", which is
   // false the moment any instance of it appears in the drafts.
   const covered = new Set<string>();
-  for (const b of draftBindings.values()) {
-    if (b.product === binding.product && b.version === binding.version) covered.add(b.dictKey);
+  // Which of the dictionary's units this component actually uses (see
+  // DictionaryParam.unit). Its own rows are the evidence: a component with no
+  // `aws_lb` row does not have an ALB, so it has no unset ALB arguments — it
+  // has no ALB. Empty when the dictionary declares no units at all, which is
+  // the single-product case and expands everything.
+  const unitsInUse = new Set<string>();
+  for (const [draftKey, b] of draftBindings) {
+    if (componentKeys && !componentKeys.has(draftKey)) continue;
+    if (b.product === binding.product && b.version === binding.version) {
+      covered.add(b.dictKey);
+      if (b.entry.unit !== undefined) unitsInUse.add(b.entry.unit);
+    }
   }
 
   // The include-list gate (DictionaryMaterialize's `groups`): resolved once,
@@ -631,7 +716,6 @@ function materializeDrafts(
     for (const g of opt.groups!) if (!dictGroups.has(g)) unknownGroups.push(g);
   }
 
-  const parentCategory = opt.defaultsCategory ?? DEFAULT_MATERIALIZE_CATEGORY[opts.lang ?? "en"];
 
   const out: Draft[] = [];
   // Materialized rows are keyed by the dictionary's own key, by construction
@@ -644,6 +728,7 @@ function materializeDrafts(
   // an interesting binding EVENT the way a project key's match is.
   const bindings = new Map<string, Binding>();
   let containerSkipped = 0;
+  let unitAbsent = 0;
   let groupExcluded = 0;
   let noDefault = 0;
   const noDefaultKeys: string[] = [];
@@ -661,6 +746,13 @@ function materializeDrafts(
       continue;
     }
     if (covered.has(key)) continue;
+    // An option of a unit this component does not use is not an unset option;
+    // it is an option of something that is not here. Counted so the report says
+    // how many, rather than the difference appearing as an unexplained drop.
+    if (entry.unit !== undefined && !unitsInUse.has(entry.unit)) {
+      unitAbsent++;
+      continue;
+    }
     // An entry with no group never matches a named filter (there is nothing
     // to opt it in with), so it is excluded right alongside every group that
     // wasn't listed — same as the "which modules does this deployment
@@ -688,10 +780,10 @@ function materializeDrafts(
       value: entry.default !== undefined ? String(entry.default) : "",
       origin: "default",
     } as SimpleParameter;
-    // Two levels: a single parent ("product defaults, unreviewed") holding a
+    // Two levels: a single parent ("the project sets nothing here") holding a
     // subcategory per dictionary group — see fileDrafts and Draft's comment
     // for why this is a path rather than one name.
-    out.push({ key, param, fallbackCategoryPath: [parentCategory, entry.group || UNCATEGORIZED] });
+    out.push({ key, param, fallbackCategoryPath: [entry.group || UNCATEGORIZED], component });
     bindings.set(key, {
       product: binding.product,
       version: binding.version,
@@ -707,6 +799,7 @@ function materializeDrafts(
     version: binding.version,
     total: Object.keys(dict.parameters).length,
     containerSkipped,
+    unitAbsent,
     materialized: out.length,
     groupExcluded,
     unknownGroups,
@@ -736,8 +829,15 @@ function fileDrafts(
   // `group` fallback (no project `category:` written for that key) — see the
   // firstProjectCategoryExample/firstDictFallbackExample split below. Warned,
   // not thrown: accumulated across every sheet and printed once by the CLI.
-  categoryWarnings: string[]
+  categoryWarnings: string[],
+  // Display names for component ids, when the recipe supplied them.
+  componentLabels: Map<string, LangText> | undefined
 ): Category[] {
+  // How many distinct components the sheet has. One is the ordinary case (a
+  // sheet covers one thing), and the level is collapsed for it — see the path
+  // construction below.
+  const componentCount = new Set(drafts.map((d) => d.component).filter((c) => c !== undefined)).size;
+
   // A category tree keyed by path segment at each level. Only materialized
   // rows ever produce a path longer than one segment (see
   // Draft.fallbackCategoryPath) — a project-declared category is always a
@@ -758,7 +858,7 @@ function fileDrafts(
   // Ghost-tab guard (P7): the first NON-materialize draft to land in each
   // top-level category, so a category that turns out undeclared (below) can
   // be reported with a concrete example key. Materialized rows are exempt:
-  // their parent ("product defaults, unreviewed") and the dictionary `group`
+  // their parent ("the project sets nothing here") and the dictionary `group`
   // subcategories under it are expected to range over whatever the
   // dictionary/`groups` filter says, which a sheet's own declared tab list
   // was never meant to enumerate.
@@ -780,9 +880,11 @@ function fileDrafts(
   const firstProjectCategoryExample = new Map<string, string>();
   const firstDictFallbackExample = new Map<string, string>();
 
-  const sheetParams = paramsForSheet(projectMeta, sheetName);
   for (const d of drafts) {
-    const meta = sheetParams[d.key];
+    // Component-first, then the sheet-wide table (providers/project.ts's
+    // paramForRow): two components of one product share their field NAMES, so
+    // a flat table would hand one component's remarks to the other.
+    const meta = paramForRow(projectMeta, sheetName, d.component, d.key);
     const binding = draftBindings.get(d.key);
     // The project's own category always wins. Failing that, a row that BOUND
     // to a product dictionary entry (see bindDrafts) falls back to the
@@ -798,12 +900,66 @@ function fileDrafts(
     // applies to a strictly smaller set than before: an unbound param the
     // project sets without dictionaries in play behaves exactly as it always
     // did.
-    const path = meta?.category
-      ? [meta.category]
-      : binding
-        ? [binding.entry.group ?? UNCATEGORIZED]
-        : d.fallbackCategoryPath;
+    // The component, when the sheet has one, is the OUTERMOST level: a row
+    // belongs first to the thing it was built for, and only then to the
+    // product's own taxonomy of settings. Below it the order is unchanged —
+    // the project's explicit `category:` for this key, else the bound
+    // dictionary's own group, else a materialized row's fallback.
+    //
+    // `category: null` (DISTINCT from an absent one, exactly as `dict_key:
+    // null` is distinct from an absent `dict_key`) is the project stating that
+    // this row belongs to no category at all — it is about the COMPONENT as a
+    // whole. The admin console this sheet mirrors has that place literally: a
+    // Keycloak client's Enabled toggle lives in the page header, above the tab
+    // strip, not on any tab. So does a project's own per-environment input
+    // that several of the component's fields are derived from.
+    //
+    // It has to be declared and can never be fallen into — see the empty-path
+    // error below, which is what makes an undeclared row an error again.
+    const declaredNoCategory = meta?.category === null;
+    const inner = declaredNoCategory
+      ? []
+      : meta?.category
+        ? [meta.category]
+        : binding
+          ? [binding.entry.group ?? UNCATEGORIZED]
+          : d.fallbackCategoryPath;
+    // The component level appears only when the sheet HAS more than one. A
+    // sheet covering a single component is that component — naming it again
+    // above every category would add a level that says nothing, and would make
+    // every row's identity (sheet::category::param) a level deeper for no
+    // reader-visible gain. Collapsed here rather than hidden in the viewer, so
+    // the model matches what is rendered and apply/review targets stay flat.
+    //
+    // Going from one component to two therefore re-keys the sheet's rows. That
+    // is a real structural change to what the sheet covers, and `diff` shows it
+    // as one.
+    const showComponent = componentCount > 1 && d.component !== undefined;
+    // `inner === undefined` means NOTHING decided a category — no project
+    // `category:`, no binding, no materialize fallback. That must stay an
+    // error whether or not a component level exists, which is why the
+    // component is prepended only to a path that already resolved: prepending
+    // it first made every such row come out length 1, so the check below could
+    // not fire and the row landed silently under the component heading. The
+    // guard held on a single-component sheet (collapsed, so length 0) and was
+    // defeated the moment a second component appeared — a build-breaking
+    // omission turning into a silent one because a sibling was added
+    // elsewhere.
+    const path = inner === undefined ? undefined : showComponent ? [d.component!, ...inner] : inner;
     if (!path || path.length === 0) {
+      // A declared `category: null` that resolved to nothing means the sheet
+      // has no component level to file under — either no component at all, or
+      // a single one, which is collapsed (above). The model has no place for
+      // it: `Sheet.categories` holds every row, and a sheet root carries no
+      // params. Say that, rather than reporting it as an undeclared category
+      // the scaffold could fix by writing a name.
+      if (declaredNoCategory) {
+        missingCategory.push(
+          `${sheetName} > ${d.key} (declared category: null, but this sheet has no component level to file it under — ` +
+            `a sheet with one component IS that component, so the level is collapsed and there is nothing above its categories)`
+        );
+        continue;
+      }
       missingCategory.push(`${sheetName} > ${d.key}`);
       // Never bound here (a bound key always resolves SOME path — its dict
       // group, or Uncategorized — a few lines above), but looked up rather
@@ -815,11 +971,18 @@ function fileDrafts(
     }
     let node = root;
     for (const segment of path) node = childOf(node, segment);
-    if (!d.fallbackCategoryPath) {
+    // The ghost-tab guard below is about the PRODUCT's categories, which a
+    // sheet declares in `categories:`. A component is a different declaration,
+    // made in build.yml, and it sits outside that list — so the name checked is
+    // the outermost category WITHIN the component, not the component itself.
+    // Requiring components to be repeated in `categories:` would make one fact
+    // declarable in two places, which is how the two drift apart.
+    const declaredLevel = showComponent ? path?.[1] : path?.[0];
+    if (!d.fallbackCategoryPath && declaredLevel !== undefined) {
       if (meta?.category) {
-        if (!firstProjectCategoryExample.has(path[0])) firstProjectCategoryExample.set(path[0], d.key);
-      } else if (!firstDictFallbackExample.has(path[0])) {
-        firstDictFallbackExample.set(path[0], d.key);
+        if (!firstProjectCategoryExample.has(declaredLevel)) firstProjectCategoryExample.set(declaredLevel, d.key);
+      } else if (!firstDictFallbackExample.has(declaredLevel)) {
+        firstDictFallbackExample.set(declaredLevel, d.key);
       }
     }
     if (meta?.out_of_scope) d.param.out_of_scope = meta.out_of_scope;
@@ -876,6 +1039,12 @@ function fileDrafts(
 
   function toCategory(node: Node): Category {
     const cat: Category = { name: node.name };
+    // A component id gets its display name attached here — the id stays the
+    // category's identity, the label is what a reader sees. Only ever set on
+    // the component level, because that is the only category whose name is
+    // written in two languages (see types.ts's Category).
+    const label = componentLabels?.get(node.name);
+    if (label) cat.label = label;
     if (node.params.length > 0) cat.params = node.params;
     if (node.childOrder.length > 0) cat.categories = node.childOrder.map((name) => toCategory(node.children.get(name)!));
     return cat;
@@ -993,6 +1162,7 @@ export function assembleSheetsWithReport(
   const missingCategoryEntries: ScaffoldEntry[] = [];
   const bindErrors: string[] = [];
   const bindReportRows: BindReportRow[] = [];
+  const unmatchedKeySteps: UnmatchedKeySteps[] = [];
   // Every key that reached assembly, across ALL sheets — kept for the
   // "did you mean" hint on an unused-project-param error (suggestNearest
   // below), which is a plausibility guess and not scoped to one sheet.
@@ -1073,6 +1243,18 @@ export function assembleSheetsWithReport(
     // materializeDrafts' `covered` set, and fileDrafts' category fallback)
     // instead of each re-deriving its own key matching.
     const draftBindings = bindDrafts(si.name, drafts, projectMeta, bindSources, bindReportRows, bindErrors);
+    // A `key_steps` rewrite that never matched a single row is the same class
+    // of mistake as an include/exclude pattern that selected nothing: the
+    // author declared wiring that is not there, and every row they meant to
+    // bind quietly did not. Reported once per sheet, after every draft has
+    // been through the transformer (which is why the transformer lives on the
+    // BindSource and not inside bindKey).
+    for (const src of bindSources) {
+      const patterns = src.keyTransformer?.unmatchedDropPatterns() ?? [];
+      if (patterns.length > 0) {
+        unmatchedKeySteps.push({ sheet: si.name, product: src.binding.product, version: src.binding.version, patterns });
+      }
+    }
     // enrich() gets draftBindings PLUS materialize's own bindings (below) —
     // but fileDrafts (and materializeDrafts' own `covered` set) must keep
     // seeing ONLY draftBindings: a materialized row already carries its
@@ -1083,12 +1265,33 @@ export function assembleSheetsWithReport(
     // a top-level dictionary-group tab instead of nesting it.
     const sheetBindings = new Map(draftBindings);
     allBindings.set(si.name, sheetBindings);
+    // One expansion PER COMPONENT (see materializeDrafts): each component's
+    // ledger is its own. Component order follows first appearance in the
+    // drafts, so the sheet reads in the order the artifact presented them.
+    const componentKeysByName = new Map<string, Set<string>>();
+    for (const d of drafts) {
+      if (d.component === undefined) continue;
+      const set = componentKeysByName.get(d.component) ?? new Set<string>();
+      set.add(d.key);
+      componentKeysByName.set(d.component, set);
+    }
+    // One expansion, unfiltered, when the sheet has a single component: the
+    // sheet IS that component, so every draft belongs to it — including any the
+    // component map happens not to mention. Filtering by an incomplete key set
+    // would leave a row's dictionary key uncovered and materialize it as unset
+    // right beside the row that sets it.
+    const expansions: [string | undefined, Set<string> | undefined][] =
+      componentKeysByName.size > 1
+        ? [...componentKeysByName].map(([c, k]) => [c, k])
+        : [[[...componentKeysByName.keys()][0], undefined]];
     for (const dictBinding of sheetDictionaries) {
       if (!dictBinding.materialize) continue;
-      const materialized = materializeDrafts(si.name, draftBindings, dictBinding, opts);
-      drafts.push(...materialized.drafts);
-      materializeReports.push(materialized.report);
-      for (const [k, v] of materialized.bindings) sheetBindings.set(k, v);
+      for (const [component, componentKeys] of expansions) {
+        const materialized = materializeDrafts(si.name, draftBindings, dictBinding, opts, component, componentKeys);
+        drafts.push(...materialized.drafts);
+        materializeReports.push(materialized.report);
+        for (const [k, v] of materialized.bindings) sheetBindings.set(k, v);
+      }
     }
     const sheetAssembledKeys = new Set<string>();
     for (const d of drafts) {
@@ -1106,7 +1309,8 @@ export function assembleSheetsWithReport(
       missingCategory,
       missingCategoryEntries,
       ghostCategories,
-      categoryWarnings
+      categoryWarnings,
+      si.componentLabels
     );
     sheets.push({
       name: si.name,
@@ -1244,7 +1448,7 @@ export function assembleSheetsWithReport(
 
   const bindingByMethod = emptyByMethod();
   for (const row of bindReportRows) bindingByMethod[row.method]++;
-  const binding: BindingReport = { rows: bindReportRows, byMethod: bindingByMethod };
+  const binding: BindingReport = { rows: bindReportRows, byMethod: bindingByMethod, unmatchedKeySteps };
 
   const enriched = enrich(input, {
     readFile: opts.readFile,

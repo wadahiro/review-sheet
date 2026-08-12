@@ -31,6 +31,9 @@ export type SourceLocation = {
 
 export type ParamData = {
   key: string;
+  // The product's own display name — LangText in a built model, resolved to a
+  // string by the viewer's localizeParam. Display only; `key` is identity.
+  label?: LangText | string;
   description?: LangText;
   default?: string;
   remarks?: LangText;
@@ -44,7 +47,11 @@ export type ParamData = {
 };
 
 export type CategoryData = {
+  // Identity — see types.ts's Category. `label`/`display` are the display text.
   name: string;
+  label?: LangText;
+  // Filled by the viewer's localizeCategory, never present in a built model.
+  display?: string;
   tag?: string;
   file_path?: string;
   source_file?: string;

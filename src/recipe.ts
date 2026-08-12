@@ -35,6 +35,19 @@ export type RecipeIO = {
   // argument at all) simply extracts with the built-in identity fields and
   // the default "@rs" marker — there is no process-wide fallback.
   extractOptions?: ExtractOptions;
+  // The BUILD's language (spec.ts's `enrich.lang`, or the CLI's --lang). A
+  // recipe needs it only where it produces a plain string the model has no
+  // LangText slot for — a category name, which types.ts's Category holds as a
+  // bare string, so the language is chosen once at build time rather than
+  // switched per viewer.
+  lang?: "ja" | "en";
+  // The sheet's `component:` declaration (spec.ts). Every sheet has one; only a
+  // recipe that reads a structured artifact can act on the DERIVED form (a
+  // transform over the source path — see recipes/snapshot.ts). A recipe that
+  // ignores this is not wrong: a literal declaration is applied centrally, in
+  // assemble-spec.ts, because it says the same thing about every row and needs
+  // nothing from the recipe to do it.
+  component?: Record<string, unknown>;
 };
 
 export type SheetRecipe = {

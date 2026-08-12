@@ -228,6 +228,286 @@ function instancesOf(p: Parameter): InstanceParameter["instances"] {
   return (p as InstanceParameter).instances ?? [];
 }
 
+// A machine-generated artifact addresses a value by where it SITS, which is an
+// identity but rarely a name. `key:` rewrites it to what a reviewer calls the
+// setting — and to what a product dictionary is keyed by — before assembly.
+describe("snapshot recipe: key transform", () => {
+  const STEPS = [{ pattern: "^Resources\\.([A-Za-z0-9]+)\\.Properties\\.(.+)$", replace: "$1.$2", on_no_match: "drop" as const }];
+
+  it("renames the row by the transformed key, keeping the raw path as the source", () => {
+    const si = load({ ...BASIC_SPEC, key: { from: "path", steps: STEPS } });
+    const staging = si.layers.find((l) => l.kind === "overlay" && l.instance === "staging");
+    if (staging?.kind !== "overlay") throw new Error("no staging overlay");
+
+    expect([...staging.entries.keys()]).toContain("Fn.MemorySize");
+    // The source map must still point at the artifact's own address, or verify
+    // and apply would look for "Fn.MemorySize" in a file that has no such path.
+    expect(staging.entries.get("Fn.MemorySize")?.source.path).toBe("Resources.Fn.Properties.MemorySize");
+  });
+
+  it("drops a scalar the transform does not match, instead of keeping its raw path", () => {
+    const si = load({ ...BASIC_SPEC, key: { from: "path", steps: STEPS } });
+    const staging = si.layers.find((l) => l.kind === "overlay" && l.instance === "staging");
+    if (staging?.kind !== "overlay") throw new Error("no staging overlay");
+    // Everything outside Resources.*.Properties.* is gone, not passed through
+    // under its artifact address.
+    expect([...staging.entries.keys()].every((k) => !k.startsWith("Resources."))).toBe(true);
+  });
+
+  it("selects include/exclude against the TRANSFORMED key", () => {
+    const si = load({ ...BASIC_SPEC, key: { from: "path", steps: STEPS }, include: ["Fn.*"] });
+    const staging = si.layers.find((l) => l.kind === "overlay" && l.instance === "staging");
+    if (staging?.kind !== "overlay") throw new Error("no staging overlay");
+    expect([...staging.entries.keys()].length).toBeGreaterThan(0);
+    expect([...staging.entries.keys()].every((k) => k.startsWith("Fn."))).toBe(true);
+  });
+
+  it("reports a drop pattern that matched nothing across ALL instances, not per artifact", () => {
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (m: string) => warnings.push(m);
+    try {
+      load({ ...BASIC_SPEC, key: { from: "path", steps: [{ pattern: "^NoSuchRoot\\.(.+)$", replace: "$1", on_no_match: "drop" as const }] } });
+    } finally {
+      console.warn = original;
+    }
+    expect(warnings.filter((w) => w.includes("key transform pattern matched nothing")).length).toBe(1);
+  });
+});
+
+// An artifact often carries the project's own grouping where nothing else can
+// see it. A Terraform plan's module path says "these resources are the Keycloak
+// database" — a cluster, its subnet group, its security group, the secret
+// holding its password — which the AWS provider's taxonomy scatters across
+// three services because it groups by what AWS sells.
+describe("snapshot recipe: component transform", () => {
+  const PLAN = JSON.stringify({
+    resource_changes: [
+      { address: "module.aurora.aws_rds_cluster.this", change: { after: { engine_version: "16.4" } } },
+      { address: "module.aurora.aws_security_group.aurora", change: { after: { name_prefix: "db-" } } },
+      { address: "module.alb.aws_lb.this", change: { after: { idle_timeout: 60 } } },
+      { address: "aws_vpc.root", change: { after: { cidr_block: "10.0.0.0/16" } } },
+    ],
+  });
+  const files = { "/p/staging.template.json": PLAN };
+  const over = {
+    readFile: (path: string) => (files as Record<string, string>)[path] ?? null,
+    extractOptions: { idFields: ["address"] },
+  };
+  const KEY = {
+    from: "path" as const,
+    steps: [
+      {
+        pattern: '^resource_changes\\[address="?(?:module\\.([^.]+)\\.)?([^"\\]]+?)"?\\]\\.change\\.after\\.(.+)$',
+        replace: "$1.$2.$3",
+        on_no_match: "drop" as const,
+      },
+    ],
+  };
+  const CATEGORY = {
+    from: "path" as const,
+    steps: [
+      {
+        pattern: '^resource_changes\\[address="?module\\.([^.]+)\\..*$',
+        replace: "$1",
+        on_no_match: "drop" as const,
+      },
+    ],
+  };
+
+  // `component:` reaches a recipe through RecipeIO (spec.ts strips it as a
+  // common sheet field), so the tests hand it over the same way the real path
+  // does rather than through the sheet spec.
+  function load1(spec: Record<string, unknown>): SheetInputs {
+    const { component, ...rest } = spec as { component?: Record<string, unknown> };
+    return load({ name: "S", snapshots: { staging: "staging.template.json" }, ...rest }, { ...over, component });
+  }
+
+  it("puts every row of one module under that module, across resource types", () => {
+    const si = load1({ key: KEY, component: CATEGORY });
+    const cat = si.componentOf!;
+    // The cluster and the security group that guards it: one purpose, one
+    // category, two different AWS services.
+    expect([...cat.entries()].filter(([, v]) => v === "aurora").length).toBe(2);
+    expect([...cat.values()]).toContain("alb");
+  });
+
+  it("leaves a row with no module ungrouped, so it can fall back to the dictionary", () => {
+    const si = load1({ key: KEY, component: CATEGORY });
+    const rootRow = [...si.componentOf!.keys()].find((k) => k.includes("aws_vpc"));
+    expect(rootRow).toBeUndefined();
+  });
+
+  it("carries no componentOf at all when the sheet declares no category transform", () => {
+    const si = load1({ key: KEY });
+    expect(si.componentOf).toBeUndefined();
+  });
+});
+
+// The transform yields an ID; what the component IS is the one thing the
+// artifact cannot carry. `names:` supplies it, and the two are checked against
+// each other in both directions.
+describe("snapshot recipe: component names", () => {
+  const PLAN = JSON.stringify({
+    resource_changes: [
+      { address: "module.aurora.aws_rds_cluster.this", change: { after: { engine_version: "16.4" } } },
+      { address: "module.alb.aws_lb.this", change: { after: { idle_timeout: 60 } } },
+    ],
+  });
+  const files = { "/p/staging.template.json": PLAN };
+  const over = {
+    readFile: (path: string) => (files as Record<string, string>)[path] ?? null,
+    extractOptions: { idFields: ["address"] },
+  };
+  const KEY = {
+    from: "path" as const,
+    steps: [{ pattern: '^resource_changes\\[address="?module\\.([^.]+?)\\.([^"\\]]+?)"?\\]\\.change\\.after\\.(.+)$', replace: "$1.$2.$3", on_no_match: "drop" as const }],
+  };
+  const derive = { from: "path" as const, steps: [{ pattern: '^resource_changes\\[address="?module\\.([^.]+?)\\..*$', replace: "$1", on_no_match: "drop" as const }] };
+
+  function load1(component: Record<string, unknown>): SheetInputs {
+    return load({ name: "S", snapshots: { staging: "staging.template.json" }, key: KEY }, { ...over, component });
+  }
+
+  // Rows are filed under the derived ID, and the declared name rides along as
+  // a label. Filing under the name would make identity move with wording — a
+  // `--lang ja` build and a `--lang en` build would produce different review
+  // targets for the same sheet, and fixing a typo would orphan every pending
+  // review. See types.ts's Category.
+  it("files rows under the ID and carries the name as a label", () => {
+    const si = load1({ ...derive, names: { aurora: { name: { ja: "Keycloak DB", en: "Keycloak database" } }, alb: { name: "SSO endpoint" } } });
+    expect(new Set(si.componentOf!.values())).toEqual(new Set(["aurora", "alb"]));
+    expect(si.componentLabels!.get("aurora")).toEqual({ ja: "Keycloak DB", en: "Keycloak database" });
+    // A single string means the same text in both languages, not "English".
+    expect(si.componentLabels!.get("alb")).toEqual({ en: "SSO endpoint", ja: "SSO endpoint" });
+  });
+
+  it("fails when the artifact grows a component nobody named", () => {
+    expect(() => load1({ ...derive, names: { aurora: { name: "Keycloak DB" } } })).toThrow(/named nowhere: alb/);
+  });
+
+  it("fails when a name outlives the component it named", () => {
+    expect(() =>
+      load1({ ...derive, names: { aurora: { name: "Keycloak DB" }, alb: { name: "SSO endpoint" }, gone: { name: "old thing" } } })
+    ).toThrow(/absent from the artifact: gone/);
+  });
+
+  it("keeps the derived id when no names are declared at all", () => {
+    const si = load1(derive);
+    expect(new Set(si.componentOf!.values())).toEqual(new Set(["aurora", "alb"]));
+  });
+});
+
+// A key transform can collapse two distinct values onto one key. Last-writer-
+// wins would delete a row with no trace AND leave the sheet looking correct —
+// one ALB where there are two — so this fails the build instead.
+describe("snapshot recipe: key collisions", () => {
+  const TWO_ALBS = JSON.stringify({
+    resource_changes: [
+      { address: "module.alb_aaaa.aws_lb.this", change: { after: { idle_timeout: 60 } } },
+      { address: "module.alb_bbbb.aws_lb.this", change: { after: { idle_timeout: 120 } } },
+    ],
+  });
+  const files = { "/p/staging.template.json": TWO_ALBS, "/p/production.template.json": TWO_ALBS };
+  const over = {
+    readFile: (path: string) => (files as Record<string, string>)[path] ?? null,
+    extractOptions: { idFields: ["address"] },
+  };
+  // Drops the module segment — the mistake this exists to catch.
+  const DROPS_MODULE = {
+    from: "path" as const,
+    steps: [
+      {
+        pattern: '^resource_changes\\[address="?(?:module\\.[^.]+\\.)?(aws_[a-z0-9_]+)\\.([^"]+?)"?\\]\\.change\\.after\\.(.+)$',
+        replace: "$1.$2.$3",
+        on_no_match: "drop" as const,
+      },
+    ],
+  };
+
+  it("fails, naming both artifact paths, rather than keeping the last one", () => {
+    expect(() =>
+      load({ name: "S", snapshots: { staging: "staging.template.json" }, key: DROPS_MODULE }, over)
+    ).toThrow(/key collision/);
+  });
+
+  it("names the row key and both sources, so the fix is visible from the message", () => {
+    let message = "";
+    try {
+      load({ name: "S", snapshots: { staging: "staging.template.json" }, key: DROPS_MODULE }, over);
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain("aws_lb.this.idle_timeout");
+    expect(message).toContain("module.alb_aaaa");
+    expect(message).toContain("module.alb_bbbb");
+  });
+
+  it("accepts the same artifact once the transform keeps what distinguishes them", () => {
+    const KEEPS_MODULE = {
+      from: "path" as const,
+      steps: [
+        {
+          pattern: '^resource_changes\\[address="?module\\.([^.]+)\\.(aws_[a-z0-9_]+)\\.([^"]+?)"?\\]\\.change\\.after\\.(.+)$',
+          replace: "$1.$2.$3.$4",
+          on_no_match: "drop" as const,
+        },
+      ],
+    };
+    const si = load({ name: "S", snapshots: { staging: "staging.template.json" }, key: KEEPS_MODULE }, over);
+    const staging = si.layers.find((l) => l.kind === "overlay" && l.instance === "staging");
+    if (staging?.kind !== "overlay") throw new Error("no staging overlay");
+    expect([...staging.entries.keys()].sort()).toEqual([
+      "alb_aaaa.aws_lb.this.idle_timeout",
+      "alb_bbbb.aws_lb.this.idle_timeout",
+    ]);
+  });
+});
+
+// Whether an empty string spells absence is a property of the RENDERER, never
+// of the format — so it is declared per sheet, and off unless declared.
+describe("snapshot recipe: empty_means_unset", () => {
+  const SPEC = {
+    name: "S",
+    snapshots: { staging: "staging.template.json", production: "production.template.json" },
+  };
+  // A route-table shape in miniature: one target set, its mutually exclusive
+  // siblings filled with "" by the renderer.
+  const WITH_EMPTY = JSON.stringify({
+    Route: { gateway_id: "igw-1", nat_gateway_id: "", transit_gateway_id: "" },
+  });
+  const files = { "/p/staging.template.json": WITH_EMPTY, "/p/production.template.json": WITH_EMPTY };
+  const over = { readFile: (path: string) => (files as Record<string, string>)[path] ?? null };
+
+  it("keeps empty strings by default, because an empty string is a real value", () => {
+    const si = load({ ...SPEC }, over);
+    const staging = si.layers.find((l) => l.kind === "overlay" && l.instance === "staging");
+    if (staging?.kind !== "overlay") throw new Error("no staging overlay");
+    expect([...staging.entries.values()].some((v) => v.value === "")).toBe(true);
+  });
+
+  it("drops them when the sheet declares that this artifact means absence by them", () => {
+    const si = load({ ...SPEC, empty_means_unset: true }, over);
+    const staging = si.layers.find((l) => l.kind === "overlay" && l.instance === "staging");
+    if (staging?.kind !== "overlay") throw new Error("no staging overlay");
+    expect([...staging.entries.values()].some((v) => v.value === "")).toBe(false);
+    // The one that IS set survives — this drops absence, not the block.
+    expect([...staging.entries.values()].map((v) => v.value)).toEqual(["igw-1"]);
+  });
+
+  it("reports how many it dropped, so the author can check the claim", () => {
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (m: string) => warnings.push(m);
+    try {
+      load({ ...SPEC, empty_means_unset: true }, over);
+    } finally {
+      console.warn = original;
+    }
+    expect(warnings.some((w) => /empty-string value\(s\) treated as unset/.test(w))).toBe(true);
+  });
+});
+
 describe("snapshot recipe: examples/cdk-snapshot", () => {
   it("turns two synthesized templates into one all-Pattern-B sheet", () => {
     const { input, report } = buildExample();

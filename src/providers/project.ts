@@ -18,7 +18,16 @@ import { registerMetadataProvider, type MetadataProvider, type MetadataContext, 
 export type ProjectMetaParam = {
   // Assembler-only hint: which category this project key belongs to. NOT
   // returned by resolve() — enrich() never touches sheet/category structure.
-  category?: string;
+  //
+  // `null` is not "unset": it is the project declaring that this row belongs
+  // to NO category — it is about the component as a whole, and files directly
+  // under the component heading, above every category. Same undefined/null
+  // distinction `dict_key` below draws, for the same reason: a fact somebody
+  // stated must be told apart from one nobody has stated yet. Only meaningful
+  // on a sheet with more than one component (a single-component sheet IS that
+  // component, so the level is collapsed and there is nothing above its
+  // categories) — assemble.ts errors otherwise rather than guessing.
+  category?: string | null;
   // string: a true alias (see bind.ts). null: an explicit severance — this
   // key is declared to bind to nothing. undefined: not declared.
   dict_key?: string | null;
@@ -42,6 +51,18 @@ export type ProjectMetaSheetDoc = {
   categories?: string[];
   under_key?: UnderKeyMeta;
   params: Record<string, ProjectMetaParam>;
+  // Per-component params, for a sheet holding more than one. The same leak
+  // `sheets:` closed one level up: on a sheet whose rows are named by the
+  // product's own field, two components SHARE those names — two Keycloak
+  // clients both have `redirectUris[0]` — so a single flat table makes one
+  // client's remarks ("this is the SAML SP's ACS URL") appear on the other's
+  // row, looking authored rather than leaked.
+  //
+  // Resolved component-first, then the sheet-wide table: a field means the
+  // same thing on every component of one product, so its DESCRIPTION belongs
+  // in `params:` once, while the reason THIS component was set that way
+  // belongs under the component. Neither has to restate the other.
+  components?: Record<string, { params: Record<string, ProjectMetaParam> }>;
 };
 
 // Flat (`params`) is a single spec-wide namespace: two sheets that happen to
@@ -78,7 +99,12 @@ export function loadProjectMeta(path: string, readFile: (path: string) => string
   if (doc.sheets) {
     const sheets: Record<string, ProjectMetaSheetDoc> = {};
     for (const [name, s] of Object.entries(doc.sheets)) {
-      sheets[name] = { params: s?.params ?? {}, ...(s?.categories ? { categories: s.categories } : {}), ...(s?.under_key ? { under_key: s.under_key } : {}) };
+      sheets[name] = {
+        params: s?.params ?? {},
+        ...(s?.categories ? { categories: s.categories } : {}),
+        ...(s?.under_key ? { under_key: s.under_key } : {}),
+        ...(s?.components ? { components: s.components } : {}),
+      };
     }
     return { sheets };
   }
@@ -93,6 +119,40 @@ export function loadProjectMeta(path: string, readFile: (path: string) => string
 export function paramsForSheet(doc: ProjectMetaDoc, sheet: string | undefined): Record<string, ProjectMetaParam> {
   if (doc.sheets) return (sheet !== undefined ? doc.sheets[sheet]?.params : undefined) ?? {};
   return doc.params ?? {};
+}
+
+// One row's project metadata: the component's own entry FIELD-MERGED over the
+// sheet-wide one, so a component can add a `remarks` without restating the
+// `description` that is true of every component, or override a field where it
+// genuinely differs. A row with no component, or a sheet with no `components:`,
+// reads exactly as before.
+export function paramForRow(
+  doc: ProjectMetaDoc,
+  sheet: string | undefined,
+  component: string | undefined,
+  key: string
+): ProjectMetaParam | undefined {
+  const wide = paramsForSheet(doc, sheet)[key];
+  if (component === undefined || !doc.sheets || sheet === undefined) return wide;
+  const own = doc.sheets[sheet]?.components?.[component]?.params?.[key];
+  if (!own) return wide;
+  return wide ? { ...wide, ...own } : own;
+}
+
+// Every (component, key) pair the project declares for a sheet, for the
+// "described but never produced" check — a component-scoped entry that names a
+// key no row produced is exactly as wrong as a sheet-wide one, and was
+// invisible while only the flat table was walked.
+export function componentParamsForSheet(
+  doc: ProjectMetaDoc,
+  sheet: string | undefined
+): { component: string; key: string }[] {
+  if (!doc.sheets || sheet === undefined) return [];
+  const out: { component: string; key: string }[] = [];
+  for (const [component, c] of Object.entries(doc.sheets[sheet]?.components ?? {})) {
+    for (const key of Object.keys(c.params ?? {})) out.push({ component, key });
+  }
+  return out;
 }
 
 // This sheet's own declared top-level tab display order (see this file's
@@ -141,7 +201,18 @@ const projectProvider: MetadataProvider = {
   resolve(query: MetadataQuery, ctx: MetadataContext): MetadataResult | undefined {
     if (!ctx.project) return undefined;
     const doc = cachedProjectMeta(ctx.project, ctx);
-    const p = paramsForSheet(doc, query.sheet)[query.key];
+    // The component, when the sheet has more than one, is the OUTERMOST level
+    // of a row's category path (assemble.ts's fileDrafts) — so the path's head
+    // is where to look, with no extra field threaded through the query.
+    //
+    // Only honoured when it names a component this sheet actually DECLARES:
+    // on a single-component sheet the level is collapsed and the head is an
+    // ordinary category, and treating that as a component id would read a
+    // table nobody wrote. A miss falls back to the sheet-wide params, which is
+    // every sheet that predates this.
+    const head = query.categoryPath?.[0];
+    const declared = query.sheet !== undefined && head !== undefined && doc.sheets?.[query.sheet]?.components?.[head] !== undefined;
+    const p = paramForRow(doc, query.sheet, declared ? head : undefined, query.key);
     if (!p) return undefined;
     // `p.dict_key` is NOT returned here: it is read directly off project
     // metadata by the single bind pass (bind.ts's bindKey, driven by
