@@ -25,6 +25,7 @@ import "../src/recipes/index";
 import { getRecipe, type RecipeIO } from "../src/recipe";
 import { assembleFromSpecWithReport } from "../src/assemble-spec";
 import type { Parameter } from "../src/types";
+import type { ValueLayer } from "../src/assemble";
 
 // The metadata provider registry is a process-wide singleton (see
 // assemble.test.ts / spec.test.ts for the full rationale) — neutralize any
@@ -487,5 +488,134 @@ describe("ansible recipe: a defaults variable the template never resolves into a
     // buildDrafts in assemble.ts, which the equivalence test (assemble.test.ts)
     // covers for the resulting Pattern B shape.
     expect(base.entries.has("httpd_extra")).toBe(false);
+  });
+});
+
+// `templates:` — one sheet covering several deployed artifacts, because the
+// incumbent Excel sheet covers them together and acceptance review compares the
+// two side by side. Each template becomes a component; without that, two units
+// that both have Unit.Description would collide on one row key and the later
+// one would silently win.
+describe("ansible recipe: several templates on one sheet", () => {
+  const files: Record<string, string> = {
+    "/r/defaults.yml": ["app_db_url: jdbc:postgresql://db/app", "app_log_level: info"].join("\n"),
+    // Two systemd units. Both declare Description — the collision this exists for.
+    "/r/keycloak.service.j2": [
+      "[Unit]",
+      "Description=Keycloak",
+      "[Service]",
+      "Environment=APP_DB_URL={{ app_db_url }}",
+      "Restart=on-failure",
+    ].join("\n"),
+    "/r/keycloak-secrets.service.j2": ["[Unit]", "Description=Fetch the DB password", "[Service]", "Type=oneshot"].join(
+      "\n"
+    ),
+  };
+  const io: RecipeIO = {
+    readFile: (p: string) => files[p] ?? null,
+    specDir: "/r",
+    resolve: (p: string) => `/r/${p.split("/").pop()}`,
+    instances: [],
+  };
+  const load = (spec: Record<string, unknown>) => {
+    const recipe = getRecipe("ansible");
+    if (!recipe) throw new Error("ansible recipe is not registered");
+    return recipe.load({ name: "keycloak", recipe: "ansible", defaults: "defaults.yml", ...spec } as never, io);
+  };
+
+  const twoTemplates = {
+    templates: [
+      { path: "keycloak.service.j2", deployed_path: "/etc/systemd/system/keycloak.service" },
+      { path: "keycloak-secrets.service.j2", deployed_path: "/etc/systemd/system/keycloak-secrets.service" },
+    ],
+  };
+
+  it("keeps a row key that both templates use, one per component", () => {
+    const si = load(twoTemplates);
+    const descriptions = si.embedded.filter((e) => e.key === "Unit.Description");
+
+    expect(descriptions).toHaveLength(2);
+    expect(descriptions.map((e) => e.component).sort()).toEqual([
+      "keycloak-secrets.service",
+      "keycloak.service",
+    ]);
+    expect(descriptions.map((e) => e.value).sort()).toEqual(["Fetch the DB password", "Keycloak"]);
+  });
+
+  it("names each component after its artifact, not its template file", () => {
+    const si = load(twoTemplates);
+    // keycloak.service.j2 -> keycloak.service: what a reviewer calls the file
+    // that lands on the host, with the templating suffix gone.
+    expect([...(si.componentLabels?.keys() ?? [])].sort()).toEqual([
+      "keycloak-secrets.service",
+      "keycloak.service",
+    ]);
+  });
+
+  it("records each literal against the template it came from", () => {
+    const si = load(twoTemplates);
+    const restart = si.embedded.find((e) => e.key === "Service.Restart");
+    const type = si.embedded.find((e) => e.key === "Service.Type");
+
+    expect(restart?.component).toBe("keycloak.service");
+    expect(restart?.source.file).toBe("/r/keycloak.service.j2");
+    expect(type?.component).toBe("keycloak-secrets.service");
+    expect(type?.source.file).toBe("/r/keycloak-secrets.service.j2");
+  });
+
+  it("still resolves a {{ var }} against defaults, and scopes it to its template", () => {
+    const si = load(twoTemplates);
+    const base = si.layers.find((l) => l.kind === "base") as Extract<ValueLayer, { kind: "base" }>;
+
+    // The variable keeps its own name as the layer key, so an overlay in
+    // group_vars still finds it — that lookup is by the extracted key.
+    expect(base.entries.get("app_db_url")?.value).toBe("jdbc:postgresql://db/app");
+    expect(si.keyMap).toContainEqual({ boundKey: "Service.Environment", variable: "app_db_url" });
+    expect(si.componentOf?.get("app_db_url")).toBe("keycloak.service");
+  });
+
+  it("leaves a variable shared by two templates out of every component", () => {
+    const shared: Record<string, string> = {
+      ...files,
+      "/r/a.conf.j2": "log-level={{ app_log_level }}",
+      "/r/b.conf.j2": "loglevel={{ app_log_level }}",
+    };
+    const sharedIo: RecipeIO = { ...io, readFile: (p: string) => shared[p] ?? null };
+    const recipe = getRecipe("ansible")!;
+    const si = recipe.load(
+      {
+        name: "kc",
+        recipe: "ansible",
+        defaults: "defaults.yml",
+        templates: [{ path: "a.conf.j2" }, { path: "b.conf.j2" }],
+      } as never,
+      sharedIo
+    );
+
+    // It genuinely belongs to both files. Claiming one would be a guess, and
+    // the row is honest sitting outside every component heading.
+    expect(si.componentOf?.get("app_log_level")).toBeUndefined();
+    // And it earns no product key either — the existing not-1:1 rule, now
+    // counted across the whole sheet rather than within one template.
+    expect(si.keyMap?.some((m) => m.variable === "app_log_level")).toBeFalsy();
+  });
+
+  it("rejects declaring both template and templates", () => {
+    expect(() => load({ template: "keycloak.service.j2", ...twoTemplates })).toThrow(/both "template" and "templates"/);
+  });
+
+  it("rejects a sheet-wide deployed_path alongside templates", () => {
+    expect(() => load({ ...twoTemplates, deployed_path: "/etc/somewhere" })).toThrow(/declare deployed_path inside each entry/);
+  });
+
+  it("leaves a single `template:` sheet with no component at all", () => {
+    // A sheet that IS one artifact needs no level naming it above every
+    // category — the collapse rule in assemble.ts would drop it anyway, but not
+    // creating it keeps the row keys where they were.
+    const si = load({ template: "keycloak.service.j2", deployed_path: "/etc/systemd/system/keycloak.service" });
+
+    expect(si.componentOf).toBeUndefined();
+    expect(si.componentLabels).toBeUndefined();
+    expect(si.filePath).toBe("/etc/systemd/system/keycloak.service");
   });
 });
