@@ -251,6 +251,98 @@ What that buys you:
   an undeclared category, or an unknown `build.yml` field fails the same way,
   named, with a spelling suggestion when one is close.
 
+#### One sheet, several instances of the same product: `component`
+
+A sheet often covers more than one of something — two OIDC clients on one
+identity provider, the load balancer in front of one service and the one in
+front of another, a primary database and its replica, or several files that make
+up one subsystem. Each of those is a **component**: a purpose-bearing
+instantiation, named because a requirement asked for it. Nothing but a human
+knows which of two identical-looking database clusters is "the session store";
+a cloud provider hands out resource types, not purposes.
+
+```yaml
+# build.yml — the component is DERIVED from where each row came from, so the
+# id already present in every path becomes the heading instead of cluttering
+# every key.
+sheets:
+  - name: oidc clients
+    recipe: layered
+    static_files:
+      - path: clients.yml
+        format: yaml
+        key:                                   # clients[clientId=X].redirectUris[0]
+          from: path                           #   -> redirectUris[0]
+          steps:
+            - pattern: '^clients\[clientId=(?:.+?)\]\.(.+)$'
+              replace: "$1"
+              on_no_match: drop
+    component:
+      from: path                               # matched against the ORIGINAL path,
+      steps:                                   # before the key transform above
+        - pattern: '^clients\[clientId=(.+?)\]\..*$'
+          replace: "$1"
+      names:
+        web-portal: { name: { en: Web portal, ja: Web ポータル } }
+        mobile-app: { name: { en: Mobile app, ja: モバイルアプリ } }
+```
+
+Two things worth knowing before copying that: `include`/`exclude` are matched
+against the key AFTER the transform, so filtering on the original path silently
+drops everything; and a `names:` entry that no row produces is a build error, so
+a component that stops appearing is reported rather than quietly vanishing.
+
+The result — the same key under each component, and remarks that stay where they
+were written:
+
+```
+[Web ポータル]
+  [Settings]
+    redirectUris[0] = https://portal.example.com/cb   remarks: the portal's callback
+[モバイルアプリ]
+  [Settings]
+    redirectUris[0] = https://app.example.com/cb
+```
+
+A component is a **scope**, not a label, and that buys three things:
+
+- **It is the outermost level of a row's path**, so the sheet reads as "this
+  client, then its settings" rather than one flat list whose keys all repeat.
+- **`materialize` produces one ledger per component.** Without this, a value set
+  on one instance marks that option covered for every instance, and the other
+  ALB's unset options silently vanish from the ledger.
+- **`sheet.yml` gets a namespace per component**, so the remarks written for one
+  instance cannot appear on another's row.
+
+```yaml
+# sheet.yml — component-first, then the sheet-wide table
+sheets:
+  "oidc clients":
+    params:
+      redirectUris[0]: { category: Settings }      # true of every client
+    components:
+      web-portal:
+        params:
+          redirectUris[0]: { remarks: "the portal's callback" }   # true of this one
+```
+
+**Components do not require the key names to overlap.** Overlapping keys are
+what forces the `sheet.yml` namespace above — two clients both have
+`redirectUris[0]`, and a flat table would leak one's remarks onto the other —
+but that is a consequence, not a precondition. A cloud-infrastructure sheet
+whose components are a load balancer, a database, a compute node and a network
+shares no keys between them at all; they are components because they are four
+separate things a reviewer reads separately.
+
+A sheet with only ONE component collapses the level entirely — naming it above
+every category would add a heading that says nothing.
+
+For an `ansible` sheet, `templates:` (plural) makes one component per template,
+which is how several rendered artifacts — a config file, a systemd unit, an
+environment file — end up on one sheet. It is also the only way they can: two
+systemd units both have `Unit.Description`, and without a component to separate
+them one row would overwrite the other.
+
 `skills/review-sheet/SKILL.md` and `review-sheet import --spec --help` cover
 every field; this is the shape, not the reference.
 
