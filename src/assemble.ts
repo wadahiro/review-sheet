@@ -341,6 +341,27 @@ export type MaterializeReport = {
   noDefaultKeys: string[];
 };
 
+// Rows a dictionary's `ui` claim removed or narrowed on one sheet — the same
+// "counted, never silent" rule MaterializeReport follows. Emitted per sheet,
+// not per binding, because a row is decided by whichever dictionary bound it.
+export type UiReport = {
+  sheet: string;
+  // Keys dropped: nobody set them and the product's UI does not mention them.
+  absentKeys: string[];
+  // Keys kept but marked out of scope: the UI shows the value without offering
+  // any way to choose one.
+  readonlyKeys: string[];
+};
+
+// Why a `ui: "readonly"` row is not reviewable, supplied by review-sheet rather
+// than by each project: the fact is the dictionary's, so the sentence should be
+// too, and a project that disagrees still wins — its own `out_of_scope` is
+// applied later and is never overwritten (see fileDrafts).
+export const UI_READONLY_REASON: LangText = {
+  en: "The product's own admin UI shows this value but offers no way to choose one, so nothing here was decided — it records what the product or an operator action put there. Not set by this project either.",
+  ja: "製品の管理 UI はこの値を表示するだけで、選ぶ手段を提供していない。したがってここに合意すべき決定は存在せず、製品または運用操作が入れた結果が写っているだけである。本プロジェクトも設定していない。",
+};
+
 // Resolved dictionary bindings for one sheet, nested by COMPONENT and then by
 // key — never keyed by the key alone.
 //
@@ -1290,6 +1311,8 @@ export function assembleSheetsWithReport(
   report: EnrichReport;
   unusedProjectParams: string[];
   materializeReports: MaterializeReport[];
+  // Rows a dictionary's `ui` claim dropped or narrowed — see UiReport.
+  uiReports: UiReport[];
   binding: BindingReport;
   // Undeclared top-level categories reached only via a dictionary `group`
   // fallback (P10 bug 2) — informational, the build already succeeded.
@@ -1333,6 +1356,7 @@ export function assembleSheetsWithReport(
   const underKeyColumns = new Map<string, ColumnDefinition>();
   const sheets: Sheet[] = [];
   const materializeReports: MaterializeReport[] = [];
+  const uiReports: UiReport[] = [];
   // Every sheet's resolved bindings (bindDrafts' return value), keyed by
   // sheet name then parameter key — handed to enrich() below so its
   // dictionary provider does a plain lookup instead of re-running its own key
@@ -1499,6 +1523,42 @@ export function assembleSheetsWithReport(
         for (const [k, v] of materialized.bindings) setBinding(sheetBindings, component, k, v);
       }
     }
+    // What the product's own UI says about a row NOBODY SET (see
+    // DictionaryParam.ui). Runs after materialize so it covers both kinds of
+    // `origin: "default"` row — the ones materialize invented from a
+    // dictionary, and the ones a recipe filed from a snapshot of the product
+    // (static_files' `origin: default`).
+    //
+    // Restricted to rows the project does not set, and that restriction is the
+    // whole point: `ui: "absent"` does not mean unsettable, it means the UI has
+    // no field for it. The API still accepts it, which is how a provisioning
+    // tool writes one — so a row this project DOES set stays exactly as it is,
+    // verified and reviewed like any other. What is removed is only the
+    // assertion "the product default is in force here", for a parameter no
+    // reader could have chosen and no reader will find in the console.
+    const uiAbsentKeys: string[] = [];
+    const uiReadonlyKeys: string[] = [];
+    const keptDrafts: Draft[] = [];
+    for (const d of drafts) {
+      const ui = d.param.origin === "default" ? bindingFor(sheetBindings, d.component, d.key)?.entry.ui : undefined;
+      if (ui === "absent") {
+        uiAbsentKeys.push(d.key);
+        continue;
+      }
+      if (ui === "readonly") {
+        uiReadonlyKeys.push(d.key);
+        // A project's own out_of_scope is applied later, in fileDrafts, and
+        // overwrites this one — the project has the last word on its own
+        // review remit, as everywhere else.
+        d.param.out_of_scope = { reason: UI_READONLY_REASON };
+      }
+      keptDrafts.push(d);
+    }
+    if (uiAbsentKeys.length > 0 || uiReadonlyKeys.length > 0) {
+      uiReports.push({ sheet: si.name, absentKeys: uiAbsentKeys, readonlyKeys: uiReadonlyKeys });
+    }
+    drafts.length = 0;
+    drafts.push(...keptDrafts);
     const sheetAssembledKeys = new Set<string>();
     for (const d of drafts) {
       assembledKeys.add(d.key);
@@ -1741,7 +1801,7 @@ export function assembleSheetsWithReport(
     variables: allVariables,
   });
 
-  return { ...enriched, unusedProjectParams, materializeReports, binding, categoryWarnings };
+  return { ...enriched, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings };
 }
 
 export function assembleSheets(inputs: SheetInputs[], opts: AssembleOpts): ParameterSheetInput {

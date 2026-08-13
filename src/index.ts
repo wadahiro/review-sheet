@@ -69,6 +69,7 @@ export type {
   SheetDictionaryBinding,
   DictionaryMaterialize,
   MaterializeReport,
+  UiReport,
 } from "./assemble.js";
 // build.yml -> ParameterSheetInput in one call (what `import --spec` runs).
 // Pass `hooks` to adjust keys/params/the whole model without leaving the

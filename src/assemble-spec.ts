@@ -20,6 +20,7 @@ import {
   type SheetInputs,
   type SheetDictionaryBinding,
   type MaterializeReport,
+  type UiReport,
   type BindingReport,
 } from "./assemble.js";
 import { getRecipe, type RecipeIO } from "./recipe.js";
@@ -67,6 +68,7 @@ export function assembleFromSpecWithReport(
   report: EnrichReport;
   unusedProjectParams: string[];
   materializeReports: MaterializeReport[];
+  uiReports: UiReport[];
   binding: BindingReport;
   categoryWarnings: string[];
 } {

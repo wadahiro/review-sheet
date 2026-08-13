@@ -93,6 +93,29 @@ export type DictionaryParam = {
   // `IfModule "value"` row, the condition itself) gets the product's
   // description for free.
   kind?: "value" | "container";
+  // How the PRODUCT'S OWN administrative UI exposes this parameter. A fact
+  // about the UI, deliberately NOT about whether the parameter can be set at
+  // all: almost everything here is still writable through the product's API,
+  // which is how a provisioning tool sets it. Conflating the two would make
+  // the dictionary claim something false.
+  //
+  //   "editable" — a control writes it. The ordinary case.
+  //   "readonly" — the UI reads the value (displays it, or branches on it) but
+  //                offers no way to choose one. Keycloak's realm `notBefore` is
+  //                this: a read-only box beside Set-to-now / Clear / Push, so
+  //                the only values it can hold are "now" and 0. What it records
+  //                is an OPERATION, not a decision.
+  //   "absent"   — the UI never mentions it. A legacy field the API still
+  //                accepts, typically.
+  //
+  // Omitted = no claim, which is every dictionary predating this field and
+  // every product with no UI to speak of (httpd, PostgreSQL). Nothing changes
+  // for those — see assemble.ts's uiFiltered pass for what a claim does.
+  //
+  // Only an extraction that can SEE the UI may set this. It is exactly the
+  // kind of fact a person would otherwise guess at from a field name, which is
+  // why it belongs to the generator and not to an overlay.
+  ui?: "editable" | "readonly" | "absent";
 };
 
 export type DictionaryDoc = {
@@ -226,7 +249,7 @@ export function findDictionary(
 // not from anyone's discipline about which file they edit.
 //
 // Fields an overlay entry may set are documentation prose ONLY.
-// default/type/scope/group/kind/since/until are product facts the extraction
+// default/type/scope/group/kind/ui/since/until are product facts the extraction
 // owns; letting an overlay set them would let a community claim reshape
 // materialize's inventory ledger (see the design doc's "Unsure" section for
 // the one tempting exception, `default`).
@@ -314,7 +337,7 @@ export function parseOverlay(path: string, content: string): DictionaryOverlayDo
         const hint = suggestNearest(field, OVERLAY_PARAM_FIELDS);
         throw new Error(
           `${path}: parameter "${key}" has unknown field "${field}" — an overlay entry may set only ` +
-            `${OVERLAY_PARAM_FIELDS.join("/")} (default/type/scope/group/kind/since/until are product facts ` +
+            `${OVERLAY_PARAM_FIELDS.join("/")} (default/type/scope/group/kind/ui/since/until are product facts ` +
             `the extraction owns, not the overlay's to set)` +
             (hint ? ` (did you mean "${hint}"?)` : "")
         );
