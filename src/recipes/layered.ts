@@ -705,6 +705,13 @@ export const layeredRecipe: SheetRecipe = {
       embedded: staticFilesResult.embedded,
       ...(components?.componentLabels ? { componentLabels: components.componentLabels } : {}),
       ...(componentOf ? { componentOf } : {}),
+      // The order the files are listed in IS the reading order the author
+      // chose; without it the sheet opens on whichever component's rows the
+      // assembler happened to see first.
+      ...(() => {
+        const declared = staticFileSpecs(sheetSpec.static_files).map((f) => f.component).filter((c): c is string => c !== undefined);
+        return declared.length > 0 ? { componentOrder: declared } : {};
+      })(),
       ...(staticFilesResult.keyMap.length > 0 ? { keyMap: staticFilesResult.keyMap } : {}),
       ...(staticFilesResult.referenceSites.length > 0 ? { referenceSites: staticFilesResult.referenceSites } : {}),
     };

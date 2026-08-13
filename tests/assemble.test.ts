@@ -1439,3 +1439,36 @@ sheets:
     expect(input.sheets.every((s) => s.group === undefined)).toBe(true);
   });
 });
+
+// Reading order is a decision the spec makes; the order rows reach the
+// assembler is not one.
+describe("component order follows the declaration", () => {
+  const files: Record<string, string> = { "p.yml": `sheets:\n  s:\n    params: {}\n` };
+  const opts = (): AssembleOpts => ({ projectPath: "p.yml", readFile: (f) => files[f] ?? null });
+  // "second" reaches the assembler first — the shape a shared layer produces
+  // when one component's values arrive through it and another's are literal.
+  const inputs = (order?: string[]): SheetInputs[] => [
+    {
+      name: "s",
+      instances: [],
+      layers: [{ kind: "base", entries: map([]) }],
+      embedded: [
+        { key: "a", value: "1", source: { file: "f", line: 1 }, component: "second" },
+        { key: "a", value: "2", source: { file: "f", line: 2 }, component: "first" },
+      ],
+      ...(order ? { componentOrder: order } : {}),
+    },
+  ];
+
+  it("puts the components in the order the spec lists them", () => {
+    files["p.yml"] = `sheets:\n  s:\n    params:\n      a: { category: C, description: d }\n`;
+    const input = assembleSheets(inputs(["first", "second"]), opts());
+    expect(input.sheets[0].categories.map((c) => c.name)).toEqual(["first", "second"]);
+  });
+
+  it("falls back to first appearance when the spec declares no order", () => {
+    files["p.yml"] = `sheets:\n  s:\n    params:\n      a: { category: C, description: d }\n`;
+    const input = assembleSheets(inputs(), opts());
+    expect(input.sheets[0].categories.map((c) => c.name)).toEqual(["second", "first"]);
+  });
+});

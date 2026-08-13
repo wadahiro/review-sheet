@@ -32,6 +32,12 @@ export const customStyles = `
   /* Height of the sticky tab bar; measured and overwritten by JS at runtime so
      document-flow sticky table headers can stick just below it. */
   --rs-tabbar-h: 41px;
+  /* The tab bar's own side gutter. Narrower than the content's (--rs-main's
+     1.5rem) on purpose: the bar holds controls, not prose, and its two rows of
+     tabs are the one strip in the document that actually runs out of width. The
+     row that bleeds over it (see .rs-subtabs) does its arithmetic off this
+     variable, so the two can never drift apart. */
+  --rs-tabbar-x: 0.75rem;
   /* Uniform height of each sticky section header, used to stack nested headers
      and the table header at cumulative top offsets. */
   --rs-cat-h: 2.5rem;
@@ -516,7 +522,7 @@ code {
   align-items: center;
   background: var(--rs-surface);
   border-bottom: 1px solid var(--rs-border);
-  padding: 0 1.5rem;
+  padding: 0 var(--rs-tabbar-x);
   box-shadow: var(--rs-shadow-sm);
 }
 
@@ -556,10 +562,11 @@ code {
      drawn above them. */
   /* Full-bleed, and the arithmetic has to be exact: with box-sizing: border-box
      a flex-basis of 100% is the BORDER box, so the negative margins that pull
-     the row out over the bar's 1.5rem padding also shorten it — the background
-     and the top rule stopped 3rem before the right edge. The basis has to carry
-     that 3rem for the outer box to come back to exactly the bar's width. */
-  flex-basis: calc(100% + 3rem);
+     the row out over the bar's own padding also shorten it — the background and
+     the top rule stopped two gutters short of the right edge. The basis has to
+     carry both gutters for the outer box to come back to exactly the bar's
+     width. */
+  flex-basis: calc(100% + var(--rs-tabbar-x) * 2);
   display: flex;
   gap: 2px;
   align-items: center;
@@ -569,8 +576,8 @@ code {
      a grey band across the header, since its scrollbar takes real space rather
      than overlaying. */
   overflow-x: auto;
-  margin: 0 -1.5rem;
-  padding: 0.3rem 1.5rem;
+  margin: 0 calc(-1 * var(--rs-tabbar-x));
+  padding: 0.3rem var(--rs-tabbar-x);
   background: var(--rs-bg);
   border-top: 1px solid var(--rs-border);
 }
@@ -714,6 +721,16 @@ code {
 .rs-menu-item-danger {
   color: var(--rs-danger);
 }
+/* A heading inside a toolbar menu: the environment list needs saying what it
+   is, since a bare list of names beside three checkboxes reads as three more
+   filters of the same kind. */
+.rs-menu-section {
+  padding: 0.3rem 0.75rem 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--rs-text-muted);
+}
+
 .rs-menu-divider {
   height: 1px;
   margin: 0.3rem 0;
@@ -1168,31 +1185,124 @@ code {
   align-items: flex-start;
   gap: 0;
 }
-/* Once per sheet, under its header: quiet enough to be skipped by a reader who
-   already knows, close enough to the first marked row to be found by one who
-   does not. */
-.rs-origin-legend {
-  display: flex;
-  flex-wrap: wrap;
+
+
+
+/* Side-by-side view */
+
+/* At the right-hand end of a component's heading, past the badges: the reader
+   asking whether these can be compared is looking at them, not at the sheet
+   header. A margin-left of auto pushes it there without a spacer element. */
+.rs-compare-toggle {
+  display: inline-flex;
   align-items: center;
-  gap: 0.25rem 1rem;
-  margin: 0.5rem 0 0.75rem;
+  gap: 0.35rem;
+  margin-left: auto;
+  padding-left: 0.75rem;
+  font-family: var(--rs-font);
   font-size: 0.75rem;
+  font-weight: 400;
   color: var(--rs-text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
 }
 
-.rs-legend-title {
-  font-weight: 600;
+.rs-compare-toggle input {
+  cursor: pointer;
+}
+
+.rs-compare-toggle:hover {
+  color: var(--rs-primary);
+}
+
+
+
+
+.rs-pivot-vs {
   color: var(--rs-text-muted);
 }
 
-.rs-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
+
+
+/* The row where the components disagree — the finding this view exists to
+   surface, so it is marked rather than left to be spotted by eye. */
+.rs-pivot-differs > .rs-col-key {
+  box-shadow: inset 3px 0 0 var(--rs-warning, #f59e0b);
 }
 
+/* The side-by-side table scrolls INSIDE itself. Without a scroller of its own
+   a table this wide overflows the page, so the whole document scrolls
+   sideways — carrying the sheet header, the headings and the sticky bar with
+   it. The stacked view gets this from a measurement in the viewer; here the
+   table is always the widest thing on the page, so it is declared. */
+.rs-pivot-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+
+/* And the key column stays put while it scrolls: reading a value in the fourth
+   component means nothing without the row it belongs to. */
+.rs-pivot-table .rs-col-key {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--rs-surface);
+}
+
+/* The frozen column's own header, in the split header table. */
+.rs-pivot-table thead .rs-col-key {
+  z-index: 3;
+}
+
+/* Both halves must agree on column widths, or the header sits over the wrong
+   cells — and they cannot agree by filling their containers, because the header
+   sits in a hidden box the width of the viewport while the body sits in a
+   scroller as wide as its content. Given the same explicit geometry they come
+   out identical at any window size: a fixed key column, a fixed width per
+   component, and a total that only grows past the viewport when the components
+   need it to. */
+.rs-pivot-table {
+  table-layout: fixed;
+  width: max(100%, calc(22rem + var(--rs-pivot-cols, 2) * 16rem));
+  min-width: 0;
+}
+
+.rs-pivot-table .rs-col-key {
+  width: 22rem;
+}
+
+.rs-pivot-table .rs-col-value {
+  width: 16rem;
+}
+
+/* The edge of the frozen column, so a value scrolled underneath it does not
+   look like part of the key. Drawn as a pseudo-element because the table
+   collapses its borders, and a collapsed border does not travel with the cell
+   it was declared on once that cell is sticky. */
+.rs-pivot-table .rs-col-key::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--rs-border);
+}
+
+/* A component that has no such parameter at all. Distinct from one that leaves
+   it at the product default: that is a value, this is an absence. */
+.rs-pivot-absent {
+  color: var(--rs-text-muted);
+  text-align: center;
+}
+
+/* Block, not inline. These stack under a value — a row's provenance line, an
+   origin marker, or one line per environment in the side-by-side view — and as
+   spans they ran together on one line the moment a cell had more than one.
+   The key cell hid that: its own contents happened to break anyway. */
 .rs-key-subline {
+  display: block;
   margin-top: 2px;
 }
 
@@ -1887,6 +1997,14 @@ code {
   gap: 0.25rem;
 }
 
+/* A cell with something stacked under its value switches to a column: the row
+   layout above puts block children side by side, which is what kept the
+   per-environment lines on one line. */
+.rs-value-cell-stacked {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 .rs-cell-content {
   flex: 1;
   min-width: 0;
@@ -2510,6 +2628,7 @@ tr.rs-jump-flash th {
   background: var(--rs-subtle);
   box-shadow: inset 2px 0 0 var(--rs-primary);
 }
+
 
 .rs-outline-sheetname {
   display: block;

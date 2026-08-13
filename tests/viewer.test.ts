@@ -13,6 +13,7 @@ GlobalRegistrator.register();
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { h, render } from "preact";
 import { Root } from "../src/html/app";
+import { customStyles } from "../src/html/styles";
 import type { ParameterSheetInput, ReviewDocument } from "../src/types";
 
 const SHEET: ParameterSheetInput = {
@@ -830,55 +831,466 @@ describe("viewer: the outline follows the header", () => {
   });
 });
 
-// The key column's markers carry the useful half — which file a literal lives
-// in — and the legend carries what that implies, once per sheet instead of on
-// every row.
-describe("viewer: origin legend", () => {
-  const LEGEND_DOC = {
+
+// A sheet with several environments is wide by construction, and a reviewer
+// working on one of them is reading past the others on every row.
+describe("viewer: filtering which environments are shown", () => {
+  const ENV_DOC = {
     metadata: { title: "t" },
     sheets: [
       {
-        name: "with literals",
+        name: "app",
+        instances: ["local", "staging", "production"],
         categories: [
           {
             name: "General",
             params: [
-              { key: "a", value: "1", description: "d", origin: "embedded" as const, source: { file: "roles/x/templates/httpd.conf.j2", line: 1 } },
-              { key: "b", value: "2", description: "d" },
+              {
+                key: "timeout",
+                description: "d",
+                instances: [
+                  { name: "local", value: "60" },
+                  { name: "staging", value: "30" },
+                  { name: "production", value: "10" },
+                ],
+              },
             ],
           },
         ],
       },
-      { name: "no literals", categories: [{ name: "General", params: [{ key: "c", value: "3", description: "d" }] }] },
     ],
   };
-  const payload = { metadata: LEGEND_DOC.metadata, versions: [{ version: "current", sheets: LEGEND_DOC.sheets }] };
+  const payload = { metadata: ENV_DOC.metadata, versions: [{ version: "current", sheets: ENV_DOC.sheets }] };
 
-  function mountAt(hash: string): HTMLElement {
-    location.hash = hash;
+  function mountEnv(): HTMLElement {
+    openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
     render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     return host;
   }
+  const headers = (host: HTMLElement): string[] =>
+    [...host.querySelectorAll(".rs-param-table th")].map((e) => (e.textContent ?? "").trim());
+  async function openFilters(host: HTMLElement): Promise<void> {
+    // The toolbar button TOGGLES, so clicking it while the menu is already open
+    // closes it — the helper has to be idempotent or the second toggle in a
+    // test silently operates on a closed menu.
+    if (host.querySelector(".rs-menu-check")) return;
+    const btn = [...host.querySelectorAll("button")].find((b) => /絞り込み/.test(b.textContent ?? ""));
+    if (!btn) throw new Error("filter menu not found");
+    (btn as HTMLElement).click();
+    await Promise.resolve();
+  }
+  async function toggle(host: HTMLElement, name: string): Promise<void> {
+    await openFilters(host);
+    const item = [...host.querySelectorAll(".rs-menu-check")].find((l) => (l.textContent ?? "").trim() === name);
+    if (!item) throw new Error(`no menu entry for ${name}`);
+    (item.querySelector("input") as HTMLInputElement).click();
+    await Promise.resolve();
+  }
 
-  it("explains the marker on a sheet that has one", () => {
-    const host = mountAt("#1");
-    const legend = host.querySelector(".rs-origin-legend");
-    expect(legend).not.toBeNull();
-    expect(legend!.textContent).toContain("変数を介さず");
+  it("lists every environment the document declares", async () => {
+    const host = mountEnv();
+    await openFilters(host);
+    const labels = [...host.querySelectorAll(".rs-menu-check")].map((l) => (l.textContent ?? "").trim());
+    expect(labels).toEqual(expect.arrayContaining(["local", "staging", "production"]));
   });
 
-  it("shows nothing on a sheet with no marked rows", () => {
-    // A legend for a mark that appears nowhere below is one more thing to read
-    // and discard.
-    const host = mountAt("#2");
-    expect(host.querySelector(".rs-origin-legend")).toBeNull();
+  it("drops the column when an environment is switched off", async () => {
+    const host = mountEnv();
+    expect(headers(host).join(" ")).toContain("local");
+    await toggle(host, "local");
+    expect(headers(host).join(" ")).not.toContain("local");
+    expect(headers(host).join(" ")).toContain("production");
   });
 
-  it("keeps the file name as the marker itself", () => {
-    const host = mountAt("#1");
-    const tags = [...host.querySelectorAll(".rs-param-table .rs-origin-tag")].map((e) => e.textContent);
-    expect(tags).toContain("httpd.conf.j2");
+  it("refuses to hide the last one, so the filter cannot empty the table", async () => {
+    // A filter that can leave a row with no value column at all is a trap: the
+    // reader is looking at keys with nothing to read and no obvious way back.
+    const host = mountEnv();
+    for (const name of ["local", "staging", "production"]) await toggle(host, name);
+    const shown = headers(host).join(" ");
+    expect(shown).toContain("production");
+  });
+});
+
+// The checkboxes sit beside the columns they control, so a list in a different
+// order than the table reads as a different list.
+describe("viewer: the column filter follows the table's order", () => {
+  const DOC = {
+    metadata: { title: "t" },
+    sheets: [
+      // Declares only two, and in the document first — collecting from the top
+      // put "staging, production" ahead of "local" and the menu disagreed with
+      // every table below it.
+      { name: "infra", instances: ["staging", "production"], categories: [{ name: "G", params: [{ key: "a", description: "d", instances: [{ name: "staging", value: "1" }, { name: "production", value: "2" }] }] }] },
+      { name: "app", instances: ["local", "staging", "production"], categories: [{ name: "G", params: [{ key: "b", description: "d", instances: [{ name: "local", value: "1" }, { name: "staging", value: "2" }, { name: "production", value: "3" }] }] }] },
+    ],
+  };
+  const payload = { metadata: DOC.metadata, versions: [{ version: "current", sheets: DOC.sheets }] };
+
+  it("lists them in the active sheet's own order", async () => {
+    location.hash = "#2"; // the second sheet: local, staging, production
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    const btn = [...host.querySelectorAll("button")].find((b) => /絞り込み/.test(b.textContent ?? ""));
+    (btn as HTMLElement).click();
+    await Promise.resolve();
+    const envs = [...host.querySelectorAll(".rs-menu-check")]
+      .map((l) => (l.textContent ?? "").trim())
+      .filter((x) => ["local", "staging", "production"].includes(x));
+    expect(envs).toEqual(["local", "staging", "production"]);
+  });
+});
+
+// A sheet whose components are several of the same kind of thing is read to
+// answer one question — where do they differ? — and stacked headings make that
+// a scrolling exercise.
+describe("viewer: components side by side", () => {
+  const DOC = {
+    metadata: { title: "t" },
+    sheets: [
+      {
+        name: "clients",
+        // The sheet declares its components comparable; the viewer offers the
+        // view on that statement, not on a count of overlapping rows.
+        compare_components: true,
+        categories: [
+          {
+            name: "client-a",
+            categories: [
+              {
+                name: "Settings",
+                params: [
+                  { key: "protocol", value: "openid-connect", description: "d" },
+                  { key: "publicClient", value: "false", description: "d" },
+                  { key: "onlyHere", value: "1", description: "d" },
+                ],
+              },
+            ],
+          },
+          {
+            name: "client-b",
+            categories: [
+              {
+                name: "Settings",
+                params: [
+                  { key: "protocol", value: "openid-connect", description: "d" },
+                  { key: "publicClient", value: "true", description: "d" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const payload = { metadata: DOC.metadata, versions: [{ version: "current", sheets: DOC.sheets }] };
+
+  async function mountPivot(): Promise<HTMLElement> {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    const toggle = host.querySelector(".rs-compare-toggle input") as HTMLInputElement;
+    if (!toggle) throw new Error("side-by-side toggle not offered");
+    toggle.click();
+    await Promise.resolve();
+    return host;
+  }
+
+  it("puts one column per component", async () => {
+    const host = await mountPivot();
+    const heads = [...host.querySelectorAll(".rs-pivot th")].map((e) => (e.textContent ?? "").trim());
+    expect(heads).toEqual(["設定項目", "client-a", "client-b"]);
+  });
+
+  it("marks the row where they disagree, and leaves the agreeing one unmarked", async () => {
+    const host = await mountPivot();
+    const rowOf = (key: string) =>
+      [...host.querySelectorAll(".rs-pivot tbody tr")].find((tr) => (tr.querySelector(".rs-col-key")?.textContent ?? "").trim() === key);
+    expect(rowOf("publicClient")?.className).toContain("rs-pivot-differs");
+    expect(rowOf("protocol")?.className).not.toContain("rs-pivot-differs");
+  });
+
+  it("shows an absent parameter as an absence, not as an unset value", async () => {
+    // "client-b has no such setting" and "client-b leaves it at the default"
+    // are different findings; a blank cell would say neither.
+    const host = await mountPivot();
+    const row = [...host.querySelectorAll(".rs-pivot tbody tr")].find(
+      (tr) => (tr.querySelector(".rs-col-key")?.textContent ?? "").trim() === "onlyHere"
+    );
+    expect(row?.querySelectorAll(".rs-pivot-absent")).toHaveLength(1);
+  });
+
+  it("is not offered on a sheet with a single component", () => {
+    const one = { metadata: DOC.metadata, versions: [{ version: "current", sheets: [{ name: "solo", categories: [DOC.sheets[0].categories[0]] }] }] };
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: one, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    expect(host.querySelector(".rs-compare-toggle")).toBeNull();
+  });
+});
+
+// A cell's sub-lines stack: a value's provenance, its origin marker, and — in
+// the side-by-side view — one line per environment. As inline spans they ran
+// together into a single unreadable line as soon as there were two.
+describe("viewer: cell sub-lines stack", () => {
+  it("gives each sub-line its own line", async () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const payload = {
+      metadata: { title: "t" },
+      versions: [
+        {
+          version: "current",
+          sheets: [
+            {
+              name: "s",
+              compare_components: true,
+              categories: [
+                { name: "c1", categories: [{ name: "G", params: [{ key: "k", description: "d", instances: [{ name: "local", value: "false" }, { name: "prod", value: "true" }] }] }] },
+                { name: "c2", categories: [{ name: "G", params: [{ key: "k", value: "true", description: "d" }] }] },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
+    await Promise.resolve();
+    const sublines = host.querySelectorAll(".rs-pivot .rs-key-subline");
+    expect(sublines.length).toBeGreaterThanOrEqual(2);
+    // happy-dom does not lay out, so the guarantee is asserted where it is
+    // made: the rule that puts each on its own line.
+    expect(customStyles).toContain("display: block");
+  });
+});
+
+// Reading a sheet side by side changes its shape, and two things followed it
+// out of the door: the component headings, and the outline that points at them.
+describe("viewer: the side-by-side view keeps its bearings", () => {
+  const DOC = {
+    metadata: { title: "t" },
+    sheets: [
+      {
+        name: "realms",
+        compare_components: true,
+        categories: [
+          { name: "poc", categories: [{ name: "Sessions", params: [{ key: "idle", value: "1", description: "d" }] }] },
+          { name: "master", categories: [{ name: "Sessions", params: [{ key: "idle", value: "2", description: "d" }] }] },
+        ],
+      },
+    ],
+  };
+  const payload = { metadata: DOC.metadata, versions: [{ version: "current", sheets: DOC.sheets }] };
+
+  async function pivot(): Promise<HTMLElement> {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
+    await Promise.resolve();
+    return host;
+  }
+
+  it("names the components it is comparing, since their headings are gone", async () => {
+    const host = await pivot();
+    // Rendered as the component heading it replaces, so it is found the same
+    // way a component heading is.
+    const heading = host.querySelector(".rs-pivot .rs-category-header .rs-cat-label");
+    expect(heading?.textContent?.replace(/\s+/g, " ").trim()).toBe("poc / master");
+  });
+
+  it("gives its groups the anchors the outline points at", async () => {
+    // The outline is rebuilt for the pivoted shape — component-less paths — so
+    // its entries have to resolve to something on the page. They used to point
+    // at ids that only exist in the stacked view, and clicking did nothing.
+    const host = await pivot();
+    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
+    (btn as HTMLElement).click();
+    await Promise.resolve();
+    const items = [...host.querySelectorAll(".rs-outline-item")];
+    expect(items.length).toBeGreaterThan(0);
+    for (const el of [...host.querySelectorAll(".rs-outline-row")]) {
+      const id = (el.querySelector("button") as HTMLElement | null)?.getAttribute("data-id");
+      if (id) expect(host.querySelector(`#${CSS.escape(id)}`)).not.toBeNull();
+    }
+    // The entry names the category, not a component that is no longer a heading.
+    expect(items.map((e) => e.textContent?.trim())).toContain("Sessions");
+  });
+});
+
+// The side-by-side view renders through the same structure as the stacked one,
+// which is what makes the outline, the sticky headings, the scroll offsets and
+// the jump flash keep working. Flat groups broke all four at once.
+describe("viewer: the side-by-side view keeps the stacked view's structure", () => {
+  const DOC = {
+    metadata: { title: "t" },
+    sheets: [
+      {
+        name: "realms",
+        compare_components: true,
+        categories: ["poc", "master"].map((c) => ({
+          name: c,
+          categories: [
+            { name: "Tokens", categories: [{ name: "Access tokens", params: [{ key: "lifespan", value: c === "poc" ? "300" : "60", description: "d" }] }] },
+          ],
+        })),
+      },
+    ],
+  };
+  const payload = { metadata: DOC.metadata, versions: [{ version: "current", sheets: DOC.sheets }] };
+
+  async function pivot(): Promise<HTMLElement> {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
+    await Promise.resolve();
+    return host;
+  }
+
+  it("renders a heading per level, so a parent is somewhere to land", async () => {
+    const host = await pivot();
+    // The first label is the component heading (the components being compared);
+    // the levels below it are the sheet's own categories.
+    const heads = [...host.querySelectorAll(".rs-pivot .rs-cat-label")].map((e) => e.textContent?.replace(/\s+/g, " ").trim());
+    expect(heads).toEqual(["poc / master", "Tokens", "Access tokens"]);
+  });
+
+  it("carries the anchor on the category, not on a box wrapping the whole table", async () => {
+    // The flash lands on whatever holds the anchor. On a wrapper around the
+    // heading AND the table that is every row at once, spilling past the table
+    // — the jump is supposed to point at one heading.
+    const host = await pivot();
+    const anchored = host.querySelector(".rs-pivot [id]");
+    expect(anchored?.className).toContain("rs-category");
+    expect(anchored?.querySelector(".rs-category-header")).not.toBeNull();
+  });
+
+  it("lists both levels in the outline", async () => {
+    const host = await pivot();
+    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
+    (btn as HTMLElement).click();
+    await Promise.resolve();
+    const items = [...host.querySelectorAll(".rs-outline-item")].map((e) => e.textContent?.trim());
+    expect(items).toContain("Tokens");
+    expect(items).toContain("Access tokens");
+  });
+});
+
+// The components lose their headings when a sheet is read side by side, so the
+// outline names them instead of leaving the reader to look back at the table.
+describe("viewer: the outline names what is being compared", () => {
+  const DOC = {
+    metadata: { title: "t" },
+    sheets: [
+      {
+        name: "clients",
+        compare_components: true,
+        categories: ["poc", "master"].map((c) => ({
+          name: c,
+          categories: [{ name: "Settings", params: [{ key: "k", value: c, description: "d" }] }],
+        })),
+      },
+    ],
+  };
+  const payload = { metadata: DOC.metadata, versions: [{ version: "current", sheets: DOC.sheets }] };
+
+  async function outline(pivot: boolean): Promise<HTMLElement> {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    if (pivot) {
+      (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
+      await Promise.resolve();
+    }
+    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
+    (btn as HTMLElement).click();
+    await Promise.resolve();
+    return host;
+  }
+
+  it("lists the components as an ordinary entry, so it looks and behaves like the rest", async () => {
+    const host = await outline(true);
+    const items = [...host.querySelectorAll(".rs-outline-item")].map((e) => e.textContent?.trim());
+    expect(items).toContain("poc / master");
+  });
+
+  it("points that entry at the heading on the page", async () => {
+    // A caption in its own style went nowhere when clicked; an entry has to
+    // resolve like every other one.
+    const host = await outline(true);
+    const entry = [...host.querySelectorAll(".rs-outline-item")].find((e) => e.textContent?.trim() === "poc / master");
+    const row = entry?.closest(".rs-outline-row");
+    expect(row).not.toBeNull();
+    expect(host.querySelector(".rs-pivot .rs-category[id]")).not.toBeNull();
+  });
+
+  it("lists the components only while comparing", async () => {
+    const host = await outline(false);
+    const items = [...host.querySelectorAll(".rs-outline-item")].map((e) => e.textContent?.trim());
+    expect(items).not.toContain("poc / master");
+  });
+});
+
+// One component varying by environment beside one that does not: three labelled
+// lines next to a bare value reads as the second having no per-environment
+// value, when it has one — the same in each.
+describe("viewer: side by side aligns the environments across a row", () => {
+  const DOC = {
+    metadata: { title: "t" },
+    sheets: [
+      {
+        name: "realms",
+        compare_components: true,
+        instances: ["local", "production"],
+        categories: [
+          {
+            name: "master",
+            categories: [{ name: "Sessions", params: [{ key: "maxLifespan", value: "28800", description: "d" }] }],
+          },
+          {
+            name: "poc",
+            categories: [
+              {
+                name: "Sessions",
+                params: [
+                  { key: "maxLifespan", description: "d", instances: [{ name: "local", value: "86400" }, { name: "production", value: "14400" }] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const payload = { metadata: DOC.metadata, versions: [{ version: "current", sheets: DOC.sheets }] };
+
+  it("labels both cells by environment when either one varies", async () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
+    await Promise.resolve();
+    const row = [...host.querySelectorAll(".rs-pivot tbody tr")].find(
+      (tr) => (tr.querySelector(".rs-col-key")?.textContent ?? "").trim() === "maxLifespan"
+    )!;
+    const cells = [...row.querySelectorAll("td")].slice(1).map((td) => (td.textContent ?? "").trim());
+    // master repeats its one value per environment rather than showing it once
+    // beside poc's three lines.
+    expect(cells[0]).toContain("local: 28800");
+    expect(cells[0]).toContain("production: 28800");
+    expect(cells[1]).toContain("local: 86400");
+    expect(cells[1]).toContain("production: 14400");
   });
 });

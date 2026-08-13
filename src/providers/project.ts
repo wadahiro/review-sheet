@@ -59,6 +59,8 @@ export type ProjectMetaSheetDoc = {
   // entry of the doc's top-level `groups:`. A display fact like `label`, and in
   // the same file for the same reason.
   group?: string;
+  // This sheet's components are comparable side by side (Sheet.compare_components).
+  compare_components?: boolean;
   // The sheet's display text (Sheet.label). Here rather than in build.yml for
   // the same reason `categories`/`under_key` are: it is a fact about how the
   // sheet is READ, not about where its rows come from, and the reviewer-facing
@@ -161,6 +163,7 @@ export function loadProjectMeta(path: string, readFile: (path: string) => string
         ...(s?.under_key ? { under_key: s.under_key } : {}),
         ...(s?.label ? { label: s.label } : {}),
         ...(s?.group ? { group: s.group } : {}),
+        ...(s?.compare_components ? { compare_components: true } : {}),
         ...(s?.components ? { components: s.components } : {}),
       };
     }
@@ -227,6 +230,11 @@ export function componentParamsForSheet(
 export function categoriesForSheet(doc: ProjectMetaDoc, sheet: string | undefined): string[] {
   if (doc.sheets) return (sheet !== undefined ? doc.sheets[sheet]?.categories : undefined) ?? [];
   return doc.categories ?? [];
+}
+
+// Whether this sheet declares its components comparable (Sheet.compare_components).
+export function compareComponentsForSheet(doc: ProjectMetaDoc, sheet: string | undefined): boolean {
+  return (doc.sheets && sheet !== undefined ? doc.sheets[sheet]?.compare_components : undefined) ?? false;
 }
 
 // This sheet's own group id, if any (Sheet.group). A flat doc describes one

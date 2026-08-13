@@ -31,6 +31,7 @@ import {
   underKeyForSheet,
   labelForSheet,
   groupForSheet,
+  compareComponentsForSheet,
   sheetGroups,
   checkProjectMetaSheets,
   type ProjectMetaDoc,
@@ -158,6 +159,9 @@ export type SheetInputs = {
   // pair cannot answer for three different files, so it is left unset, and the
   // per-template declaration had nowhere to be recorded.
   componentFiles?: Map<string, { filePath?: string; sourceFile?: string }>;
+  // The order the spec declares this sheet's components in. Reading order is a
+  // decision, and the order rows arrive in is not one — see fileDrafts.
+  componentOrder?: string[];
   // Reference sites a recipe's substitution scan found (src/substitution.ts's
   // `bindReferences`): `variable` is a base/overlay layer key (the SAME
   // extracted identity buildDrafts() below iterates below in passes 1/2,
@@ -897,7 +901,8 @@ function fileDrafts(
   categoryWarnings: string[],
   // Display names for component ids, when the recipe supplied them.
   componentLabels: Map<string, LangText> | undefined,
-  componentFiles: Map<string, { filePath?: string; sourceFile?: string }> | undefined
+  componentFiles: Map<string, { filePath?: string; sourceFile?: string }> | undefined,
+  componentOrder: string[] | undefined
 ): Category[] {
   // How many distinct components the sheet has. One is the ordinary case (a
   // sheet covers one thing), and the level is collapsed for it — see the path
@@ -1116,8 +1121,16 @@ function fileDrafts(
   // dictionary's `group`s) have no equivalent declaration to honor, so they
   // keep first-appearance order.
   const declared = declaredCategories.filter((name) => root.children.has(name));
-  const undeclared = root.childOrder.filter((name) => !declared.includes(name));
-  const order = [...declared, ...undeclared];
+  // A component's place in the reading order is the order the SPEC declares it
+  // in — the static files, the templates — not the order its rows happen to
+  // reach the assembler. Those differ whenever a component's values arrive
+  // through a shared layer: a realm whose per-environment values come from env
+  // files is drafted before one written out literally, so the sheet opened on
+  // the second file listed. Same rule `instances` has always had: the axis is
+  // as DECLARED, never as observed.
+  const declaredComponents = (componentOrder ?? []).filter((name) => root.children.has(name) && !declared.includes(name));
+  const undeclared = root.childOrder.filter((name) => !declared.includes(name) && !declaredComponents.includes(name));
+  const order = [...declared, ...declaredComponents, ...undeclared];
 
   function toCategory(node: Node): Category {
     const cat: Category = { name: node.name };
@@ -1314,6 +1327,7 @@ export function assembleSheetsWithReport(
     const underKey = underKeyForSheet(projectMeta, si.name);
     const sheetLabel = labelForSheet(projectMeta, si.name);
     const sheetGroup = groupForSheet(projectMeta, si.name);
+    const compareComponents = compareComponentsForSheet(projectMeta, si.name);
     if ((si.keyMap?.length ?? 0) > 0 && !underKey) {
       throw new Error(
         `assemble: sheet "${si.name}" has parameter(s) named by a product key (via keyMap) and must declare an ` +
@@ -1321,6 +1335,26 @@ export function assembleSheetsWithReport(
       );
     }
     const drafts = buildDrafts(si, opts.hooks, underKey);
+    // Declared, and checked: a sheet claiming its components are comparable
+    // when they share no row at all would render a diagonal — every row filled
+    // in exactly one column — which is the same class of mistake as a `names:`
+    // entry no row produces. Counted over the drafts, since that is the row set
+    // the view would be built from.
+    if (compareComponents) {
+      const byKey = new Map<string, Set<string>>();
+      for (const d of drafts) {
+        if (d.component === undefined) continue;
+        byKey.set(d.key, (byKey.get(d.key) ?? new Set()).add(d.component));
+      }
+      const shared = [...byKey.values()].filter((c) => c.size > 1).length;
+      if (shared === 0) {
+        throw new Error(
+          `assemble: sheet "${si.name}" declares compare_components, but no parameter appears in more than one of its ` +
+            `components — read side by side every row would be filled in exactly one column. Components are not ` +
+            `necessarily comparable: several artifacts of one product, or several resource types, share nothing.`
+        );
+      }
+    }
     const sheetVariables = new Map<string, string>();
     for (const d of drafts) if (d.variable !== undefined) sheetVariables.set(d.key, d.variable);
     allVariables.set(si.name, sheetVariables);
@@ -1420,7 +1454,8 @@ export function assembleSheetsWithReport(
       ghostCategories,
       categoryWarnings,
       si.componentLabels,
-      si.componentFiles
+      si.componentFiles,
+      si.componentOrder
     );
     sheets.push({
       name: si.name,
@@ -1429,6 +1464,7 @@ export function assembleSheetsWithReport(
       // uses, and this is only what a reader sees (see Sheet.label).
       ...(sheetLabel ? { label: sheetLabel } : {}),
       ...(sheetGroup ? { group: sheetGroup } : {}),
+      ...(compareComponents ? { compare_components: true } : {}),
       // The declared axis travels with the sheet: the viewer must not have to
       // guess it from which rows happen to have per-environment values.
       ...(si.instances.length > 0 ? { instances: si.instances } : {}),

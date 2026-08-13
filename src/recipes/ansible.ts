@@ -424,6 +424,9 @@ export const ansibleRecipe: SheetRecipe = {
       ...(componentOf.size > 0 ? { componentOf } : {}),
       ...(componentLabels.size > 0 ? { componentLabels } : {}),
       ...(componentFiles.size > 0 ? { componentFiles } : {}),
+      ...(specs.length > 1
+        ? { componentOrder: specs.map((t) => t.component).filter((c): c is string => c !== undefined) }
+        : {}),
     };
   },
 };

@@ -862,6 +862,12 @@ function ReviewableCell({ value, target, field, reviews, reviewEnabled, onOpenRe
 
   // Report this cell to the single shared toolbar on hover (no per-cell toolbar,
   // so there is never more than one on screen).
+  // The cell lays its contents out in a ROW (value, then the review/copy
+  // affordances), which is right until something is stacked under the value —
+  // a provenance line, an origin marker, one line per environment. Those are
+  // block elements and a flex row lays block children out side by side all the
+  // same, so they came out on one line however they were styled.
+  const hasSubline = Array.isArray(subline) ? subline.some(Boolean) : !!subline;
   const tdRef = useRef<HTMLTableCellElement | null>(null);
   const reportHover = (): void => {
     const el = tdRef.current;
@@ -876,7 +882,7 @@ function ReviewableCell({ value, target, field, reviews, reviewEnabled, onOpenRe
         onDblClick=${reviewEnabled ? openSuggest : undefined}
         onMouseEnter=${showActions ? reportHover : undefined}
         onMouseLeave=${showActions ? hideCellToolSoon : undefined}>
-      <div class="rs-value-cell">
+      <div class=${`rs-value-cell ${hasSubline ? "rs-value-cell-stacked" : ""}`}>
         <span class="rs-cell-content">${displayValue}${badge}</span>
         ${subline}
       </div>
@@ -1024,7 +1030,7 @@ function saveOutlineOpen(open: boolean): void {
 // Parameter table component
 // ============================================================
 
-function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, categoryOutOfScope, onOpenReview, diff, t }: {
+function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, hiddenInstances, categoryOutOfScope, onOpenReview, diff, t }: {
   params: ParamData[];
   sheetName: string;
   // The sheet's declared review axis (see Sheet.instances).
@@ -1039,6 +1045,8 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   filterCommented: boolean;
   hideOutOfScope: boolean;
   showDefaults: boolean;
+  // Environments the reader has switched off. Empty = show them all.
+  hiddenInstances: Set<string>;
   // The nearest enclosing category's effective out-of-scope (already resolved
   // for its own ancestry) — applies to a param that sets no `out_of_scope` of
   // its own (nearest-wins: a param-level flag overrides the category's).
@@ -1060,7 +1068,15 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     const names: string[] = [];
     for (const n of sheetInstances ?? []) if (!seen.has(n)) { seen.add(n); names.push(n); }
     for (const p of params) for (const i of p.instances ?? []) if (!seen.has(i.name)) { seen.add(i.name); names.push(i.name); }
-    return names;
+    // Narrowed here, at the ONE place the axis is decided, so everything that
+    // reads it follows: the columns, the transposed view, the freeze
+    // arithmetic, and the "every environment agrees" collapse. Filtering the
+    // rendering instead would have left each of those to remember separately.
+    const shown = names.filter((n) => !hiddenInstances.has(n));
+    // Hiding every environment would leave a Pattern B row with nothing to show
+    // and no way to get back — a filter that can empty the screen is a trap, so
+    // the last one cannot be switched off.
+    return shown.length > 0 ? shown : names;
   })();
   const hasInstances = instanceNames.length > 0;
 
@@ -1638,7 +1654,7 @@ function categoryDefaultSummary(category: CategoryData): { count: number; allDef
   return { count, allDefault };
 }
 
-function CategorySection({ category, sheetName, sheetInstances, sheetIndex, sheetFilePath, parentPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, inheritedOutOfScope, onOpenReview, diff, t }: {
+function CategorySection({ category, sheetName, sheetInstances, sheetIndex, sheetFilePath, parentPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, hiddenInstances, headingExtra, inheritedOutOfScope, onOpenReview, diff, t }: {
   category: CategoryData;
   sheetName: string;
   sheetInstances?: string[];
@@ -1653,6 +1669,10 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
   filterCommented: boolean;
   hideOutOfScope: boolean;
   showDefaults: boolean;
+  hiddenInstances: Set<string>;
+  // Rendered at the right-hand end of THIS category's heading (the side-by-side
+  // switch, on a component). Only ever passed to the outermost level.
+  headingExtra?: VNode | null;
   // The nearest ancestor category's effective out-of-scope, already resolved.
   // "Out of scope" marks a category AND its descendants, so this threads down
   // through nested categories; a category's own flag (nearest-wins) overrides it.
@@ -1695,6 +1715,12 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
               </button>
             </span>
           `}
+          ${/* LAST in the heading. Its margin-left: auto absorbs the free space,
+                so whatever follows it is pushed to the right edge — placed
+                before the comment button, it moved the comment button out to
+                the end of the row instead, which is not where it sits on any
+                other heading. */ ""}
+          ${headingExtra}
         </${HeadingTag}>
         ${effOutOfScope && html`
           <div class="rs-oos-reason">
@@ -1707,7 +1733,7 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
       `}
 
       ${category.params && category.params.length > 0 && html`
-        <${ParamTable} params=${category.params} sheetName=${sheetName} sheetInstances=${sheetInstances} sheetIndex=${sheetIndex} categoryPath=${categoryPath}
+        <${ParamTable} params=${category.params} sheetName=${sheetName} sheetInstances=${sheetInstances} sheetIndex=${sheetIndex} categoryPath=${categoryPath} hiddenInstances=${hiddenInstances}
                        depth=${depth}
                        columns=${columns} reviews=${reviews} reviewEnabled=${reviewEnabled}
                        showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
@@ -1716,7 +1742,7 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
       `}
 
       ${category.categories?.map((sub) => html`
-        <${CategorySection} key=${sub.name} category=${sub} sheetName=${sheetName} sheetInstances=${sheetInstances} sheetIndex=${sheetIndex}
+        <${CategorySection} key=${sub.name} category=${sub} sheetName=${sheetName} sheetInstances=${sheetInstances} sheetIndex=${sheetIndex} hiddenInstances=${hiddenInstances}
                             sheetFilePath=${sheetFilePath} parentPath=${categoryPath} depth=${depth + 1}
                             columns=${columns} reviews=${reviews} reviewEnabled=${reviewEnabled}
                             showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
@@ -1820,9 +1846,52 @@ function paramAnchorId(sheetIndex: number, path: string, key: string): string {
 }
 
 // Flatten every sheet's categories (depth-first); used by the outline and search.
-function collectNav(data: SheetData, showDefaults: boolean): NavEntry[] {
+function collectNav(data: SheetData, showDefaults: boolean, pivoted: Set<string>): NavEntry[] {
   const out: NavEntry[] = [];
   data.sheets.forEach((sheet, sheetIndex) => {
+    // A sheet being read side by side has no component headings — the
+    // components are columns — so its outline has to mirror THAT shape or every
+    // entry points at an anchor the page no longer has, and the panel silently
+    // stops working. Same ids the pivot's own groups carry.
+    if (pivoted.has(sheet.name)) {
+      // EVERY level, not just the ones holding rows: the pivot renders a
+      // heading per level exactly as the stacked view does, so an outline that
+      // listed only the leaves would drop the parents a reader navigates by —
+      // and they are on the page, so there is nothing to justify omitting them.
+      // The components being compared, as an ordinary entry: it is a heading on
+      // the page like any other, so it is listed like any other — same style,
+      // and clickable. A line of its own in a smaller type read as a caption
+      // and, being no entry at all, went nowhere when clicked.
+      const subjects = (sheet.categories ?? []).map((c) => c.display ?? c.name).join(" / ");
+      out.push({
+        kind: "category", sheetIndex, sheetName: sheet.name, path: subjects, name: subjects, depth: 1,
+        id: navAnchorId(sheetIndex, subjects),
+        search: `${sheet.display ?? ""} ${sheet.name} ${subjects}`.toLowerCase(),
+        text: `${sheet.display ?? sheet.name} / ${subjects}`,
+        categoryPath: subjects,
+      });
+      const seen = new Set<string>();
+      for (const row of pivotSheet(sheet).rows) {
+        for (let n = 1; n <= row.path.length; n++) {
+          const segs = row.path.slice(0, n);
+          const path = segs.join("/");
+          if (seen.has(path)) continue;
+          seen.add(path);
+          out.push({
+            kind: "category", sheetIndex, sheetName: sheet.name, path, name: segs[segs.length - 1],
+            // One deeper than in the body's own terms: the components heading
+            // is the level above them here, exactly as a component is in the
+            // stacked view.
+            depth: n + 1,
+            id: navAnchorId(sheetIndex, path),
+            search: `${sheet.display ?? ""} ${sheet.name} ${path}`.toLowerCase(),
+            text: `${sheet.display ?? sheet.name} / ${path}`,
+            categoryPath: path,
+          });
+        }
+      }
+      return;
+    }
     const walk = (cats: CategoryData[], parentPath: string, depth: number) => {
       cats.forEach((c) => {
         const path = parentPath ? `${parentPath}/${c.name}` : c.name;
@@ -1885,7 +1954,7 @@ function collectParams(data: SheetData, showDefaults: boolean): NavEntry[] {
   return out;
 }
 
-function NavOutline({ entries, sheets, groups, activeSheet, currentId, onJump, onClose, diff, t }: {
+function NavOutline({ entries, sheets, groups, activeSheet, pivoted, currentId, onJump, onClose, diff, t }: {
   // Already filtered to hide the descendants of a collapsed materialize
   // category — consistent with the body,
   // which renders nothing under a collapsed heading either.
@@ -1893,6 +1962,10 @@ function NavOutline({ entries, sheets, groups, activeSheet, currentId, onJump, o
   sheets: SheetData["sheets"];
   groups?: SheetData["groups"];
   activeSheet: number;
+  // Sheets being read side by side: their component headings are gone from the
+  // body, so the outline says what is being compared instead of leaving the
+  // reader to look back at the table to find out.
+  pivoted: Set<string>;
   currentId: string | null;
   onJump: (sheetIndex: number, id: string, fallbackId?: string, sheetName?: string, categoryPath?: string) => void;
   onClose: () => void;
@@ -2172,48 +2245,283 @@ function SheetSubTabs({ sheets, groups, activeSheet, onSelect, t }: {
 
 
 
-// What the markers in the key column mean, once per sheet.
-//
-// The markers themselves carry the useful half — WHICH file a literal lives in
-// — and cannot also carry what that implies without becoming a sentence on
-// every row. This says it once. Only for the markers this sheet actually uses:
-// a legend explaining a mark that appears nowhere below is one more thing to
-// read and discard, and of these seven sheets three have no literals at all.
-function OriginLegend({ sheet, showDefaults, t }: {
-  sheet: SheetData["sheets"][number];
-  showDefaults: boolean;
+
+
+
+// The switch between the stacked and side-by-side readings. Rendered at the
+// right-hand end of a component's own heading rather than up in the sheet
+// header: it is a statement about THESE components, and beside them is where a
+// reader wonders whether they can be compared.
+function CompareToggle({ on, onToggle, t }: {
+  on: boolean;
+  onToggle: () => void;
   t: Messages;
 }) {
-  let embedded = false;
-  let deflt = false;
-  const walk = (cats: CategoryData[] | undefined): void => {
-    for (const c of cats ?? []) {
-      for (const p of c.params ?? []) {
-        const o = effectiveOrigin(p);
-        if (o === "embedded") embedded = true;
-        // Default rows are hidden unless the reader asked for them, so their
-        // marker is only explained when it is on screen.
-        else if (o === "default" && showDefaults) deflt = true;
-      }
-      walk(c.categories);
-    }
-  };
-  walk(sheet.categories);
-  if (!embedded && !deflt) return null;
   return html`
-    <p class="rs-origin-legend">
-      <span class="rs-legend-title">${t.legendTitle}</span>
-      ${embedded && html`
-        <span class="rs-legend-item">
-          <span class="rs-origin-tag">${t.legendEmbeddedSample}</span>${t.legendEmbedded}
-        </span>
-      `}
-      ${deflt && html`
-        <span class="rs-legend-item">
-          <span class="rs-origin-tag">${t.originDefault}</span>${t.legendDefault}
-        </span>
-      `}
-    </p>
+    <label class="rs-compare-toggle" title=${t.compareComponents}>
+      <input type="checkbox" checked=${on} onChange=${onToggle} />
+      <span>${t.compareComponents}</span>
+    </label>
+  `;
+}
+
+// ============================================================
+// Components side by side
+// ============================================================
+
+// A sheet whose components are several of the SAME kind of thing — two realms,
+// three OIDC clients — is read to answer one question: where do they differ?
+// Stacked as headings that means scrolling between two blocks and holding the
+// values in your head. Pivoted, the answer is a glance across a row.
+//
+// Built by re-shaping the render tree, NOT by moving components onto the
+// `instances` axis. An Instance carries only name/value/source, so a pivot
+// through it would flatten every cell to a value and lose what a comparison is
+// actually about: "this one sets it, that one is on the product default" is the
+// finding, and `origin` lives on the row. Here each cell is still its own
+// Parameter, so it keeps its origin, its source, and — the part that matters
+// most — its own review target. A finding filed in this view is the same
+// finding as one filed in the stacked view.
+type PivotRow = {
+  key: string;
+  // The category path WITHOUT the component level, which is what the components
+  // have in common and therefore what the rows are grouped by.
+  path: string[];
+  byComponent: Map<string, ParamData>;
+};
+
+
+function pivotSheet(sheet: SheetData["sheets"][number]): { components: CategoryData[]; rows: PivotRow[] } {
+  const components = sheet.categories ?? [];
+  const rows = new Map<string, PivotRow>();
+  for (const component of components) {
+    const walk = (cats: CategoryData[] | undefined, path: string[]): void => {
+      for (const c of cats ?? []) {
+        const here = [...path, c.name];
+        for (const p of c.params ?? []) {
+          const id = `${here.join("/")}::${p.key}`;
+          const row = rows.get(id) ?? { key: p.key, path: here, byComponent: new Map() };
+          row.byComponent.set(component.name, p);
+          rows.set(id, row);
+        }
+        walk(c.categories, here);
+      }
+    };
+    walk(component.categories, []);
+  }
+  return { components, rows: [...rows.values()] };
+}
+
+
+
+// A pivot table with its column header split out, the same shape the stacked
+// view uses for a table wide enough to need its own horizontal scroll.
+//
+// It has to be split. A scroll container breaks page-level sticky for
+// everything inside it, so a header left in the table either scrolls away
+// vertically or — with a top offset it cannot honour — parks partway down the
+// table. The header lives outside the scroller, sticks to the page, and has its
+// horizontal offset synced to the body it belongs to.
+function PivotTable({ header, depth, columns, children }: { header: VNode; depth: number; columns: number; children: VNode }) {
+  const headRef = useRef<HTMLDivElement | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const body = bodyRef.current;
+    const head = headRef.current;
+    if (!body || !head) return;
+    const sync = (): void => { head.scrollLeft = body.scrollLeft; };
+    body.addEventListener("scroll", sync, { passive: true });
+    sync();
+    return () => body.removeEventListener("scroll", sync);
+  }, []);
+  return html`
+    <div class="rs-table-split" style=${`--rs-depth:${depth}; --rs-pivot-cols:${columns}`}>
+      <div class="rs-sticky-head" ref=${headRef}>
+        <table class="rs-param-table rs-param-table-fixed rs-pivot-table">
+          <thead>${header}</thead>
+        </table>
+      </div>
+      <div class="rs-table-wrapper rs-split-body rs-pivot-scroll rs-scroll-thin" ref=${bodyRef}>
+        <table class="rs-param-table rs-param-table-fixed rs-pivot-table">
+          ${children}
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// The pivot table itself: one row per (category path, key), one column per
+// component.
+//
+// Rendered through the SAME structure as the stacked view — a .rs-category per
+// level, its heading, the table at the leaf — rather than as a flat list of
+// groups. Everything that keys off that structure then keeps working: the
+// outline's entries and anchors, the stacked sticky headings, the scroll
+// offsets, and the jump flash. Flat groups broke all four at once: parent
+// levels had no heading to list or to land on, and the flash lit the whole
+// group because the group was what carried the anchor.
+type PivotNode = { name: string; path: string[]; rows: PivotRow[]; children: Map<string, PivotNode> };
+
+function pivotTree(rows: PivotRow[]): PivotNode {
+  const root: PivotNode = { name: "", path: [], rows: [], children: new Map() };
+  for (const row of rows) {
+    let node = root;
+    for (const seg of row.path) {
+      const next = node.children.get(seg) ?? { name: seg, path: [...node.path, seg], rows: [], children: new Map() };
+      node.children.set(seg, next);
+      node = next;
+    }
+    node.rows.push(row);
+  }
+  return root;
+}
+
+function PivotView({ sheet, sheetIndex, hiddenInstances, showDefaults, reviews, reviewEnabled, onOpenReview, onLeave, t }: {
+  sheet: SheetData["sheets"][number];
+  sheetIndex: number;
+  onLeave?: () => void;
+  hiddenInstances: Set<string>;
+  showDefaults: boolean;
+  reviews: ReviewItem[];
+  reviewEnabled: boolean;
+  onOpenReview: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
+  t: Messages;
+}) {
+  const { components, rows } = pivotSheet(sheet);
+  // The heading's own text, and the path its anchor is keyed by — the outline
+  // has to name the same string to point at it.
+  const subjects = components.map((c) => c.display ?? c.name).join(" / ");
+  const shownRows = rows.filter((r) => showDefaults || [...r.byComponent.values()].some((p) => effectiveOrigin(p) !== "default"));
+  const tree = pivotTree(shownRows);
+
+  // What one cell shows.
+  //
+  // `stacked` is decided for the whole ROW, not per cell: when one component
+  // varies by environment and another does not, showing three labelled lines
+  // beside a single bare value reads as the second component having no
+  // per-environment value at all — it has one, the same in each. Stacking both
+  // puts the environments on the same lines so the row can be read across,
+  // which is the entire point of this view.
+  const envValues = (p: ParamData): { name: string; value: string }[] | undefined => {
+    if (!p.instances || p.instances.length === 0) return undefined;
+    const shown = p.instances.filter((i) => !hiddenInstances.has(i.name));
+    return shown.length > 0 ? shown : p.instances;
+  };
+  const varies = (p: ParamData | undefined): boolean => {
+    const envs = p ? envValues(p) : undefined;
+    return !!envs && new Set(envs.map((i) => i.value)).size > 1;
+  };
+  // The environments this sheet is read along, minus the ones switched off.
+  const envNames = (sheet.instances ?? []).filter((n) => !hiddenInstances.has(n));
+  const cellValue = (p: ParamData | undefined, stacked: boolean): { text: string; sub?: string[] } => {
+    if (!p) return { text: "" };
+    const envs = envValues(p);
+    if (!envs) {
+      // One value for every environment. Written out per environment while the
+      // row is stacked, so it lines up with the component beside it that does
+      // vary — otherwise the same value in all of them reads as none of them.
+      const value = p.value ?? "";
+      return stacked && envNames.length > 0
+        ? { text: "", sub: envNames.map((n) => `${n}: ${value}`) }
+        : { text: value };
+    }
+    const values = new Set(envs.map((i) => i.value));
+    if (values.size === 1 && !stacked) return { text: envs[0].value };
+    return { text: "", sub: envs.map((i) => `${i.name}: ${i.value}`) };
+  };
+
+  const headerRow = html`
+    <tr>
+      <th class="rs-col-key">${t.paramName}</th>
+      ${components.map((c) => html`<th key=${c.name} class="rs-col-value">${c.display ?? c.name}</th>`)}
+    </tr>
+  `;
+
+  // The table's own sticky header sits one level BELOW the headings above it:
+  // the stacked view's convention, and the reason it is passed the node's depth
+  // rather than a constant. Fixed at 1 it landed at the same offset as a
+  // depth-2 category heading and was painted over by it — stuck, invisible, and
+  // indistinguishable from not sticking at all.
+  const renderTable = (groupRows: PivotRow[], depth: number) => html`
+    <${PivotTable} header=${headerRow} depth=${depth} columns=${components.length}>
+        <tbody>
+          ${groupRows.map((row) => {
+            // Do every column agree? The one question this view exists to
+            // answer, so it is marked rather than left to be spotted.
+            const present = components.map((c) => row.byComponent.get(c.name)).filter((p): p is ParamData => p !== undefined);
+            const stacked = present.some(varies);
+            const texts = new Set(present.map((p) => cellValue(p, stacked).text + (cellValue(p, stacked).sub ?? []).join("|")));
+            const agree = present.length === components.length && texts.size === 1;
+            return html`
+              <tr key=${row.key} class=${`rs-param-row ${agree ? "" : "rs-pivot-differs"}`}>
+                <td class="rs-col-key"><code>${row.key}</code></td>
+                ${components.map((c) => {
+                  const p = row.byComponent.get(c.name);
+                  if (!p) {
+                    // Not merely unset: this component has no such parameter at
+                    // all, which is itself the finding on a sheet built to
+                    // compare siblings.
+                    return html`<td key=${c.name} class="rs-col-value rs-pivot-absent" title=${t.pivotAbsent}>—</td>`;
+                  }
+                  const { text, sub } = cellValue(p, stacked);
+                  const tag = originTag(p, t);
+                  return html`<${ReviewableCell} key=${c.name}
+                    value=${text}
+                    target=${{ sheet: sheet.name, category: [c.name, ...row.path].join("/"), param: row.key }}
+                    field="value" reviews=${reviews} reviewEnabled=${reviewEnabled} onOpenReview=${onOpenReview}
+                    className="rs-col-value" isCode=${true} copyable=${text.length > 0}
+                    subline=${[
+                      ...(sub ?? []).map((line) => html`<span class="rs-key-subline"><code>${line}</code></span>` as VNode),
+                      ...(tag ? [html`<span class="rs-key-subline"><span class="rs-origin-tag" title=${tag.title}>${tag.label}</span></span>` as VNode] : []),
+                    ]}
+                    t=${t} />`;
+                })}
+              </tr>
+            `;
+          })}
+        </tbody>
+    <//>
+  `;
+
+  const renderNode = (node: PivotNode, depth: number): VNode => {
+    const HeadingTag = depth <= 1 ? "h3" : depth === 2 ? "h4" : "h5";
+    const path = node.path.join("/");
+    return html`
+      <div class=${`rs-category rs-depth-${depth}`} id=${navAnchorId(sheetIndex, path)} style=${`--rs-depth:${depth}`} key=${path}>
+        <div class="rs-category-header">
+          <${HeadingTag}><span class="rs-cat-label">${node.name}</span></${HeadingTag}>
+        </div>
+        ${node.rows.length > 0 ? renderTable(node.rows, depth) : null}
+        ${[...node.children.values()].map((child) => renderNode(child, depth + 1))}
+      </div>
+    ` as VNode;
+  };
+
+  return html`
+    <div class="rs-pivot">
+      ${/* The components lose their headings here — they are columns now — so
+            they are named once at the top. The column header row says it too,
+            but that scrolls away, and "which two things am I looking at" is the
+            first question this view has to keep answering. */ ""}
+      ${/* The component heading, for several components at once — so it is
+            THE component heading, in the same style and at the same level. A
+            line of bold text where a tinted panel with a rule used to be reads
+            as a caption rather than as the level it replaced, and the
+            categories below it then have no heading to sit under. */ ""}
+      <div class="rs-category rs-depth-1" id=${navAnchorId(sheetIndex, subjects)} style=${`--rs-depth:1`}>
+        ${/* The toggle goes INSIDE the heading, exactly where the stacked view
+              puts it. The heading is a tinted panel with flex: 1, so a sibling
+              beside it ends the panel early and the row comes out as a short
+              block of colour with a control floating past its edge. */ ""}
+        <div class="rs-category-header">
+          <h3>
+            <span class="rs-cat-label">${subjects}</span>
+            ${onLeave && html`<${CompareToggle} on=${true} onToggle=${onLeave} t=${t} />`}
+          </h3>
+        </div>
+        ${[...tree.children.values()].map((child) => renderNode(child, 2))}
+      </div>
+    </div>
   `;
 }
 
@@ -2279,6 +2587,14 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
   // enumerating them on screen is not required to make it.
   const [showDefaults, setShowDefaults] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  // Environments switched off in the filter menu. A document-wide set of NAMES
+  // rather than a per-sheet selection: "show me production" is one decision a
+  // reader makes about the whole review, and the sheets that do not have that
+  // environment are simply unaffected.
+  const [hiddenInstances, setHiddenInstances] = useState<Set<string>>(() => new Set());
+  // Sheets currently read side by side, by name — a per-sheet choice, since
+  // only a sheet whose components are siblings has anything to compare.
+  const [pivoted, setPivoted] = useState<Set<string>>(() => new Set());
   const [modalTarget, setModalTarget] = useState<{ target: ReviewItem["target"]; field: string; currentValue: string; sharedRow?: boolean } | null>(null);
   const [applyPanelOpen, setApplyPanelOpen] = useState(false);
   const [promptModalText, setPromptModalText] = useState<string | null>(null);
@@ -2304,9 +2620,48 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
   // modes, so a reader who saw a delivered sheet last week finds the same
   // controls in the same places in a serve session.
   const serveApply = applyEnabled !== false && !!server && !diff;
-  // Display-only "show comments" is not counted: the badge means "rows are
-  // being hidden from you".
-  const activeFilters = [filterCommented, hideOutOfScope].filter(Boolean).length;
+  // The environments of the sheet being read — its own, in its own order.
+  //
+  // Not the document's: a sheet declares which environments it covers, and they
+  // genuinely differ (an infrastructure sheet built from a plan that is never
+  // run locally has no "local"). Listing every name the document mentions
+  // offers to switch off a column this table does not have, and listing them in
+  // document order put the menu in a different order than the columns beside
+  // it. The selection itself stays document-wide — "show me production" is one
+  // decision about the review — so a name hidden here is still hidden on the
+  // sheets that do have it.
+  const allInstances = (() => {
+    const sheet = activeSheet >= 0 ? data.sheets[activeSheet] : undefined;
+    if (!sheet) return [];
+    const seen = new Set<string>();
+    const names: string[] = [];
+    for (const n of sheet.instances ?? []) if (!seen.has(n)) { seen.add(n); names.push(n); }
+    const walk = (cats: CategoryData[] | undefined): void => {
+      for (const c of cats ?? []) {
+        for (const p of c.params ?? []) for (const i of p.instances ?? []) if (!seen.has(i.name)) { seen.add(i.name); names.push(i.name); }
+        walk(c.categories);
+      }
+    };
+    walk(sheet.categories);
+    return names;
+  })();
+
+  const toggleInstance = (name: string): void => {
+    setHiddenInstances((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      // Never all of THIS sheet's: a filter that can empty every value column
+      // leaves the reader looking at keys with no way to see what this is
+      // about. Counted against the sheet on screen, since that is the table the
+      // toggle would empty.
+      return allInstances.every((n) => next.has(n)) ? prev : next;
+    });
+  };
+  // "Show comments" is not counted; a hidden environment is. The badge means
+  // "you are not seeing all of it", and a column switched off withholds as much
+  // as a row filtered out — more, since nothing on screen hints at its absence.
+  const activeFilters = [filterCommented, hideOutOfScope, allInstances.some((n) => hiddenInstances.has(n))].filter(Boolean).length;
   // Every unset row in the document, for the toggle's own label.
   const defaultRowCount = data.sheets.reduce((n, sheet) => {
     const walk = (cats: CategoryData[]): number =>
@@ -2346,7 +2701,7 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
   }, []);
 
   // --- Heading navigation (outline + command palette) ---
-  const categoryEntries = useMemo(() => collectNav(data, showDefaults), [data, showDefaults]);
+  const categoryEntries = useMemo(() => collectNav(data, showDefaults, pivoted), [data, showDefaults, pivoted]);
   const paramEntries = useMemo(() => collectParams(data, showDefaults), [data, showDefaults]);
   // Review comments are searchable too; each jumps to its target row/category.
   const commentEntries = useMemo<NavEntry[]>(() => {
@@ -2621,6 +2976,18 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
                 <${MenuCheck} label=${t.showDefaults(defaultRowCount)} checked=${showDefaults}
                               onToggle=${() => setShowDefaults(!showDefaults)} />
               `}
+              ${/* Last, behind a divider and a heading of its own: everything
+                    above decides which ROWS are on screen, and this decides
+                    which COLUMNS. Sitting in the middle of the row toggles it
+                    read as one more of them. */ ""}
+              ${allInstances.length > 1 && html`
+                <div class="rs-menu-divider"></div>
+                <div class="rs-menu-section">${t.columnsShown}</div>
+                ${allInstances.map((name) => html`
+                  <${MenuCheck} key=${name} label=${name} checked=${!hiddenInstances.has(name)}
+                                onToggle=${() => toggleInstance(name)} />
+                `)}
+              `}
             <//>
 
             ${/* The one thing the session exists to produce, and the only filled
@@ -2784,10 +3151,16 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
                 </p>
               `}
 
-              <${OriginLegend} sheet=${sheet} showDefaults=${showDefaults} t=${t} />
-
-              ${sheet.categories.map((cat) => html`
-                <${CategorySection} key=${cat.name} category=${cat} sheetName=${sheet.name} sheetInstances=${sheet.instances} sheetIndex=${idx}
+              ${pivoted.has(sheet.name)
+                ? html`<${PivotView} sheet=${sheet} sheetIndex=${idx} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
+                                     reviews=${reviews} reviewEnabled=${effReviewEnabled} onOpenReview=${openReview}
+                                     onLeave=${() => setPivoted((prev) => { const next = new Set(prev); next.delete(sheet.name); return next; })} t=${t} />`
+                : sheet.categories.map((cat) => html`
+                <${CategorySection} key=${cat.name} category=${cat} sheetName=${sheet.name} sheetInstances=${sheet.instances} sheetIndex=${idx} hiddenInstances=${hiddenInstances}
+                                    headingExtra=${sheet.compare_components
+                                      ? html`<${CompareToggle} on=${false} t=${t}
+                                                               onToggle=${() => setPivoted((prev) => new Set(prev).add(sheet.name))} />` as VNode
+                                      : null}
                                     sheetFilePath=${sheet.file_path} parentPath="" depth=${1}
                                     columns=${data.columns} reviews=${reviews} reviewEnabled=${effReviewEnabled}
                                     showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
@@ -2800,7 +3173,7 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
       </main>
 
       ${outlineOpen && html`
-        <${NavOutline} entries=${categoryEntries} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet} currentId=${currentNavId}
+        <${NavOutline} entries=${categoryEntries} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet} pivoted=${pivoted} currentId=${currentNavId}
                        onJump=${jumpToNav} onClose=${() => setOutlineOpen(false)} diff=${diff} t=${t} />
       `}
 
