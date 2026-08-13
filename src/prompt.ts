@@ -86,6 +86,7 @@ export type SheetData = {
     name: string;
     label?: LangText;
     group?: string;
+    compare_components?: boolean;
     // Filled by the viewer's localizeSheets, never present in a built model.
     display?: string;
     role?: string;

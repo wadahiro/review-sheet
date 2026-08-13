@@ -108,6 +108,9 @@ type Messages = {
   outOfScope: string;
   outOfScopeOwner: string;
   hideOutOfScope: string;
+  columnsShown: string;
+  pivotAbsent: string;
+  compareComponents: string;
   showDefaults: (n: number) => string;
   // Origin (viewer-only marker in the key cell). An `embedded` row is tagged
   // with the FILE its literal lives in (originEmbedded is only the fallback when
@@ -119,10 +122,6 @@ type Messages = {
   originDefault: string;
   originDefaultTip: string;
   originEmbeddedTip: string;
-  legendTitle: string;
-  legendEmbeddedSample: string;
-  legendEmbedded: string;
-  legendDefault: string;
   sheetSourceLabel: string;
   applyToFiles: string;
   applyPreviewTitle: string;
@@ -246,6 +245,9 @@ const ja: Messages = {
   outOfScope: "レビュー対象外",
   outOfScopeOwner: "所管: ",
   hideOutOfScope: "対象外を隠す",
+  columnsShown: "表示する列",
+  pivotAbsent: "このコンポーネントには存在しない項目",
+  compareComponents: "横並びで比較",
   // 「未設定」であって「未使用」ではない — 製品の既定値はいま実際に効いている。
   // 欠けているのはこのプロジェクトからの表明のほう。
   showDefaults: (n: number) => `未設定の行を表示（製品既定値 ${n} 件）`,
@@ -253,10 +255,6 @@ const ja: Messages = {
   originDefault: "未設定",
   originDefaultTip: "この構成では設定していない（効いている値は製品のデフォルト値）",
   originEmbeddedTip: "変数を介さずファイルに直接書かれた値。環境ごとに変えることはできず、変更するにはそのファイル自体を編集する",
-  legendTitle: "凡例",
-  legendEmbeddedSample: "ファイル名",
-  legendEmbedded: "変数を介さず、そのファイルに直接書かれた値（環境ごとに変えられない）",
-  legendDefault: "この構成では設定していない（効いているのは製品のデフォルト値）",
   sheetSourceLabel: "生成元",
   applyToFiles: "ファイルに反映",
   applyPreviewTitle: "変更のプレビュー",
@@ -373,6 +371,9 @@ const en: Messages = {
   outOfScope: "Out of review scope",
   outOfScopeOwner: "Owned by: ",
   hideOutOfScope: "Hide out-of-scope",
+  columnsShown: "Columns shown",
+  pivotAbsent: "this component has no such parameter",
+  compareComponents: "Compare side by side",
   // "not set", not "unused": the product's default is in force on these rows.
   // What is absent is any statement from THIS project.
   showDefaults: (n: number) => `Show unset rows (${n} product defaults)`,
@@ -380,10 +381,6 @@ const en: Messages = {
   originDefault: "not set",
   originDefaultTip: "Not set here — the value in effect is the product's own default",
   originEmbeddedTip: "Written straight into the file rather than through a variable: the same in every environment, and changed by editing that file",
-  legendTitle: "Legend",
-  legendEmbeddedSample: "file name",
-  legendEmbedded: "written straight into that file rather than through a variable (cannot differ per environment)",
-  legendDefault: "not set here — the value in effect is the product's own default",
   sheetSourceLabel: "Source",
   applyToFiles: "Apply to files",
   applyPreviewTitle: "Preview changes",

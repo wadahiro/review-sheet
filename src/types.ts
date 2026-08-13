@@ -107,6 +107,15 @@ export type Sheet = {
   // = ungrouped, which is every document that declares no groups at all and is
   // what keeps a flat sheet set flat.
   group?: string;
+  // This sheet's components are several of the SAME kind of thing, so reading
+  // them side by side answers a question — where do they differ?
+  //
+  // Declared, never inferred. Having several components does not mean they are
+  // comparable: four AWS resource types, ten httpd modules and three rendered
+  // artifacts of one product are all components, and none of them line up. A
+  // count of shared rows can only guess at where the line is, and the person
+  // who wrote the sheet already knows.
+  compare_components?: boolean;
   role?: string;
   // The review axis this sheet is organised along (environments, regions …),
   // ordered, as DECLARED by the build (never derived from which rows happen to
