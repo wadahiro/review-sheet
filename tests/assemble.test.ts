@@ -783,6 +783,36 @@ params:
 // list the error printed straight into sheet.yml. assembleSheets now throws
 // a ScaffoldableBuildError (instead of a plain Error) for exactly this
 // failure, carrying the paste-able fragment's raw material.
+// An embedded entry declared `origin: "default"` (layered recipe's
+// `static_files[].origin`) is a record of the PRODUCT's own default, not a
+// place our deliverable sets anything — so the row must not claim a definition
+// site, and the extracted value doubles as the documented default.
+describe("embedded entries declared as product defaults", () => {
+  it("files them as origin: default, with no source and the value as the default", () => {
+    const inputs: SheetInputs[] = [
+      {
+        name: "demo",
+        instances: [],
+        layers: [{ kind: "base", entries: map([]) }],
+        embedded: [
+          { key: "db_host", value: "built-in", source: { file: "snapshot.json", line: 3 }, origin: "default" },
+          { key: "db_port", value: "5432", source: { file: "ours.yml", line: 1 } },
+        ],
+      },
+    ];
+
+    const params = assembleSheets(inputs, baseOpts()).sheets[0].categories[0].params! as SimpleParameter[];
+    const fromSnapshot = params.find((p) => p.key === "db_host")!;
+    expect(fromSnapshot.origin).toBe("default");
+    expect(fromSnapshot.source).toBeUndefined();
+    expect(fromSnapshot.default).toBe("built-in");
+    // Undeclared entries keep the long-standing embedded filing.
+    const ours = params.find((p) => p.key === "db_port")!;
+    expect(ours.origin).toBe("embedded");
+    expect(ours.source).toEqual({ file: "ours.yml", line: 1 });
+  });
+});
+
 describe("scaffold: paste-able params: snippet on a strict failure", () => {
   it("round-trips: pasting the generated snippet for a no-category/no-binding failure lets the build pass", () => {
     const scaffoldFiles: Record<string, string> = {

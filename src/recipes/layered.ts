@@ -109,6 +109,7 @@ const staticFilesSchema = {
       exclude: { type: "array", items: { type: "string" } },
       substitution: substitutionSchema,
       component: { type: "string" },
+      origin: { enum: ["embedded", "default"] },
     },
     additionalProperties: false,
   },
@@ -424,6 +425,17 @@ type StaticFileSpec = {
   // row can see. Same shape, and same reason, as the ansible recipe's
   // `templates:`.
   component?: string;
+  // How this file's rows are filed. Default `embedded`: a literal our
+  // deliverable bakes in, with a real definition site in our config.
+  //
+  // `default` is for a file that is NOT part of the deliverable — a snapshot of
+  // what the product itself ships with, extracted and committed so the sheet
+  // can be an exhaustive ledger. Our config sets none of it, so those rows get
+  // no source (there is no line of ours to point at, and none for apply to
+  // rewrite) and the extracted value is recorded as the documented default.
+  // Stated per file because it is a property of where the file came from, which
+  // nothing in the rows themselves reveals.
+  origin?: "default";
 };
 
 function staticFileSpecs(v: JsonValue | undefined): StaticFileSpec[] {
@@ -436,7 +448,15 @@ function staticFileSpecs(v: JsonValue | undefined): StaticFileSpec[] {
     const include = Array.isArray(o.include) ? (o.include as string[]) : undefined;
     const exclude = Array.isArray(o.exclude) ? (o.exclude as string[]) : undefined;
     const component = typeof o.component === "string" ? o.component : undefined;
-    return { path: asString(o.path, "static_files[].path"), format, key, include, exclude, substitution, component };
+    const origin = o.origin === "default" ? ("default" as const) : undefined;
+    // A substitution merges this file's rows INTO a base-layer variable, whose
+    // value our deliverable does set — so "the product's own default, set
+    // nowhere by us" cannot also be true of them. Refused rather than silently
+    // dropped on one side or the other.
+    if (origin === "default" && substitution !== undefined) {
+      throw new Error(`layered recipe: static_files[].origin "default" cannot be combined with "substitution" (${asString(o.path, "static_files[].path")})`);
+    }
+    return { path: asString(o.path, "static_files[].path"), format, key, include, exclude, substitution, component, origin };
   });
 }
 
@@ -535,7 +555,13 @@ function buildEmbeddedFromStaticFiles(
       if (where) where.push(e.source.path ?? key);
       else seen.set(key, [e.source.path ?? key]);
       seenInFile.set(scope, seen);
-      fileEntries.push({ key, value: e.value, source: { file, line: e.source.line, path: e.source.path }, ...(entryComponent ? { component: entryComponent } : {}) });
+      fileEntries.push({
+        key,
+        value: e.value,
+        source: { file, line: e.source.line, path: e.source.path },
+        ...(entryComponent ? { component: entryComponent } : {}),
+        ...(sf.origin ? { origin: sf.origin } : {}),
+      });
     }
     const clashes: InFileCollision[] = [];
     for (const seen of seenInFile.values()) {

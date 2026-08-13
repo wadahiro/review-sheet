@@ -510,11 +510,11 @@ given file is a silent-data-loss trap:
   than silently keeping only the later one.
 - `static_files` keys each entry by its full **structural path**
   (`Entry.source.path`, falling back to the leaf name only for a format that
-  has none) — reorder-robust and collision-free by construction. But the
-  resulting parameter is always `origin: "embedded"` — "a literal written
+  has none) — reorder-robust and collision-free by construction. The
+  resulting parameter is `origin: "embedded"` — "a literal written
   directly into the deployable source itself... changing it is a code
   change/PR rather than a config edit" (see "Where a value comes from"
-  above).
+  above) — unless the entry declares `origin: default` (below).
 
 **Which one to reach for is a statement about the file, not a workaround for
 a collision.** If the file *is* the deployed configuration — a rendered
@@ -550,6 +550,47 @@ defaults:
 The collision error itself proposes a block shaped exactly like this
 whenever the colliding entries' structural paths share a distinguishable
 prefix — paste it in as the source's own `key:` field.
+
+#### A static file that records the PRODUCT's defaults (`origin: default`)
+
+Not every file a spec reads is part of what the project ships. A snapshot
+extracted from the product itself — the built-in objects a server creates on
+its own, dumped to JSON and committed — is a *record* of the product, read so
+the sheet can be the exhaustive ledger of it. Declare that per file:
+
+```yaml
+static_files:
+  - path: ../../config/<product>/builtin-objects-<version>.json
+    origin: default
+```
+
+Every row from that file is filed `origin: "default"` instead of
+`"embedded"`, which is the difference between "we bake this in" and "the
+product does, we set nothing". Three things follow, and they are the reason
+to declare it rather than leave the rows embedded:
+
+- **No source.** The row gets no definition site, because it has none in our
+  files — the snapshot is not where the value is decided. This is also what
+  stops the viewer from labelling the row with the snapshot's file name as if
+  it were a config of ours.
+- **`verify` skips it** ("nothing set, no source expected") instead of
+  counting a source map that failed to resolve.
+- **`apply` holds a change against it.** Changing a product default means
+  *adding* the setting somewhere it isn't written yet — a judgement call,
+  left to the AI prompt, never a line rewrite.
+
+The extracted value is recorded as the row's `default` as well as its
+`value`: for these rows they are the same fact.
+
+Rejected in combination with `substitution:` — that merges the file's rows
+into base-layer variables the project DOES set, so "set nowhere by us" cannot
+also be true of them.
+
+Note the viewer consequence: unset rows are hidden behind "show unset rows",
+so a sheet built ENTIRELY from an `origin: default` file looks empty until
+that toggle is on. That is consistent (they are unset), but it makes for a
+poor landing — prefer such a sheet alongside rows the project does set, or
+tell the reader what the toggle is for.
 
 #### Reference substitution in `static_files` (`substitution:`)
 
