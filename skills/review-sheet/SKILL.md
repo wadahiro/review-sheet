@@ -1701,6 +1701,7 @@ parameters:               # required
     type: string
     scope: server config, virtual host   # WHERE/WHEN the setting applies
     group: General                       # the PRODUCT's own grouping
+    ui: editable                         # how the product's own admin UI exposes it
     since: "2.4"                         # product versions this parameter exists in
     until: "2.6"
     docs_url: https://httpd.apache.org/docs/2.4/mod/core.html#timeout
@@ -1771,6 +1772,35 @@ parameter whose description is all you have is a perfectly good entry.
   entry still documents anything KEYED by that name — e.g. httpd.ts's parser
   extracts an `<IfModule ...>` block's own test expression as a synthetic
   `IfModule` row, which resolves its description from this same entry.
+- `ui` — `"editable"` / `"readonly"` / `"absent"`: how the PRODUCT'S OWN
+  administrative UI exposes this parameter. Omitted means no claim, which is
+  every dictionary predating the field and every product with no UI to speak
+  of. **Only an extraction that can see the UI may set it** — it is exactly the
+  kind of fact a person guesses wrong from a field name, so it belongs to a
+  generator, and an overlay is refused it like every other product fact.
+
+  It is a fact about the UI and deliberately NOT about writability: almost
+  everything marked `absent` is still settable through the product's API,
+  which is how a provisioning tool sets it. Saying "not configurable" would be
+  a claim the dictionary cannot support.
+
+  What review-sheet does with it applies to a row **nobody set**
+  (`origin: "default"`) and to nothing else:
+
+  | claim | a row the project sets | a row nobody set |
+  |---|---|---|
+  | `editable` | untouched | untouched |
+  | `readonly` | untouched | kept, marked `out_of_scope` with review-sheet's own bilingual reason (a project's own `out_of_scope` still wins) |
+  | `absent` | untouched | dropped, with the keys printed |
+
+  The restriction is the whole point. A row the project writes is a real
+  decision with a real source map, whatever the UI offers; what gets removed is
+  only the assertion "the product default is in force here" for a parameter no
+  reader could have chosen and none will find in the UI. `readonly` is the
+  in-between case worth keeping: the reader DOES meet the value in the UI, so a
+  missing row could not tell them why it is not reviewable — Keycloak's realm
+  `notBefore` sits in a read-only box beside Set-to-now / Clear / Push, so it
+  records an operation, not a decision.
 
 **Provenance** records how much the wording is worth, and rides onto the
 parameter as `extra.provenance` — but only when enrichment actually supplied the

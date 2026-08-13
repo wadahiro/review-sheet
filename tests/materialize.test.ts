@@ -945,3 +945,70 @@ parameters:
     expect(keys.sort()).toEqual(["access_lifespan", "flat_one", "refresh_reuse"]);
   });
 });
+
+// `ui` — what the PRODUCT'S OWN admin UI does with a parameter (see
+// DictionaryParam.ui). Only ever consulted for a row NOBODY SET: "the UI has
+// no field for this" is not "this cannot be set", since the API still accepts
+// it, so a value the project writes is reviewed like any other.
+describe("dictionary ui: claims", () => {
+  const UI_DICT = `
+product: uidb
+version: "1"
+provenance: extracted
+coverage: full
+parameters:
+  legacy_flag:
+    description: { en: A field the console never mentions }
+    default: "off"
+    group: Connections
+    ui: absent
+  revoked_at:
+    description: { en: Displayed, never chosen }
+    default: "0"
+    group: Connections
+    ui: readonly
+  ordinary:
+    description: { en: An ordinary setting }
+    default: "1"
+    group: Connections
+    ui: editable
+`;
+  const uiFiles: Record<string, string> = {
+    "ui-project.yml": `categories: [Tuning]\nparams:\n  legacy_flag:\n    category: Tuning\n`,
+    "meta/uidb@1.yml": UI_DICT,
+  };
+  const uiOpts = (overrides: Partial<AssembleOpts> = {}): AssembleOpts => ({
+    projectPath: "ui-project.yml",
+    metadataDirs: ["meta"],
+    readFile: (p) => uiFiles[p] ?? files[p] ?? null,
+    dictionaries: { db: [{ product: "uidb", version: "1", materialize: true }] },
+    strictMetadata: false,
+    ...overrides,
+  });
+
+  it("drops an unset row the product's UI never mentions, and reports which", () => {
+    const result = assembleSheetsWithReport(sheetInputs([]), uiOpts());
+    const keys = params(result.input).map((p) => p.key);
+    expect(keys).not.toContain("legacy_flag");
+    expect(keys).toContain("ordinary");
+    expect(result.uiReports).toEqual([{ sheet: "db", absentKeys: ["legacy_flag"], readonlyKeys: ["revoked_at"] }]);
+  });
+
+  it("keeps an unset row the UI only displays, marked out of scope with the product's own reason", () => {
+    const input = assembleSheets(sheetInputs([]), uiOpts());
+    const revoked = params(input).find((p) => p.key === "revoked_at")!;
+    expect(revoked.origin).toBe("default");
+    expect(pickLang(revoked.out_of_scope!.reason, "en")).toContain("offers no way to choose one");
+    // An ordinary row is untouched.
+    expect(params(input).find((p) => p.key === "ordinary")!.out_of_scope).toBeUndefined();
+  });
+
+  // The claim is about the UI, not about writability: the project sets this
+  // one, so the row is a real review target with a real source map.
+  it("leaves a row the project DOES set alone, whatever the UI says", () => {
+    const input = assembleSheets(sheetInputs(["legacy_flag"]), uiOpts());
+    const set = params(input).find((p) => p.key === "legacy_flag")!;
+    expect(set.origin).not.toBe("default");
+    expect(set.out_of_scope).toBeUndefined();
+  });
+});

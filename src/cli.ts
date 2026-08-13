@@ -375,7 +375,7 @@ async function runSpecImport(opts: {
     // just as well, and a committed input.json shouldn't bake in a local
     // filesystem layout. This means verify/apply must be run from the same CWD
     // used for `import --spec`, same as every other path this CLI records.
-    const { input, report, unusedProjectParams, materializeReports, binding, categoryWarnings } = assembleFromSpecWithReport(spec, {
+    const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings } = assembleFromSpecWithReport(spec, {
       readFile,
       specDir,
       resolve: (p: string) => relative(process.cwd(), resolve(specDir, p)),
@@ -415,6 +415,30 @@ async function runSpecImport(opts: {
       if (m.noDefault > 0 && !opts.materializeReport) {
         console.error(
           `  (use --materialize-report <file> to see which ${m.noDefault} key(s) were skipped for sheet "${m.sheet}")`
+        );
+      }
+    }
+
+    // What a dictionary's own `ui` claim did to rows nobody set (see
+    // DictionaryParam.ui / UiReport). Dropping a row is exactly the failure
+    // this project refuses to let happen quietly, so the keys are printed, not
+    // just counted — there are never many, because a claim only ever applies to
+    // rows the project does not set.
+    for (const u of uiReports) {
+      // Rows are counted, keys are listed once: on a sheet with components the
+      // same parameter is a row per component, and repeating its name six times
+      // says nothing the count does not.
+      const names = (keys: string[]): string => [...new Set(keys)].join(", ");
+      if (u.absentKeys.length > 0) {
+        console.error(
+          `ui: ${u.sheet} — ${u.absentKeys.length} unset row(s) dropped, absent from the product's admin UI: ` +
+            names(u.absentKeys)
+        );
+      }
+      if (u.readonlyKeys.length > 0) {
+        console.error(
+          `ui: ${u.sheet} — ${u.readonlyKeys.length} unset row(s) marked out of scope, shown by the product's admin UI ` +
+            `but not choosable there: ${names(u.readonlyKeys)}`
         );
       }
     }
