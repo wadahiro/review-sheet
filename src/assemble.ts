@@ -78,7 +78,13 @@ export type ValueLayer =
   | { kind: "base"; entries: ExtractedMap }
   | { kind: "overlay"; instance: string; entries: ExtractedMap };
 
-export type EmbeddedEntry = { key: string; value: string; source: SourceLocation; component?: string };
+// `origin` overrides the default "embedded" filing for a whole static file:
+// `default` says the file is not part of our deliverable at all but a RECORD of
+// the product's own defaults (an extracted snapshot of what the product ships
+// with). Those rows must not claim a definition site in our config — see the
+// `Origin` comment in types.ts — so the source is dropped here and the value
+// doubles as the documented default.
+export type EmbeddedEntry = { key: string; value: string; source: SourceLocation; component?: string; origin?: "embedded" | "default" };
 
 // A binding from a bound (product) key to the variable that backs it, e.g.
 // { boundKey: "db-url", variable: "kc_db_url" }.
@@ -577,7 +583,11 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
 
   // 3) Embedded literals, appended after all base-derived params, in order.
   for (const e of si.embedded) {
-    const param = { key: e.key, value: e.value, source: e.source, origin: "embedded" } as SimpleParameter;
+    const param = (
+      e.origin === "default"
+        ? { key: e.key, value: e.value, default: e.value, origin: "default" }
+        : { key: e.key, value: e.value, source: e.source, origin: "embedded" }
+    ) as SimpleParameter;
     pushDraft(e.key, param, undefined, undefined, e.component);
   }
 

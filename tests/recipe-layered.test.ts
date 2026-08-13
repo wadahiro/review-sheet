@@ -312,6 +312,36 @@ describe("layered recipe: static_files (embedded literals, unaffected by base/ov
     );
     expect(si.embedded.map((e) => e.key).sort()).toEqual(["banner", "nested.flag"]);
   });
+
+  // `origin: default` files a whole file as "the product's own defaults, which
+  // our deliverable does not set" — the file is an extracted record of the
+  // product, not part of what we ship.
+  it("files a static file's rows as product defaults when origin: default is declared", () => {
+    const si = layeredRecipe().load(
+      { name: "s", recipe: "layered", defaults: "defaults.yml", static_files: [{ path: "extra.yml", origin: "default" }] },
+      io
+    );
+    expect(si.embedded.every((e) => e.origin === "default")).toBe(true);
+  });
+
+  it("leaves rows embedded when origin is not declared (the pre-existing behaviour)", () => {
+    const si = layeredRecipe().load(
+      { name: "s", recipe: "layered", defaults: "defaults.yml", static_files: [{ path: "extra.yml" }] },
+      io
+    );
+    expect(si.embedded.every((e) => e.origin === undefined)).toBe(true);
+  });
+
+  // A substitution merges the file's rows into base-layer variables our
+  // deliverable DOES set, so the two declarations contradict each other.
+  it("refuses origin: default together with substitution", () => {
+    expect(() =>
+      layeredRecipe().load(
+        { name: "s", recipe: "layered", defaults: "defaults.yml", static_files: [{ path: "extra.yml", origin: "default", substitution: { pattern: "\\{\\{ (\\w+) \\}\\}" } }] },
+        io
+      )
+    ).toThrow(/origin "default" cannot be combined with "substitution"/);
+  });
 });
 
 describe("layered recipe: include/exclude apply to the final (post-transform) key", () => {
