@@ -1120,6 +1120,12 @@ function fileDrafts(
   // names sheet-visible tabs, and materialize's own subcategories (a
   // dictionary's `group`s) have no equivalent declaration to honor, so they
   // keep first-appearance order.
+  // Order one node's children by the sheet's declared list, keeping anything
+  // undeclared in first-appearance order after it.
+  const declaredFirst = (node: Node): string[] => {
+    const first = declaredCategories.filter((name) => node.children.has(name));
+    return [...first, ...node.childOrder.filter((name) => !first.includes(name))];
+  };
   const declared = declaredCategories.filter((name) => root.children.has(name));
   // A component's place in the reading order is the order the SPEC declares it
   // in — the static files, the templates — not the order its rows happen to
@@ -1132,7 +1138,7 @@ function fileDrafts(
   const undeclared = root.childOrder.filter((name) => !declared.includes(name) && !declaredComponents.includes(name));
   const order = [...declared, ...declaredComponents, ...undeclared];
 
-  function toCategory(node: Node): Category {
+  function toCategory(node: Node, isComponent = false): Category {
     const cat: Category = { name: node.name };
     // A component id gets its display name attached here — the id stays the
     // category's identity, the label is what a reader sees. Only ever set on
@@ -1148,11 +1154,18 @@ function fileDrafts(
     if (files?.filePath) cat.file_path = files.filePath;
     if (files?.sourceFile) cat.source_file = files.sourceFile;
     if (node.params.length > 0) cat.params = node.params;
-    if (node.childOrder.length > 0) cat.categories = node.childOrder.map((name) => toCategory(node.children.get(name)!));
+    // On a component sheet the declared tabs are not the sheet's top level —
+    // they sit one level down, inside each component — so the declared order
+    // has to be honoured there too, or `categories:` would silently stop
+    // ordering anything the moment a sheet grew components. Only that one
+    // level: deeper categories are a dictionary's own groups, which have no
+    // declaration to honour (same rule as the root level above).
+    const childNames = isComponent ? declaredFirst(node) : node.childOrder;
+    if (childNames.length > 0) cat.categories = childNames.map((name) => toCategory(node.children.get(name)!));
     return cat;
   }
 
-  return order.map((name) => toCategory(root.children.get(name)!));
+  return order.map((name) => toCategory(root.children.get(name)!, componentCount > 1));
 }
 
 // Iterative Levenshtein distance — used only for the "did you mean" hint on
