@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import { stubNonBuiltInProviders } from "./only-builtin-providers.js";
 import { assembleSheets, assembleSheetsWithReport, type AssembleOpts, type ExtractedEntry, type ExtractedMap, type SheetInputs } from "../src/assemble";
 import { ScaffoldableBuildError, renderScaffold } from "../src/enrich";
+import { buildSourceIndex } from "../src/prompt";
 import { parse as parseYaml } from "yaml";
 import type { InstanceParameter, SimpleParameter } from "../src/types";
 
@@ -210,7 +211,9 @@ params:
     expect(unmapped.value).toBe("some-value");
     expect(unmapped.extra?.ansible_var).toBeUndefined();
 
-    expect(result.columns).toEqual([{ field: "ansible_var", header: "Ansible variable", place: "under_key" }]);
+    expect(result.columns).toEqual([
+      { field: "ansible_var", header: "Ansible variable", header_lang: { ja: "Ansible 変数", en: "Ansible variable" }, place: "under_key" },
+    ]);
   });
 
   it("keyMap: a renamed row's argument_specs.yml entry (keyed by its ORIGINAL variable) still resolves via enrich()", () => {
@@ -843,6 +846,53 @@ params: {}
     }
   });
 
+  it("round-trips a sheet whose components share a key, which a flat fragment could not even parse", () => {
+    // Two rendered artifacts on one sheet, both with a Description= line. Keys
+    // are unique WITHIN a component, not across them, so a fragment that lists
+    // both at the sheet level repeats the same map key — YAML rejects that
+    // outright, and the reader is handed a fragment they cannot paste. It is
+    // also two different parameters: one description cannot be true of both.
+    const scaffoldFiles: Record<string, string> = { "p.yml": `sheets:\n  demo:\n    params: {}\n` };
+    const scaffoldOpts = (): AssembleOpts => ({ projectPath: "p.yml", readFile: (f) => scaffoldFiles[f] ?? null });
+    const inputs: SheetInputs[] = [
+      {
+        name: "demo",
+        instances: [],
+        layers: [{ kind: "base", entries: map([]) }],
+        embedded: [
+          { key: "Unit.Description", value: "the server", source: { file: "a.j2", line: 1 }, component: "a.service" },
+          { key: "Unit.Description", value: "its secrets", source: { file: "b.j2", line: 1 }, component: "b.service" },
+        ],
+      },
+    ];
+
+    let caught: unknown;
+    try {
+      assembleSheets(inputs, scaffoldOpts());
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ScaffoldableBuildError);
+    const err = caught as ScaffoldableBuildError;
+    expect(err.entries.map((e) => e.component)).toEqual(["a.service", "b.service"]);
+
+    const scaffold = renderScaffold(err.entries, err.shape);
+    const parsed = parseYaml(scaffold) as {
+      sheets: Record<string, { components: Record<string, { params: Record<string, unknown> }> }>;
+    };
+    expect(Object.keys(parsed.sheets.demo.components)).toEqual(["a.service", "b.service"]);
+    for (const c of ["a.service", "b.service"]) {
+      expect(Object.keys(parsed.sheets.demo.components[c]!.params)).toEqual(["Unit.Description"]);
+    }
+
+    // And it is paste-able: the build passes with no further edits, each
+    // component keeping its own entry.
+    scaffoldFiles["p.yml"] = scaffold;
+    const result = assembleSheets(inputs, scaffoldOpts());
+    const components = result.sheets[0].categories.map((c) => c.name);
+    expect(components).toEqual(["a.service", "b.service"]);
+  });
+
   it("quotes a key with structural-path characters ([, ], .) so the fragment stays valid YAML", () => {
     const entries = [
       {
@@ -1187,5 +1237,205 @@ params:
     const mapped = result.sheets[0].categories[0].params!.find((p) => p.key === "bound_key_mapped") as SimpleParameter;
     expect(mapped.extra?.ansible_var).toBe("kc_db_url");
     expect(mapped.additional_sources).toEqual(sites);
+  });
+});
+
+// A category was one level, and the second level of a path was always the
+// component. `Tokens / Access tokens` looked like nesting and was one name with
+// a slash in it — the dictionary's own group. A project can now say the path.
+describe("nested categories", () => {
+  const files: Record<string, string> = {};
+  const opts = (): AssembleOpts => ({ projectPath: "p.yml", readFile: (f) => files[f] ?? null });
+  const inputs = (component?: string): SheetInputs[] => [
+    {
+      name: "realm",
+      instances: [],
+      layers: [{ kind: "base", entries: map([]) }],
+      embedded: [
+        { key: "accessTokenLifespan", value: "60", source: { file: "r.yml", line: 1 }, ...(component ? { component } : {}) },
+        { key: "refreshTokenMaxReuse", value: "0", source: { file: "r.yml", line: 2 }, ...(component ? { component } : {}) },
+        ...(component ? [{ key: "other", value: "x", source: { file: "r.yml", line: 3 }, component: "second" }] : []),
+      ],
+    },
+  ];
+  const pathsOf = (input: ReturnType<typeof assembleSheets>, key: string): string[][] => {
+    const out: string[][] = [];
+    const walk = (cats: { name: string; params?: { key: string }[]; categories?: unknown[] }[] | undefined, trail: string[]): void => {
+      for (const c of cats ?? []) {
+        for (const p of c.params ?? []) if (p.key === key) out.push([...trail, c.name]);
+        walk(c.categories as typeof cats, [...trail, c.name]);
+      }
+    };
+    walk(input.sheets[0].categories, []);
+    return out;
+  };
+
+  it("files a row under the whole path", () => {
+    files["p.yml"] = `
+categories: [Tokens]
+params:
+  accessTokenLifespan: { category: [Tokens, Access tokens], description: d }
+  refreshTokenMaxReuse: { category: [Tokens, Refresh tokens], description: d }
+`;
+    const input = assembleSheets(inputs(), opts());
+    expect(pathsOf(input, "accessTokenLifespan")).toEqual([["Tokens", "Access tokens"]]);
+    expect(pathsOf(input, "refreshTokenMaxReuse")).toEqual([["Tokens", "Refresh tokens"]]);
+    // One parent, shared: the two paths must not have produced two "Tokens".
+    expect(input.sheets[0].categories.map((c) => c.name)).toEqual(["Tokens"]);
+  });
+
+  it("only the first segment is a tab, so only it has to be declared", () => {
+    // "Access tokens" is NOT in categories: and must not be reported as a ghost
+    // tab — it is not a tab. Declaring every inner level would make one fact
+    // declarable in two places, which is how the two drift apart.
+    files["p.yml"] = `
+categories: [Tokens]
+params:
+  accessTokenLifespan: { category: [Tokens, Access tokens], description: d }
+  refreshTokenMaxReuse: { category: Tokens, description: d }
+`;
+    const warnings: string[] = [];
+    const spy = console.warn;
+    console.warn = (m: string) => void warnings.push(String(m));
+    try {
+      assembleSheets(inputs(), opts());
+    } finally {
+      console.warn = spy;
+    }
+    expect(warnings.join("\n")).not.toContain("Access tokens");
+  });
+
+  it("nests underneath the component, which stays outermost", () => {
+    files["p.yml"] = `
+sheets:
+  realm:
+    categories: [Tokens]
+    params:
+      accessTokenLifespan: { category: [Tokens, Access tokens], description: d }
+      refreshTokenMaxReuse: { category: [Tokens, Access tokens], description: d }
+      other: { category: Tokens, description: d }
+`;
+    const input = assembleSheets(inputs("poc"), opts());
+    expect(pathsOf(input, "accessTokenLifespan")).toEqual([["poc", "Tokens", "Access tokens"]]);
+  });
+
+  it("treats a one-element list exactly like the bare string", () => {
+    files["p.yml"] = `
+categories: [Tokens]
+params:
+  accessTokenLifespan: { category: [Tokens], description: d }
+  refreshTokenMaxReuse: { category: Tokens, description: d }
+`;
+    const input = assembleSheets(inputs(), opts());
+    expect(pathsOf(input, "accessTokenLifespan")).toEqual([["Tokens"]]);
+    expect(pathsOf(input, "refreshTokenMaxReuse")).toEqual([["Tokens"]]);
+  });
+
+  it("is reachable as a review target, so apply can find the row", () => {
+    // Nesting that only existed in the rendering would be a trap: a finding
+    // filed against the row would name a category nothing indexes. The target
+    // path is the segments joined, at any depth.
+    files["p.yml"] = `
+categories: [Tokens]
+params:
+  accessTokenLifespan: { category: [Tokens, Access tokens], description: d }
+  refreshTokenMaxReuse: { category: Tokens, description: d }
+`;
+    const input = assembleSheets(inputs(), opts());
+    const index = buildSourceIndex({ sheets: input.sheets });
+    expect([...index.keys()]).toContain("realm::Tokens/Access tokens::accessTokenLifespan");
+    expect([...index.keys()]).toContain("realm::Tokens::refreshTokenMaxReuse");
+  });
+
+  it("refuses an empty list, which is one spelling away from `category: null`", () => {
+    files["p.yml"] = `
+categories: [Tokens]
+params:
+  accessTokenLifespan: { category: [], description: d }
+`;
+    expect(() => assembleSheets(inputs(), opts())).toThrow(
+      /"accessTokenLifespan" has an empty category list.*category: null/s
+    );
+  });
+});
+
+// Sheet groups: display structure only, and checked both ways like every other
+// declared list here.
+describe("sheet groups", () => {
+  const files: Record<string, string> = {};
+  const opts = (): AssembleOpts => ({ projectPath: "p.yml", readFile: (f) => files[f] ?? null });
+  const twoSheets = (): SheetInputs[] =>
+    ["a", "b"].map((n) => ({
+      name: n,
+      instances: [],
+      layers: [{ kind: "base", entries: map([]) }],
+      embedded: [{ key: `${n}_key`, value: "v", source: { file: "f.yml", line: 1 } }],
+    }));
+
+  it("carries the declared groups and each sheet's own", () => {
+    files["p.yml"] = `
+groups:
+  - name: infra
+    label: { ja: 基盤, en: Infrastructure }
+  - name: app
+sheets:
+  a: { group: infra, params: { a_key: { category: C, description: d } } }
+  b: { group: app, params: { b_key: { category: C, description: d } } }
+`;
+    const input = assembleSheets(twoSheets(), opts());
+    expect(input.groups).toEqual([{ name: "infra", label: { ja: "基盤", en: "Infrastructure" } }, { name: "app" }]);
+    expect(input.sheets.map((s) => s.group)).toEqual(["infra", "app"]);
+  });
+
+  it("fails on a group no sheet belongs to, with the same discipline as a category nobody used", () => {
+    files["p.yml"] = `
+groups: [{ name: infra }, { name: app }, { name: forgotten }]
+sheets:
+  a: { group: infra, params: { a_key: { category: C, description: d } } }
+  b: { group: app, params: { b_key: { category: C, description: d } } }
+`;
+    expect(() => assembleSheets(twoSheets(), opts())).toThrow(/declared sheet group\(s\) that no sheet belongs to: forgotten/);
+  });
+
+  it("fails on a sheet naming a group nobody declared, and suggests the near miss", () => {
+    files["p.yml"] = `
+groups: [{ name: infra }, { name: app }]
+sheets:
+  a: { group: infr, params: { a_key: { category: C, description: d } } }
+  b: { group: app, params: { b_key: { category: C, description: d } } }
+`;
+    expect(() => assembleSheets(twoSheets(), opts())).toThrow(/not declared.*"infr".*did you mean.*infra/is);
+  });
+
+  it("fails on an ungrouped sheet once the document groups at all", () => {
+    // A grouped header has nowhere to put it: neither a group of its own nor
+    // inside one, and either choice would be an invention.
+    files["p.yml"] = `
+groups: [{ name: infra }]
+sheets:
+  a: { group: infra, params: { a_key: { category: C, description: d } } }
+  b: { params: { b_key: { category: C, description: d } } }
+`;
+    expect(() => assembleSheets(twoSheets(), opts())).toThrow(/sheet\(s\) with no "group:".*b/s);
+  });
+
+  it("fails on a group declared nowhere at all, rather than inventing a heading", () => {
+    files["p.yml"] = `
+sheets:
+  a: { group: infra, params: { a_key: { category: C, description: d } } }
+  b: { params: { b_key: { category: C, description: d } } }
+`;
+    expect(() => assembleSheets(twoSheets(), opts())).toThrow(/declares no "groups:" list: a/);
+  });
+
+  it("leaves a document that declares none exactly as it was", () => {
+    files["p.yml"] = `
+sheets:
+  a: { params: { a_key: { category: C, description: d } } }
+  b: { params: { b_key: { category: C, description: d } } }
+`;
+    const input = assembleSheets(twoSheets(), opts());
+    expect(input.groups).toBeUndefined();
+    expect(input.sheets.every((s) => s.group === undefined)).toBe(true);
   });
 });

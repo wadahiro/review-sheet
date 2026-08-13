@@ -287,3 +287,94 @@ describe("computeApply: per-environment change on a shared row", () => {
     }
   });
 });
+
+// A category is display structure — most of them come from a product
+// dictionary's own grouping — so upgrading a dictionary can move a row to
+// another screen. A finding filed against it used to resolve to nothing, and
+// say nothing.
+describe("a finding survives its row moving to another category", () => {
+  const sheetWith = (categoryName: string): SheetData => ({
+    sheets: [
+      {
+        name: "keycloak realm",
+        categories: [
+          {
+            name: "poc",
+            categories: [
+              {
+                name: categoryName,
+                params: [{ key: "accessTokenLifespan", value: "300", source: { file: "poc.yml", line: 3, anchor: "300" } }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  const review = (category: string): ReviewItem => ({
+    id: "r1",
+    status: "pending",
+    target: { sheet: "keycloak realm", category, param: "accessTokenLifespan" },
+    changes: [{ field: "value", current: "300", suggested: "60" }],
+  });
+  const files: Record<string, string> = { "poc.yml": "realm: poc\naccessTokenLifespan: 300\n" };
+  const read = (p: string): string | null => files[p] ?? null;
+
+  it("applies the change after the dictionary moved the row", () => {
+    // Written when the row was under "Sessions"; the sheet now files it under
+    // "Tokens/Access tokens" because the product's own grouping changed.
+    const out = computeApply(sheetWith("Tokens/Access tokens"), [review("poc/Sessions")], read);
+    expect(out.applied).toBe(1);
+    expect(out.files[0].content).toContain("accessTokenLifespan: 60");
+  });
+
+  it("reports the move rather than following it silently", () => {
+    const out = computeApply(sheetWith("Tokens/Access tokens"), [review("poc/Sessions")], read);
+    expect(out.moved).toEqual([
+      { target: { sheet: "keycloak realm", category: "poc/Sessions", param: "accessTokenLifespan" }, from: "poc/Sessions", to: "poc/Tokens/Access tokens" },
+    ]);
+  });
+
+  it("says nothing when nothing moved", () => {
+    const out = computeApply(sheetWith("Sessions"), [review("poc/Sessions")], read);
+    expect(out.applied).toBe(1);
+    expect(out.moved).toEqual([]);
+  });
+
+  it("refuses to guess when two components share the key and the component is gone too", () => {
+    // Two realms both have accessTokenLifespan — which is what components are
+    // for. With the stored component matching neither, attaching the finding to
+    // one of them would be a coin flip, so it resolves to nothing instead.
+    const data: SheetData = {
+      sheets: [
+        {
+          name: "keycloak realm",
+          categories: ["poc", "master"].map((c) => ({
+            name: c,
+            categories: [{ name: "Tokens", params: [{ key: "accessTokenLifespan", value: "300", source: { file: "poc.yml", line: 3, anchor: "300" } }] }],
+          })),
+        },
+      ],
+    };
+    const out = computeApply(data, [review("gone/Sessions")], read);
+    expect(out.applied).toBe(0);
+    expect(out.moved).toEqual([]);
+  });
+
+  it("uses the component to disambiguate when only the inner category moved", () => {
+    const data: SheetData = {
+      sheets: [
+        {
+          name: "keycloak realm",
+          categories: ["poc", "master"].map((c) => ({
+            name: c,
+            categories: [{ name: "Tokens/Access tokens", params: [{ key: "accessTokenLifespan", value: c === "poc" ? "300" : "60", source: { file: "poc.yml", line: 3, anchor: "300" } }] }],
+          })),
+        },
+      ],
+    };
+    const out = computeApply(data, [review("poc/Sessions")], read);
+    expect(out.applied).toBe(1);
+    expect(out.moved[0].to).toBe("poc/Tokens/Access tokens");
+  });
+});

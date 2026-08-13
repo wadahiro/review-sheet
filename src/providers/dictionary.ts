@@ -42,7 +42,14 @@ export type DictionaryParam = {
   // for a materialized (`origin: "default"`) row, exactly like it reads
   // `category` off the project metadata. Keeping it out of resolve() is what
   // stops a product taxonomy from silently overwriting a project's own.
-  group?: string;
+  //
+  // A LIST is a path, exactly like the project metadata's `category:` — a
+  // product whose own taxonomy has levels can say so instead of spelling the
+  // hierarchy into one name. Keycloak's realm groups did the latter for want of
+  // this ("Tokens / Access tokens", "Sessions / Access tokens"), which reads as
+  // a hierarchy and is one flat name: nothing folds or sorts by "Tokens",
+  // because no such category exists. A bare string is the one-segment case.
+  group?: string | string[];
   since?: string;
   until?: string;
   docs_url?: string;
@@ -427,7 +434,7 @@ function mergeOverlays(base: DictionaryDoc, overlays: { path: string; content: s
             errors.push(`the dictionary now supplies ${lang} for "${key}" — drop it from the overlay. [${path}]`);
             continue;
           }
-          const fillKey = `${key} ${lang}`;
+          const fillKey = `${key}\u0000${lang}`;
           const already = filledLang.get(fillKey);
           if (already !== undefined) {
             errors.push(`two overlays both supply ${lang} for "${key}" (${already} and ${path}) — drop the duplicate.`);

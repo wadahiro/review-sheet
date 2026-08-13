@@ -108,6 +108,7 @@ const staticFilesSchema = {
       include: { type: "array", items: { type: "string" } },
       exclude: { type: "array", items: { type: "string" } },
       substitution: substitutionSchema,
+      component: { type: "string" },
     },
     additionalProperties: false,
   },
@@ -414,6 +415,15 @@ type StaticFileSpec = {
   include?: string[];
   exclude?: string[];
   substitution?: SubstitutionFieldSpec;
+  // Which component every row of THIS file belongs to, stated outright.
+  //
+  // The sheet-level `component:` transform cannot express this: it derives an
+  // id from a row's key or structural path, and two files holding the same kind
+  // of document (two realms, two of anything) produce identical paths. What
+  // tells them apart is which FILE they came from, which no transform over the
+  // row can see. Same shape, and same reason, as the ansible recipe's
+  // `templates:`.
+  component?: string;
 };
 
 function staticFileSpecs(v: JsonValue | undefined): StaticFileSpec[] {
@@ -425,7 +435,8 @@ function staticFileSpecs(v: JsonValue | undefined): StaticFileSpec[] {
       o.substitution === undefined ? undefined : { pattern: asString(asObject(o.substitution).pattern, "static_files[].substitution.pattern") };
     const include = Array.isArray(o.include) ? (o.include as string[]) : undefined;
     const exclude = Array.isArray(o.exclude) ? (o.exclude as string[]) : undefined;
-    return { path: asString(o.path, "static_files[].path"), format, key, include, exclude, substitution };
+    const component = typeof o.component === "string" ? o.component : undefined;
+    return { path: asString(o.path, "static_files[].path"), format, key, include, exclude, substitution, component };
   });
 }
 
@@ -450,9 +461,17 @@ function buildEmbeddedFromStaticFiles(
   overlayLayers: Extract<ValueLayer, { kind: "overlay" }>[],
   warn: (message: string) => void,
   component?: ComponentDeriver
-): { embedded: EmbeddedEntry[]; keyMap: KeyMapEntry[]; referenceSites: ReferenceSite[] } {
+): { embedded: EmbeddedEntry[]; keyMap: KeyMapEntry[]; referenceSites: ReferenceSite[]; componentOf: Map<string, string> } {
   const embedded: EmbeddedEntry[] = [];
   const keyMap: KeyMapEntry[] = [];
+  // Variable -> the component of the file whose row it was merged into. A
+  // whole-value merge does not keep the static file's entry: the BASE-layer row
+  // is renamed to the product key instead (see substitution.ts), so the only
+  // record left of which file asked for it is this map. Without it the merged
+  // rows land in no component — and on a sheet where every other row has one,
+  // "no component" becomes a phantom extra component named after the sheet,
+  // carrying a full materialize ledger of its own.
+  const componentOf = new Map<string, string>();
   // Merged PER VARIABLE across every substitution-declaring static file in
   // this sheet — two different static files could each reference the same
   // layer key (unlikely, but nothing rules it out), and a variable's
@@ -493,7 +512,11 @@ function buildEmbeddedFromStaticFiles(
       const key = transformer ? transformer.apply(selectKeySource(sf.key!.from, e.key, e.source.path)) : (e.source.path ?? e.key);
       if (key === undefined) continue;
       if (!fileSelector.select(key)) continue;
-      component?.note(e.key, e.source.path, key);
+      // A file that names its component owns it, the same way a file that
+      // declares its own include/exclude owns its selection — the sheet's
+      // transform is not consulted for it, and must not count these rows
+      // towards its own `names:` two-way check.
+      if (sf.component === undefined) component?.note(e.key, e.source.path, key);
       // Two entries of ONE file landing on one key means the key does not
       // identify them. `buildMapFromSources` has always hard-errored on this
       // and the snapshot recipe collects and throws; static files had neither,
@@ -505,7 +528,7 @@ function buildEmbeddedFromStaticFiles(
       // Scoped by COMPONENT, because that is what a component is for: one
       // `protocol` per client is two rows; two in the same client is a real
       // collision. Entries outside any component share one scope.
-      const scope = componentIdOf(component, e.key, e.source.path);
+      const scope = sf.component ?? componentIdOf(component, e.key, e.source.path);
       const entryComponent = scope || undefined;
       const seen = seenInFile.get(scope) ?? new Map<string, string[]>();
       const where = seen.get(key);
@@ -551,6 +574,22 @@ function buildEmbeddedFromStaticFiles(
     const result = bindReferences({ embedded: fileEntries, baseMap, overlayLayers, compiled });
     embedded.push(...result.embedded);
     keyMap.push(...result.keyMap);
+    if (sf.component !== undefined) {
+      for (const km of result.keyMap) {
+        const claimed = componentOf.get(km.variable);
+        if (claimed !== undefined && claimed !== sf.component) {
+          // One base row cannot belong to two components. Reported rather than
+          // resolved: whichever file won would be arbitrary, and the sheet
+          // would show the value under one component with nothing said about
+          // the other.
+          warn(
+            `static file ${file}: "${km.variable}" is merged by two components (${claimed}, ${sf.component}) — ` +
+              `the row can only be filed under one of them`
+          );
+        }
+        componentOf.set(km.variable, sf.component);
+      }
+    }
     for (const site of result.referenceSites) {
       const existing = referenceSitesByVariable.get(site.variable);
       if (existing) existing.push(...site.sites);
@@ -571,7 +610,7 @@ function buildEmbeddedFromStaticFiles(
   }
 
   const referenceSites: ReferenceSite[] = [...referenceSitesByVariable].map(([variable, sites]) => ({ variable, sites }));
-  return { embedded, keyMap, referenceSites };
+  return { embedded, keyMap, referenceSites, componentOf };
 }
 
 export const layeredRecipe: SheetRecipe = {
@@ -596,10 +635,16 @@ export const layeredRecipe: SheetRecipe = {
       defaultsSpecs.length > 0
         ? buildMapFromSources(io, defaultsSpecs, `sheet "${name}": defaults`, selector, io.extractOptions, warn, componentDeriver)
         : new Map();
-    // Display fallback: the first defaults source, when there is one — mirrors
-    // what a hand-written recipe (e.g. the PoC's former "terraform" recipe)
-    // would set by hand. No defaults (snapshot-style sheets) leaves it unset.
-    const filePath = defaultsSpecs.length > 0 ? io.resolve(defaultsSpecs[0].path) : undefined;
+    // Display fallback: the first defaults source, when there is one. Recorded
+    // as `source_file`, NOT `file_path` — it is a file in this repository, and
+    // file_path means where the configuration LANDS (types.ts). Putting a repo
+    // path in the deployed slot is why one sheet's column read
+    // "/etc/httpd/conf/httpd.conf" while the next read
+    // "config/keycloak/envs/default.env": the same column was answering two
+    // different questions, with nothing to tell a reader which. verify/apply
+    // are unaffected — both already prefer source_file and only fall back to
+    // file_path. No defaults (snapshot-style sheets) leaves it unset.
+    const sourceFallback = defaultsSpecs.length > 0 ? io.resolve(defaultsSpecs[0].path) : undefined;
 
     const overlayLayers: Extract<ValueLayer, { kind: "overlay" }>[] = Object.entries(asObject(sheetSpec.overlays)).map(
       ([instance, spec]) => ({
@@ -642,14 +687,24 @@ export const layeredRecipe: SheetRecipe = {
     // saying so moves the client out of the key and into a scope — the same
     // move the AWS sheet made with its Terraform module.
     const components = componentDeriver.finish();
+    // A literal per-file `component:` produces no derived map of its own — the
+    // component travels on each embedded entry. The exception is a row the
+    // substitution merged away, whose identity is now a base-layer key; those
+    // are the entries collected above, and they have to reach assemble through
+    // componentOf because there is no embedded entry left to carry them.
+    const componentOf =
+      staticFilesResult.componentOf.size > 0
+        ? new Map([...(components?.componentOf ?? []), ...staticFilesResult.componentOf])
+        : components?.componentOf;
 
     return {
       name,
-      ...(filePath ? { filePath } : {}),
+      ...(sourceFallback ? { sourceFile: sourceFallback } : {}),
       instances: io.instances,
       layers: [{ kind: "base", entries: baseMap }, ...overlayLayers],
       embedded: staticFilesResult.embedded,
-      ...(components ? components : {}),
+      ...(components?.componentLabels ? { componentLabels: components.componentLabels } : {}),
+      ...(componentOf ? { componentOf } : {}),
       ...(staticFilesResult.keyMap.length > 0 ? { keyMap: staticFilesResult.keyMap } : {}),
       ...(staticFilesResult.referenceSites.length > 0 ? { referenceSites: staticFilesResult.referenceSites } : {}),
     };

@@ -49,7 +49,11 @@ describe("layered recipe: plain base+overlay (no Ansible/Jinja2 involved)", () =
     expect(si.keyMap).toBeUndefined();
     expect([...baseOf(si).keys()].sort()).toEqual(["SSO_IDLE", "SSO_SMTP_FROM"]);
     expect(overlayOf(si, "staging")?.get("SSO_IDLE")?.value).toBe("3600");
-    expect(si.filePath).toBe("/r/default.env"); // display fallback: the defaults file
+    // The defaults file is a file in THIS repository, so it is the sheet's
+    // source_file. file_path means where the configuration lands on the target
+    // (types.ts), and a layered sheet has no way to know that.
+    expect(si.sourceFile).toBe("/r/default.env");
+    expect(si.filePath).toBeUndefined();
   });
 
   it("omitting defaults yields an empty base — every key becomes Pattern B, no filePath", () => {
@@ -84,8 +88,8 @@ describe("layered recipe: multiple files merged into one base (the ECS taskdef +
     expect(base.get("a")?.value).toBe("1");
     expect(base.get("b")?.value).toBe("20"); // extra.yml wins
     expect(base.get("c")?.value).toBe("30");
-    // Display fallback is the FIRST source only.
-    expect(si.filePath).toBe("/r/base.yml");
+    // Display fallback is the FIRST source only, and it is a source_file.
+    expect(si.sourceFile).toBe("/r/base.yml");
   });
 
   it("merges multiple sources within a single overlay instance the same way", () => {
@@ -622,7 +626,12 @@ params:
 
     // The under_key column itself is now on the model, same mechanism
     // ansible's own {{ var }} binding uses.
-    expect(input.columns).toEqual([{ field: "env_var", header: "Env var", place: "under_key" }]);
+    expect(input.columns).toEqual([
+      // header_lang is what lets the viewer print this heading in the reader's
+      // own language beside the value — without it the sub-line is a bare
+      // identifier next to another bare identifier (the row's key).
+      { field: "env_var", header: "Env var", header_lang: { ja: "環境変数", en: "Env var" }, place: "under_key" },
+    ]);
   });
 });
 
@@ -676,5 +685,142 @@ describe("layered recipe: static-file key collisions", () => {
     // the key. A map could hold only one of these.
     expect(si.embedded.map((e) => e.key)).toEqual(["protocol", "protocol"]);
     expect(si.embedded.map((e) => e.component)).toEqual(["app-a", "app-b"]);
+  });
+});
+
+// Two files holding the SAME kind of document — two realms, two of anything —
+// produce identical keys and identical structural paths. What tells their rows
+// apart is which file they came from, which no transform over the row can see,
+// so the file says it outright. Same shape as the ansible recipe's `templates:`.
+describe("layered recipe: static_files[].component", () => {
+  const files: Record<string, string> = {
+    "/r/defaults.yml": "port: 80\n",
+    "/r/master.yml": "realm: master\nsslRequired: external\nbruteForceProtected: true\n",
+    "/r/poc.yml": "realm: poc\nsslRequired: external\nbruteForceProtected: false\n",
+  };
+  const io: RecipeIO = {
+    readFile: (p) => files[p] ?? null,
+    specDir: "/r",
+    resolve: (p) => `/r/${p.split("/").pop()}`,
+    instances: [],
+  };
+  const load = (): ReturnType<ReturnType<typeof layeredRecipe>["load"]> =>
+    layeredRecipe().load(
+      {
+        name: "realms",
+        recipe: "layered",
+        defaults: "defaults.yml",
+        static_files: [
+          { path: "master.yml", component: "master" },
+          { path: "poc.yml", component: "poc" },
+        ],
+      },
+      io
+    );
+
+  it("keeps both files' rows, each tagged with the file's component", () => {
+    const si = load();
+    const bySource = si.embedded.map((e) => `${e.component}:${e.key}=${e.value}`).sort();
+    expect(bySource).toEqual([
+      "master:bruteForceProtected=true",
+      "master:realm=master",
+      "master:sslRequired=external",
+      "poc:bruteForceProtected=false",
+      "poc:realm=poc",
+      "poc:sslRequired=external",
+    ]);
+  });
+
+  it("does not treat the shared key names as a collision, because they are in different components", () => {
+    // The same three keys twice. Without the component scope this is exactly
+    // the in-file/one-keyspace clash the recipe hard-errors on — and losing one
+    // realm's rows silently is the failure that check exists to prevent.
+    expect(() => load()).not.toThrow();
+    expect(load().embedded.filter((e) => e.key === "sslRequired")).toHaveLength(2);
+  });
+
+  it("leaves a file that names no component to the sheet's own transform", () => {
+    const si = layeredRecipe().load(
+      {
+        name: "realms",
+        recipe: "layered",
+        defaults: "defaults.yml",
+        static_files: [{ path: "master.yml", component: "master" }, { path: "poc.yml" }],
+      },
+      io
+    );
+    expect(si.embedded.filter((e) => e.component === undefined).map((e) => e.key).sort()).toEqual([
+      "bruteForceProtected",
+      "realm",
+      "sslRequired",
+    ]);
+  });
+});
+
+// A whole-value merge does not keep the static file's entry — the BASE-layer
+// row is renamed to the product key instead. So a file's literal component has
+// to survive that hand-off, or the merged rows land in no component while every
+// other row on the sheet has one.
+describe("layered recipe: a merged row keeps the component of the file that referenced it", () => {
+  const files: Record<string, string> = {
+    "/r/default.env": "IDLE=1800\nMAXLIFE=36000\n",
+    "/r/poc.yml": "realm: poc\nssoSessionIdleTimeout: $(env:IDLE)\n",
+    "/r/other.yml": "realm: other\nssoSessionMaxLifespan: $(env:MAXLIFE)\n",
+  };
+  const io: RecipeIO = {
+    readFile: (p) => files[p] ?? null,
+    specDir: "/r",
+    resolve: (p) => `/r/${p.split("/").pop()}`,
+    instances: [],
+  };
+  const load = (): ReturnType<ReturnType<typeof layeredRecipe>["load"]> =>
+    layeredRecipe().load(
+      {
+        name: "realms",
+        recipe: "layered",
+        defaults: "default.env",
+        static_files: [
+          { path: "poc.yml", format: "yaml", component: "poc", substitution: { pattern: "\\$\\(env:([A-Za-z_][A-Za-z0-9_]*)\\)" } },
+          { path: "other.yml", format: "yaml", component: "other", substitution: { pattern: "\\$\\(env:([A-Za-z_][A-Za-z0-9_]*)\\)" } },
+        ],
+      },
+      io
+    );
+
+  it("files the renamed base row under the referencing file's component", () => {
+    const si = load();
+    // The merged rows are no longer embedded: they are base-layer keys renamed
+    // through keyMap, so componentOf — keyed by the PRE-rename key, which is
+    // what assemble looks them up by — is the only place the component can live.
+    expect(si.keyMap).toEqual([
+      { boundKey: "ssoSessionIdleTimeout", variable: "IDLE" },
+      { boundKey: "ssoSessionMaxLifespan", variable: "MAXLIFE" },
+    ]);
+    expect(si.componentOf?.get("IDLE")).toBe("poc");
+    expect(si.componentOf?.get("MAXLIFE")).toBe("other");
+  });
+
+  it("warns when two components merge the same variable, instead of picking one", () => {
+    const warnings: string[] = [];
+    const spy = console.warn;
+    console.warn = (m: string) => void warnings.push(String(m));
+    try {
+      layeredRecipe().load(
+        {
+          name: "realms",
+          recipe: "layered",
+          defaults: "default.env",
+          static_files: [
+            { path: "poc.yml", format: "yaml", component: "poc", substitution: { pattern: "\\$\\(env:([A-Za-z_][A-Za-z0-9_]*)\\)" } },
+            // Same variable as poc.yml's, from a different component.
+            { path: "dup.yml", format: "yaml", component: "other", substitution: { pattern: "\\$\\(env:([A-Za-z_][A-Za-z0-9_]*)\\)" } },
+          ],
+        },
+        { ...io, readFile: (p) => (p === "/r/dup.yml" ? "realm: other\nssoSessionIdleTimeout: $(env:IDLE)\n" : files[p] ?? null) }
+      );
+    } finally {
+      console.warn = spy;
+    }
+    expect(warnings.join("\n")).toContain('"IDLE" is merged by two components (poc, other)');
   });
 });

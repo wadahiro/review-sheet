@@ -8,6 +8,7 @@ import htm from "htm";
 import { getMessages, type Lang, type Messages } from "./i18n.js";
 import {
   buildPromptText,
+  retargetReviews,
   effectiveOrigin,
   HELD_REASON_GENERATED,
   type SheetData,
@@ -35,9 +36,15 @@ const html = htm.bind(h);
 function originTag(param: ParamData, t: Messages): { label: string; title: string } | null {
   const origin = effectiveOrigin(param);
   if (origin === "embedded") {
+    // The FILE, not a word for the category. Tried both: a one-word label reads
+    // cleanly and throws away the thing a reader of such a row actually needs —
+    // these 75 rows are spread over four files, and "edit that file" is the
+    // whole remedy, so which file is the useful half. What the marker MEANS is
+    // explained once per sheet by the legend instead of being crammed into
+    // every row's label.
     const file = param.source?.file;
     const base = file ? file.split("/").pop() : undefined;
-    return { label: base ?? t.originEmbedded, title: file ? `${t.originEmbedded}: ${file}` : t.originEmbedded };
+    return { label: base ?? t.originEmbedded, title: file ? `${t.originEmbeddedTip}\n${file}` : t.originEmbeddedTip };
   }
   if (origin === "default") return { label: t.originDefault, title: t.originDefaultTip };
   return null;
@@ -76,8 +83,24 @@ function localizeCategory(c: CategoryData, lang: Lang): CategoryData {
     categories: c.categories?.map((sc) => localizeCategory(sc, lang)),
   };
 }
+function localizeGroups(groups: SheetData["groups"], lang: Lang): SheetData["groups"] {
+  return groups?.map((g) => ({ ...g, display: (g.label ? pickLang(g.label, lang) : undefined) ?? g.name }));
+}
+// A column's heading is a LangText when the project declared one (an under_key
+// label). Resolved here with the rest, so everything downstream sees a plain
+// string and the language toggle re-resolves it live.
+function localizeColumns(columns: SheetData["columns"], lang: Lang): SheetData["columns"] {
+  return columns?.map((c) => (c.header_lang ? { ...c, header: pickLang(c.header_lang, lang) ?? c.header } : c));
+}
 function localizeSheets(sheets: SheetData["sheets"], lang: Lang): SheetData["sheets"] {
-  return sheets.map((s) => ({ ...s, categories: s.categories.map((c) => localizeCategory(c, lang)) }));
+  return sheets.map((s) => ({
+    ...s,
+    // Same split as a category's: `name` is identity and is never touched (it
+    // is the review target, the diff key and the outline's search text), while
+    // `display` is what the reader sees and switches with the language toggle.
+    display: (s.label ? pickLang(s.label, lang) : undefined) ?? s.name,
+    categories: s.categories.map((c) => localizeCategory(c, lang)),
+  }));
 }
 
 // ============================================================
@@ -216,79 +239,6 @@ function getStorageKey(data: SheetData): string {
   return "review-sheet:" + parts.join(":");
 }
 
-// Rows ticked off in this browser session live beside the reviews, under the
-// same storage key. Working state for one reader in one browser: never
-// exported, never committed. What the review produces is recorded elsewhere.
-function loadSessionChecks(storageKey: string): Record<string, SessionCheck> {
-  try {
-    const raw = localStorage.getItem(`${storageKey}:checks`);
-    return raw ? (JSON.parse(raw) as Record<string, SessionCheck>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveSessionChecks(storageKey: string, checks: Record<string, SessionCheck>): void {
-  try {
-    localStorage.setItem(`${storageKey}:checks`, JSON.stringify(checks));
-  } catch {
-    // storage full / disabled — the marks still work for this session
-  }
-}
-
-// What a row looks like in the check column. "checked" is the reader's own
-// session mark; "change_requested" is DERIVED from a pending review item, so
-// the two can never disagree, and it counts as dealt-with (a reader who filed
-// twenty change requests has not left twenty rows waiting).
-//
-// Being out of review scope is deliberately NOT one of these states. It is a
-// fact about the project on another axis — and the exclusion is itself
-// reviewable: "this should not be out of scope" is exactly the kind of thing a
-// reviewer says. So those rows are checkable and countable like any other; the
-// row stays greyed with its reason, which is what marks it as excluded.
-//
-// None of this is durable: the marks live in this browser, for this reader,
-// while working through a long sheet. What the review actually produces is
-// recorded elsewhere — review items, sheet.yml, and the commit itself.
-type RowState = "undecided" | "ok" | "change_requested";
-
-// A row ticked (or un-ticked) this session. "none" clears the tick.
-type SessionCheck = { status: "ok" | "none" };
-
-// Session marks are keyed the way a row is identified everywhere: sheet + param.
-function checkKey(sheet: string, param: string): string {
-  return `${sheet}::${param}`;
-}
-
-// Does this row carry a pending value change? That is what makes it
-// "change requested", derived from the review layer rather than stored, so the
-// two can never disagree. Matched by sheet + param, including a change filed
-// against one instance of a Pattern B row.
-function hasPendingValueChange(reviews: ReviewItem[], sheetName: string, paramKey: string): boolean {
-  return reviews.some(
-    (r) =>
-      r.status === "pending" &&
-      r.target.sheet === sheetName &&
-      r.target.param === paramKey &&
-      (r.changes ?? []).some((c) => c.field === "value")
-  );
-}
-
-function rowStateOf(
-  param: ParamData,
-  sheetName: string,
-  sessions: Record<string, SessionCheck>,
-  reviews: ReviewItem[]
-): RowState {
-  // A change request is newer information than "I have looked at this".
-  if (hasPendingValueChange(reviews, sheetName, param.key)) return "change_requested";
-  return sessions[checkKey(sheetName, param.key)]?.status === "ok" ? "ok" : "undecided";
-}
-
-// Everything except "undecided" counts as dealt with.
-function checkProgress(states: RowState[]): { decided: number; total: number } {
-  return { decided: states.filter((s) => s !== "undecided").length, total: states.length };
-}
 
 function forEachParam(
   categories: CategoryData[] | undefined,
@@ -302,26 +252,6 @@ function forEachParam(
   }
 }
 
-// Every row's state in one sheet, for the progress counter: an exhaustive
-// ledger is only useful if you can see how much of it is still unlooked-at.
-// Only the rows the sheet is currently SHOWING. A denominator counting rows the
-// reader cannot see is one they cannot reach: "0 / 6" beside five tickable rows
-// never completes, and the missing one is invisible by construction. The unset
-// toggle defines the document's scope, and everything follows it — body,
-// outline, search, print, and this.
-function sheetRowStates(
-  sheet: SheetData["sheets"][number],
-  sessions: Record<string, SessionCheck>,
-  reviews: ReviewItem[],
-  showDefaults: boolean
-): RowState[] {
-  const out: RowState[] = [];
-  forEachParam(sheet.categories, (p) => {
-    if (!showDefaults && effectiveOrigin(p) === "default") return;
-    out.push(rowStateOf(p, sheet.name, sessions, reviews));
-  });
-  return out;
-}
 
 function loadReviews(storageKey: string): ReviewItem[] {
   try {
@@ -829,7 +759,7 @@ function ToolbarMenu({ label, title, icon, active, children }: {
       </button>
       ${open && html`
         <div class="rs-of-backdrop" onClick=${() => setOpen(false)}></div>
-        <div class="rs-of-menu rs-toolbar-menu" onClick=${(e: Event) => e.stopPropagation()}>${children}</div>
+        <div class="rs-of-menu rs-toolbar-menu rs-scroll-thin" onClick=${(e: Event) => e.stopPropagation()}>${children}</div>
       `}
     </div>
   `;
@@ -850,41 +780,6 @@ function MenuItem({ label, onClick, danger }: { label: string; onClick: () => vo
   return html`<button class=${`rs-menu-item ${danger ? "rs-menu-item-danger" : ""}`} onClick=${onClick}>${label}</button>`;
 }
 
-// ============================================================
-// Review decision (判定) controls
-// ============================================================
-
-// The cell of the check column: a button for "I have looked at this", toggled
-// in a single click, because a pass over an exhaustive sheet IS several hundred
-// of those. Session-local — nothing here is written anywhere. The two derived
-// states render as plain text: neither is toggled from here (an exclusion is
-// authored in sheet.yml, a change request is resolved by editing the change),
-// so neither should look like a control.
-function DecisionCell({ state, paramKey, onToggleOk, t }: {
-  state: RowState;
-  paramKey: string;
-  onToggleOk: () => void;
-  t: Messages;
-}) {
-  // A change request is not toggled from here — it is resolved by editing or
-  // withdrawing the change — so it renders as plain muted text. Whatever renders
-  // as a control IS a control.
-  if (state === "change_requested") {
-    return html`<span class="rs-decision-derived">${t.decisionChangeRequested}</span>`;
-  }
-
-  // A native checkbox: this repeats down hundreds of rows, so it has to be the
-  // quietest mark that still reads as a control — a bordered pill with a word in
-  // it turns the column into noise. Empty boxes ARE the "what is left" display.
-  // The label makes the whole cell the hit area (see styles.ts).
-  const checked = state === "ok";
-  return html`
-    <label class="rs-check" title=${checked ? t.decisionClear : t.decisionMarkOk}>
-      <input type="checkbox" checked=${checked} onChange=${onToggleOk}
-             aria-label=${`${t.checkHeader}: ${paramKey}`} />
-    </label>
-  `;
-}
 
 // ============================================================
 // Reviewable cell component
@@ -1129,7 +1024,7 @@ function saveOutlineOpen(open: boolean): void {
 // Parameter table component
 // ============================================================
 
-function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, filterUndecided, sessionChecks, decisionsEnabled, onDecide, categoryOutOfScope, onOpenReview, diff, t }: {
+function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, categoryOutOfScope, onOpenReview, diff, t }: {
   params: ParamData[];
   sheetName: string;
   // The sheet's declared review axis (see Sheet.instances).
@@ -1144,10 +1039,6 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   filterCommented: boolean;
   hideOutOfScope: boolean;
   showDefaults: boolean;
-  filterUndecided: boolean;
-  sessionChecks: Record<string, SessionCheck>;
-  decisionsEnabled: boolean;
-  onDecide: (sheet: string, paramKey: string, next: SessionCheck | null) => void;
   // The nearest enclosing category's effective out-of-scope (already resolved
   // for its own ancestry) — applies to a param that sets no `out_of_scope` of
   // its own (nearest-wins: a param-level flag overrides the category's).
@@ -1299,12 +1190,6 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   // the nearest enclosing category's (nearest-wins).
   const rowOutOfScope = (param: ParamData): OutOfScope | undefined => param.out_of_scope ?? categoryOutOfScope;
 
-  const stateOf = (param: ParamData): RowState => rowStateOf(param, sheetName, sessionChecks, reviews);
-
-  const toggleOk = (param: ParamData): void => {
-    onDecide(sheetName, param.key, stateOf(param) === "ok" ? { status: "none" } : { status: "ok" });
-  };
-
   // Visible params under the "commented only" / "hide out-of-scope" /
   // "undecided only" filters.
   const visibleParams = params.filter((param) => {
@@ -1316,9 +1201,6 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     // one beside the settings it relates to.
     if (!showDefaults && effectiveOrigin(param) === "default") return false;
     if (hideOutOfScope && rowOutOfScope(param)) return false;
-    // The triage loop: show what still needs a decision, click through it,
-    // watch it empty out.
-    if (filterUndecided && stateOf(param) !== "undecided") return false;
     if (filterCommented) {
       const rowTarget = { sheet: sheetName, category: categoryPath, param: param.key };
       return (
@@ -1472,29 +1354,6 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     });
   });
 
-  // The session checkmark gets its OWN column rather than a chip stacked under
-  // the key: in the key cell it sat next to the origin tag, which is styled the
-  // same way but is not interactive — same visual language, different
-  // affordance. A labelled column says what it is, and only the rows you can
-  // actually tick render a button (an excluded row or one with a change request
-  // shows plain text, since neither is the reader's to toggle here).
-  if (decisionsEnabled) {
-    trailingLines.push({
-      key: "__check",
-      label: t.checkHeader,
-      lineKind: "attr",
-      colClass: "rs-col-check",
-      colStyle: "",
-      cell: (param) => ({
-        kind: "plain",
-        content: html`<${DecisionCell} state=${stateOf(param)} paramKey=${param.key}
-                                       onToggleOk=${() => toggleOk(param)} t=${t} />` as VNode,
-        className: "rs-col-check",
-        style: "",
-      }),
-    });
-  }
-
   // Normal columns:  key, description, default, values, remarks, custom.
   const normalLines = [...leadingLines, ...valueLines, ...trailingLines];
   // Transposed rows: attributes grouped first, then instances.
@@ -1540,11 +1399,22 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     // row-level muting + a visible inline reason line (not a badge), so the only
     // badge left here is the diff status.
     const rowBadge = diff ? diffBadge(rd) : null;
-    // Provenance sub-line (under_key columns, e.g. the backing Ansible variable).
-    const sublineText = underKeyCols
-      .map((col) => resolveColumnValue(param, col.field))
-      .filter((v) => v.length > 0)
-      .join(" · ");
+    // Provenance sub-lines (under_key columns, e.g. the backing Ansible
+    // variable), each with its own heading.
+    //
+    // The heading is the point. Without it this line and the key line above are
+    // both a bare identifier in the same type at the same size, and nothing
+    // says which is the row's own name and which is where its value comes
+    // from — the two questions they answer. The heading is already declared
+    // (sheet.yml's under_key label, in both languages); it was being thrown
+    // away at render time. Resolved to the active language up front, like every
+    // other LangText in this file (see localizeColumns).
+    const underKeyLines = underKeyCols
+      .map((col) => ({
+        head: col.header,
+        value: resolveColumnValue(param, col.field),
+      }))
+      .filter((x) => x.value.length > 0);
     // Nearest-wins: a param-level out_of_scope overrides the category's;
     // otherwise the enclosing (possibly out-of-scope) category's applies.
     const oos = rowOutOfScope(param);
@@ -1562,7 +1432,11 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     const label = typeof param.label === "string" ? param.label : undefined;
     const keySubline: (VNode | null)[] = [];
     if (label) keySubline.push(html`<span class="rs-key-subline"><code>${param.key}</code></span>` as VNode);
-    if (sublineText) keySubline.push(html`<span class="rs-key-subline"><code>${sublineText}</code></span>` as VNode);
+    for (const line of underKeyLines) {
+      keySubline.push(
+        html`<span class="rs-key-subline"><span class="rs-subline-head">${line.head}</span><code>${line.value}</code></span>` as VNode
+      );
+    }
     if (tag) keySubline.push(html`<span class="rs-key-subline"><span class="rs-origin-tag" title=${tag.title}>${tag.label}</span></span>` as VNode);
     if (oos) {
       keySubline.push(html`
@@ -1764,7 +1638,7 @@ function categoryDefaultSummary(category: CategoryData): { count: number; allDef
   return { count, allDefault };
 }
 
-function CategorySection({ category, sheetName, sheetInstances, sheetIndex, sheetFilePath, parentPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, filterUndecided, sessionChecks, decisionsEnabled, onDecide, inheritedOutOfScope, onOpenReview, diff, t }: {
+function CategorySection({ category, sheetName, sheetInstances, sheetIndex, sheetFilePath, parentPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, inheritedOutOfScope, onOpenReview, diff, t }: {
   category: CategoryData;
   sheetName: string;
   sheetInstances?: string[];
@@ -1779,10 +1653,6 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
   filterCommented: boolean;
   hideOutOfScope: boolean;
   showDefaults: boolean;
-  filterUndecided: boolean;
-  sessionChecks: Record<string, SessionCheck>;
-  decisionsEnabled: boolean;
-  onDecide: (sheet: string, paramKey: string, next: SessionCheck | null) => void;
   // The nearest ancestor category's effective out-of-scope, already resolved.
   // "Out of scope" marks a category AND its descendants, so this threads down
   // through nested categories; a category's own flag (nearest-wins) overrides it.
@@ -1805,17 +1675,6 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
 
   const HeadingTag = depth <= 1 ? "h3" : depth === 2 ? "h4" : "h5";
 
-  // Nobody clicks three hundred rows one at a time, so a category can be
-  // cleared in one go — but only the rows that are genuinely undecided: an
-  // excluded row or one with a change request is never swept up by it.
-  const undecidedHere = (category.params ?? []).filter(
-    (p) => rowStateOf(p, sheetName, sessionChecks, reviews) === "undecided"
-  );
-  const bulkOk = (): void => {
-    if (!confirm(t.confirmBulkOk(undecidedHere.length))) return;
-    for (const p of undecidedHere) onDecide(sheetName, p.key, { status: "ok" });
-  };
-
 
   return html`
     <div id=${navAnchorId(sheetIndex, categoryPath)} class=${`rs-category rs-depth-${depth} ${effOutOfScope ? "rs-out-of-scope" : ""}`} style=${`--rs-depth:${depth}`}>
@@ -1826,11 +1685,6 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
           ${effOutOfScope && html`<span class="rs-oos-badge">${t.outOfScope}</span>`}
           ${diff && diffBadge(catStatus)}
           ${category.file_path && category.file_path !== sheetFilePath && category.file_path !== category.name && html`<span class="rs-cat-filepath">${category.file_path}</span>`}
-          ${decisionsEnabled && undecidedHere.length > 0 && html`
-            <button class="rs-bulk-ok" onClick=${bulkOk} title=${t.bulkOkCategory}>
-              ${t.bulkOkCategory} (${undecidedHere.length})
-            </button>
-          `}
           ${reviewEnabled && html`
             <span class="rs-header-actions ${catReviewCount > 0 ? "rs-has-comment" : ""}">
               <button class="rs-head-tool ${catReviewCount > 0 ? "rs-head-tool-on" : ""}"
@@ -1857,8 +1711,6 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
                        depth=${depth}
                        columns=${columns} reviews=${reviews} reviewEnabled=${reviewEnabled}
                        showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
-                       filterUndecided=${filterUndecided} sessionChecks=${sessionChecks}
-                       decisionsEnabled=${decisionsEnabled} onDecide=${onDecide}
                        categoryOutOfScope=${effOutOfScope}
                        onOpenReview=${onOpenReview} diff=${diff} t=${t} />
       `}
@@ -1868,8 +1720,6 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
                             sheetFilePath=${sheetFilePath} parentPath=${categoryPath} depth=${depth + 1}
                             columns=${columns} reviews=${reviews} reviewEnabled=${reviewEnabled}
                             showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
-                            filterUndecided=${filterUndecided} sessionChecks=${sessionChecks}
-                            decisionsEnabled=${decisionsEnabled} onDecide=${onDecide}
                             inheritedOutOfScope=${effOutOfScope}
                             onOpenReview=${onOpenReview} diff=${diff}
                             t=${t} />
@@ -1982,7 +1832,11 @@ function collectNav(data: SheetData, showDefaults: boolean): NavEntry[] {
         if (!showDefaults && categoryDefaultSummary(c).allDefault) return;
         out.push({
           kind: "category", sheetIndex, sheetName: sheet.name, path, name: c.display ?? c.name, depth,
-          id: navAnchorId(sheetIndex, path), search: `${sheet.name} ${path}`.toLowerCase(), text: `${sheet.name} / ${path}`,
+          id: navAnchorId(sheetIndex, path),
+          // Both: the reader searches by what the tab says, and a saved review
+          // or a colleague's message names the identity.
+          search: `${sheet.display ?? ""} ${sheet.name} ${path}`.toLowerCase(),
+          text: `${sheet.display ?? sheet.name} / ${path}`,
           categoryPath: path,
         });
         if (c.categories) walk(c.categories, path, depth + 1);
@@ -2018,7 +1872,7 @@ function collectParams(data: SheetData, showDefaults: boolean): NavEntry[] {
             kind: "param", sheetIndex, sheetName: sheet.name, path, name: p.key, depth,
             id: paramAnchorId(sheetIndex, path, p.key),
             fallbackId: navAnchorId(sheetIndex, path),
-            search: `${text} ${sheet.name} ${path}`.toLowerCase(),
+            search: `${text} ${sheet.display ?? ""} ${sheet.name} ${path}`.toLowerCase(),
             text,
             categoryPath: path,
           });
@@ -2031,30 +1885,67 @@ function collectParams(data: SheetData, showDefaults: boolean): NavEntry[] {
   return out;
 }
 
-function NavOutline({ entries, sheets, currentId, onJump, onClose, diff, t }: {
+function NavOutline({ entries, sheets, groups, activeSheet, currentId, onJump, onClose, diff, t }: {
   // Already filtered to hide the descendants of a collapsed materialize
   // category — consistent with the body,
   // which renders nothing under a collapsed heading either.
   entries: NavEntry[];
   sheets: SheetData["sheets"];
+  groups?: SheetData["groups"];
+  activeSheet: number;
   currentId: string | null;
   onJump: (sheetIndex: number, id: string, fallbackId?: string, sheetName?: string, categoryPath?: string) => void;
   onClose: () => void;
   diff?: DiffStatusMap;
   t: Messages;
 }) {
+  const bodyRef = useRef<HTMLElement | null>(null);
+  // Follow the header: switching sheets there must bring that sheet's block
+  // into view here, or the outline keeps showing a part of the document the
+  // reader has left — on a grouped document the active sheet can be far below
+  // the fold. Scrolled WITHIN the panel rather than with scrollIntoView, which
+  // would also scroll the page behind it and move the row the reader was on.
+  useEffect(() => {
+    const body = bodyRef.current;
+    const block = body?.querySelector<HTMLElement>(`[data-sheet-nav="${activeSheet}"]`);
+    if (!body || !block) return;
+    const top = block.offsetTop - body.offsetTop;
+    const bottom = top + block.offsetHeight;
+    // Only when it is actually out of view: an active sheet already on screen
+    // must not jump the panel while the reader is reading it.
+    if (top < body.scrollTop || bottom > body.scrollTop + body.clientHeight) {
+      body.scrollTo({ top: Math.max(0, top - 8), behavior: "smooth" });
+    }
+  }, [activeSheet, sheets]);
+
   return html`
     <aside class="rs-outline" aria-label=${t.navOutline}>
       <div class="rs-outline-head">
         <span>${t.navOutline}</span>
         <button class="rs-outline-close" onClick=${onClose} aria-label="close">×</button>
       </div>
-      <nav class="rs-outline-body">
-        ${sheets.map((sheet, si) => {
+      <nav class="rs-outline-body rs-scroll-thin" ref=${bodyRef}>
+        ${(groups?.length ?? 0) > 0 && html`
+          ${(groups ?? []).map((g) => html`
+            <div class="rs-outline-group" key=${g.name}>
+              <div class="rs-outline-groupname">${g.display ?? g.name}</div>
+              ${sheets.map((sheet, si) => sheet.group !== g.name ? null : sheetOutline(sheet, si))}
+            </div>
+          `)}
+        `}
+        ${(groups?.length ?? 0) === 0 && sheets.map((sheet, si) => sheetOutline(sheet, si))}
+      </nav>
+    </aside>
+  `;
+
+  // One sheet's block, shared by the grouped and flat renderings above so the
+  // two can never drift into showing different things.
+  function sheetOutline(sheet: SheetData["sheets"][number], si: number): VNode {
           const ss = diff?.get(sheetKey(sheet.name));
           return html`
-          <div class="rs-outline-sheet" key=${si}>
-            <button class=${`rs-outline-sheetname ${ss === "removed" ? "rs-diff-strike" : ""}`} onClick=${() => onJump(si, `sheet-${si}`)}>${sheet.name} ${diff && diffBadge(ss)}</button>
+          <div class="rs-outline-sheet" key=${si} data-sheet-nav=${si}>
+            <button class=${`rs-outline-sheetname ${si === activeSheet ? "rs-outline-sheet-current" : ""} ${ss === "removed" ? "rs-diff-strike" : ""}`}
+                    onClick=${() => onJump(si, `sheet-${si}`)}>${sheet.display ?? sheet.name} ${diff && diffBadge(ss)}</button>
             ${entries.filter((e) => e.sheetIndex === si).map((e) => {
               const es = e.kind === "category" ? diff?.get(catKey(e.sheetName, e.path)) : undefined;
               return html`
@@ -2068,11 +1959,8 @@ function NavOutline({ entries, sheets, currentId, onJump, onClose, diff, t }: {
             `;
             })}
           </div>
-        `;
-        })}
-      </nav>
-    </aside>
-  `;
+        ` as VNode;
+  }
 }
 
 function NavPalette({ entries, onJump, onClose, showDefaults, onToggleDefaults, t }: {
@@ -2153,8 +2041,9 @@ function NavPalette({ entries, onJump, onClose, showDefaults, onToggleDefaults, 
 // Sheet tabs that fit are shown; the rest collapse into a "▾" overflow menu.
 // When the active sheet is in the overflow set, the button shows its name so the
 // current sheet is always visible.
-function SheetTabs({ sheets, activeSheet, hasMetadata, onSelect, t }: {
+function SheetTabs({ sheets, groups, activeSheet, hasMetadata, onSelect, t }: {
   sheets: SheetData["sheets"];
+  groups?: SheetData["groups"];
   activeSheet: number;
   hasMetadata: boolean;
   onSelect: (idx: number) => void;
@@ -2183,8 +2072,24 @@ function SheetTabs({ sheets, activeSheet, hasMetadata, onSelect, t }: {
     return () => ro.disconnect();
   }, [sheets, hasMetadata]);
 
-  const hasOverflow = cutoff < sheets.length;
-  const activeHidden = activeSheet >= 0 && activeSheet >= cutoff;
+  // Row 1 holds groups when the document has them and sheets when it does not,
+  // so the overflow measurement, the "▾" menu and the clipping all work on one
+  // list either way rather than growing a second copy for the grouped case.
+  const grouped = (groups?.length ?? 0) > 0;
+  const firstSheetOf = (group: string): number => sheets.findIndex((sh) => sh.group === group);
+  const top: { label: string; target: number; active: boolean }[] = grouped
+    ? (groups ?? []).map((g) => ({
+        label: g.display ?? g.name,
+        target: firstSheetOf(g.name),
+        active: activeSheet >= 0 && sheets[activeSheet]?.group === g.name,
+      }))
+    : sheets.map((sheet, idx) => ({
+        label: sheet.display ?? sheet.name,
+        target: idx,
+        active: idx === activeSheet,
+      }));
+  const hasOverflow = cutoff < top.length;
+  const activeHidden = top.some((x, i) => x.active && i >= cutoff);
 
   return html`
     <div class="rs-tabs-left" ref=${ref}>
@@ -2193,10 +2098,10 @@ function SheetTabs({ sheets, activeSheet, hasMetadata, onSelect, t }: {
                 class=${`rs-tab ${activeSheet === -1 ? "rs-tab-active" : ""}`}
                 onClick=${() => onSelect(-1)}>${t.overview}</button>
       `}
-      ${sheets.map((sheet, idx) => html`
-        <button key=${idx} data-sheet-idx=${idx} role="tab" aria-selected=${idx === activeSheet}
-                class=${`rs-tab ${idx === activeSheet ? "rs-tab-active" : ""} ${idx >= cutoff ? "rs-tab-clipped" : ""}`}
-                onClick=${() => onSelect(idx)}>${sheet.name}</button>
+      ${top.map((item, i) => html`
+        <button key=${i} data-sheet-idx=${i} role="tab" aria-selected=${item.active}
+                class=${`rs-tab ${item.active ? "rs-tab-active" : ""} ${i >= cutoff ? "rs-tab-clipped" : ""}`}
+                onClick=${() => onSelect(item.target)}>${item.label}</button>
       `)}
     </div>
     ${hasOverflow && html`
@@ -2204,21 +2109,111 @@ function SheetTabs({ sheets, activeSheet, hasMetadata, onSelect, t }: {
         <button class=${`rs-tab-overflow ${activeHidden ? "rs-tab-active" : ""}`}
                 aria-haspopup="true" aria-expanded=${menuOpen} title=${t.moreSheets}
                 onClick=${() => setMenuOpen((v) => !v)}>
-          ${activeHidden ? html`<span class="rs-of-active">${sheets[activeSheet].name}</span>` : ""}
+          ${activeHidden ? html`<span class="rs-of-active">${top.find((x) => x.active)?.label ?? ""}</span>` : ""}
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         ${menuOpen && html`
           <div class="rs-of-backdrop" onClick=${() => setMenuOpen(false)}></div>
-          <div class="rs-of-menu" role="menu">
-            ${sheets.map((sheet, idx) => idx < cutoff ? null : html`
-              <button key=${idx} role="menuitem"
-                      class=${`rs-of-item ${idx === activeSheet ? "rs-of-current" : ""}`}
-                      onClick=${() => { onSelect(idx); setMenuOpen(false); }}>${sheet.name}</button>
+          <div class="rs-of-menu rs-scroll-thin" role="menu">
+            ${top.map((item, i) => i < cutoff ? null : html`
+              <button key=${i} role="menuitem"
+                      class=${`rs-of-item ${item.active ? "rs-of-current" : ""}`}
+                      onClick=${() => { onSelect(item.target); setMenuOpen(false); }}>${item.label}</button>
             `)}
           </div>
         `}
       </div>
     `}
+  `;
+}
+
+// The grouped header's second row: the sheets of the group being read.
+//
+// A SEPARATE component rendered after the toolbar, rather than part of SheetTabs
+// with a CSS `order` to move it. The bar is a wrapping flex row, so a full-width
+// item placed before the toolbar in the DOM pushes the toolbar onto a third line
+// — which is exactly what it did. `order` would have put it back visually and
+// left keyboard focus travelling through the sheets before the toolbar that is
+// drawn above them.
+function SheetSubTabs({ sheets, groups, activeSheet, onSelect, t }: {
+  sheets: SheetData["sheets"];
+  groups?: SheetData["groups"];
+  activeSheet: number;
+  onSelect: (idx: number) => void;
+  t: Messages;
+}) {
+  if ((groups?.length ?? 0) === 0) return null;
+  // The overview belongs to no group, so there is no row to show: filling it
+  // with some group's sheets says "you are in that group" when the reader is
+  // not in any of them, and nothing in the row is even marked current.
+  //
+  // Which leaves the bar's height changing between the overview and a sheet.
+  // That is safe because the height is OBSERVED rather than assumed — every
+  // sticky offset is recomputed from the bar's real size the moment it changes
+  // (see the --rs-tabbar-h effect) — and the overview page has no sticky
+  // heading of its own to be moved in the meantime. Keeping the row while
+  // switching groups is a different matter: there the body IS full of sticky
+  // headings, which is why that row stays one line and scrolls.
+  if (activeSheet < 0) return null;
+  const shownGroup = sheets[activeSheet]?.group;
+  return html`
+    <div class="rs-subtabs rs-scroll-thin" role="tablist" aria-label=${t.sheetList}>
+      ${sheets.map((sheet, idx) => sheet.group !== shownGroup ? null : html`
+        <button key=${idx} data-sheet-idx=${idx} role="tab" aria-selected=${idx === activeSheet}
+                class=${`rs-subtab ${idx === activeSheet ? "rs-subtab-active" : ""}`}
+                onClick=${() => onSelect(idx)}>${sheet.display ?? sheet.name}</button>
+      `)}
+    </div>
+  `;
+}
+
+
+
+
+
+
+// What the markers in the key column mean, once per sheet.
+//
+// The markers themselves carry the useful half — WHICH file a literal lives in
+// — and cannot also carry what that implies without becoming a sentence on
+// every row. This says it once. Only for the markers this sheet actually uses:
+// a legend explaining a mark that appears nowhere below is one more thing to
+// read and discard, and of these seven sheets three have no literals at all.
+function OriginLegend({ sheet, showDefaults, t }: {
+  sheet: SheetData["sheets"][number];
+  showDefaults: boolean;
+  t: Messages;
+}) {
+  let embedded = false;
+  let deflt = false;
+  const walk = (cats: CategoryData[] | undefined): void => {
+    for (const c of cats ?? []) {
+      for (const p of c.params ?? []) {
+        const o = effectiveOrigin(p);
+        if (o === "embedded") embedded = true;
+        // Default rows are hidden unless the reader asked for them, so their
+        // marker is only explained when it is on screen.
+        else if (o === "default" && showDefaults) deflt = true;
+      }
+      walk(c.categories);
+    }
+  };
+  walk(sheet.categories);
+  if (!embedded && !deflt) return null;
+  return html`
+    <p class="rs-origin-legend">
+      <span class="rs-legend-title">${t.legendTitle}</span>
+      ${embedded && html`
+        <span class="rs-legend-item">
+          <span class="rs-origin-tag">${t.legendEmbeddedSample}</span>${t.legendEmbedded}
+        </span>
+      `}
+      ${deflt && html`
+        <span class="rs-legend-item">
+          <span class="rs-origin-tag">${t.originDefault}</span>${t.legendDefault}
+        </span>
+      `}
+    </p>
   `;
 }
 
@@ -2246,8 +2241,16 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (document.documentElement.dataset.theme as 'light' | 'dark') ?? 'light');
   const storageKey = getStorageKey(data);
   const [savedReviews, setReviews] = useState<ReviewItem[]>(() => loadReviews(storageKey));
+  // Saved findings name the category their row was in when they were written.
+  // A category is display structure — a product dictionary supplies most of
+  // them, and an upgrade can move a setting to another screen — so they are
+  // re-pointed at wherever the row is now, once, before anything compares
+  // targets. Without this, upgrading the dictionary under a review in progress
+  // detaches every finding on a moved row and says nothing.
+  const retargeted = useMemo(() => retargetReviews(savedReviews, data), [savedReviews, data]);
+  const movedReviews = retargeted.moved;
   const diffMode = !!reviewsOverride;
-  const reviews = reviewsOverride ?? savedReviews;
+  const reviews = reviewsOverride ?? retargeted.reviews;
   const effReviewEnabled = diffMode ? false : reviewEnabled;
   const hasMetadataInit = !!(data.metadata?.project || data.metadata?.version || data.metadata?.generated_at || data.metadata?.changelog?.length || data.metadata?.extra);
 
@@ -2275,8 +2278,6 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
   // "there are 121 more, all at the product default" is the statement, and
   // enumerating them on screen is not required to make it.
   const [showDefaults, setShowDefaults] = useState(false);
-  const [filterUndecided, setFilterUndecided] = useState(false);
-  const [sessionChecks, setSessionChecks] = useState<Record<string, SessionCheck>>(() => loadSessionChecks(storageKey));
   const [showComments, setShowComments] = useState(false);
   const [modalTarget, setModalTarget] = useState<{ target: ReviewItem["target"]; field: string; currentValue: string; sharedRow?: boolean } | null>(null);
   const [applyPanelOpen, setApplyPanelOpen] = useState(false);
@@ -2286,26 +2287,6 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
     if (diffMode) return; // never persist synthetic diff reviews
     saveReviews(storageKey, savedReviews);
   }, [savedReviews, storageKey, diffMode]);
-
-  useEffect(() => {
-    if (diffMode) return;
-    saveSessionChecks(storageKey, sessionChecks);
-  }, [sessionChecks, storageKey, diffMode]);
-
-  // Decisions are review actions: never offered while comparing versions, and
-  // never in a delivery (--no-review) copy.
-  const decisionsEnabled = effReviewEnabled;
-
-  const handleDecide = useCallback((sheet: string, paramKey: string, next: SessionCheck | null): void => {
-    setSessionChecks((prev) => {
-      const key = checkKey(sheet, paramKey);
-      if (next === null) {
-        const { [key]: _dropped, ...rest } = prev;
-        return rest;
-      }
-      return { ...prev, [key]: next };
-    });
-  }, []);
 
 
   // Print what is on screen. An earlier version force-expanded every collapsed
@@ -2325,7 +2306,7 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
   const serveApply = applyEnabled !== false && !!server && !diff;
   // Display-only "show comments" is not counted: the badge means "rows are
   // being hidden from you".
-  const activeFilters = [filterCommented, hideOutOfScope, filterUndecided].filter(Boolean).length;
+  const activeFilters = [filterCommented, hideOutOfScope].filter(Boolean).length;
   // Every unset row in the document, for the toggle's own label.
   const defaultRowCount = data.sheets.reduce((n, sheet) => {
     const walk = (cats: CategoryData[]): number =>
@@ -2339,22 +2320,29 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
     return n + walk(sheet.categories);
   }, 0);
 
-  const progress = useMemo(() => {
-    const sheet = activeSheet >= 0 ? data.sheets[activeSheet] : undefined;
-    return sheet ? checkProgress(sheetRowStates(sheet, sessionChecks, reviews, showDefaults)) : null;
-  }, [activeSheet, data, sessionChecks, reviews, showDefaults]);
-
   // Expose the sticky tab bar's height so document-flow sticky table headers can
-  // stick just below it.
+  // stick just below it. Every sticky offset in the document is derived from
+  // this one number — category headings, table headers, the outline panel's top
+  // and height, and every scroll-margin-top — so a stale value does not degrade
+  // gracefully: headings park at the wrong line and anchors land under the bar.
+  //
+  // Observed rather than recomputed on `resize`, because the bar's height is
+  // not a function of the window's. It changes whenever its own content does,
+  // and a window resize is only one of the ways that happens.
   useEffect(() => {
+    const el = document.querySelector(".rs-sheet-tabs");
     const update = () => {
-      const tabs = document.querySelector(".rs-sheet-tabs");
-      const h = tabs ? Math.round(tabs.getBoundingClientRect().height) : 0;
+      const h = el ? Math.round(el.getBoundingClientRect().height) : 0;
       document.documentElement.style.setProperty("--rs-tabbar-h", `${h}px`);
     };
     update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
+    if (!el || typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", update);
+      return () => window.removeEventListener("resize", update);
+    }
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   // --- Heading navigation (outline + command palette) ---
@@ -2412,6 +2400,9 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
       if (!el) return;
       el.scrollIntoView({ block: "start" });
       // Briefly flash the landed-on target so it's easy to spot.
+      // The header ROW, not the heading inside it: the flash marks where you
+      // landed, and a tint the width of the words is not that. What it paints
+      // WITH is what had to change — see rs-flash in styles.ts.
       let flashEl: Element = el;
       if (el.classList.contains("rs-category")) flashEl = el.querySelector(".rs-category-header") ?? el;
       else if (el.classList.contains("rs-sheet")) flashEl = el.querySelector(".rs-sheet-header") ?? el;
@@ -2605,7 +2596,7 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
 
   return html`
     <div class=${`rs-app ${outlineOpen ? "rs-outline-open" : ""}`}>
-      <nav class="rs-sheet-tabs" role="tablist">
+      <nav class=${`rs-sheet-tabs ${(data.groups?.length ?? 0) > 0 ? "rs-sheet-tabs-grouped" : ""}`} role="tablist">
         <div class="rs-tabs-nav">
           <button class=${`rs-toolbar-btn ${outlineOpen ? "rs-toolbar-btn-active" : ""}`} onClick=${() => setOutlineOpen(!outlineOpen)}
                   title=${t.navOutlineTip} aria-label=${t.navOutlineTip} aria-pressed=${outlineOpen}>
@@ -2615,21 +2606,16 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </button>
         </div>
-        <${SheetTabs} sheets=${data.sheets} activeSheet=${activeSheet}
+        <${SheetTabs} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet}
                       hasMetadata=${hasMetadata} onSelect=${setActiveSheet} t=${t} />
         <div class="rs-tabs-right">
           ${effReviewEnabled && html`
-            ${progress && html`<span class="rs-decision-progress">${t.decisionProgress(progress.decided, progress.total)}</span>`}
-
             <${ToolbarMenu} label=${activeFilters > 0 ? t.filterMenuCount(activeFilters) : t.filterMenu}
                             active=${activeFilters > 0}
                             icon=${html`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>` as VNode}>
               <${MenuCheck} label=${t.showCommentsToggle} checked=${showComments} onToggle=${() => setShowComments(!showComments)} />
               <div class="rs-menu-divider"></div>
               <${MenuCheck} label=${t.showCommentedOnly} checked=${filterCommented} onToggle=${() => setFilterCommented(!filterCommented)} />
-              ${decisionsEnabled
-                ? html`<${MenuCheck} label=${t.undecidedOnly} checked=${filterUndecided} onToggle=${() => setFilterUndecided(!filterUndecided)} />`
-                : null}
               <${MenuCheck} label=${t.hideOutOfScope} checked=${hideOutOfScope} onToggle=${() => setHideOutOfScope(!hideOutOfScope)} />
               ${defaultRowCount > 0 && html`
                 <${MenuCheck} label=${t.showDefaults(defaultRowCount)} checked=${showDefaults}
@@ -2683,6 +2669,8 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
             ${lang === "ja" ? "EN" : "JA"}
           </button>
         </div>
+        <${SheetSubTabs} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet}
+                         onSelect=${setActiveSheet} t=${t} />
       </nav>
 
       <main class="rs-main">
@@ -2733,16 +2721,30 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
 
             <div class="rs-overview-sheets">
               <h2>${t.sheetList}</h2>
-              <ul>
+              ${(data.groups?.length ?? 0) > 0
+                ? (data.groups ?? []).map((g) => html`
+                    <div class="rs-overview-group" key=${g.name}>
+                      <div class="rs-overview-groupname">${g.display ?? g.name}</div>
+                      <ul>
+                        ${data.sheets.map((sheet, idx) => sheet.group !== g.name ? null : html`
+                          <li key=${idx}>
+                            <button class="rs-overview-sheet-link" onClick=${() => setActiveSheet(idx)}>
+                              ${sheet.display ?? sheet.name}
+                            </button>
+                          </li>
+                        `)}
+                      </ul>
+                    </div>
+                  `)
+                : html`<ul>
                 ${data.sheets.map((sheet, idx) => html`
                   <li key=${idx}>
                     <button class="rs-overview-sheet-link" onClick=${() => setActiveSheet(idx)}>
-                      ${sheet.name}
+                      ${sheet.display ?? sheet.name}
                     </button>
-                    ${sheet.file_path && html`<span class="rs-overview-sheet-path">${sheet.file_path}</span>`}
                   </li>
                 `)}
-              </ul>
+              </ul>`}
             </div>
           </section>
         `}
@@ -2756,7 +2758,7 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
             <section key=${sheet.name} id=${`sheet-${idx}`} class="rs-sheet">
               <div class="rs-sheet-header">
                 <h2>
-                  <span class=${diff?.get(sheetKey(sheet.name)) === "removed" ? "rs-diff-strike" : ""}>${sheet.name}</span>
+                  <span class=${diff?.get(sheetKey(sheet.name)) === "removed" ? "rs-diff-strike" : ""}>${sheet.display ?? sheet.name}</span>
                   ${diff && diffBadge(diff.get(sheetKey(sheet.name)))}
                   ${effReviewEnabled && html`
                     <span class="rs-header-actions ${sheetReviewCount > 0 ? "rs-has-comment" : ""}">
@@ -2782,13 +2784,13 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
                 </p>
               `}
 
+              <${OriginLegend} sheet=${sheet} showDefaults=${showDefaults} t=${t} />
+
               ${sheet.categories.map((cat) => html`
                 <${CategorySection} key=${cat.name} category=${cat} sheetName=${sheet.name} sheetInstances=${sheet.instances} sheetIndex=${idx}
                                     sheetFilePath=${sheet.file_path} parentPath="" depth=${1}
                                     columns=${data.columns} reviews=${reviews} reviewEnabled=${effReviewEnabled}
                                     showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
-                                    filterUndecided=${filterUndecided} sessionChecks=${sessionChecks}
-                                    decisionsEnabled=${decisionsEnabled} onDecide=${handleDecide}
                                     onOpenReview=${openReview} diff=${diff}
                                     t=${t} />
               `)}
@@ -2798,7 +2800,7 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
       </main>
 
       ${outlineOpen && html`
-        <${NavOutline} entries=${categoryEntries} sheets=${data.sheets} currentId=${currentNavId}
+        <${NavOutline} entries=${categoryEntries} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet} currentId=${currentNavId}
                        onJump=${jumpToNav} onClose=${() => setOutlineOpen(false)} diff=${diff} t=${t} />
       `}
 
@@ -2839,6 +2841,7 @@ type SheetVersion = {
   author?: string;
   note?: string;
   columns?: SheetData["columns"];
+  groups?: SheetData["groups"];
   sheets: SheetData["sheets"];
 };
 type Payload = { metadata?: SheetData["metadata"]; versions: SheetVersion[]; capabilities?: Capabilities };
@@ -2951,9 +2954,10 @@ function Root({ payload, reviewEnabled, initialLang, server }: { payload: Payloa
   const shown = compare ? toV : active;
   const data = useMemo<SheetData>(() => ({
     metadata: { ...payload.metadata, version: shown.version, generated_at: shown.date },
-    columns: shown.columns,
+    columns: localizeColumns(shown.columns, lang),
+    groups: localizeGroups(shown.groups, lang),
     sheets: diffModel ? diffModel.sheets : shownSheets,
-  }), [shown, payload.metadata, diffModel, shownSheets]);
+  }), [shown, payload.metadata, diffModel, shownSheets, lang]);
 
   return html`
     <div class="rs-root">

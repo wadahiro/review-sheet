@@ -237,6 +237,7 @@ export const ansibleRecipe: SheetRecipe = {
     let baseMap: ExtractedMap = defaultsMap;
     let filePath: string | undefined;
     let sourceFile: string | undefined;
+    const componentFiles = new Map<string, { filePath?: string; sourceFile?: string }>();
 
     const specs = templateSpecs(sheetSpec as Record<string, JsonValue>, name);
     // `templates:` means the sheet covers several artifacts, so every row has
@@ -268,6 +269,20 @@ export const ansibleRecipe: SheetRecipe = {
           sourceFile = only.file;
         } else {
           filePath = only.file;
+        }
+      } else {
+        // Several templates: the sheet-wide pair cannot answer for all of them,
+        // so each COMPONENT carries its own. Without this the per-template
+        // `deployed_path` was accepted by the schema and then dropped — a sheet
+        // covering three deployed files said nothing about where any of them
+        // went, which is the one question a reviewer of a rendered artifact
+        // asks first.
+        for (const { spec, file } of read) {
+          const component = spec.component!;
+          componentFiles.set(component, {
+            ...(spec.deployedPath !== undefined ? { filePath: spec.deployedPath } : {}),
+            sourceFile: file,
+          });
         }
       }
 
@@ -408,6 +423,7 @@ export const ansibleRecipe: SheetRecipe = {
       ...(keyMap.length > 0 ? { keyMap } : {}),
       ...(componentOf.size > 0 ? { componentOf } : {}),
       ...(componentLabels.size > 0 ? { componentLabels } : {}),
+      ...(componentFiles.size > 0 ? { componentFiles } : {}),
     };
   },
 };

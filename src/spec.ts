@@ -121,6 +121,10 @@ const dictionariesSchema = {
       // Only the `steps` half of a recipe's `key:` — there is no `from:` to
       // choose here, the input is always the row's own key.
       key_steps: keyTransformSchema.properties.steps,
+      // Which of the sheet's components this dictionary describes — see
+      // SheetDictionaryBinding.component in assemble.ts. Naming a component the
+      // sheet has no rows for is an error, not a no-op.
+      component: { type: "string" },
       materialize: {
         // `true` (expand everything) or a narrowing object — see
         // DictionaryMaterialize in assemble.ts.
