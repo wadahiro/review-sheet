@@ -1471,4 +1471,40 @@ describe("component order follows the declaration", () => {
     const input = assembleSheets(inputs(), opts());
     expect(input.sheets[0].categories.map((c) => c.name)).toEqual(["second", "first"]);
   });
+
+  // With components the declared tabs are not the sheet's top level — they sit
+  // inside each component — so `categories:` has to order them there, or it
+  // would silently stop ordering anything the moment a sheet grew components.
+  it("orders the categories INSIDE each component by the sheet's declared list", () => {
+    files["p.yml"] = [
+      "sheets:",
+      "  s:",
+      "    categories: [General, Settings]",
+      "    params:",
+      "      a: { category: Settings, description: d }",
+      "      b: { category: General, description: d }",
+      "",
+    ].join("\n");
+    const withBoth: SheetInputs[] = [
+      {
+        name: "s",
+        instances: [],
+        layers: [{ kind: "base", entries: map([]) }],
+        embedded: [
+          // "Settings" is written first in BOTH components, so first-appearance
+          // order alone would put the declared-second tab on top.
+          { key: "a", value: "1", source: { file: "f", line: 1 }, component: "one" },
+          { key: "b", value: "2", source: { file: "f", line: 2 }, component: "one" },
+          { key: "a", value: "3", source: { file: "f", line: 3 }, component: "two" },
+          { key: "b", value: "4", source: { file: "f", line: 4 }, component: "two" },
+        ],
+        componentOrder: ["one", "two"],
+      },
+    ];
+    const sheet = assembleSheets(withBoth, opts()).sheets[0];
+    expect(sheet.categories.map((c) => c.name)).toEqual(["one", "two"]);
+    for (const component of sheet.categories) {
+      expect(component.categories!.map((c) => c.name)).toEqual(["General", "Settings"]);
+    }
+  });
 });
