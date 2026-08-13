@@ -410,7 +410,13 @@ code {
 
 .rs-main {
   max-width: 100%;
-  padding: 2rem 2.5rem;
+  /* Aligned with the tab bar's own 1.5rem rather than set by eye: the content's
+     left edge and the tab above it are the same line, which is what keeps a
+     narrow margin from reading as a mistake. Zero was tried and is worse to
+     read than the width it buys is worth — a table running into the window edge
+     gives the eye nothing to return to on the next line, and the cells' own
+     0.75rem is padding inside a box, not a margin around the page. */
+  padding: 2rem 1.5rem;
 }
 
 .rs-main h1 {
@@ -435,6 +441,67 @@ code {
 
 .rs-meta-extra {
   margin-bottom: 1.25rem;
+}
+
+/* ============================================================
+   Scrollbars
+   ============================================================ */
+
+/* Windows draws a permanent, full-width scrollbar inside any scrolling box;
+   macOS overlays a thin one that fades out. So a container that looks clean on
+   a Mac — the tab strip's second row, a toolbar menu — comes out on Windows
+   with a grey trough across it, and in the second row's case the trough is part
+   of the sticky bar's measured height.
+   Both engines are styleable, and neither is styled by default: Firefox takes
+   scrollbar-width/-color, Chromium and WebKit take ::-webkit-scrollbar. Same
+   thin, transparent-track treatment through both so the two platforms agree. */
+.rs-scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rs-border) transparent;
+}
+
+.rs-scroll-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.rs-scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rs-scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--rs-border);
+  border-radius: 4px;
+}
+
+.rs-scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--rs-text-muted);
+}
+
+/* Chromium draws a corner square where two bars meet; transparent keeps it from
+   reading as a broken cell. */
+.rs-scroll-thin::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* The horizontally-scrolling tables get the same treatment without the class:
+   they are created by a measurement (rs-overflowing / rs-split-body), not by
+   markup this file controls. */
+.rs-table-wrapper.rs-overflowing::-webkit-scrollbar,
+.rs-table-wrapper.rs-split-body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.rs-table-wrapper.rs-overflowing::-webkit-scrollbar-track,
+.rs-table-wrapper.rs-split-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rs-table-wrapper.rs-overflowing::-webkit-scrollbar-thumb,
+.rs-table-wrapper.rs-split-body::-webkit-scrollbar-thumb {
+  background: var(--rs-border);
+  border-radius: 4px;
 }
 
 /* ============================================================
@@ -463,6 +530,90 @@ code {
   padding-right: 0.6rem;
   margin-right: 0.5rem;
   border-right: 1px solid var(--rs-border);
+}
+
+/* Grouped header: groups on the first line, the active group's sheets on a
+   second. Done with flex-wrap and a full-width second row rather than a wrapper
+   element, so the nav controls and the right-hand toolbar keep the exact
+   positions they have in a flat document — the concern that decided this shape.
+   The wrap is scoped to grouped documents: turning it on unconditionally would
+   let the toolbar wrap at narrow widths in a flat one, which it never did. */
+.rs-sheet-tabs-grouped {
+  flex-wrap: wrap;
+  padding-bottom: 0;
+}
+
+/* Second row. Its height must not change with the selected group — every sticky
+   offset in the document is measured off this bar (--rs-tabbar-h), so a row that
+   grows, shrinks or disappears drags every heading in the body with it. Hence
+   one line always (nowrap), overflow scrolled rather than wrapped, and rendered
+   even on the overview tab. */
+.rs-subtabs {
+  /* Full width, hence its own line. It is LAST in the DOM as well as visually
+     (see SheetSubTabs) — placed before the toolbar it wrapped the toolbar onto
+     a third line, and a CSS order property would have fixed the picture while
+     leaving keyboard focus travelling through the sheets before the toolbar
+     drawn above them. */
+  /* Full-bleed, and the arithmetic has to be exact: with box-sizing: border-box
+     a flex-basis of 100% is the BORDER box, so the negative margins that pull
+     the row out over the bar's 1.5rem padding also shorten it — the background
+     and the top rule stopped 3rem before the right edge. The basis has to carry
+     that 3rem for the outer box to come back to exactly the bar's width. */
+  flex-basis: calc(100% + 3rem);
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  flex-wrap: nowrap;
+  /* auto, never scroll: a group whose sheets fit — most of them — gets no
+     trough at all. On Windows that is the difference between a clean strip and
+     a grey band across the header, since its scrollbar takes real space rather
+     than overlaying. */
+  overflow-x: auto;
+  margin: 0 -1.5rem;
+  padding: 0.3rem 1.5rem;
+  background: var(--rs-bg);
+  border-top: 1px solid var(--rs-border);
+}
+
+.rs-subtab {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rs-text-secondary);
+  cursor: pointer;
+  font-family: var(--rs-font);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.rs-subtab:hover {
+  color: var(--rs-primary);
+}
+
+.rs-subtab-active {
+  background: var(--rs-surface);
+  border-color: var(--rs-border);
+  color: var(--rs-primary);
+  font-weight: 600;
+}
+
+/* Outline: one heading per sheet group, matching the header's first row so the
+   two navigations name the same things in the same order. */
+.rs-outline-group {
+  margin-bottom: 0.5rem;
+}
+
+.rs-outline-groupname {
+  padding: 0.6rem 0.75rem 0.25rem;
+  /* The group contains the sheets under it, so it is the largest thing in this
+     panel — it was the smallest, an 0.7rem uppercase eyebrow, which put the
+     ranking exactly upside down. No uppercase either: it does nothing to
+     Japanese and shouts in English, which is not what a heading here is for. */
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--rs-text);
 }
 
 .rs-tabs-left {
@@ -529,12 +680,6 @@ code {
     display: none;
   }
 }
-@media (max-width: 680px) {
-  .rs-decision-progress {
-    display: none;
-  }
-}
-
 /* Toolbar menus reuse the sheet-tab overflow menu's surface. */
 .rs-toolbar-menu-wrap {
   position: relative;
@@ -733,6 +878,11 @@ code {
 }
 
 .rs-sheet-header {
+  /* A containing block for the jump flash's overlay (see rs-flash-overlay).
+     Declared here rather than switched on during the animation: a position
+     that appears for 1.6s and disappears is a layout change in the middle of
+     the very moment the reader is looking. */
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.625rem;
@@ -763,6 +913,9 @@ code {
 }
 
 .rs-category {
+  /* Same as .rs-sheet-header: a containing block for the flash overlay, for the
+     case the flash lands on the category box itself. */
+  position: relative;
   margin-bottom: 0.375rem;
 }
 
@@ -848,8 +1001,20 @@ code {
   font-family: var(--rs-mono);
 }
 
-.rs-depth-2 { margin-left: 1.25rem; }
-.rs-depth-3 { margin-left: 2.5rem; }
+/* Nesting is NOT indented. A parameter sheet is wide by nature — key, value,
+   one column per environment, description, default, remarks — so every
+   millimetre spent on indentation is taken from the content it is meant to
+   organise, and at depth 3 that was 2.5rem gone before the table starts.
+   Nothing is lost by dropping it: depth is already carried by the heading
+   itself (h3/h4/h5 differ in size, weight, background and the width of their
+   left rule) and by the stacked sticky headers, which show the whole path
+   above the rows at all times. The classes stay — the viewer sets them
+   alongside the --rs-depth custom property the sticky offsets are computed
+   from. */
+.rs-depth-2,
+.rs-depth-3 {
+  margin-left: 0;
+}
 
 /* ============================================================
    Parameter table
@@ -868,6 +1033,8 @@ code {
    to the page and release once the table has fully scrolled past. */
 .rs-table-wrapper.rs-overflowing {
   overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--rs-border) transparent;
   /* Don't chain the horizontal scroll to the page once the table hits its edge,
      so a trackpad swipe past the end never triggers the browser back gesture. */
   overscroll-behavior-x: contain;
@@ -1001,8 +1168,44 @@ code {
   align-items: flex-start;
   gap: 0;
 }
+/* Once per sheet, under its header: quiet enough to be skipped by a reader who
+   already knows, close enough to the first marked row to be found by one who
+   does not. */
+.rs-origin-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.75rem;
+  color: var(--rs-text-secondary);
+}
+
+.rs-legend-title {
+  font-weight: 600;
+  color: var(--rs-text-muted);
+}
+
+.rs-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .rs-key-subline {
   margin-top: 2px;
+}
+
+/* What this sub-line IS. The key and the backing variable are both bare
+   identifiers in the same type at the same size, so without a heading the two
+   lines under a row's name are indistinguishable — and they answer different
+   questions: one is what the row is called, the other is where its value comes
+   from. Quiet enough not to compete with the identifier it introduces. */
+.rs-subline-head {
+  margin-right: 0.35rem;
+  font-family: var(--rs-font);
+  font-size: 0.68rem;
+  color: var(--rs-text-muted);
 }
 .rs-key-subline code {
   font-size: 0.8em;
@@ -1230,11 +1433,6 @@ code {
   max-width: var(--rs-w-value);
 }
 
-.rs-param-table-fixed.rs-param-table-wide .rs-col-check {
-  width: var(--rs-w-check);
-  min-width: var(--rs-w-check);
-  max-width: var(--rs-w-check);
-}
 
 /* Opaque backgrounds so frozen (sticky) cells cover scrolled content. */
 .rs-param-table-wide .rs-col-key,
@@ -1393,6 +1591,8 @@ code {
 
 .rs-table-wrapper.rs-split-body {
   overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--rs-border) transparent;
   /* Keep the horizontal scroll contained (no back-gesture chaining at the edge). */
   overscroll-behavior-x: contain;
   border-top: none;
@@ -2120,10 +2320,24 @@ code {
 }
 
 .rs-overview-sheets h2 {
-  font-size: 1.1rem;
+  /* Kept above the sheet names it introduces (1.1rem). */
+  font-size: 1.25rem;
   font-weight: 600;
   margin-bottom: 0.75rem;
   color: var(--rs-text);
+}
+
+/* The group heading in the overview's sheet list. Its own rule rather than the
+   outline's: the same rank, but this list has room and the panel does not. */
+.rs-overview-groupname {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--rs-text);
+  margin: 1rem 0 0.25rem;
+}
+
+.rs-overview-group:first-child .rs-overview-groupname {
+  margin-top: 0;
 }
 
 .rs-overview-sheets ul {
@@ -2133,8 +2347,9 @@ code {
 
 .rs-overview-sheets li {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 0.75rem;
+  flex-wrap: wrap;
   padding: 0.5rem 0;
   border-bottom: 1px solid var(--rs-border-light);
 }
@@ -2143,8 +2358,10 @@ code {
   background: none;
   border: none;
   color: var(--rs-primary);
-  font-size: 0.95rem;
-  font-weight: 500;
+  /* Was 0.95rem — the same size as a category heading in the body, for the
+     thing that CONTAINS every category. Under its group heading (1.15rem). */
+  font-size: 1rem;
+  font-weight: 600;
   font-family: var(--rs-font);
   cursor: pointer;
   padding: 0;
@@ -2155,11 +2372,11 @@ code {
   text-decoration: underline;
 }
 
-.rs-overview-sheet-path {
-  font-size: 0.775rem;
-  color: var(--rs-text-muted);
-  font-family: var(--rs-mono);
-}
+
+
+
+
+
 
 /* ============================================================
    Print
@@ -2184,9 +2401,45 @@ code {
   100% { box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0); }
 }
 
-.rs-jump-flash,
-.rs-jump-flash td,
-.rs-jump-flash th {
+/* An OVERLAY, not a background.
+   Two attempts failed the same way and both are worth writing down. Filling the
+   flashed element's own background loses to any child that paints its own — a
+   category heading at depth 1 or 2 is a tinted panel, so the flash landed
+   behind it and the jump looked like nothing happened. Animating the children
+   as well put two translucent fills on top of one another (doubled), and
+   flashing the heading INSTEAD of the row shrank the mark to the width of the
+   words. A pseudo-element paints above every child, so it is one fill, at the
+   element's full width, whatever the children are made of. */
+/* NOT set here. A position: relative on the flashed element outranks
+   .rs-category-header's own position: sticky (a class plus an element beats a
+   class), so the heading came unstuck for the length of the animation and the
+   highlight appeared somewhere other than where the reader had landed. The
+   elements that need a containing block declare it in their own rules below;
+   the sticky one already is one. */
+.rs-jump-flash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 5;
+  animation: rs-flash-overlay 1.6s ease-out;
+}
+
+@keyframes rs-flash-overlay {
+  0%, 45% { background: rgba(245, 158, 11, 0.3); }
+  100% { background: rgba(245, 158, 11, 0); }
+}
+
+/* A table ROW cannot carry a pseudo-element reliably (display: table-row), so
+   its cells keep the inset-shadow fill — they are the elements with the
+   backgrounds there anyway. */
+tr.rs-jump-flash::after {
+  content: none;
+}
+
+tr.rs-jump-flash td,
+tr.rs-jump-flash th {
   animation: rs-flash 1.6s ease-out;
 }
 
@@ -2250,6 +2503,14 @@ code {
   margin-bottom: 0.5rem;
 }
 
+/* The sheet the header is on. Without it the panel scrolls somewhere and the
+   reader has to work out why that place. */
+.rs-outline-sheet-current {
+  color: var(--rs-primary);
+  background: var(--rs-subtle);
+  box-shadow: inset 2px 0 0 var(--rs-primary);
+}
+
 .rs-outline-sheetname {
   display: block;
   width: 100%;
@@ -2260,6 +2521,11 @@ code {
   color: var(--rs-text);
   padding: 0.3rem 0.75rem;
   cursor: pointer;
+  /* A sheet is the outline's largest unit and inherited the panel's 0.8rem, so
+     it came out the same size as a category three levels below it — told apart
+     by weight alone. Weight is what separates it from the categories under it
+     here; the group above it (0.9rem) is the one that carries size. */
+  font-size: 0.8rem;
 }
 
 /* The caret and the label are siblings, not nested: the caret toggles, the
@@ -2613,71 +2879,12 @@ code {
    look so it composes with an excluded row without adding a second badge. */
 /* --- Review decisions (判定) -------------------------------------------- */
 
-/* The per-row decision control lives in the key cell, next to the origin tag:
-   one click on the chip is the whole "this value is fine" loop, which is what a
-   first pass over a few hundred rows actually consists of. */
-/* The whole cell is the hit area: this is a work-through-the-list action, so it
-   should never need aiming. The label is absolutely positioned to fill the cell
-   because a row with a long description is tall, and an inline label would only
-   be clickable for the height of the checkbox itself. */
-td.rs-col-check {
-  position: relative;
-  padding: 0;
-}
-.rs-check {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-.rs-check input {
-  width: 0.95rem;
-  height: 0.95rem;
-  margin: 0;
-  cursor: pointer;
-  accent-color: var(--rs-primary);
-}
-
-/* The check column: its own labelled column, so the control is unmistakable and
-   never sits next to a static metadata tag that looks the same. */
-.rs-param-table-wide .rs-col-check {
-  width: var(--rs-w-check);
-}
-.rs-col-check {
-  text-align: center;
-  white-space: nowrap;
-}
-.rs-decision-derived {
-  font-size: 0.68rem;
-  color: var(--rs-text-muted);
-}
-.rs-decision-progress {
-  font-size: 0.75rem;
-  color: var(--rs-text-muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
 /* The sheet header states where the configuration LANDS; the file it is
    generated from is secondary — both readers of a sheet get their path. */
 .rs-source-path {
   margin-left: 0.6rem;
   font-size: 0.8rem;
   color: var(--rs-text-muted);
-}
-.rs-bulk-ok {
-  font-size: 0.72rem;
-  padding: 0.1rem 0.45rem;
-  border: 1px solid var(--rs-border);
-  border-radius: 4px;
-  background: var(--rs-subtle);
-  color: var(--rs-text-muted);
-  cursor: pointer;
-}
-.rs-bulk-ok:hover {
-  color: var(--rs-success);
-  border-color: var(--rs-success);
 }
 
 .rs-origin-tag {

@@ -193,37 +193,6 @@ describe("viewer: where a finding lands", () => {
   });
 });
 
-describe("viewer: check column", () => {
-  it("offers a checkbox on every row, out-of-scope included", async () => {
-    const host = mount();
-    await showUnsetRows(host); // `pool` is unset, so it is hidden until asked for
-    // Being out of review scope is a fact on another axis: "this should not be
-    // out of scope" is itself a finding, so the row is still checkable.
-    for (const key of ["workers", "port", "pool", "secret"]) {
-      const row = [...host.querySelectorAll("tbody tr")].find(
-        (r) => r.querySelector(".rs-col-key code")?.textContent === key
-      );
-      expect(row?.querySelector("td.rs-col-check input[type=checkbox]")).toBeTruthy();
-    }
-  });
-
-  it("counts progress over every VISIBLE row and updates as rows are ticked", async () => {
-    const host = mount();
-    const progress = () => host.querySelector(".rs-decision-progress")?.textContent ?? "";
-    // The denominator is what the sheet is showing, not what it holds: a row
-    // hidden behind the unset toggle cannot be ticked, so counting it would
-    // give a total the reader can never reach. SHEET has 8 rows, 2 of them
-    // unset.
-    expect(progress()).toContain("0 / 6");
-
-    const box = host.querySelector("td.rs-col-check input") as HTMLInputElement;
-    box.click();
-    // Preact re-renders on a microtask, so let it settle before asserting.
-    await Promise.resolve();
-    expect(progress()).toContain("1 / 6");
-  });
-});
-
 // Version history + Compare. Nothing in the repo exercised this before: there
 // is no example with two snapshots, so the version bar and the diff overlay had
 // never been rendered outside a browser — including after the diff summary and
@@ -646,5 +615,270 @@ describe("viewer: anchor ids for non-ASCII names", () => {
       expect(host.querySelector(`#${el.id}`)).toBe(el);
       expect(document.getElementById(el.id)).toBe(el);
     }
+  });
+});
+
+// A sheet's own name has the same identity/display split a category's does, and
+// needed it for the same reason: "OS baseline" and "OS 設定" are one sheet, and
+// the tab is the first thing a reviewer reads.
+describe("viewer: sheet label", () => {
+  const LABELLED_SHEET = {
+    metadata: { title: "t" },
+    sheets: [
+      {
+        name: "os baseline",
+        label: { ja: "OS 設定", en: "OS baseline" },
+        categories: [{ name: "Host", params: [{ key: "hostname", value: "h", description: "d" }] }],
+      },
+      {
+        name: "keycloak configuration",
+        label: { ja: "Keycloak 設定", en: "Keycloak configuration" },
+        categories: [{ name: "Database", params: [{ key: "db-url", value: "u", description: "d" }] }],
+      },
+    ],
+  };
+  const PAYLOAD_S = { metadata: LABELLED_SHEET.metadata, versions: [{ version: "current", sheets: LABELLED_SHEET.sheets }] };
+
+  function mountSheets(lang: "ja" | "en"): HTMLElement {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: PAYLOAD_S, reviewEnabled: true, initialLang: lang, server: false }), host);
+    return host;
+  }
+  // `[data-sheet-idx]` excludes the overview tab, which is a .rs-tab too but is
+  // not one of the document's sheets.
+  const tabs = (host: HTMLElement): string[] =>
+    [...host.querySelectorAll(".rs-tab[data-sheet-idx]")].map((b) => (b.textContent ?? "").trim());
+
+  it("names the tabs in the reader's language", () => {
+    expect(tabs(mountSheets("ja"))).toEqual(["OS 設定", "Keycloak 設定"]);
+    document.body.innerHTML = "";
+    expect(tabs(mountSheets("en"))).toEqual(["OS baseline", "Keycloak configuration"]);
+  });
+
+  it("switches with the language toggle, live", async () => {
+    const host = mountSheets("ja");
+    const toggle = [...host.querySelectorAll("button")].find((b) => /^(EN|JA)$/.test((b.textContent ?? "").trim()));
+    if (!toggle) throw new Error("language toggle not found");
+    (toggle as HTMLElement).click();
+    await Promise.resolve();
+    expect(tabs(host)).toEqual(["OS baseline", "Keycloak configuration"]);
+  });
+
+  it("heads the sheet with the label too, not just the tab", () => {
+    const host = mountSheets("ja");
+    expect(host.querySelector(".rs-sheet-header h2")?.textContent).toContain("OS 設定");
+  });
+
+  it("falls back to the name when the sheet has no label", () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const bare = { metadata: { title: "t" }, versions: [{ version: "current", sheets: [{ name: "aws infrastructure", categories: LABELLED_SHEET.sheets[0].categories }] }] };
+    render(h(Root, { payload: bare, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    expect(tabs(host)).toEqual(["aws infrastructure"]);
+  });
+
+  it("leaves the identity in the review target, so a rewording does not orphan a finding", () => {
+    // The stored review names the sheet by `name`. If the viewer had started
+    // keying targets by what it displays, translating a tab would detach every
+    // finding filed against that sheet.
+    const host = mountSheets("ja");
+    const stored = Object.keys(localStorage).map((k) => localStorage.getItem(k) ?? "").join("");
+    expect(stored).not.toContain("OS 設定");
+    const html = host.innerHTML;
+    expect(html).toContain("OS 設定");
+    expect(html).toContain("sheet-0");
+  });
+});
+
+// A flat tab strip stops working somewhere around a dozen sheets, and an Excel
+// migration brings a workbook's worth at once. Groups are the header's first
+// row; the sheets of the active group are the second.
+describe("viewer: sheet groups", () => {
+  const cat = (n: string) => ({ name: n, params: [{ key: "k", value: "v", description: "d" }] });
+  const GROUPED = {
+    metadata: { title: "t" },
+    groups: [
+      { name: "infra", label: { ja: "AWS 基盤", en: "AWS" } },
+      { name: "idp", label: { ja: "Keycloak", en: "Keycloak" } },
+    ],
+    sheets: [
+      { name: "aws infrastructure", label: { ja: "AWS インフラ", en: "AWS infrastructure" }, group: "infra", categories: [cat("network")] },
+      { name: "keycloak configuration", label: { ja: "Keycloak 設定", en: "Keycloak configuration" }, group: "idp", categories: [cat("Database")] },
+      { name: "keycloak realm", label: { ja: "Keycloak レルム設定", en: "Keycloak realm" }, group: "idp", categories: [cat("General")] },
+    ],
+  };
+  const payloadOf = (doc: typeof GROUPED) => ({
+    metadata: doc.metadata,
+    versions: [{ version: "current", sheets: doc.sheets, groups: doc.groups }],
+  });
+
+  function mountGrouped(payload: Parameters<typeof Root>[0]["payload"] = payloadOf(GROUPED)): HTMLElement {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    return host;
+  }
+  const groupTabs = (host: HTMLElement): string[] =>
+    [...host.querySelectorAll(".rs-tabs-left .rs-tab[data-sheet-idx]")].map((b) => (b.textContent ?? "").trim());
+  const sheetTabs = (host: HTMLElement): string[] =>
+    [...host.querySelectorAll(".rs-subtab")].map((b) => (b.textContent ?? "").trim());
+
+  it("puts groups on the first row and the active group's sheets on the second", () => {
+    const host = mountGrouped();
+    expect(groupTabs(host)).toEqual(["AWS 基盤", "Keycloak"]);
+    // Sheet 0 is active (hash #1), so its group's sheets are the second row.
+    expect(sheetTabs(host)).toEqual(["AWS インフラ"]);
+  });
+
+  it("switches the second row when a group is chosen, landing on its first sheet", async () => {
+    const host = mountGrouped();
+    const idp = [...host.querySelectorAll(".rs-tabs-left .rs-tab")].find((b) => b.textContent?.trim() === "Keycloak");
+    (idp as HTMLElement).click();
+    await Promise.resolve();
+    expect(sheetTabs(host)).toEqual(["Keycloak 設定", "Keycloak レルム設定"]);
+    expect(host.querySelector(".rs-sheet-header h2")?.textContent).toContain("Keycloak 設定");
+  });
+
+  it("shows no second row on the overview, which belongs to no group", () => {
+    // Filling it with the first group's sheets said "you are in 基盤" while the
+    // reader was on the overview, with nothing in the row marked current.
+    location.hash = "";
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: payloadOf(GROUPED), reviewEnabled: true, initialLang: "ja", server: false }), host);
+    expect(host.querySelector(".rs-subtabs")).toBeNull();
+  });
+
+  it("keeps every sheet of the group on the row while reading, so it does not move mid-scroll", async () => {
+    // The bar's height IS allowed to change (it is observed, and every sticky
+    // offset follows it) — but not while reading a sheet, where the body is
+    // full of sticky headings. Same group in, same row out.
+    const host = mountGrouped();
+    const before = sheetTabs(host);
+    const second = [...host.querySelectorAll(".rs-tabs-left .rs-tab")].find((b) => b.textContent?.trim() === "Keycloak");
+    (second as HTMLElement).click();
+    await Promise.resolve();
+    expect(before).toEqual(["AWS インフラ"]);
+    expect(sheetTabs(host)).toEqual(["Keycloak 設定", "Keycloak レルム設定"]);
+  });
+
+  it("groups the outline as well, since it is the same navigation", async () => {
+    const host = mountGrouped();
+    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
+    (btn as HTMLElement).click();
+    await Promise.resolve();
+    const names = [...host.querySelectorAll(".rs-outline-groupname")].map((e) => e.textContent?.trim());
+    expect(names).toEqual(["AWS 基盤", "Keycloak"]);
+    // Each sheet sits under its own group, not in a flat list beside them.
+    const idpBlock = [...host.querySelectorAll(".rs-outline-group")][1]!;
+    expect([...idpBlock.querySelectorAll(".rs-outline-sheetname")].map((e) => e.textContent?.trim().split(" ")[0])).toEqual([
+      "Keycloak",
+      "Keycloak",
+    ]);
+  });
+
+  it("puts the second row after the toolbar, or the toolbar wraps onto a third line", () => {
+    // The bar is a wrapping flex row and this row is full-width, so anything
+    // after it in the DOM is pushed to a line of its own. Placed before the
+    // toolbar it wrapped the toolbar — the exact breakage this ordering fixes.
+    // Asserted on the DOM rather than on CSS `order` deliberately: `order`
+    // would restore the picture and leave keyboard focus travelling through the
+    // sheets before the toolbar drawn above them.
+    const host = mountGrouped();
+    const kids = [...host.querySelector(".rs-sheet-tabs")!.children].map((c) => c.className.split(" ")[0]);
+    expect(kids.indexOf("rs-subtabs")).toBe(kids.length - 1);
+    expect(kids.indexOf("rs-tabs-right")).toBeLessThan(kids.indexOf("rs-subtabs"));
+  });
+
+  it("stays a flat single row when the document declares no groups", () => {
+    const flat = { metadata: { title: "t" }, versions: [{ version: "current", sheets: GROUPED.sheets.map(({ group, ...s }) => s) }] };
+    const host = mountGrouped(flat);
+    expect(host.querySelector(".rs-subtabs")).toBeNull();
+    expect(groupTabs(host)).toEqual(["AWS インフラ", "Keycloak 設定", "Keycloak レルム設定"]);
+  });
+});
+
+// The outline is the other half of the same navigation, so it has to follow the
+// header: switching sheets there used to leave the panel showing a part of the
+// document the reader had left.
+describe("viewer: the outline follows the header", () => {
+  async function openOutline(host: HTMLElement): Promise<HTMLElement> {
+    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
+    (btn as HTMLElement).click();
+    await Promise.resolve();
+    return host.querySelector(".rs-outline") as HTMLElement;
+  }
+
+  it("marks the sheet the header is on", async () => {
+    const host = mount();
+    const outline = await openOutline(host);
+    const current = outline.querySelectorAll(".rs-outline-sheet-current");
+    expect(current).toHaveLength(1);
+  });
+
+  it("gives every sheet block an address the scroll can find", async () => {
+    // The effect scrolls by looking the active sheet's block up by this
+    // attribute; without it the panel silently never moves.
+    const host = mount();
+    const outline = await openOutline(host);
+    const blocks = [...outline.querySelectorAll("[data-sheet-nav]")];
+    expect(blocks.length).toBe(host.querySelectorAll(".rs-tab[data-sheet-idx]").length);
+  });
+});
+
+// The key column's markers carry the useful half — which file a literal lives
+// in — and the legend carries what that implies, once per sheet instead of on
+// every row.
+describe("viewer: origin legend", () => {
+  const LEGEND_DOC = {
+    metadata: { title: "t" },
+    sheets: [
+      {
+        name: "with literals",
+        categories: [
+          {
+            name: "General",
+            params: [
+              { key: "a", value: "1", description: "d", origin: "embedded" as const, source: { file: "roles/x/templates/httpd.conf.j2", line: 1 } },
+              { key: "b", value: "2", description: "d" },
+            ],
+          },
+        ],
+      },
+      { name: "no literals", categories: [{ name: "General", params: [{ key: "c", value: "3", description: "d" }] }] },
+    ],
+  };
+  const payload = { metadata: LEGEND_DOC.metadata, versions: [{ version: "current", sheets: LEGEND_DOC.sheets }] };
+
+  function mountAt(hash: string): HTMLElement {
+    location.hash = hash;
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    return host;
+  }
+
+  it("explains the marker on a sheet that has one", () => {
+    const host = mountAt("#1");
+    const legend = host.querySelector(".rs-origin-legend");
+    expect(legend).not.toBeNull();
+    expect(legend!.textContent).toContain("変数を介さず");
+  });
+
+  it("shows nothing on a sheet with no marked rows", () => {
+    // A legend for a mark that appears nowhere below is one more thing to read
+    // and discard.
+    const host = mountAt("#2");
+    expect(host.querySelector(".rs-origin-legend")).toBeNull();
+  });
+
+  it("keeps the file name as the marker itself", () => {
+    const host = mountAt("#1");
+    const tags = [...host.querySelectorAll(".rs-param-table .rs-origin-tag")].map((e) => e.textContent);
+    expect(tags).toContain("httpd.conf.j2");
   });
 });

@@ -775,3 +775,173 @@ sheets:
     expect(rows.every((r) => pickLang(r.description, "en") === "What the write-ahead log records")).toBe(true);
   });
 });
+
+// A dictionary scoped to one component. The default — every component gets its
+// own ledger — is right when the components are several INSTANCES of a product.
+// It is wrong when they are different ARTIFACTS of one product: keycloak.conf
+// and the systemd unit that starts it are both "keycloak", but only the first
+// is what the product's settings registry describes, and without a scope the
+// unit is reviewed against every option of a file it does not contain.
+describe("dictionary scoped to a component", () => {
+  const componentsOf = (input: ParameterSheetInput): string[] => (input.sheets[0].categories ?? []).map((c) => c.name);
+  const keysUnder = (input: ParameterSheetInput, component: string): string[] => {
+    const cat = (input.sheets[0].categories ?? []).find((c) => c.name === component);
+    return cat ? paramsOf(cat).map((p) => p.key) : [];
+  };
+  // Two components, one of which is not this product's configuration file.
+  const twoComponents = (): SheetInputs[] => {
+    const si = sheetInputs(["wal_level", "work_mem"]);
+    si[0].componentOf = new Map([
+      ["wal_level", "the config file"],
+      ["work_mem", "the unit file"],
+    ]);
+    return si;
+  };
+  const scoped = (component?: string): AssembleOpts =>
+    opts({ dictionaries: { db: [{ product: "demodb", version: "1", key_prefix: "db_", materialize: true, component }] } });
+
+  it("expands the ledger once per component when it names none", () => {
+    const input = assembleSheets(twoComponents(), scoped());
+    expect(componentsOf(input).sort()).toEqual(["the config file", "the unit file"]);
+    // Both components carry the unset options — the behaviour this scope exists
+    // to opt out of, asserted here so the opt-out below is a real difference.
+    for (const c of ["the config file", "the unit file"]) {
+      expect(keysUnder(input, c)).toContain("max_conn");
+    }
+  });
+
+  it("expands it only under the component it names", () => {
+    const input = assembleSheets(twoComponents(), scoped("the config file"));
+    expect(keysUnder(input, "the config file")).toContain("max_conn");
+    expect(keysUnder(input, "the unit file")).not.toContain("max_conn");
+    // The unit's own row is untouched: scoping removes the ledger, not the rows
+    // the project actually sets.
+    expect(keysUnder(input, "the unit file")).toEqual(["work_mem"]);
+  });
+
+  it("stops binding rows outside that component", () => {
+    // Scoped to its own component, wal_level binds and is filed under the
+    // dictionary's own group. Scoped to the OTHER one it does not bind at all —
+    // and the consequence is loud rather than cosmetic: the group was the only
+    // thing giving that row a category, so the build stops and asks the project
+    // for one. A dictionary that does not describe this artifact cannot name
+    // its rows either, and nothing about that happens quietly.
+    const bound = assembleSheets(twoComponents(), scoped("the config file"));
+    expect(pathsOfKey(bound, "wal_level")).toEqual([["the config file", "Write-Ahead Log"]]);
+    expect(() => assembleSheets(twoComponents(), scoped("the unit file"))).toThrow(
+      /1 parameter\(s\) have no category:\n  db > wal_level/
+    );
+  });
+
+  it("fails when it names a component the sheet has no rows for", () => {
+    expect(() => assembleSheets(twoComponents(), scoped("a file nobody writes"))).toThrow(
+      /component "a file nobody writes", which this sheet has no rows for \(components: the config file, the unit file\)/
+    );
+  });
+
+  it("fails the same way when the binding does not materialize at all", () => {
+    // The scope governs binding too, so a typo in it must be caught whether or
+    // not a ledger would have been expanded.
+    const o = opts({ dictionaries: { db: [{ product: "demodb", version: "1", key_prefix: "db_", component: "typo" }] } });
+    expect(() => assembleSheets(twoComponents(), o)).toThrow(/component "typo", which this sheet has no rows for/);
+  });
+});
+
+// Shared with the describe above: every path a key was filed under.
+function pathsOfKey(input: ParameterSheetInput, key: string): string[][] {
+  const out: string[][] = [];
+  const walk = (cats: Category[] | undefined, trail: string[]): void => {
+    for (const c of cats ?? []) {
+      for (const p of c.params ?? []) if (p.key === key) out.push([...trail, c.name]);
+      walk(c.categories, [...trail, c.name]);
+    }
+  };
+  walk(input.sheets[0].categories, []);
+  return out;
+}
+
+// A product whose own taxonomy has levels can say so. Keycloak's realm groups
+// spelled the hierarchy into one name for want of this ("Tokens / Access
+// tokens"), which reads as a hierarchy and is one flat category: nothing folds
+// or sorts by "Tokens", because no such category exists.
+describe("a dictionary group can be a path", () => {
+  const NESTED_DICT = `
+product: nesteddb
+version: "1"
+provenance: extracted
+coverage: full
+parameters:
+  access_lifespan:
+    description: { en: Access token lifespan }
+    default: 300
+    group: [Tokens, Access tokens]
+  refresh_reuse:
+    description: { en: Refresh token reuse }
+    default: 0
+    group: [Tokens, Refresh tokens]
+  flat_one:
+    description: { en: Grouped the old way }
+    default: "x"
+    group: Tokens
+  ungrouped:
+    description: { en: No group at all }
+    default: "y"
+`;
+  const files: Record<string, string> = { "meta/nesteddb@1.yml": NESTED_DICT, "p.yml": "params: {}\n" };
+  const nestedOpts = (materialize: SheetDictionaryBinding["materialize"] = true): AssembleOpts => ({
+    projectPath: "p.yml",
+    metadataDirs: ["meta"],
+    readFile: (f) => files[f] ?? null,
+    dictionaries: { db: [{ product: "nesteddb", version: "1", materialize }] },
+    strictMetadata: false,
+  });
+  const emptySheet = (): SheetInputs[] => [
+    { name: "db", instances: [], layers: [{ kind: "base", entries: new Map() }], embedded: [] },
+  ];
+  const pathsOf = (input: ParameterSheetInput, key: string): string[][] => {
+    const out: string[][] = [];
+    const walk = (cats: Category[] | undefined, trail: string[]): void => {
+      for (const c of cats ?? []) {
+        for (const p of c.params ?? []) if (p.key === key) out.push([...trail, c.name]);
+        walk(c.categories, [...trail, c.name]);
+      }
+    };
+    walk(input.sheets[0].categories, []);
+    return out;
+  };
+
+  it("nests a materialized row under the whole path", () => {
+    const input = assembleSheets(emptySheet(), nestedOpts());
+    expect(pathsOf(input, "access_lifespan")).toEqual([["Tokens", "Access tokens"]]);
+    expect(pathsOf(input, "refresh_reuse")).toEqual([["Tokens", "Refresh tokens"]]);
+  });
+
+  it("puts a flat group and a path's head under the SAME parent, not two", () => {
+    // The point of the feature: "Tokens" is one category that the nested rows
+    // hang off, rather than three sibling tabs whose names happen to share a
+    // prefix.
+    const input = assembleSheets(emptySheet(), nestedOpts());
+    expect(input.sheets[0].categories.map((c) => c.name)).toEqual(["Tokens", "Uncategorized"]);
+    expect(pathsOf(input, "flat_one")).toEqual([["Tokens"]]);
+  });
+
+  it("still files an entry with no group under Uncategorized", () => {
+    const input = assembleSheets(emptySheet(), nestedOpts());
+    expect(pathsOf(input, "ungrouped")).toEqual([["Uncategorized"]]);
+  });
+
+  it("matches a `groups:` filter on the head, so narrowing keeps the nested rows", () => {
+    // Filtering to "Tokens" and losing "Tokens / Access tokens" would drop the
+    // very rows the reader asked for, silently.
+    const input = assembleSheets(emptySheet(), nestedOpts({ groups: ["Tokens"] }));
+    const keys: string[] = [];
+    const walk = (cats: Category[] | undefined): void => {
+      for (const c of cats ?? []) {
+        for (const p of c.params ?? []) keys.push(p.key);
+        walk(c.categories);
+      }
+    };
+    walk(input.sheets[0].categories);
+    expect(keys.sort()).toEqual(["access_lifespan", "flat_one", "refresh_reuse"]);
+  });
+});

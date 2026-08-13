@@ -9,7 +9,7 @@
 
 import { parseDocument, isMap, isSeq, isScalar, type Node } from "yaml";
 import type { ParameterSheetInput, Sheet, Category, SourceLocation, InstanceParameter, Instance, LangText } from "./types.js";
-import { getParser, resolveParser, type ConfigParser, type ExtractOptions } from "./parser.js";
+import { getParser, resolveParser, parserNames, type ConfigParser, type ExtractOptions } from "./parser.js";
 import "./parsers/index.js";
 // Re-export line primitives so external code and parsers can share them.
 export { extractLines, LINE_CONFIGS } from "./line-config.js";
@@ -232,7 +232,52 @@ export function extractTree(content: string, opts?: ExtractOptions): Entry[] {
 // WHICH parser a file resolved to without re-deriving the dispatch rule
 // (explicit format wins; otherwise content/extension detection) a second way.
 function resolveFileParser(file: string, content: string, format?: Format): ConfigParser | undefined {
-  return format ? getParser(format) : resolveParser(file, content);
+  if (format === undefined) return resolveParser(file, content);
+  const parser = getParser(format);
+  if (!parser) {
+    // A named format that no parser answers to is a typo or a plugin that did
+    // not load, and it used to be neither: an explicit format deliberately
+    // skips detection, so the lookup returned nothing and the file contributed
+    // zero rows to a build that then reported success. Measured on a real
+    // spec — `format: line` (there is no "line" parser) silently dropped all 29
+    // rows of a postgresql.conf and left a sheet holding nothing but the
+    // dictionary's defaults, which looked entirely plausible.
+    const near = nearestName(format, parserNames());
+    throw new Error(
+      `extract: no parser named "${format}" (asked for ${file})${near ? `. Did you mean "${near}"?` : ""} ` +
+        `Available: ${parserNames().join(", ")}`
+    );
+  }
+  return parser;
+}
+
+// A local Levenshtein rather than assemble.ts's suggestNearest: this module is
+// imported BY the recipes that assemble.ts drives, and reaching back up for a
+// string helper would tie the extraction layer to the assembly one.
+function nearestName(name: string, candidates: string[]): string | undefined {
+  const dist = (a: string, b: string): number => {
+    const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+      let corner = prev[0];
+      prev[0] = i;
+      for (let j = 1; j <= b.length; j++) {
+        const cell = Math.min(prev[j] + 1, prev[j - 1] + 1, corner + (a[i - 1] === b[j - 1] ? 0 : 1));
+        corner = prev[j];
+        prev[j] = cell;
+      }
+    }
+    return prev[b.length];
+  };
+  let best: string | undefined;
+  let bestDist = Infinity;
+  for (const c of candidates) {
+    const d = dist(name, c);
+    if (d < bestDist) {
+      bestDist = d;
+      best = c;
+    }
+  }
+  return best !== undefined && bestDist <= Math.max(2, Math.floor(name.length / 3)) ? best : undefined;
 }
 
 export function extractFile(content: string, file: string, format?: Format, opts?: ExtractOptions): Entry[] {

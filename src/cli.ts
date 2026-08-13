@@ -954,8 +954,17 @@ program
       } else {
         console.error(`\nDry-run: no files written. Re-run with --write to apply.`);
       }
+      // A row that changed category since a finding was written is followed,
+      // not dropped — and never silently: which findings moved, and to where,
+      // is the difference between "the sheet was reorganised" and "apply picked
+      // a different row than the reviewer meant".
+      for (const m of outcome.moved) {
+        console.error(`  moved: ${m.target.sheet} > ${m.target.param} — "${m.from}" is now "${m.to}"`);
+      }
       console.error(
-        `Summary: applied ${outcome.applied}, skipped ${outcome.skipped}, held ${outcome.held}, out-of-scope ${outcome.out_of_scope}.`
+        `Summary: applied ${outcome.applied}, skipped ${outcome.skipped}, held ${outcome.held}, out-of-scope ${outcome.out_of_scope}` +
+          (outcome.moved.length > 0 ? `, ${outcome.moved.length} re-pointed after a category move` : "") +
+          "."
       );
 
       if (opts.emitPrompt && outcome.heldPrompt) {

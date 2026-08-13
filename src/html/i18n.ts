@@ -118,20 +118,12 @@ type Messages = {
   originEmbedded: string;
   originDefault: string;
   originDefaultTip: string;
+  originEmbeddedTip: string;
+  legendTitle: string;
+  legendEmbeddedSample: string;
+  legendEmbedded: string;
+  legendDefault: string;
   sheetSourceLabel: string;
-  // Session-local triage checkmarks: working state while reading a long sheet,
-  // kept in this browser only and never exported (see app.ts's rowStateOf).
-  checkHeader: string;
-  decisionUndecided: string;
-  decisionOk: string;
-  decisionChangeRequested: string;
-  decisionMarkOk: string;
-  decisionClear: string;
-  undecidedOnly: string;
-  decisionProgress: (n: number, m: number) => string;
-  bulkOkCategory: string;
-  confirmBulkOk: (n: number) => string;
-  // Apply to files
   applyToFiles: string;
   applyPreviewTitle: string;
   applyWriteN: (n: number) => string;
@@ -260,17 +252,12 @@ const ja: Messages = {
   originEmbedded: "組み込み",
   originDefault: "未設定",
   originDefaultTip: "この構成では設定していない（効いている値は製品のデフォルト値）",
+  originEmbeddedTip: "変数を介さずファイルに直接書かれた値。環境ごとに変えることはできず、変更するにはそのファイル自体を編集する",
+  legendTitle: "凡例",
+  legendEmbeddedSample: "ファイル名",
+  legendEmbedded: "変数を介さず、そのファイルに直接書かれた値（環境ごとに変えられない）",
+  legendDefault: "この構成では設定していない（効いているのは製品のデフォルト値）",
   sheetSourceLabel: "生成元",
-  checkHeader: "確認",
-  decisionUndecided: "未確認",
-  decisionOk: "確認済み",
-  decisionChangeRequested: "変更依頼",
-  decisionMarkOk: "確認済みにする（このセッションのみ）",
-  decisionClear: "確認済みを取り消す",
-  undecidedOnly: "未確認のみ",
-  decisionProgress: (n: number, m: number) => `確認済み ${n} / ${m}`,
-  bulkOkCategory: "未確認をまとめて確認済みに",
-  confirmBulkOk: (n: number) => `このカテゴリの未確認 ${n} 件をまとめて確認済みにします。よろしいですか？`,
   applyToFiles: "ファイルに反映",
   applyPreviewTitle: "変更のプレビュー",
   applyWriteN: (n) => `${n} 件のファイルに書き込む`,
@@ -389,20 +376,15 @@ const en: Messages = {
   // "not set", not "unused": the product's default is in force on these rows.
   // What is absent is any statement from THIS project.
   showDefaults: (n: number) => `Show unset rows (${n} product defaults)`,
-  originEmbedded: "embedded",
+  originEmbedded: "hardcoded",
   originDefault: "not set",
   originDefaultTip: "Not set here — the value in effect is the product's own default",
+  originEmbeddedTip: "Written straight into the file rather than through a variable: the same in every environment, and changed by editing that file",
+  legendTitle: "Legend",
+  legendEmbeddedSample: "file name",
+  legendEmbedded: "written straight into that file rather than through a variable (cannot differ per environment)",
+  legendDefault: "not set here — the value in effect is the product's own default",
   sheetSourceLabel: "Source",
-  checkHeader: "Check",
-  decisionUndecided: "unchecked",
-  decisionOk: "checked",
-  decisionChangeRequested: "change requested",
-  decisionMarkOk: "Mark as checked (this session only)",
-  decisionClear: "Clear the checkmark",
-  undecidedOnly: "Unchecked only",
-  decisionProgress: (n: number, m: number) => `${n} / ${m} checked`,
-  bulkOkCategory: "Mark unchecked as checked",
-  confirmBulkOk: (n: number) => `Mark all ${n} unchecked row(s) in this category as checked?`,
   applyToFiles: "Apply to files",
   applyPreviewTitle: "Preview changes",
   applyWriteN: (n) => `Write ${n} file(s)`,

@@ -7,6 +7,8 @@
 
 import {
   buildSourceIndex,
+  retargetReviews,
+  findEntry,
   resolveSource,
   buildPromptText,
   HELD_REASON_GENERATED,
@@ -14,6 +16,7 @@ import {
   HELD_REASON_SHARED_INSTANCE,
   type SheetData,
   type ReviewItem,
+  type ReviewTarget,
   type ReviewChange,
   type SourceLocation,
 } from "./prompt.js";
@@ -47,6 +50,10 @@ export type ApplyOutcome = {
   skipped: number;
   held: number;
   out_of_scope: number;
+  // Findings whose row has MOVED to another category since they were written —
+  // re-pointed rather than dropped, and reported because a review silently
+  // changing where it points is precisely what this project does not do.
+  moved: { target: ReviewTarget; from: string; to: string }[];
 };
 
 type ReadFile = (path: string) => string | null;
@@ -61,7 +68,14 @@ export function computeApply(
   opts?: ExtractOptions
 ): ApplyOutcome {
   const index = buildSourceIndex(data);
-  const pending = reviews.filter((r) => r.status === "pending");
+  // A saved finding names the category its row was in when it was written, and
+  // a category moves — a product dictionary supplies most of them, and an
+  // upgrade can put a setting on another screen. Re-point them at the current
+  // document ONCE, here, so every lookup below is an exact hit and none of them
+  // needs a fallback of its own. Applying a change to the wrong file because a
+  // category was renamed is the failure this prevents.
+  const retargeted = retargetReviews(reviews, data);
+  const pending = retargeted.reviews.filter((r) => r.status === "pending");
 
   // Lazily loaded, progressively edited file contents (as line arrays).
   const working = new Map<string, string[] | null>(); // null = unreadable
@@ -83,7 +97,7 @@ export function computeApply(
 
     // Out-of-scope targets are skipped outright — not held, not prompted.
     if (r.target.param && r.target.category) {
-      const entry = index.get(`${r.target.sheet}::${r.target.category}::${r.target.param}`);
+      const entry = findEntry(index, r.target)?.entry;
       if (entry?.outOfScope) {
         for (const c of changes) {
           results.push({
@@ -106,9 +120,7 @@ export function computeApply(
       }
       const current = c.current ?? "";
       const res = resolveSource(r.target, index);
-      const entry = r.target.param && r.target.category
-        ? index.get(`${r.target.sheet}::${r.target.category}::${r.target.param}`)
-        : undefined;
+      const entry = r.target.param ? findEntry(index, r.target)?.entry : undefined;
 
       // One environment, but the row stores a single shared value: refuse before
       // any parser is dispatched. `res.file` here is the SHARED definition (or
@@ -232,6 +244,7 @@ export function computeApply(
   const files = [...touched].map((path) => ({ path, content: working.get(path)!.join("\n") }));
   return {
     results,
+    moved: retargeted.moved,
     files,
     heldPrompt: buildPromptText(heldReviews, data),
     applied: results.filter((r) => r.status === "applied").length,

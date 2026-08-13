@@ -114,6 +114,12 @@ export function getParser(name: string): ConfigParser | undefined {
   return registry.find((p) => p.name === name);
 }
 
+// Every registered parser's name, for an error message that can list what IS
+// available rather than only what is not.
+export function parserNames(): string[] {
+  return registry.map((p) => p.name).sort();
+}
+
 export function resolveParser(file: string, content: string): ConfigParser | undefined {
   const sorted = [...registry].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
   return sorted.find((p) => p.detect(file, content));

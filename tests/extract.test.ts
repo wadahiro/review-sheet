@@ -317,3 +317,24 @@ describe("extract: null scalars", () => {
     expect(entries.map((e) => [e.key, e.value])).toEqual([["a", "null"]]);
   });
 });
+
+// An explicit `format:` deliberately skips detection, so a name no parser
+// answers to used to resolve to nothing and take the file's rows with it.
+describe("an unknown format is an error, not an empty file", () => {
+  it("names the file, lists what is available, and suggests the near miss", () => {
+    // Measured on a real spec: `format: line` (there is no "line" parser)
+    // dropped all 29 rows of a postgresql.conf and left a sheet holding only
+    // the dictionary's defaults — a plausible-looking, entirely wrong sheet.
+    expect(() => extractFile("a = 1\n", "postgresql.conf", "line" as never)).toThrow(
+      /no parser named "line" \(asked for postgresql\.conf\).*Available: /s
+    );
+  });
+
+  it("still detects by content when no format is named", () => {
+    expect(extractFile("a = 1\n", "postgresql.conf").map((e) => e.key)).toEqual(["a"]);
+  });
+
+  it("does not throw for a format that exists", () => {
+    expect(extractFile("a = 1\n", "x.conf", "generic" as never).map((e) => e.key)).toEqual(["a"]);
+  });
+});

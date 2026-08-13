@@ -12,7 +12,12 @@ reading the code, only the part that can be re-derived from it was cut.
 
 
 - `src/html/generate.ts` — packages app JS + CSS + data JSON into a single HTML file
-- `src/html/app.ts` — browser-side Preact app (rendering + review UI). Exports `Root`/`App` for `tests/viewer.test.ts` (DOM tests; `init()` is a no-op without the embedded elements, so importing it is safe). Also owns the session-local triage marks (the "確認"/"Check" column): `RowState` (unchecked/ok/out_of_scope/change_requested — only the first is the reader's own tick, the other two are DERIVED from sheet.yml and from pending review items), `rowStateOf`, `checkProgress`, localStorage under `<storageKey>:checks`. Nothing durable: a per-row "reviewed" record would be a value snapshot of the sheet in a worse format than the committed input.json already is, so "what needs re-reviewing" is `diff(reviewed revision, now)` (`review-sheet diff`, or Compare), and the durable facts live where they belong — an exclusion is `out_of_scope` in the hand-authored sheet.yml, a requested change is a review item
+- `src/html/app.ts` — browser-side Preact app (rendering + review UI). Exports `Root`/`App` for `tests/viewer.test.ts` (DOM tests; `init()` is a no-op without the embedded elements, so importing it is safe). Review state is durable or it is not kept: what a pass over a sheet produces is
+review items, `out_of_scope` in the hand-authored sheet.yml, and the commit
+itself. A session-local "I have looked at this" column was tried and removed — a
+per-row read-marker is a value snapshot of the sheet in a worse format than the
+committed input.json already is, and "what still needs re-reviewing" is
+`diff(reviewed revision, now)` (`review-sheet diff`, or Compare)
 - `src/html/i18n.ts` — i18n message definitions (ja/en)
 - `src/html/styles.ts` — all CSS as a template string
 - `src/prompt.ts` — framework-free model types + source-map resolution + English AI-prompt builder (shared by the browser app and the CLI)

@@ -79,9 +79,15 @@ export type SheetData = {
     changelog?: { version: string; date: string; author: string; description: string }[];
     extra?: Record<string, string>;
   };
-  columns?: { field: string; header: string; width?: string; align?: string; className?: string; render?: string; place?: "trailing" | "under_key" }[];
+  columns?: { field: string; header: string; header_lang?: LangText; width?: string; align?: string; className?: string; render?: string; place?: "trailing" | "under_key" }[];
+  groups?: { name: string; label?: LangText; display?: string }[];
   sheets: {
+    // Identity — see types.ts's Sheet. `label`/`display` are the display text.
     name: string;
+    label?: LangText;
+    group?: string;
+    // Filled by the viewer's localizeSheets, never present in a built model.
+    display?: string;
     role?: string;
     instances?: string[];
     file_path?: string;
@@ -127,7 +133,16 @@ export type ReviewItem = {
 // Source-map resolution
 // ============================================================
 
-export type ParamEntry = { param: ParamData; fileFallback?: string; outOfScope?: boolean; outOfScopeReason?: string };
+export type ParamEntry = {
+  param: ParamData;
+  fileFallback?: string;
+  outOfScope?: boolean;
+  outOfScopeReason?: string;
+  // Where this row is NOW, so a target naming where it used to be can be
+  // re-pointed at it (see retargetReviews).
+  sheet: string;
+  path: string;
+};
 
 // Resolve the default source file for a node: the nearest `source_file` up the
 // tree wins, falling back to the nearest display `file_path` (backward
@@ -162,6 +177,8 @@ export function buildSourceIndex(data: SheetData): Map<string, ParamEntry> {
           fileFallback: effectiveFile(src, file),
           outOfScope: pOOS !== undefined,
           outOfScopeReason: pOOS?.reason,
+          sheet: sheetName,
+          path,
         });
       }
       walk(cat.categories, sheetName, path, file, src, oos);
@@ -182,12 +199,78 @@ export type ResolvedSource = {
   sharedForInstance?: boolean;
 };
 
+// A target's row, tolerating a category that has MOVED.
+//
+// A review names sheet + category path + param, and the category is the one
+// part of that which is display structure: it comes from a product dictionary's
+// own grouping as often as from this project, so upgrading a dictionary — the
+// product moved a setting to another screen — silently re-pointed every finding
+// filed against it at nothing. Renaming a category in sheet.yml did the same.
+//
+// Identity is (sheet, param) within a component, so that is what the fallback
+// matches on. Where several components of one sheet share the param name — two
+// realms both having `sslRequired`, which is exactly what components exist for
+// — the FIRST path segment (the component) still tells them apart, and it is
+// the segment a dictionary upgrade does not touch. Anything still ambiguous
+// resolves to nothing rather than to a guess: attaching a finding to the wrong
+// row is worse than reporting that it no longer resolves.
+export function findEntry(
+  index: Map<string, ParamEntry>,
+  target: ReviewTarget
+): { entry: ParamEntry; movedFrom?: string } | undefined {
+  if (!target.param) return undefined;
+  if (target.category !== undefined) {
+    const exact = index.get(`${target.sheet}::${target.category}::${target.param}`);
+    if (exact) return { entry: exact };
+  }
+  const candidates = [...index.values()].filter((e) => e.sheet === target.sheet && e.param.key === target.param);
+  if (candidates.length === 1) return { entry: candidates[0], movedFrom: target.category };
+  if (candidates.length > 1 && target.category !== undefined) {
+    const component = target.category.split("/")[0];
+    const sameComponent = candidates.filter((e) => e.path.split("/")[0] === component);
+    if (sameComponent.length === 1) return { entry: sameComponent[0], movedFrom: target.category };
+  }
+  return undefined;
+}
+
+// Re-point saved reviews at where their rows are NOW, once, before anything
+// compares targets. Everything downstream — the viewer's targetKey equality,
+// apply's index lookups, the AI prompt's source resolution — then works on
+// targets that match the current document, with no tolerance of its own.
+//
+// Returns the rewritten list plus what moved, because a finding silently
+// changing category is exactly the kind of thing this project reports: the
+// caller decides whether that is a line in a CLI summary or a note in the
+// viewer, but it is never nothing.
+export function retargetReviews<T extends { target: ReviewTarget }>(
+  reviews: T[],
+  data: SheetData
+): { reviews: T[]; moved: { target: ReviewTarget; from: string; to: string }[]; unresolved: ReviewTarget[] } {
+  const index = buildSourceIndex(data);
+  const moved: { target: ReviewTarget; from: string; to: string }[] = [];
+  const unresolved: ReviewTarget[] = [];
+  const out = reviews.map((r) => {
+    // A sheet- or category-level target names no param, so there is no row to
+    // follow; it is left exactly as it is.
+    if (!r.target.param) return r;
+    const hit = findEntry(index, r.target);
+    if (!hit) {
+      unresolved.push(r.target);
+      return r;
+    }
+    if (hit.movedFrom === undefined || hit.movedFrom === hit.entry.path) return r;
+    moved.push({ target: r.target, from: hit.movedFrom, to: hit.entry.path });
+    return { ...r, target: { ...r.target, category: hit.entry.path } };
+  });
+  return { reviews: out, moved, unresolved };
+}
+
 // The source pointer + resolved file for a review target. An instance carries
 // its own pointer; a simple value uses the parameter's. When neither names a
 // file, fall back to the nearest category/sheet file_path.
 export function resolveSource(target: ReviewTarget, index: Map<string, ParamEntry>): ResolvedSource {
-  if (!target.param || !target.category) return {};
-  const entry = index.get(`${target.sheet}::${target.category}::${target.param}`);
+  if (!target.param) return {};
+  const entry = findEntry(index, target)?.entry;
   if (!entry) return {};
   if (target.instance) {
     const inst = entry.param.instances?.find((i) => i.name === target.instance);

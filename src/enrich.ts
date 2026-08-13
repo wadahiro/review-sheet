@@ -99,6 +99,13 @@ export type ScaffoldEntry = {
   unused?: boolean;
   // "did you mean ...?" — only ever set on an `unused` entry.
   hint?: string;
+  // Which component of the sheet this key belongs to, when the sheet has more
+  // than one. Without it a key that several components share renders as a
+  // repeated map key, which YAML rejects outright ("Map keys must be unique")
+  // — so the fragment a reader is told to paste would not parse. It is also
+  // the honest shape: two components sharing a key name are two different
+  // parameters, and one description cannot be true of both.
+  component?: string;
 };
 
 // Which shape a paste-able scaffold fragment should render in. This is a fact
@@ -258,14 +265,31 @@ export function renderScaffold(entries: ScaffoldEntry[], shape: ScaffoldShape, m
       lines.push("# sheet.yml uses \"sheets:\" — merge each sheet's params: entries below into");
       lines.push("# its existing block under sheets:, don't paste a second \"sheets:\" key.");
       lines.push("sheets:");
-      let lastSheet: string | undefined;
-      for (const e of toAdd) {
-        if (e.sheet !== lastSheet) {
-          lines.push(`  ${yamlKey(e.sheet)}:`);
+      // Grouped by sheet, then by component: a component is a namespace inside
+      // a sheet (providers/project.ts's paramForRow), so its keys go under
+      // `components: <id>: params:` rather than beside the sheet-wide ones.
+      // Order of first appearance within each group, like the flat form.
+      const bySheet = new Map<string, ScaffoldEntry[]>();
+      for (const e of toAdd) bySheet.set(e.sheet, [...(bySheet.get(e.sheet) ?? []), e]);
+      for (const [sheet, entries] of bySheet) {
+        lines.push(`  ${yamlKey(sheet)}:`);
+        const sheetWide = entries.filter((e) => e.component === undefined);
+        if (sheetWide.length > 0) {
           lines.push(`    params:`);
-          lastSheet = e.sheet;
+          for (const e of sheetWide) lines.push(...renderScaffoldParam(e, "      "));
         }
-        lines.push(...renderScaffoldParam(e, "      "));
+        const byComponent = new Map<string, ScaffoldEntry[]>();
+        for (const e of entries) {
+          if (e.component === undefined) continue;
+          byComponent.set(e.component, [...(byComponent.get(e.component) ?? []), e]);
+        }
+        if (byComponent.size === 0) continue;
+        lines.push(`    components:`);
+        for (const [component, ces] of byComponent) {
+          lines.push(`      ${yamlKey(component)}:`);
+          lines.push(`        params:`);
+          for (const e of ces) lines.push(...renderScaffoldParam(e, "          "));
+        }
       }
     } else {
       lines.push("params:");

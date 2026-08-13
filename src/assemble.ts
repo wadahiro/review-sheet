@@ -29,6 +29,9 @@ import {
   componentParamsForSheet,
   categoriesForSheet,
   underKeyForSheet,
+  labelForSheet,
+  groupForSheet,
+  sheetGroups,
   checkProjectMetaSheets,
   type ProjectMetaDoc,
   type UnderKeyMeta,
@@ -148,6 +151,13 @@ export type SheetInputs = {
   // must not move; this is what a reader sees, resolved per language by the
   // viewer like every other LangText. Absent = show the id.
   componentLabels?: Map<string, LangText>;
+  // Where each component's artifact LANDS, and the local file it is rendered
+  // from — the per-component form of Sheet.file_path/source_file, for a sheet
+  // whose components are several deployed files. Without it a sheet built from
+  // `templates:` says nothing at all about where any of them go: the sheet-wide
+  // pair cannot answer for three different files, so it is left unset, and the
+  // per-template declaration had nowhere to be recorded.
+  componentFiles?: Map<string, { filePath?: string; sourceFile?: string }>;
   // Reference sites a recipe's substitution scan found (src/substitution.ts's
   // `bindReferences`): `variable` is a base/overlay layer key (the SAME
   // extracted identity buildDrafts() below iterates below in passes 1/2,
@@ -259,6 +269,23 @@ export type DictionaryMaterialize =
 // product+version twice) let the two silently drift apart.
 export type SheetDictionaryBinding = DictionaryBinding & {
   materialize?: DictionaryMaterialize;
+  // Which of the sheet's components this dictionary describes. Absent = the
+  // whole sheet, which is what a single-component sheet always means.
+  //
+  // A sheet whose components are several INSTANCES of one product wants the
+  // default: each instance is described by the same dictionary and each needs
+  // its own ledger. A sheet whose components are different ARTIFACTS of one
+  // product does not — keycloak.conf, the systemd unit that starts it and the
+  // shell script that fetches its password are one product, but only the first
+  // is what the product's own settings registry is about. Without this,
+  // materialize expands once per component and the unit is reviewed against
+  // every option of a configuration file it does not contain.
+  //
+  // Scopes BOTH halves of what a dictionary does — binding and materialize —
+  // because "this dictionary describes that artifact" is one claim, and a field
+  // that suppressed the ledger while still handing out descriptions would be a
+  // different, harder-to-explain one.
+  component?: string;
 };
 
 // What materializeDrafts() did with one bound dictionary, so a caller can
@@ -347,6 +374,26 @@ type Draft = { key: string; param: Parameter; variable?: string; fallbackCategor
 // Category of last resort for a materialized row whose dictionary carries no
 // `group`. Model-level (like extract.ts's DEFAULT_CATEGORY), not a UI string.
 const UNCATEGORIZED = "Uncategorized";
+
+// A dictionary group is a path (providers/dictionary.ts's DictionaryParam.group):
+// a list as written, a bare string as its one segment, and UNCATEGORIZED when
+// the entry declares none. An empty or all-blank list is treated as none rather
+// than producing a category with no name.
+function groupPath(group: string | string[] | undefined): string[] {
+  if (Array.isArray(group)) {
+    const segs = group.filter((g) => typeof g === "string" && g.trim() !== "");
+    return segs.length > 0 ? segs : [UNCATEGORIZED];
+  }
+  return [group || UNCATEGORIZED];
+}
+
+// Just the tab: the first segment of the path above, or undefined when the
+// entry declares no group at all (which `groups:` filters and the ghost-tab
+// guard both need to tell apart from "grouped under the empty string").
+function groupHead(group: string | string[] | undefined): string | undefined {
+  if (Array.isArray(group)) return group.find((g) => typeof g === "string" && g.trim() !== "");
+  return group;
+}
 
 // Materialized rows used to be filed under a parent category of their own
 // ("Product defaults (not set)"), segregating every unset row from every set
@@ -588,19 +635,31 @@ function emptyByMethod(): Record<BindReportMethod, number> {
 // then fails — see the caller. (An ambiguous key gets neither a bindings
 // entry nor a report row: the build never reaches the point of writing a
 // report when bindErrors is non-empty.)
+// A sheet's bind source plus the component it is scoped to, if any — kept
+// together rather than as index-parallel arrays so the scope cannot drift away
+// from the source it belongs to.
+type ScopedBindSource = { source: BindSource; component?: string };
+
 function bindDrafts(
   sheetName: string,
   drafts: Draft[],
   projectMeta: ProjectMetaDoc,
-  bindSources: BindSource[],
+  bindSources: ScopedBindSource[],
   reportRows: BindReportRow[],
   bindErrors: string[]
 ): Map<string, Binding> {
   const bindings = new Map<string, Binding>();
   if (bindSources.length === 0) return bindings;
   for (const d of drafts) {
+    // A dictionary scoped to another component is not a dictionary this row
+    // has (SheetDictionaryBinding.component).
+    const inScope = bindSources.filter((s) => s.component === undefined || s.component === d.component).map((s) => s.source);
+    if (inScope.length === 0) {
+      reportRows.push({ sheet: sheetName, key: d.key, method: "none" });
+      continue;
+    }
     const dictKey = paramForRow(projectMeta, sheetName, d.component, d.key)?.dict_key;
-    const result = bindKey(d.key, dictKey, bindSources);
+    const result = bindKey(d.key, dictKey, inScope);
     if (result === undefined) {
       reportRows.push({ sheet: sheetName, key: d.key, method: "none" });
       continue;
@@ -712,7 +771,10 @@ function materializeDrafts(
   const unknownGroups: string[] = [];
   if (groupFilter) {
     const dictGroups = new Set<string>();
-    for (const p of Object.values(dict.parameters)) if (p.group !== undefined) dictGroups.add(p.group);
+    for (const p of Object.values(dict.parameters)) {
+      const g = groupHead(p.group);
+      if (g !== undefined) dictGroups.add(g);
+    }
     for (const g of opt.groups!) if (!dictGroups.has(g)) unknownGroups.push(g);
   }
 
@@ -757,7 +819,10 @@ function materializeDrafts(
     // to opt it in with), so it is excluded right alongside every group that
     // wasn't listed — same as the "which modules does this deployment
     // actually load" question the filter exists to answer.
-    if (groupFilter && !(entry.group !== undefined && groupFilter.has(entry.group))) {
+    // A `groups:` filter names tabs, so it matches the head of a group path —
+    // narrowing to "Tokens" keeps "Tokens / Access tokens" with it rather than
+    // silently dropping the very rows the reader asked for.
+    if (groupFilter && !(groupHead(entry.group) !== undefined && groupFilter.has(groupHead(entry.group)!))) {
       groupExcluded++;
       continue;
     }
@@ -783,7 +848,7 @@ function materializeDrafts(
     // Two levels: a single parent ("the project sets nothing here") holding a
     // subcategory per dictionary group — see fileDrafts and Draft's comment
     // for why this is a path rather than one name.
-    out.push({ key, param, fallbackCategoryPath: [entry.group || UNCATEGORIZED], component });
+    out.push({ key, param, fallbackCategoryPath: groupPath(entry.group), component });
     bindings.set(key, {
       product: binding.product,
       version: binding.version,
@@ -831,7 +896,8 @@ function fileDrafts(
   // not thrown: accumulated across every sheet and printed once by the CLI.
   categoryWarnings: string[],
   // Display names for component ids, when the recipe supplied them.
-  componentLabels: Map<string, LangText> | undefined
+  componentLabels: Map<string, LangText> | undefined,
+  componentFiles: Map<string, { filePath?: string; sourceFile?: string }> | undefined
 ): Category[] {
   // How many distinct components the sheet has. One is the ordinary case (a
   // sheet covers one thing), and the level is collapsed for it — see the path
@@ -920,9 +986,14 @@ function fileDrafts(
     const inner = declaredNoCategory
       ? []
       : meta?.category
-        ? [meta.category]
+        ? // A list is a path (project.ts's ProjectMetaParam.category); a bare
+          // string is the one-segment case of the same thing. The loop below
+          // already walks a path, so nesting needs nothing else.
+          typeof meta.category === "string"
+          ? [meta.category]
+          : meta.category
         : binding
-          ? [binding.entry.group ?? UNCATEGORIZED]
+          ? groupPath(binding.entry.group)
           : d.fallbackCategoryPath;
     // The component level appears only when the sheet HAS more than one. A
     // sheet covering a single component is that component — naming it again
@@ -966,7 +1037,18 @@ function fileDrafts(
       // than assumed undefined: if that fallback logic ever grows another
       // case, the scaffold's "binds:" comment should track it, not silently
       // go stale.
-      scaffoldEntries.push({ sheet: sheetName, key: d.key, needsCategory: true, needsDescription: true, binding });
+      scaffoldEntries.push({
+        sheet: sheetName,
+        key: d.key,
+        needsCategory: true,
+        needsDescription: true,
+        binding,
+        // Only when the sheet actually shows a component level: on a
+        // single-component sheet the sheet IS the component, and namespacing
+        // the fragment would tell the reader to write a level that does not
+        // exist in their sheet.yml.
+        ...(showComponent ? { component: d.component } : {}),
+      });
       continue;
     }
     let node = root;
@@ -1045,6 +1127,13 @@ function fileDrafts(
     // written in two languages (see types.ts's Category).
     const label = componentLabels?.get(node.name);
     if (label) cat.label = label;
+    // Same rule as the label: only the component level carries these, because
+    // only a component IS a deployed artifact. verify/apply already read the
+    // nearest file_path/source_file up the tree, so declaring them here puts
+    // every row of that component on the right file with nothing else to do.
+    const files = componentFiles?.get(node.name);
+    if (files?.filePath) cat.file_path = files.filePath;
+    if (files?.sourceFile) cat.source_file = files.sourceFile;
     if (node.params.length > 0) cat.params = node.params;
     if (node.childOrder.length > 0) cat.categories = node.childOrder.map((name) => toCategory(node.children.get(name)!));
     return cat;
@@ -1223,6 +1312,8 @@ export function assembleSheetsWithReport(
     // with an empty/absent keyMap (every row keeps its extracted identity)
     // needs no under_key column at all.
     const underKey = underKeyForSheet(projectMeta, si.name);
+    const sheetLabel = labelForSheet(projectMeta, si.name);
+    const sheetGroup = groupForSheet(projectMeta, si.name);
     if ((si.keyMap?.length ?? 0) > 0 && !underKey) {
       throw new Error(
         `assemble: sheet "${si.name}" has parameter(s) named by a product key (via keyMap) and must declare an ` +
@@ -1237,7 +1328,9 @@ export function assembleSheetsWithReport(
     // (see AssembleOpts.dictionaries): binding is resolved per sheet so a key
     // can only ever match what ITS OWN sheet declared.
     const sheetDictionaries = opts.dictionaries?.[si.name] ?? [];
-    const bindSources = loadBindSources(sheetDictionaries, opts.metadataDirs ?? [], opts.readFile);
+    const bindSources: ScopedBindSource[] = loadBindSources(sheetDictionaries, opts.metadataDirs ?? [], opts.readFile).map(
+      (source, i) => ({ source, component: sheetDictionaries[i]!.component })
+    );
     // Bind every draft against this sheet's dictionaries BEFORE materialize
     // and BEFORE filing — the single phase both now read from (see bindDrafts,
     // materializeDrafts' `covered` set, and fileDrafts' category fallback)
@@ -1249,7 +1342,7 @@ export function assembleSheetsWithReport(
     // bind quietly did not. Reported once per sheet, after every draft has
     // been through the transformer (which is why the transformer lives on the
     // BindSource and not inside bindKey).
-    for (const src of bindSources) {
+    for (const { source: src } of bindSources) {
       const patterns = src.keyTransformer?.unmatchedDropPatterns() ?? [];
       if (patterns.length > 0) {
         unmatchedKeySteps.push({ sheet: si.name, product: src.binding.product, version: src.binding.version, patterns });
@@ -1284,9 +1377,25 @@ export function assembleSheetsWithReport(
       componentKeysByName.size > 1
         ? [...componentKeysByName].map(([c, k]) => [c, k])
         : [[[...componentKeysByName.keys()][0], undefined]];
+    // A dictionary that names a component the sheet does not have is the same
+    // class of mistake as a `names:` entry no row produces, or an include
+    // pattern that matched nothing: wiring the author declared and no row ever
+    // saw. Checked for every binding, materializing or not, because the scope
+    // governs binding too.
+    const sheetComponents = new Set(drafts.map((d) => d.component).filter((c): c is string => c !== undefined));
+    for (const dictBinding of sheetDictionaries) {
+      const scope = dictBinding.component;
+      if (scope !== undefined && !sheetComponents.has(scope)) {
+        throw new Error(
+          `assemble: sheet "${si.name}" binds ${dictBinding.product}@${dictBinding.version} to component "${scope}", ` +
+            `which this sheet has no rows for (components: ${[...sheetComponents].join(", ") || "none"})`
+        );
+      }
+    }
     for (const dictBinding of sheetDictionaries) {
       if (!dictBinding.materialize) continue;
       for (const [component, componentKeys] of expansions) {
+        if (dictBinding.component !== undefined && dictBinding.component !== component) continue;
         const materialized = materializeDrafts(si.name, draftBindings, dictBinding, opts, component, componentKeys);
         drafts.push(...materialized.drafts);
         materializeReports.push(materialized.report);
@@ -1310,10 +1419,16 @@ export function assembleSheetsWithReport(
       missingCategoryEntries,
       ghostCategories,
       categoryWarnings,
-      si.componentLabels
+      si.componentLabels,
+      si.componentFiles
     );
     sheets.push({
       name: si.name,
+      // Display text from the project metadata, never from the build spec: the
+      // identity above is what every review target, diff key and CLI message
+      // uses, and this is only what a reader sees (see Sheet.label).
+      ...(sheetLabel ? { label: sheetLabel } : {}),
+      ...(sheetGroup ? { group: sheetGroup } : {}),
       // The declared axis travels with the sheet: the viewer must not have to
       // guess it from which rows happen to have per-environment values.
       ...(si.instances.length > 0 ? { instances: si.instances } : {}),
@@ -1326,6 +1441,7 @@ export function assembleSheetsWithReport(
       underKeyColumns.set(underKey.id, {
         field: underKey.id,
         header: underKey.label.en,
+        header_lang: underKey.label,
         place: "under_key",
       });
     }
@@ -1392,8 +1508,59 @@ export function assembleSheetsWithReport(
     ? { ...opts.metadata, generated_at: new Date().toISOString() }
     : undefined;
 
+  // Groups are checked both ways, like `categories:` and a component's `names:`:
+  // a sheet naming a group nobody declared would appear under a heading with no
+  // name and no order, and a declared group no sheet uses would render an empty
+  // tab. Both are the author's list and the build's rows disagreeing, which is
+  // the one thing this file never lets pass quietly.
+  const declaredGroups = sheetGroups(projectMeta);
+  if (declaredGroups.length > 0) {
+    const declared = new Set(declaredGroups.map((g) => g.name));
+    const used = new Set(sheets.map((sh) => sh.group).filter((g): g is string => g !== undefined));
+    const undeclared = [...used].filter((g) => !declared.has(g));
+    if (undeclared.length > 0) {
+      throw new Error(
+        `assemble: sheet group(s) not declared in the project metadata's groups: ${undeclared
+          .map((g) => {
+            const near = suggestNearest(g, [...declared]);
+            return `"${g}"${near ? ` (did you mean "${near}"?)` : ""}`;
+          })
+          .join(", ")} (declared: ${[...declared].join(", ") || "none"})`
+      );
+    }
+    // Every sheet, once the document groups at all. A grouped header has no
+    // place to put an ungrouped sheet: it is neither a group of its own nor
+    // inside one, and whichever we picked would be an invention.
+    const ungrouped = sheets.filter((sh) => sh.group === undefined).map((sh) => sh.name);
+    if (ungrouped.length > 0) {
+      throw new Error(
+        `assemble: sheet(s) with no "group:" in a document that declares groups: ${ungrouped.join(", ")}. ` +
+          `A grouped header has nowhere to show an ungrouped sheet — give each one a group, or remove groups: entirely.`
+      );
+    }
+    const unused = [...declared].filter((g) => !used.has(g));
+    if (unused.length > 0) {
+      throw new Error(
+        `assemble: declared sheet group(s) that no sheet belongs to: ${unused.join(", ")}. ` +
+          `Remove the entry, or set "group:" on the sheet it was meant for.`
+      );
+    }
+  } else {
+    // No `groups:` and no sheet naming one is the flat, pre-grouping document.
+    // A sheet naming one without the list is not: the group would have no
+    // label and no place in any order.
+    const orphan = sheets.filter((sh) => sh.group !== undefined).map((sh) => sh.name);
+    if (orphan.length > 0) {
+      throw new Error(
+        `assemble: sheet(s) declare a group but the project metadata declares no "groups:" list: ${orphan.join(", ")}. ` +
+          `Add groups: [{ name, label }] — the reading order of the header is a decision, not the order sheets happen to appear in.`
+      );
+    }
+  }
+
   const assembled: ParameterSheetInput = {
     ...(metadata ? { metadata } : {}),
+    ...(declaredGroups.length > 0 ? { groups: declaredGroups } : {}),
     ...(underKeyColumns.size > 0 ? { columns: [...underKeyColumns.values()] } : {}),
     ...(opts.capabilities ? { capabilities: opts.capabilities } : {}),
     sheets,

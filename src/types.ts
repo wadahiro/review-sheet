@@ -19,11 +19,29 @@ export function pickLang(t: LangText | undefined, lang: "en" | "ja"): string | u
 export type ParameterSheetInput = {
   metadata?: SheetMetadata;
   columns?: ColumnDefinition[];
+  // The sheet groups this document uses, in the order they should be read.
+  // Declared rather than derived from the order sheets happen to appear in:
+  // the reading order of a system's layers is a decision, and one that must not
+  // change because a sheet was added in the middle.
+  //
+  // A group is display structure and nothing else. It does not appear in a
+  // review target, a diff key or a source path — a sheet belongs to exactly one
+  // and can be moved between them without invalidating anything filed against
+  // it, which is the whole reason grouping is safe to add to an existing
+  // document.
+  groups?: SheetGroup[];
   sheets: Sheet[];
   // Optional capabilities the embedded viewer can rely on (e.g. whether a
   // `review-sheet serve` backend is reachable for direct apply). Carried
   // through generation as a pass-through; consumed by a later viewer task.
   capabilities?: Capabilities;
+};
+
+export type SheetGroup = {
+  // Identity, referenced by each sheet's `group`. Same split as everywhere
+  // else: this never moves, `label` is what a reader sees.
+  name: string;
+  label?: LangText;
 };
 
 export type Capabilities = {
@@ -50,6 +68,10 @@ export type SheetVersion = {
   author?: string;
   note?: string;
   columns?: ColumnDefinition[];
+  // Carried per version, like `columns`: a snapshot's grouping describes THAT
+  // snapshot's sheets, and a regrouping between two revisions is a real change
+  // the older document must not be redrawn with.
+  groups?: SheetGroup[];
   sheets: Sheet[];
 };
 
@@ -70,7 +92,21 @@ export type ChangeLogEntry = {
 };
 
 export type Sheet = {
+  // Identity. Every reference to a sheet is this string: build.yml's `name`,
+  // sheet.yml's `sheets:` key, a review target, a diff's sheet key, the CLI's
+  // messages. It must not move, and it must not be a language.
   name: string;
+  // Display text, when the identity is not what a reader should see. Falls back
+  // to `name`, resolved per language by the viewer like every other LangText —
+  // the same split `Category.label` makes, and for the same reason: a sheet can
+  // be called "OS 設定" in Japanese and "OS baseline" in English while both
+  // builds produce the SAME review targets, and a wording can be fixed without
+  // invalidating a review already in progress.
+  label?: LangText;
+  // Which group this sheet is read under (ParameterSheetInput.groups). Absent
+  // = ungrouped, which is every document that declares no groups at all and is
+  // what keeps a flat sheet set flat.
+  group?: string;
   role?: string;
   // The review axis this sheet is organised along (environments, regions …),
   // ordered, as DECLARED by the build (never derived from which rows happen to
@@ -240,6 +276,12 @@ export type SourceLocation = {
 export type ColumnDefinition = {
   field: string;
   header: string;
+  // The same heading as a LangText, when the declaration had one. `header` is
+  // the English string every existing consumer reads; this is what lets the
+  // viewer print the heading in the reader's own language — an under_key
+  // sub-line is unreadable without it, since the value alone ("Env var" vs the
+  // row's own key) is two identifiers with no way to tell which is which.
+  header_lang?: LangText;
   width?: string;
   align?: "left" | "center" | "right";
   className?: string;

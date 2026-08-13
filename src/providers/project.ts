@@ -27,7 +27,12 @@ export type ProjectMetaParam = {
   // on a sheet with more than one component (a single-component sheet IS that
   // component, so the level is collapsed and there is nothing above its
   // categories) — assemble.ts errors otherwise rather than guessing.
-  category?: string | null;
+  //
+  // A LIST is a path: `[Tokens, Access tokens]` files the row under an "Access
+  // tokens" category nested inside "Tokens". Only the first segment is a tab,
+  // so only it belongs in the sheet's `categories:` declaration. A one-element
+  // list and a bare string mean the same thing.
+  category?: string | string[] | null;
   // string: a true alias (see bind.ts). null: an explicit severance — this
   // key is declared to bind to nothing. undefined: not declared.
   dict_key?: string | null;
@@ -50,6 +55,15 @@ export type UnderKeyMeta = { id: string; label: { ja: string; en: string } };
 export type ProjectMetaSheetDoc = {
   categories?: string[];
   under_key?: UnderKeyMeta;
+  // Which group this sheet is read under (types.ts's Sheet.group), naming an
+  // entry of the doc's top-level `groups:`. A display fact like `label`, and in
+  // the same file for the same reason.
+  group?: string;
+  // The sheet's display text (Sheet.label). Here rather than in build.yml for
+  // the same reason `categories`/`under_key` are: it is a fact about how the
+  // sheet is READ, not about where its rows come from, and the reviewer-facing
+  // prose of this project lives in one file.
+  label?: LangText;
   params: Record<string, ProjectMetaParam>;
   // Per-component params, for a sheet holding more than one. The same leak
   // `sheets:` closed one level up: on a sheet whose rows are named by the
@@ -78,12 +92,50 @@ export type ProjectMetaSheetDoc = {
 // `under_key` at this (flat) level are the single-sheet (Level 0) equivalent
 // of the per-sheet fields above — a flat doc only ever backs one sheet, so
 // there is nothing to namespace.
+export type SheetGroupDecl = { name: string; label?: LangText };
+
 export type ProjectMetaDoc = {
   categories?: string[];
   under_key?: UnderKeyMeta;
+  label?: LangText;
   params?: Record<string, ProjectMetaParam>;
   sheets?: Record<string, ProjectMetaSheetDoc>;
+  // The sheet groups this document uses, IN READING ORDER (types.ts's
+  // SheetGroup). Optional: a document that declares none, and sheets that name
+  // none, stay a flat tab strip exactly as before.
+  //
+  // Declaring it is what buys the order — derived-from-first-appearance would
+  // silently reshuffle the whole header the day a sheet is added in the middle
+  // — and, once declared, it is checked BOTH ways like every other list here:
+  // a sheet naming a group nobody declared, and a declared group no sheet uses,
+  // are both errors rather than a tab that quietly appears or quietly does not.
+  groups?: { name: string; label?: LangText }[];
 };
+
+// A `category:` list is a path, and every segment of it has to be a real name.
+// Checked once at load, where the file can be named, rather than per row deep
+// inside assembly: `category: []` is the interesting case — it looks like
+// "no category" but `null` already means that, and the two must not be one
+// spelling apart.
+function checkCategoryPaths(params: Record<string, ProjectMetaParam> | undefined, where: string, path: string): void {
+  for (const [key, param] of Object.entries(params ?? {})) {
+    const c = param?.category;
+    if (!Array.isArray(c)) continue;
+    if (c.length === 0) {
+      throw new Error(
+        `project metadata ${path}: ${where}"${key}" has an empty category list. ` +
+          `Write the path it belongs under, or "category: null" to say it belongs to no category at all.`
+      );
+    }
+    const bad = c.findIndex((seg) => typeof seg !== "string" || seg.trim() === "");
+    if (bad !== -1) {
+      throw new Error(
+        `project metadata ${path}: ${where}"${key}" has an empty or non-string category path segment at position ${bad + 1} ` +
+          `(${JSON.stringify(c)}).`
+      );
+    }
+  }
+}
 
 export function loadProjectMeta(path: string, readFile: (path: string) => string | null): ProjectMetaDoc {
   const content = readFile(path);
@@ -99,16 +151,29 @@ export function loadProjectMeta(path: string, readFile: (path: string) => string
   if (doc.sheets) {
     const sheets: Record<string, ProjectMetaSheetDoc> = {};
     for (const [name, s] of Object.entries(doc.sheets)) {
+      checkCategoryPaths(s?.params, `sheet "${name}" param `, path);
+      for (const [component, c] of Object.entries(s?.components ?? {})) {
+        checkCategoryPaths(c?.params, `sheet "${name}" component "${component}" param `, path);
+      }
       sheets[name] = {
         params: s?.params ?? {},
         ...(s?.categories ? { categories: s.categories } : {}),
         ...(s?.under_key ? { under_key: s.under_key } : {}),
+        ...(s?.label ? { label: s.label } : {}),
+        ...(s?.group ? { group: s.group } : {}),
         ...(s?.components ? { components: s.components } : {}),
       };
     }
-    return { sheets };
+    return { sheets, ...(doc.groups ? { groups: doc.groups } : {}) };
   }
-  return { params: doc.params ?? {}, ...(doc.categories ? { categories: doc.categories } : {}), ...(doc.under_key ? { under_key: doc.under_key } : {}) };
+  checkCategoryPaths(doc.params, "param ", path);
+  return {
+    params: doc.params ?? {},
+    ...(doc.groups ? { groups: doc.groups } : {}),
+    ...(doc.categories ? { categories: doc.categories } : {}),
+    ...(doc.under_key ? { under_key: doc.under_key } : {}),
+    ...(doc.label ? { label: doc.label } : {}),
+  };
 }
 
 // Every check downstream (bindDrafts/fileDrafts/enrich, in assemble.ts) reads
@@ -162,6 +227,26 @@ export function componentParamsForSheet(
 export function categoriesForSheet(doc: ProjectMetaDoc, sheet: string | undefined): string[] {
   if (doc.sheets) return (sheet !== undefined ? doc.sheets[sheet]?.categories : undefined) ?? [];
   return doc.categories ?? [];
+}
+
+// This sheet's own group id, if any (Sheet.group). A flat doc describes one
+// sheet, and one sheet is not something to group, so only a `sheets:` doc can
+// answer this.
+export function groupForSheet(doc: ProjectMetaDoc, sheet: string | undefined): string | undefined {
+  return doc.sheets && sheet !== undefined ? doc.sheets[sheet]?.group : undefined;
+}
+
+// The document's declared groups, in reading order. Empty when it declares none.
+export function sheetGroups(doc: ProjectMetaDoc): { name: string; label?: LangText }[] {
+  return doc.groups ?? [];
+}
+
+// This sheet's own display text, if any (Sheet.label). A flat doc describes one
+// sheet, so its top-level `label:` is that sheet's — same shape as
+// categoriesForSheet.
+export function labelForSheet(doc: ProjectMetaDoc, sheet: string | undefined): LangText | undefined {
+  if (doc.sheets) return sheet !== undefined ? doc.sheets[sheet]?.label : undefined;
+  return doc.label;
 }
 
 // This sheet's own under_key column declaration (id + bilingual label), if

@@ -243,7 +243,34 @@ What that buys you:
   of settings a project happened to touch. An entry with no documented
   default is excluded (asserting "the default applies here" would be false
   for it); the exclusion count is always printed, and `--materialize-report`
-  lists them.
+  lists them. One ledger per component (below), unless the binding names the
+  one component it describes — see `component:` there.
+- **`category:` takes a path.** `category: [Tokens, Access tokens]` nests the
+  row two levels deep; a bare string is the one-segment case of the same thing.
+  A dictionary's own `group:` takes the same path, so a product whose taxonomy
+  has levels says so instead of spelling them into one name.
+  Only the first segment is a tab, so only it belongs in the sheet's
+  `categories:` list. The path is what a review target names, at any depth, so
+  nesting is structure rather than decoration.
+- **A finding survives its row being reorganised.** A review names a category,
+  and a category is display structure — most come from a product dictionary's
+  own grouping, so upgrading one can move a setting to another screen. Saved
+  findings are re-pointed at wherever the row is now (identity is the parameter
+  within its component), and every move is reported rather than followed
+  silently. Where the answer would be a guess, it resolves to nothing instead.
+- **Sheets can be grouped.** `groups:` in `sheet.yml` declares the reading
+  order; each sheet names one with `group:`. The header becomes two rows —
+  groups, then the sheets of the one you are in (nothing on the overview, which
+  belongs to no group) — and the outline gets the same headings, which is what lets a document hold a workbook's worth of sheets
+  instead of a tab strip's. Checked both ways: a sheet naming an undeclared
+  group, an unused group, and an ungrouped sheet in a grouped document are all
+  build errors. A group is display structure only — it appears in no review
+  target, so grouping an existing document orphans nothing.
+- **A sheet's name is identity; `label:` is what a reader sees.** Declared in
+  `sheet.yml` beside the sheet's other display facts, as a `{ ja, en }` pair,
+  and switched live by the viewer's language toggle. The name still keys every
+  review target, diff and CLI message, so a tab can be renamed in either
+  language without orphaning a finding filed against it.
 - **A build that can't proceed says so, and hands you the fix.** A parameter
   with no category or description fails the build, naming every offender
   with a paste-able `sheet.yml` fragment (`--scaffold <file>` writes it out;
@@ -339,7 +366,36 @@ every category would add a heading that says nothing.
 
 For an `ansible` sheet, `templates:` (plural) makes one component per template,
 which is how several rendered artifacts — a config file, a systemd unit, an
-environment file — end up on one sheet. It is also the only way they can: two
+environment file — end up on one sheet. A `layered` sheet's `static_files:`
+takes the same `component:` per file, for the case a transform cannot reach:
+two files holding the same KIND of document produce identical keys and
+identical structural paths, so what tells their rows apart is which file they
+came from.
+
+That last case is the one where the per-component ledger needs telling
+otherwise. `materialize` expands once per component, which is exactly right for
+several instances of a product — each needs its own ledger, or one instance's
+value marks an option covered for all of them. It is exactly wrong for several
+artifacts of one product: a config file, the systemd unit that starts it and a
+backup script are all "the product", but only the first is what the product's
+settings registry is about, and the other two would each be reviewed against
+every option of a file they do not contain. Say which component
+the dictionary describes:
+
+```yaml
+    dictionaries:
+      - product: postgresql
+        version: "16"
+        materialize: true
+        component: postgresql.conf   # not the unit file, not the backup script
+```
+
+It scopes binding as well as the ledger, because "this dictionary describes that
+artifact" is one claim. Expect the rows in the other components to lose the
+category they were getting from the dictionary's own grouping — the build stops
+and asks `sheet.yml` for one, which is the point. Naming a component the sheet
+has no rows for is a build error, like every other rule here that matched
+nothing. It is also the only way they can: two
 systemd units both have `Unit.Description`, and without a component to separate
 them one row would overwrite the other.
 
