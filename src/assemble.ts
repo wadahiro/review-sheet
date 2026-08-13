@@ -341,6 +341,35 @@ export type MaterializeReport = {
   noDefaultKeys: string[];
 };
 
+// Resolved dictionary bindings for one sheet, nested by COMPONENT and then by
+// key — never keyed by the key alone.
+//
+// Two components of one sheet share a key space on purpose: that is the first
+// of the three things a component IS (see SheetDictionaryBinding.component). So
+// `port` under one component and `port` under another are two rows, and a
+// dictionary scoped to one of them, or a per-component `dict_key` in sheet.yml,
+// makes them two DIFFERENT bindings. A flat key->Binding map gave them one
+// slot, so whichever bound last handed the other its documentation, its default
+// and its group — silently, and only on the sheets whose whole reason for
+// existing is that the components differ.
+//
+// The empty-string component is "no component": rows on a component-less sheet,
+// and the rows of a component-bearing sheet that belong to none of them.
+export type SheetBindings = Map<string, Map<string, Binding>>;
+
+const NO_COMPONENT = "";
+
+function bindingFor(bindings: SheetBindings, component: string | undefined, key: string): Binding | undefined {
+  return bindings.get(component ?? NO_COMPONENT)?.get(key);
+}
+
+function setBinding(bindings: SheetBindings, component: string | undefined, key: string, value: Binding): void {
+  const scope = component ?? NO_COMPONENT;
+  const byKey = bindings.get(scope) ?? new Map<string, Binding>();
+  byKey.set(key, value);
+  bindings.set(scope, byKey);
+}
+
 export type AssembleOpts = {
   projectPath?: string;
   metadataDirs?: string[];
@@ -661,8 +690,8 @@ function bindDrafts(
   bindSources: ScopedBindSource[],
   reportRows: BindReportRow[],
   bindErrors: string[]
-): Map<string, Binding> {
-  const bindings = new Map<string, Binding>();
+): SheetBindings {
+  const bindings: SheetBindings = new Map();
   if (bindSources.length === 0) return bindings;
   for (const d of drafts) {
     // A dictionary scoped to another component is not a dictionary this row
@@ -682,7 +711,7 @@ function bindDrafts(
       bindErrors.push(`${sheetName} > ${d.key}: ${result.message}`);
       continue;
     }
-    bindings.set(d.key, result);
+    setBinding(bindings, d.component, d.key, result);
     reportRows.push({
       sheet: sheetName,
       key: d.key,
@@ -704,7 +733,7 @@ function materializeDrafts(
   sheetName: string,
   // No `drafts` parameter: what this project already covers is read from
   // `draftBindings` (the single bind pass), not re-derived from the drafts here.
-  draftBindings: Map<string, Binding>,
+  draftBindings: SheetBindings,
   binding: SheetDictionaryBinding,
   opts: AssembleOpts,
   // The component this expansion is FOR, and the draft keys belonging to it.
@@ -769,9 +798,10 @@ function materializeDrafts(
   // has no ALB. Empty when the dictionary declares no units at all, which is
   // the single-product case and expands everything.
   const unitsInUse = new Set<string>();
-  for (const [draftKey, b] of draftBindings) {
-    if (componentKeys && !componentKeys.has(draftKey)) continue;
-    if (b.product === binding.product && b.version === binding.version) {
+  for (const [, byKey] of draftBindings) {
+    for (const [draftKey, b] of byKey) {
+      if (componentKeys && !componentKeys.has(draftKey)) continue;
+      if (b.product !== binding.product || b.version !== binding.version) continue;
       covered.add(b.dictKey);
       if (b.entry.unit !== undefined) unitsInUse.add(b.entry.unit);
     }
@@ -891,7 +921,7 @@ function materializeDrafts(
 function fileDrafts(
   sheetName: string,
   drafts: Draft[],
-  draftBindings: Map<string, Binding>,
+  draftBindings: SheetBindings,
   projectMeta: ProjectMetaDoc,
   // This SHEET's own declared top-level category order (sheet.yml's
   // categories: — see providers/project.ts's categoriesForSheet). Empty = no
@@ -966,7 +996,7 @@ function fileDrafts(
     // paramForRow): two components of one product share their field NAMES, so
     // a flat table would hand one component's remarks to the other.
     const meta = paramForRow(projectMeta, sheetName, d.component, d.key);
-    const binding = draftBindings.get(d.key);
+    const binding = bindingFor(draftBindings, d.component, d.key);
     // The project's own category always wins. Failing that, a row that BOUND
     // to a product dictionary entry (see bindDrafts) falls back to the
     // product's own grouping of that entry — the same fallback materialize's
@@ -1307,7 +1337,12 @@ export function assembleSheetsWithReport(
   // sheet name then parameter key — handed to enrich() below so its
   // dictionary provider does a plain lookup instead of re-running its own key
   // matching against the SAME dictionaries (see enrich.ts's EnrichOptions.bindings).
-  const allBindings = new Map<string, Map<string, Binding>>();
+  const allBindings = new Map<string, SheetBindings>();
+  // Per sheet: does it RENDER a component level, and if it has exactly one
+  // component (which collapses that level), which. This is what turns the
+  // category path enrich walks back into the component a binding is filed
+  // under — see EnrichOptions.bindings.
+  const componentLevel = new Map<string, { shows: boolean; only?: string }>();
   // Every keyMap-derived row's backing variable, keyed by sheet name then the
   // row's FINAL (product) key — handed to enrich() below (EnrichOptions.
   // variables) so a native-channel provider (argument-specs.ts) can still
@@ -1378,6 +1413,8 @@ export function assembleSheetsWithReport(
         );
       }
     }
+    const components = new Set(drafts.map((d) => d.component).filter((c): c is string => c !== undefined));
+    componentLevel.set(si.name, { shows: components.size > 1, only: components.size === 1 ? [...components][0] : undefined });
     const sheetVariables = new Map<string, string>();
     for (const d of drafts) if (d.variable !== undefined) sheetVariables.set(d.key, d.variable);
     allVariables.set(si.name, sheetVariables);
@@ -1413,7 +1450,10 @@ export function assembleSheetsWithReport(
     // present `binding` over that path, so merging materialize's bindings
     // into draftBindings itself would flatten every materialized row back to
     // a top-level dictionary-group tab instead of nesting it.
-    const sheetBindings = new Map(draftBindings);
+    // A copy per component too, not just of the outer map: materialize adds its
+    // own rows' bindings below, and a shallow copy would push them into the
+    // very map fileDrafts must keep seeing unchanged (see the comment above).
+    const sheetBindings: SheetBindings = new Map([...draftBindings].map(([c, byKey]) => [c, new Map(byKey)]));
     allBindings.set(si.name, sheetBindings);
     // One expansion PER COMPONENT (see materializeDrafts): each component's
     // ledger is its own. Component order follows first appearance in the
@@ -1456,7 +1496,7 @@ export function assembleSheetsWithReport(
         const materialized = materializeDrafts(si.name, draftBindings, dictBinding, opts, component, componentKeys);
         drafts.push(...materialized.drafts);
         materializeReports.push(materialized.report);
-        for (const [k, v] of materialized.bindings) sheetBindings.set(k, v);
+        for (const [k, v] of materialized.bindings) setBinding(sheetBindings, component, k, v);
       }
     }
     const sheetAssembledKeys = new Set<string>();
@@ -1688,7 +1728,16 @@ export function assembleSheetsWithReport(
     // The single bind pass already run above (bindDrafts/materializeDrafts) —
     // enrich()'s dictionary provider does a plain lookup off these instead of
     // re-resolving the same keys against the same dictionaries a second way.
-    bindings: allBindings,
+    bindings: (sheet, key, categoryPath) => {
+      const byComponent = allBindings.get(sheet);
+      if (byComponent === undefined) return undefined;
+      const level = componentLevel.get(sheet);
+      const component = level?.shows ? categoryPath[0] : level?.only;
+      // The no-component fall-through is not a guess: a sheet that HAS
+      // components can still hold rows belonging to none of them (a variable
+      // two components share — see resolveKey), and those bind under "".
+      return bindingFor(byComponent, component, key) ?? bindingFor(byComponent, undefined, key);
+    },
     variables: allVariables,
   });
 

@@ -36,17 +36,27 @@ export type EnrichOptions = {
   terraformVariables?: string[];
   dictionaries?: DictionaryBinding[];
   providers?: MetadataProvider[];
-  // Already-resolved dictionary bindings, keyed by sheet name then parameter
-  // key — what assembleSheets hands in (its bindDrafts/materializeDrafts
-  // already ran the single bind pass; see assemble.ts). enrich()'s dictionary
-  // provider then does a plain lookup instead of re-matching.
+  // Already-resolved dictionary bindings — what assembleSheets hands in (its
+  // bindDrafts/materializeDrafts already ran the single bind pass; see
+  // assemble.ts). enrich()'s dictionary provider then does a plain lookup
+  // instead of re-matching.
+  //
+  // A LOOKUP, not a map, and specifically not a key->Binding map: a binding
+  // belongs to a (component, key) pair (see assemble.ts's SheetBindings), and
+  // which component a row is in is something only the assembler can say. The
+  // emitted model renders a component as the outermost category, and a sheet
+  // with a single component collapses that level away entirely — so the
+  // category path enrich walks is evidence the assembler can read and enrich
+  // cannot. Handing over a flat map instead made two components of one sheet
+  // share one slot, and whichever bound last supplied the OTHER's description,
+  // default and group.
   //
   // Omitted (the `import -f` + `--project` path, which never goes through
   // assembleSheets) makes enrich() run that SAME bind pass itself — see
   // resolveBindings() below — against the input model's own keys, using
   // bind.ts's bindKey directly. Either way, bindKey() is the only place a
   // project key is matched against a dictionary entry.
-  bindings?: Map<string, Map<string, Binding>>;
+  bindings?: (sheet: string, key: string, categoryPath: string[]) => Binding | undefined;
   // Every keyMap-derived row's backing variable (assemble.ts's Draft.variable
   // — see resolveKey), keyed by sheet name then the row's FINAL (product) key
   // — what assembleSheets hands in, mirroring `bindings` above. Independent of
@@ -350,11 +360,11 @@ function enrichParam(
   ctx: MetadataContext,
   providers: MetadataProvider[] | undefined,
   byProvider: Record<string, number>,
-  resolveBinding: (sheet: string, key: string) => Binding | undefined,
+  resolveBinding: (sheet: string, key: string, categoryPath: string[]) => Binding | undefined,
   resolveVariable: (sheet: string, key: string) => string | undefined
 ): boolean {
   const file = "source" in param ? param.source?.file : undefined;
-  const binding = resolveBinding(sheet, param.key);
+  const binding = resolveBinding(sheet, param.key, categoryPath);
   const variable = resolveVariable(sheet, param.key);
   const query = { key: param.key, sheet, categoryPath, file, binding, variable };
   const resolved = resolveMetadata(query, ctx, providers);
@@ -409,7 +419,7 @@ function walkCategories(
   ctx: MetadataContext,
   providers: MetadataProvider[] | undefined,
   report: EnrichReport,
-  resolveBinding: (sheet: string, key: string) => Binding | undefined,
+  resolveBinding: (sheet: string, key: string, categoryPath: string[]) => Binding | undefined,
   resolveVariable: (sheet: string, key: string) => string | undefined
 ): void {
   for (const category of categories) {
@@ -492,8 +502,8 @@ export function enrich(
     : loadBindSources(dictionaries, opts.metadataDirs ?? [], opts.readFile);
   const bindErrors: string[] = [];
 
-  function resolveBinding(sheet: string, key: string): Binding | undefined {
-    if (opts.bindings) return opts.bindings.get(sheet)?.get(key);
+  function resolveBinding(sheet: string, key: string, categoryPath: string[]): Binding | undefined {
+    if (opts.bindings) return opts.bindings(sheet, key, categoryPath);
     if (bindSources.length === 0) return undefined;
     const dictKey = projectMeta ? paramsForSheet(projectMeta, sheet)[key]?.dict_key : undefined;
     const result = bindKey(key, dictKey, bindSources);
@@ -538,7 +548,10 @@ export function enrich(
       key: m.key,
       needsCategory: false,
       needsDescription: true,
-      binding: resolveBinding(m.sheet, m.key),
+      // `category` is the joined path this row was filed under, which is where
+      // the component is (see EnrichOptions.bindings) — split back so the
+      // scaffold names the same binding the row itself resolved.
+      binding: resolveBinding(m.sheet, m.key, m.category.split(" > ")),
     }));
     throw new ScaffoldableBuildError(
       `metadata: ${report.missing.length} parameter(s) have no description:\n${lines.join("\n")}\n` +

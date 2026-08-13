@@ -4,6 +4,7 @@ import { assembleSheets, assembleSheetsWithReport, type AssembleOpts, type Extra
 import { ScaffoldableBuildError, renderScaffold } from "../src/enrich";
 import { buildSourceIndex } from "../src/prompt";
 import { parse as parseYaml } from "yaml";
+import { pickLang } from "../src/types";
 import type { InstanceParameter, SimpleParameter } from "../src/types";
 
 // The metadata provider registry (src/metadata.ts) is a process-wide
@@ -1536,5 +1537,65 @@ describe("component order follows the declaration", () => {
     for (const component of sheet.categories) {
       expect(component.categories!.map((c) => c.name)).toEqual(["General", "Settings"]);
     }
+  });
+});
+
+// A binding belongs to a (component, key) PAIR, not to a key. Two components of
+// one sheet share a key space by design — that is what a component is for — so
+// keying the build's bindings by the bare key gives whichever component bound
+// last the other one's dictionary entry, and with it the other one's
+// documentation and default.
+describe("bindings are per component, not per key", () => {
+  const dictA = `
+product: alpha
+version: "1"
+parameters:
+  port:
+    description: { en: Alpha's own port }
+    default: "1111"
+`;
+  const dictB = `
+product: beta
+version: "1"
+parameters:
+  port:
+    description: { en: Beta's own port }
+    default: "2222"
+`;
+  const bindFiles: Record<string, string> = {
+    "bind-project.yml": `sheets:\n  s:\n    params: {}\n`,
+    "meta/alpha@1.yml": dictA,
+    "meta/beta@1.yml": dictB,
+  };
+
+  it("gives each component the entry from the dictionary bound to IT", () => {
+    const inputs: SheetInputs[] = [
+      {
+        name: "s",
+        instances: [],
+        layers: [{ kind: "base", entries: map([]) }],
+        embedded: [
+          { key: "port", value: "80", source: { file: "a.conf", line: 1 }, component: "alpha-side" },
+          { key: "port", value: "90", source: { file: "b.conf", line: 1 }, component: "beta-side" },
+        ],
+        componentOrder: ["alpha-side", "beta-side"],
+      },
+    ];
+    const input = assembleSheets(inputs, {
+      projectPath: "bind-project.yml",
+      metadataDirs: ["meta"],
+      readFile: (p) => bindFiles[p] ?? null,
+      dictionaries: {
+        s: [
+          { product: "alpha", version: "1", component: "alpha-side" },
+          { product: "beta", version: "1", component: "beta-side" },
+        ],
+      },
+    });
+    const byComponent = new Map(input.sheets[0].categories.map((c) => [c.name, c.categories![0].params![0] as SimpleParameter]));
+    expect(pickLang(byComponent.get("alpha-side")!.description!, "en")).toBe("Alpha's own port");
+    expect(pickLang(byComponent.get("beta-side")!.description!, "en")).toBe("Beta's own port");
+    expect(byComponent.get("alpha-side")!.default).toBe("1111");
+    expect(byComponent.get("beta-side")!.default).toBe("2222");
   });
 });
