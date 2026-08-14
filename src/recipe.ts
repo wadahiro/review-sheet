@@ -19,6 +19,15 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [k: s
 
 export type RecipeIO = {
   readFile: (path: string) => string | null; // sync, like every other injected I/O in this repo
+  // A recipe whose subject is a DIRECTORY of files (a Terraform module's
+  // `*.tf`, an Ansible role's `tasks/`) rather than one named file has no way
+  // to enumerate it through `readFile` alone — this is that enumeration,
+  // injected the same way and for the same reason (no recipe imports `fs`).
+  // Returns entry NAMES (not paths), or `null` when the path is missing or is
+  // not a directory — the same "null means not there" convention `readFile`
+  // already uses. Optional: an out-of-tree recipe, and the many tests that
+  // hand-build a RecipeIO without ever touching a directory, keep compiling.
+  listDir?: (path: string) => string[] | null;
   specDir: string; // absolute directory of the build.yml this sheet came from
   resolve: (p: string) => string; // specDir-relative path -> absolute
   instances: string[]; // this SHEET's instances (ordered) — already resolved from the

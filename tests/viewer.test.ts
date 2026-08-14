@@ -1294,3 +1294,288 @@ describe("viewer: side by side aligns the environments across a row", () => {
     expect(cells[1]).toContain("production: 14400");
   });
 });
+
+// ---- the artifact panel -----------------------------------------------
+//
+// A value cannot be judged alone: `StartServers 2` is right or wrong depending
+// on the `<IfModule mpm_event_module>` around it. A container is not a row, so
+// the file goes beside the sheet rather than its brackets becoming parameters.
+// These assert the two directions a reviewer moves — row to its place in the
+// file, and a line back to the row that reviews it — and that a preview says
+// what it could not compute rather than looking rendered and being wrong.
+
+const WITH_ARTIFACT = {
+  metadata: { title: "t" },
+  versions: [
+    {
+      version: "current",
+      sheets: [
+        {
+          name: "web",
+          categories: [
+            {
+              name: "httpd.conf",
+              params: [
+                { key: "IfModule.StartServers", value: "2", description: "Startup processes" },
+                { key: "Listen", value: "80", description: "Port" },
+                // Set here, but no line of the file is this one.
+                { key: "ServerAdmin", value: "root@localhost", description: "Admin address" },
+              ],
+            },
+          ],
+        },
+      ],
+      artifacts: [
+        {
+          id: "web",
+          sheet: "web",
+          deployed_path: "/etc/httpd/conf/httpd.conf",
+          source_file: "roles/httpd/templates/httpd.conf.j2",
+          lines: [
+            { text: "# managed by ansible", kind: "verbatim" as const },
+            { text: "Listen 80", kind: "substituted" as const, key: "Listen" },
+            { text: "", kind: "verbatim" as const },
+            { text: "<IfModule mpm_event_module>", kind: "verbatim" as const },
+            { text: "    StartServers 2", kind: "substituted" as const, key: "IfModule.StartServers" },
+            { text: "    ServerLimit {{ a | weird }}", kind: "unrendered" as const, cause: "engine" as const, reason: "{{ a | weird }}" },
+            // Written by the toolchain at deploy time — not a gap, and not
+            // counted as one.
+            { text: "# {{ ansible_managed }}", kind: "unrendered" as const, cause: "deploy-time" as const, reason: "{{ ansible_managed }}" },
+            { text: "</IfModule>", kind: "verbatim" as const },
+            { text: "LogLevel debug", kind: "absent" as const, reason: "httpd_debug" },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+function mountArtifact(): HTMLElement {
+  openSheetTab();
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  render(h(Root, { payload: WITH_ARTIFACT, reviewEnabled: true, initialLang: "ja", server: false }), host);
+  return host;
+}
+
+function rowFor(host: HTMLElement, key: string): HTMLElement {
+  const rows = [...host.querySelectorAll("tbody tr")];
+  const row = rows.find((r) => r.querySelector(".rs-col-key code")?.textContent === key);
+  if (!row) throw new Error(`row not found: ${key}`);
+  return row as HTMLElement;
+}
+
+// Two components of one sheet share a key space by design, so a preview that
+// names a component must not claim another component's row of the same name.
+const TWO_COMPONENTS = {
+  metadata: { title: "t" },
+  versions: [
+    {
+      version: "current",
+      sheets: [
+        {
+          name: "realms",
+          categories: [
+            { name: "master", categories: [{ name: "Login", params: [{ key: "enabled", value: "true", description: "On" }] }] },
+            { name: "poc", categories: [{ name: "Login", params: [{ key: "enabled", value: "true", description: "On" }] }] },
+          ],
+        },
+      ],
+      artifacts: [
+        {
+          id: "realms::poc",
+          sheet: "realms",
+          component: "poc",
+          source_file: "config/poc.yml",
+          lines: [{ text: "enabled: true", kind: "verbatim" as const, key: "enabled" }],
+        },
+      ],
+    },
+  ],
+};
+
+// The id contract: id identifies one previewed FILE. A Terraform module's rows
+// span several files (main.tf, variables.tf) on the same sheet/component —
+// those previews must get DIFFERENT ids, or the viewer would render them as
+// bogus instance tabs of one "file". No viewer logic changes for this: the
+// row->preview index is already keyed per LINE (sheet, component, key), so a
+// row routes to whichever file actually holds its line.
+const TWO_FILES_SAME_COMPONENT = {
+  metadata: { title: "t" },
+  versions: [
+    {
+      version: "current",
+      sheets: [
+        {
+          name: "tf",
+          categories: [
+            {
+              name: "svc",
+              categories: [
+                { name: "Main", params: [{ key: "instance_type", value: "t3.micro", description: "Instance type" }] },
+                { name: "Vars", params: [{ key: "region", value: "us-east-1", description: "Region" }] },
+              ],
+            },
+          ],
+        },
+      ],
+      artifacts: [
+        {
+          id: "tf::svc::main.tf",
+          sheet: "tf",
+          component: "svc",
+          source_file: "modules/svc/main.tf",
+          lines: [{ text: 'instance_type = "t3.micro"', kind: "verbatim" as const, key: "instance_type" }],
+        },
+        {
+          id: "tf::svc::variables.tf",
+          sheet: "tf",
+          component: "svc",
+          source_file: "modules/svc/variables.tf",
+          lines: [{ text: 'variable "region" {}', kind: "verbatim" as const, key: "region" }],
+        },
+      ],
+    },
+  ],
+};
+
+// A `nature: "source"` preview is the AUTHORED file a deployed artifact was
+// derived from — never rendered/deployed itself, so the header must not claim
+// "Rendered from" over it.
+const WITH_SOURCE_ARTIFACT = {
+  metadata: { title: "t" },
+  versions: [
+    {
+      version: "current",
+      sheets: [
+        {
+          name: "mod",
+          categories: [{ name: "main.tf", params: [{ key: "instance_type", value: "t3.micro", description: "Instance type" }] }],
+        },
+      ],
+      artifacts: [
+        {
+          id: "mod",
+          sheet: "mod",
+          source_file: "modules/ec2/main.tf",
+          nature: "source" as const,
+          lines: [{ text: 'instance_type = "t3.micro"', kind: "verbatim" as const, key: "instance_type" }],
+        },
+      ],
+    },
+  ],
+};
+
+describe("artifact panel", () => {
+  it("does not offer one component's file to another component's row", () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: TWO_COMPONENTS, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    const rows = [...host.querySelectorAll("tbody tr")].filter(
+      (r) => r.querySelector(".rs-col-key code")?.textContent === "enabled"
+    );
+    expect(rows.length).toBe(2);
+    // Only the component the preview names. The other realm's `enabled` is a
+    // different row and that file has no line for it.
+    expect(rows.filter((r) => r.querySelector(".rs-artifact-chip")).length).toBe(1);
+  });
+
+  it("offers the file only on rows that are a line of it", () => {
+    const host = mountArtifact();
+    expect(rowFor(host, "IfModule.StartServers").querySelector(".rs-artifact-chip")).not.toBeNull();
+    // A row the file has no line for gets none; an affordance that opens
+    // nothing is worse than none.
+    expect(rowFor(host, "ServerAdmin").querySelector(".rs-artifact-chip")).toBeNull();
+  });
+
+  it("opens at the row's own line, with the container around it", async () => {
+    const host = mountArtifact();
+    (rowFor(host, "IfModule.StartServers").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await Promise.resolve();
+    const panel = host.querySelector(".rs-artifact-panel");
+    expect(panel).not.toBeNull();
+    const here = panel!.querySelector(".rs-here .rs-artifact-text");
+    expect(here?.textContent).toBe("    StartServers 2");
+    // The whole file, containers and comments and blank lines included — the
+    // context the row alone cannot carry.
+    const texts = [...panel!.querySelectorAll(".rs-artifact-text")].map((e) => e.textContent);
+    expect(texts).toContain("<IfModule mpm_event_module>");
+    expect(texts).toContain("</IfModule>");
+    expect(texts).toContain("# managed by ansible");
+    expect(panel!.querySelector(".rs-artifact-path")?.textContent).toBe("/etc/httpd/conf/httpd.conf");
+  });
+
+  it("marks a line it could not compute, and one this instance does not render", async () => {
+    const host = mountArtifact();
+    (rowFor(host, "Listen").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await Promise.resolve();
+    const panel = host.querySelector(".rs-artifact-panel")!;
+    const unrendered = panel.querySelector(".rs-kind-unrendered .rs-artifact-text");
+    // Shown AS WRITTEN, not guessed at: a line that looks rendered and is wrong
+    // is worse than one that says it could not be computed.
+    expect(unrendered?.textContent).toBe("    ServerLimit {{ a | weird }}");
+    const absent = panel.querySelector(".rs-kind-absent .rs-artifact-text");
+    expect(absent?.textContent).toBe("LogLevel debug");
+  });
+
+  it("counts only the gaps it can honestly claim", async () => {
+    const host = mountArtifact();
+    (rowFor(host, "Listen").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await Promise.resolve();
+    // One engine gap and one deploy-time line; the warning names the first only.
+    const warn = host.querySelector(".rs-artifact-warn")?.textContent ?? "";
+    expect(warn).toContain("1");
+    // …and no tally of how the tool built the document. A reviewer cannot act
+    // on "31 lines had no Jinja on them".
+    expect(host.querySelector(".rs-artifact-meta")?.textContent).not.toContain("verbatim");
+  });
+
+  it("closes, and stays out of the way of print", async () => {
+    const host = mountArtifact();
+    (rowFor(host, "Listen").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await Promise.resolve();
+    expect(host.querySelector(".rs-app")?.classList.contains("rs-with-artifact")).toBe(true);
+    (host.querySelector(".rs-artifact-panel .rs-modal-close") as HTMLElement).click();
+    await Promise.resolve();
+    expect(host.querySelector(".rs-artifact-panel")).toBeNull();
+    expect(customStyles).toContain(".rs-artifact-panel,");
+  });
+
+  it("routes each row to the file that holds its line, never an instance tab strip of unrelated files", async () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: TWO_FILES_SAME_COMPONENT, reviewEnabled: true, initialLang: "ja", server: false }), host);
+
+    (rowFor(host, "instance_type").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await Promise.resolve();
+    let panel = host.querySelector(".rs-artifact-panel")!;
+    expect(panel.querySelector(".rs-artifact-path")?.textContent).toBe("modules/svc/main.tf");
+    // Two previews share this sheet AND component — if they wrongly shared an
+    // id too, this would render as an instance tab strip.
+    expect(panel.querySelector(".rs-artifact-tab")).toBeNull();
+    (panel.querySelector(".rs-modal-close") as HTMLElement).click();
+    await Promise.resolve();
+
+    (rowFor(host, "region").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await Promise.resolve();
+    panel = host.querySelector(".rs-artifact-panel")!;
+    expect(panel.querySelector(".rs-artifact-path")?.textContent).toBe("modules/svc/variables.tf");
+    expect(panel.querySelector(".rs-artifact-tab")).toBeNull();
+  });
+
+  it("labels a source preview as a source file, not as rendered-from", async () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: WITH_SOURCE_ARTIFACT, reviewEnabled: true, initialLang: "ja", server: false }), host);
+
+    (rowFor(host, "instance_type").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await Promise.resolve();
+    const meta = host.querySelector(".rs-artifact-meta")?.textContent ?? "";
+    expect(meta).toContain("ソースファイル");
+    expect(meta).not.toContain("生成元");
+    expect(host.querySelector(".rs-artifact-path")?.textContent).toBe("modules/ec2/main.tf");
+  });
+});

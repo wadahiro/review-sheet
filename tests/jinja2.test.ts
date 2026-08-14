@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { baseFileName, jinjaVariable, conditionalLineSet } from "../src/jinja2";
+import { baseFileName, jinjaVariable, conditionalLineSet, substituteJinja } from "../src/jinja2";
 import { extractFile } from "../src/extract";
 import type { Entry } from "../src/parser";
 
@@ -148,5 +148,33 @@ describe("jinja2 over other structured base formats", () => {
     expect(byPath(e, "backend[app].server")?.value).toBe("web1 {{ haproxy_web1_addr }} check");
     expect(byPath(e, "backend[app].server")?.source.templateVar).toBe("haproxy_web1_addr");
     expect(noLeak(e)).toBe(true);
+  });
+});
+
+// A quoted string literal as the whole expression. Jinja emits the string, so
+// this is exact rather than a guess — the standard the pure filters meet and
+// the reason an expression like `{{ a + b }}` is still refused.
+describe("substituteJinja: a string literal", () => {
+  it("renders it, and does not report a line that rendered perfectly", () => {
+    // The literal a template most often writes is a doubled brace it wants
+    // shown LITERALLY — a comment explaining the templating. Its OUTPUT
+    // therefore contains braces, and the sweep for leftover `{{ }}` used to
+    // report the very braces the substitution had just produced.
+    const r = substituteJinja("# {{ '{{ var }}' }} values are the reviewable ones", () => undefined);
+    expect(r.text).toBe("# {{ var }} values are the reviewable ones");
+    expect(r.unresolved).toEqual([]);
+  });
+
+  it("takes either quote, and leaves a real expression alone", () => {
+    expect(substituteJinja('{{ "plain" }}', () => undefined).text).toBe("plain");
+    const expr = substituteJinja("{{ a + b }}", () => undefined);
+    expect(expr.text).toBe("{{ a + b }}");
+    expect(expr.unresolved).toEqual(["{{ a + b }}"]);
+  });
+
+  it("still reports an unresolved variable beside a literal", () => {
+    const r = substituteJinja("{{ 'lit' }} {{ missing }}", () => undefined);
+    expect(r.text).toBe("lit {{ missing }}");
+    expect(r.unresolved).toEqual(["{{ missing }}"]);
   });
 });

@@ -71,6 +71,8 @@ import {
   type LineCondition,
 } from "../jinja2.js";
 import { registerRecipe, type SheetRecipe, type RecipeIO, type JsonValue } from "../recipe.js";
+import { previewRendered, previewId, addLineKey, type LineKeys } from "../preview.js";
+import type { ArtifactPreview, LangText } from "../types.js";
 import type {
   SheetInputs,
   ExtractedMap,
@@ -79,7 +81,6 @@ import type {
   EmbeddedEntry,
   KeyMapEntry,
 } from "../assemble.js";
-import type { LangText } from "../types.js";
 import { layeredRecipe, sourceOrListSchema, splitSchema } from "./layered.js";
 
 const schema = {
@@ -306,6 +307,58 @@ export const ansibleRecipe: SheetRecipe = {
       return names.some((i) => holds(cond, i));
     };
 
+    // What Ansible's template module injects when it WRITES the file. No vars
+    // file could hold these and none is missing — so a line left unrendered by
+    // one of them is not the sheet admitting a gap, and must not be counted as
+    // one. Declared here, as a list, rather than pattern-matched: the allowance
+    // has to be narrow and named, or a typo'd variable becomes benign too.
+    // https://docs.ansible.com/ansible/latest/collections/ansible/builtin/template_module.html
+    const DEPLOY_TIME_VARS = new Set([
+      "ansible_managed",
+      "template_host",
+      "template_uid",
+      "template_path",
+      "template_fullpath",
+      "template_run_date",
+      "template_destpath",
+    ]);
+    // …except `ansible_managed`, which IS knowable. A project states it in
+    // ansible.cfg, and when it does not, Ansible's own documented default
+    // applies — `ansible-config dump` calls it DEFAULT_MANAGED_STR and prints
+    // `Ansible managed`. That is a product fact of exactly the kind this
+    // project reads out of a registry rather than guesses at, and it is the
+    // FIRST line of every generated file, so leaving it raw put a `{{ }}` at
+    // the top of every preview.
+    //
+    // Unless it carries python-format placeholders (`Ansible managed on {host}`
+    // — Ansible substitutes those itself, per host, at deploy time). Those
+    // cannot be known here, so such a value is left unresolved rather than
+    // printed with its braces showing.
+    const ANSIBLE_MANAGED_DEFAULT = "Ansible managed";
+    const ansibleManaged = ((): string | undefined => {
+      let declared: string | undefined;
+      for (const p of ["ansible.cfg", "../ansible.cfg", "../../ansible.cfg"]) {
+        const cfg = io.readFile(io.resolve(p));
+        if (cfg === null) continue;
+        const m = /^\s*ansible_managed\s*=\s*(.*)$/m.exec(cfg);
+        if (m) {
+          declared = m[1].trim();
+          break;
+        }
+      }
+      const value = declared ?? ANSIBLE_MANAGED_DEFAULT;
+      return /\{[a-z_]+\}/.test(value) ? undefined : value;
+    })();
+
+    // static_files' own previews (the layered core reads committed files, which
+    // need no rendering) plus this recipe's rendered templates, below. Each
+    // template's rendering itself goes through `previewRendered` (src/preview.ts),
+    // the same engine every artifact row's value comes from — which is what
+    // makes it cheap AND what makes it honest: a line with no Jinja on it IS
+    // the deployed line, by identity, so every comment and every blank line
+    // comes through untouched.
+    const artifacts: ArtifactPreview[] = [...(core.artifacts ?? [])];
+
     const embedded: EmbeddedEntry[] = [...core.embedded]; // static_files' embedded entries
     const keyMap: KeyMapEntry[] = [];
     const componentOf = new Map<string, string>();
@@ -333,6 +386,7 @@ export const ansibleRecipe: SheetRecipe = {
           // `/etc/systemd/journald.conf.d/iam-platform.conf` — says exactly
           // what it is. The template name stays the SOURCE either way; only the
           // parser choice moves.
+          content: t.content,
           entries: extractFile(t.content, t.file, undefined, { ...io.extractOptions, baseFormat: formatOf(spec) }),
           // What governs each line's PRESENCE, so a conditional line can be a
           // row for the instances that render it instead of no row at all.
@@ -391,6 +445,15 @@ export const ansibleRecipe: SheetRecipe = {
       // Every artifact row and which instances render it, for the index check
       // after the loop (see checkRepeatIndices).
       const presence: { key: string; onlyIn?: string[] }[] = [];
+      // template path -> (1-based template line -> the row that line is). Both
+      // directions of the preview panel hang off this: a row finds its place in
+      // the file, and a line finds the row that reviews it.
+      const keyAtLine = new Map<string, LineKeys>();
+      const rowAtLine = (templatePath: string, line: number | undefined, key: string): void => {
+        const perFile = keyAtLine.get(templatePath) ?? new Map<number, string>();
+        addLineKey(perFile, line, key);
+        keyAtLine.set(templatePath, perFile);
+      };
       const entryKeysByVariable = new Map<string, string[]>();
       for (const { entries, structured, conditions } of read) {
         for (const entry of entries) {
@@ -582,6 +645,9 @@ export const ansibleRecipe: SheetRecipe = {
             }
             if (!scoped) artifactRows.push({ key, text: entry.value, vars, component: spec.component });
             presence.push({ key, ...(onlyIn !== undefined ? { onlyIn } : {}) });
+            // Which line of which template this row IS, so the preview can
+            // point back at it and the sheet can point into the preview.
+            rowAtLine(spec.path, entry.source.line, key);
             continue;
           }
           const variable = entry.source.templateVar;
@@ -600,6 +666,14 @@ export const ansibleRecipe: SheetRecipe = {
             if (unique.size === 1) {
               keyMap.push({ boundKey: productKeyOf(entry, structured), variable });
             }
+            // The VARIABLE axis has a place in the file too, and its row wants
+            // the same context an artifact row does — `db-url-host` is judged
+            // by the `db` and `db-url-database` lines around it. The row is
+            // named for the product key when the variable earned one and for
+            // the variable itself when it did not, which is exactly what
+            // `resolveKey` decides from `keyMap`. Several lines can map to one
+            // row (a variable driving four directives), which is the truth.
+            rowAtLine(spec.path, entry.source.line, unique.size === 1 ? productKeyOf(entry, structured) : variable);
             continue;
           }
           const literalKey = entry.source.path ?? entry.key;
@@ -615,6 +689,7 @@ export const ansibleRecipe: SheetRecipe = {
             // so within a component the variables come first. Grouping by
             // component reorders them anyway.
             embedded.push({ key: literalKey, value: entry.value, source, component: spec.component, categoryPath: entry.categoryPath });
+            rowAtLine(spec.path, entry.source.line, literalKey);
             continue;
           }
           // Keyed by the full structural path, not the leaf name (entry.key) —
@@ -624,6 +699,7 @@ export const ansibleRecipe: SheetRecipe = {
           // convention "layered"'s static_files and this recipe's own
           // "source"-only (no template) embedded path already use.
           bound.set(literalKey, { value: entry.value, source, origin: "embedded" });
+          rowAtLine(spec.path, entry.source.line, literalKey);
         }
       }
       for (const [variable, component] of templateOfVariable) {
@@ -654,6 +730,34 @@ export const ansibleRecipe: SheetRecipe = {
         bound.set(variable, def);
       }
       baseMap = bound;
+
+      // One preview per template per DISTINCT rendering. Most files do not
+      // differ between environments at all, and three identical copies of one
+      // file is three times the reading for no information — so instances that
+      // render the same text are listed together. `previewRendered` owns the
+      // per-instance render + dedupe (and the size gate); `warn` is a plain
+      // `console.warn`, matching this recipe's other warnings.
+      const warn = (m: string) => console.warn(m);
+      for (const { spec, file, content } of read) {
+        const keys = keyAtLine.get(spec.path) ?? new Map<number, string>();
+        artifacts.push(
+          ...previewRendered(
+            {
+              id: previewId(name, spec.component),
+              sheet: name,
+              ...(spec.component !== undefined ? { component: spec.component } : {}),
+              ...(spec.deployedPath !== undefined ? { deployed_path: spec.deployedPath } : {}),
+              source_file: file,
+            },
+            content,
+            io.instances,
+            (instance, n) => (n === "ansible_managed" ? ansibleManaged : valueIn(instance, n)),
+            keys,
+            DEPLOY_TIME_VARS,
+            warn
+          )
+        );
+      }
 
       // A repeated directive is indexed by its position IN THE TEMPLATE, where
       // every line exists. If one of them is conditional and a later sibling is
@@ -743,6 +847,7 @@ export const ansibleRecipe: SheetRecipe = {
       ...(specs.length > 1
         ? { componentOrder: specs.map((t) => t.component).filter((c): c is string => c !== undefined) }
         : {}),
+      ...(artifacts.length > 0 ? { artifacts } : {}),
     };
   },
 };

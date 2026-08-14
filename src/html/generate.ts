@@ -39,6 +39,7 @@ function normalize(input: ParameterSheetInput | VersionedSheetInput): {
         sheets: input.sheets,
         columns: input.columns,
         groups: input.groups,
+        artifacts: input.artifacts,
       },
     ],
     capabilities: input.capabilities,
@@ -58,6 +59,7 @@ export function assembleVersions(inputs: { file: string; input: ParameterSheetIn
     sheets: input.sheets,
     columns: input.columns,
     groups: input.groups,
+    artifacts: input.artifacts,
   }));
   if (versions.every((v) => v.date)) {
     versions = versions.slice().sort((a, b) => (a.date! < b.date! ? -1 : a.date! > b.date! ? 1 : 0));

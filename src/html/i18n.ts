@@ -63,6 +63,21 @@ type Messages = {
   commentPlaceholder: string;
   shortcutSave: string;
   shortcutClose: string;
+  // Artifact preview panel (the file a row lives in, beside the sheet).
+  // `artifactTitle` labels the affordance and the panel, and stays neutral
+  // on purpose: the panel shows a rendered artifact, a committed config file
+  // OR an authored source (see ArtifactPreview.nature), and "what gets
+  // deployed" was a false claim over the third.
+  artifactOpen: string;
+  artifactTitle: string;
+  artifactRenderedFrom: string;
+  artifactSourceFile: string;
+  artifactInstance: string;
+  artifactKindAbsent: string;
+  artifactKindUnrendered: string;
+  artifactKindDeployTime: string;
+  artifactUnrendered: string;
+  artifactJumpRow: string;
   save: string;
   update: string;
   delete: string;
@@ -206,6 +221,16 @@ const ja: Messages = {
   commentPlaceholder: "レビューコメントを入力",
   shortcutSave: "保存",
   shortcutClose: "閉じる",
+  artifactOpen: "設定ファイルの該当箇所を見る",
+  artifactTitle: "プレビュー",
+  artifactRenderedFrom: "生成元",
+  artifactSourceFile: "ソースファイル",
+  artifactInstance: "環境",
+  artifactKindAbsent: "この環境では出力されない（条件: {reason}）",
+  artifactKindUnrendered: "review-sheet では計算できない箇所（{reason}）— テンプレートの記述をそのまま表示",
+  artifactKindDeployTime: "Ansible が配置時に埋める値（{reason}）— どの変数ファイルにも無く、欠落ではない",
+  artifactUnrendered: "{n} 行は review-sheet では計算できていません（該当行に印）",
+  artifactJumpRow: "この行の設定項目へ",
   save: "保存",
   update: "更新",
   delete: "削除",
@@ -332,6 +357,16 @@ const en: Messages = {
   commentPlaceholder: "Enter review comment",
   shortcutSave: "Save",
   shortcutClose: "Close",
+  artifactOpen: "Show this line in the file",
+  artifactTitle: "Preview",
+  artifactRenderedFrom: "Rendered from",
+  artifactSourceFile: "Source file",
+  artifactInstance: "Instance",
+  artifactKindAbsent: "not rendered for this instance (condition: {reason})",
+  artifactKindUnrendered: "review-sheet cannot compute this ({reason}) — the template text is shown as written",
+  artifactKindDeployTime: "filled in by Ansible when it writes the file ({reason}) — in no vars file, and not a gap",
+  artifactUnrendered: "{n} line(s) review-sheet could not compute — marked in place",
+  artifactJumpRow: "Go to this line's row",
   save: "Save",
   update: "Update",
   delete: "Delete",

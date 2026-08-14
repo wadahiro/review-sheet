@@ -73,8 +73,18 @@ function jsonRoundTrip(v: unknown): unknown {
 }
 
 function stripGeneratedAt(doc: unknown): unknown {
-  const d = doc as { metadata?: { generated_at?: string } };
+  const d = doc as { metadata?: { generated_at?: string }; artifacts?: unknown };
   if (d.metadata) delete d.metadata.generated_at;
+  // `artifacts` too. These tests assert that the declarative recipe produces
+  // the same MODEL as the hand-written converter each example shipped with, and
+  // an artifact preview is not part of that model: it is display context (the
+  // whole deployed file, rendered), which a hand-written converter never
+  // emitted and which carries no row, no value and no review target. Comparing
+  // it here would only ever assert that the expectation file was regenerated.
+  // The previews have their own test — tests/artifact-preview.test.ts, against
+  // a committed rendered artifact, which is a stronger check than equality with
+  // a snapshot of themselves.
+  delete d.artifacts;
   return doc;
 }
 

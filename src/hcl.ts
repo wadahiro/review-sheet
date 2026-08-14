@@ -262,28 +262,62 @@ function parseScalar(raw: string): string | null {
 
 // ---- Indexer ----------------------------------------------------------------
 
-export function hclIndex(content: string): HclEntry[] {
+// Path segment: path portion + category display name
+type Seg = { path: string; cat: string };
+
+// One walk, two consumers. `hclIndex` wants the attributes it can VALUE;
+// `hclAttributeSites` wants every attribute the file assigns, valuable or not.
+// The block-path logic below (labels, positional indexing of unlabeled repeats)
+// is the part that must not be written twice — it decides row identity, and two
+// copies would drift.
+function walkAttrs(content: string, visit: (segs: Seg[], attr: Attr) => void): void {
   const root = scan(content);
-  const out: HclEntry[] = [];
-
-  // Path segment: path portion + category display name
-  type Seg = { path: string; cat: string };
-
   const walk = (block: Block, segs: Seg[]): void => {
-    // Attributes
-    for (const attr of block.attrs) {
-      const scalar = parseScalar(attr.rawValue);
-      if (scalar === null) continue; // skip non-scalars / expressions
-      const pathKey = attr.name;
-      out.push({
-        categoryPath: segs.map((s) => s.cat),
-        key: attr.name,
-        value: scalar,
-        line: attr.line,
-        range: [attr.valStart, attr.valEnd],
-        path: [...segs.map((s) => s.path), pathKey].join("."),
-      });
-    }
+    for (const attr of block.attrs) visit(segs, attr);
+    walkBlocks(block, segs, walk);
+  };
+  walk(root, []);
+}
+
+// Every attribute the file assigns, with its structural path and 1-based line —
+// INCLUDING the ones `hclIndex` drops because their value is an interpolation,
+// a reference or an expression rather than a literal.
+//
+// That exclusion is right for EXTRACTION: `"iam-platform-${var.environment}-"`
+// is not a value, and a sheet claiming it as one would be lying. It is wrong
+// for anything that needs to know WHERE an attribute is written — showing a
+// reviewer the line their row corresponds to needs no value at all. Measured on
+// one project's five Terraform modules: 140 attributes assigned, 47 valued, so
+// asking the index for positions finds a third of the file.
+export type HclAttributeSite = { path: string; line: number };
+
+export function hclAttributeSites(content: string): HclAttributeSite[] {
+  const out: HclAttributeSite[] = [];
+  walkAttrs(content, (segs, attr) => {
+    out.push({ path: [...segs.map((s) => s.path), attr.name].join("."), line: attr.line });
+  });
+  return out;
+}
+
+export function hclIndex(content: string): HclEntry[] {
+  const out: HclEntry[] = [];
+  walkAttrs(content, (segs, attr) => {
+    const scalar = parseScalar(attr.rawValue);
+    if (scalar === null) return; // skip non-scalars / expressions
+    out.push({
+      categoryPath: segs.map((s) => s.cat),
+      key: attr.name,
+      value: scalar,
+      line: attr.line,
+      range: [attr.valStart, attr.valEnd],
+      path: [...segs.map((s) => s.path), attr.name].join("."),
+    });
+  });
+  return out;
+}
+
+function walkBlocks(block: Block, segs: Seg[], walk: (b: Block, segs: Seg[]) => void): void {
+  {
 
     // Child blocks, grouped by name for positional indexing of unlabeled repeats
     const blkGroups = new Map<string, Block[]>();
@@ -317,10 +351,7 @@ export function hclIndex(content: string): HclEntry[] {
         walk(b, [...segs, seg]);
       });
     }
-  };
-
-  walk(root, []);
-  return out;
+  }
 }
 
 // ---- Locate -----------------------------------------------------------------

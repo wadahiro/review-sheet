@@ -35,6 +35,117 @@ export type ParameterSheetInput = {
   // `review-sheet serve` backend is reachable for direct apply). Carried
   // through generation as a pass-through; consumed by a later viewer task.
   capabilities?: Capabilities;
+  // The deployed files this document's rows describe, whole, so a reviewer can
+  // read a value IN ITS PLACE. See ArtifactPreview.
+  artifacts?: ArtifactPreview[];
+};
+
+// What a line of a previewed artifact IS, and how much trust it deserves.
+//
+//   verbatim     - the template line carries no Jinja at all, so the template
+//                  text IS the deployed text, by identity. Every comment and
+//                  every blank line is here, which is most of a real config
+//                  file and the part that explains the rest of it.
+//   substituted  - `{{ var }}` resolved for this instance, by the same engine
+//                  whose output `verify` already checks against the real files.
+//   absent       - a conditional line this instance does not render. Kept and
+//                  greyed rather than removed: "this line exists only in local"
+//                  is review information, and dropping it would be this project
+//                  losing a line in silence.
+//   unrendered   - a `{% for %}`, an unsupported condition, an unresolved
+//                  variable. The RAW template text, marked. Never guessed at:
+//                  a line that looks rendered and is wrong is worse than one
+//                  that says it could not be computed.
+export type ArtifactLineKind = "verbatim" | "substituted" | "absent" | "unrendered";
+
+export type ArtifactLine = {
+  text: string;
+  kind: ArtifactLineKind;
+  // The row this line IS, when it is one. Gives the viewer both directions —
+  // row to its place in the file, and a line back to the row that reviews it.
+  key?: string;
+  // Why `unrendered`/`absent`, in the tool's own words (the unresolved
+  // variables, or the condition that did not hold).
+  reason?: string;
+  // For an `unrendered` line, WHICH of the two very different reasons it is.
+  // One visual class either way — for the reader of the line the visible fact
+  // is the same, "the deployed text is not shown here, and here is why" — but
+  // only one of them is the sheet admitting incompleteness:
+  //
+  //   engine      - review-sheet declines to compute something that WILL be in
+  //                 the deployed file and could in principle be computed (a
+  //                 loop, an expression, an unresolved project variable). This
+  //                 is a gap, and it is what the panel warns about.
+  //   deploy-time - a variable the TOOLCHAIN injects when it writes the file
+  //                 (Ansible's `ansible_managed` and the template module's
+  //                 `template_*` set). No file the sheet could be pointed at
+  //                 holds it; nothing is missing and nothing is wrong.
+  //
+  // Deliberately narrow: an unresolved variable is benign only when the recipe
+  // has DECLARED it toolchain-injected. A typo'd name, or a vars file the sheet
+  // was never pointed at, is exactly the mis-wired-sheet case that must not go
+  // quiet.
+  cause?: "engine" | "deploy-time";
+};
+
+// A whole deployed file, as this document says it will be, for one or more
+// instances.
+//
+// It is a PREVIEW and is labelled as one — never "the deployed file". review-
+// sheet runs no toolchain: it renders the template with its own substitution
+// engine, the same one that produces every artifact row's value. That engine
+// covers a plain `{{ var }}`, the pure filters and a plain `{% if variable %}`,
+// and REPORTS everything else, which is what `unrendered` lines are.
+//
+// It exists because a value cannot be judged alone. `StartServers 2` is right
+// or wrong depending on the `<IfModule mpm_event_module>` around it, and a
+// container is not a row — it has no value, no definition site and nothing to
+// review. Putting the file beside the sheet answers that without pretending a
+// structural line is a parameter.
+export type ArtifactPreview = {
+  // Stable identity of ONE PREVIEWED FILE: `<sheet>::<component>`, or
+  // `<sheet>` when the sheet has no components, optionally followed by
+  // `::<file>` (see `previewId` in preview.ts) when a sheet/component has more
+  // than one file to preview.
+  //
+  // Instance variants of the SAME file share an id — the viewer renders those
+  // as tabs (`ArtifactPanel`'s `mine`/`mine.length > 1`). Two DIFFERENT files
+  // must never share an id, even when they belong to the same sheet and
+  // component: a Terraform module's rows span `main.tf`, `variables.tf`, …,
+  // and giving them one id would render unrelated files as bogus "instance"
+  // tabs of each other. The viewer's row->preview index
+  // (`artifactIndex`/`artifactFor` in app.ts) already maps `(sheet, component,
+  // key) -> id` per LINE, not per preview, so a row routes to whichever file
+  // actually holds its line — no viewer logic had to change for this contract,
+  // only the producers had to stop assuming one file per sheet/component.
+  id: string;
+  sheet: string;
+  component?: string;
+  // Where the file LANDS on the host, and where it is written HERE. The same
+  // pair `Sheet.file_path`/`Sheet.source_file` makes, per component. A
+  // `nature: "source"` preview has no deployed counterpart, so this is absent.
+  deployed_path?: string;
+  source_file: string;
+  // Which instances share this exact rendering. Identical renderings are
+  // emitted once and listed together, since most files do not differ at all
+  // between environments and three copies of one file is three times the
+  // reading for no information.
+  instances?: string[];
+  // What kind of file this is, for the header's claim ONLY — default
+  // "artifact" (this doc's title comment: "a whole deployed file, as this
+  // document says it will be"). "source" is the AUTHORED file the deployed
+  // artifact was derived from (a Terraform module's `.tf`, not the plan/state
+  // it produces) — never rendered/deployed itself, so the panel must not say
+  // "Rendered from" over it (`t.artifactSourceFile` instead of
+  // `t.artifactRenderedFrom`; see app.ts's `ArtifactPanel`).
+  //
+  // Changes nothing else: not indexing (`artifactIndex` is line-keyed
+  // regardless), not gap counting (`unrendered`/`absent` mean the same thing
+  // either way), not review scope. A source preview is simply all-`verbatim`
+  // in practice, since there is no substitution engine standing between the
+  // authored text and what is shown.
+  nature?: "artifact" | "source";
+  lines: ArtifactLine[];
 };
 
 export type SheetGroup = {
@@ -73,6 +184,10 @@ export type SheetVersion = {
   // the older document must not be redrawn with.
   groups?: SheetGroup[];
   sheets: Sheet[];
+  // Carried per version for the same reason `columns` and `groups` are: a
+  // snapshot's artifacts are THAT snapshot's files, and a template that changed
+  // between two revisions must not be redrawn under the older document.
+  artifacts?: ArtifactPreview[];
 };
 
 export type SheetMetadata = {

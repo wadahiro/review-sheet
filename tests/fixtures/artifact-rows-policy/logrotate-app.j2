@@ -1,4 +1,6 @@
 # Rotation policy for the app's own logs.
+# {{ ansible_managed }}
+# deployed from {{ template_host }}
 {{ app_log_dir }}/*.log {
     {{ app_rotate_frequency }}
     rotate {{ app_rotate_keep }}

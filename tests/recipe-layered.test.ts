@@ -305,6 +305,24 @@ describe("layered recipe: static_files (embedded literals, unaffected by base/ov
     instances: [],
   };
 
+  // The context panel's file, for a static file that declares NO `substitution:`
+  // — which is most of them. The preview build once sat AFTER the substitution
+  // branch, whose non-substitution arm `continue`s, so a plain static file was
+  // silently previewless: three of a real project's six such sheets had no way
+  // to open the very file their rows were read from, and nothing said so.
+  it("previews a static file that declares no substitution", () => {
+    const si = layeredRecipe().load(
+      { name: "s", recipe: "layered", defaults: "defaults.yml", static_files: [{ path: "extra.yml" }] },
+      io
+    );
+    const preview = (si.artifacts ?? []).find((a) => a.source_file.endsWith("extra.yml"));
+    expect(preview).toBeDefined();
+    expect(preview!.lines.map((l) => l.text)).toEqual(["banner: hello", "nested:", "  flag: true", ""]);
+    // …and its rows can find themselves in it, both directions.
+    expect(preview!.lines.find((l) => l.text === "banner: hello")?.key).toBe("banner");
+    expect(preview!.lines.find((l) => l.text === "  flag: true")?.key).toBe("nested.flag");
+  });
+
   it("defaults a static file's key to the structural path, like ansible's static_files always did", () => {
     const si = layeredRecipe().load(
       { name: "s", recipe: "layered", defaults: "defaults.yml", static_files: [{ path: "extra.yml" }] },

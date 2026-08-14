@@ -355,6 +355,16 @@ async function runSpecImport(opts: {
   const writeFile = (path: string, content: string): void => {
     writeFileSync(path, content, "utf-8");
   };
+  // readdirSync throws on both a missing path and a non-directory one (ENOENT
+  // / ENOTDIR) — one catch covers both "not there" cases RecipeIO.listDir's
+  // contract asks for, with no separate existence/type check needed.
+  const listDir = (path: string): string[] | null => {
+    try {
+      return readdirSync(path);
+    } catch {
+      return null;
+    }
+  };
 
   const specPath = resolve(opts.spec);
   const spec = loadBuildSpec(specPath, { readFile });
@@ -377,6 +387,7 @@ async function runSpecImport(opts: {
     // used for `import --spec`, same as every other path this CLI records.
     const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings } = assembleFromSpecWithReport(spec, {
       readFile,
+      listDir,
       specDir,
       resolve: (p: string) => relative(process.cwd(), resolve(specDir, p)),
       marker: opts.annotationMarker,

@@ -316,6 +316,79 @@ describe("validateInput", () => {
     expect(result.sheets[0].categories[0].params![0].additional_sources).toHaveLength(2);
   });
 
+  it("accepts a document carrying a valid artifact preview", () => {
+    const data = {
+      sheets: [
+        {
+          name: "Test",
+          categories: [
+            {
+              name: "Category 1",
+              params: [{ key: "param1", value: "val1" }],
+            },
+          ],
+        },
+      ],
+      artifacts: [
+        {
+          id: "Test",
+          sheet: "Test",
+          source_file: "templates/app.conf.j2",
+          deployed_path: "/etc/app/app.conf",
+          instances: ["staging"],
+          lines: [
+            { text: "# managed by ansible", kind: "verbatim" },
+            { text: "param1 val1", kind: "substituted", key: "param1" },
+            { text: "{{ unresolved }}", kind: "unrendered", reason: "unresolved variable", cause: "engine" },
+          ],
+        },
+      ],
+    };
+    const result = validateInput(data);
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts?.[0].lines).toHaveLength(3);
+  });
+
+  it("rejects an artifact line with an unknown kind", () => {
+    const data = {
+      sheets: [
+        {
+          name: "Test",
+          categories: [{ name: "Category 1", params: [{ key: "param1", value: "val1" }] }],
+        },
+      ],
+      artifacts: [
+        {
+          id: "Test",
+          sheet: "Test",
+          source_file: "templates/app.conf.j2",
+          lines: [{ text: "some line", kind: "bogus" }],
+        },
+      ],
+    };
+    expect(() => validateInput(data)).toThrow();
+  });
+
+  it("rejects an artifact line missing text", () => {
+    const data = {
+      sheets: [
+        {
+          name: "Test",
+          categories: [{ name: "Category 1", params: [{ key: "param1", value: "val1" }] }],
+        },
+      ],
+      artifacts: [
+        {
+          id: "Test",
+          sheet: "Test",
+          source_file: "templates/app.conf.j2",
+          lines: [{ kind: "verbatim" }],
+        },
+      ],
+    };
+    expect(() => validateInput(data)).toThrow();
+  });
+
   it("accepts ref inside a source def (primary source)", () => {
     const data = {
       sheets: [

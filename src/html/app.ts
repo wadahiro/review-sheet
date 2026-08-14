@@ -18,7 +18,7 @@ import {
 } from "../prompt.js";
 import { buildDiffModel, rowKey, instKey, catKey, sheetKey, type DiffStatusMap } from "../diffview.js";
 import type { DiffStatus } from "../diff.js";
-import { pickLang, type OutOfScope, type Capabilities } from "../types.js";
+import { pickLang, type OutOfScope, type Capabilities, type ArtifactPreview } from "../types.js";
 
 const html = htm.bind(h);
 
@@ -1030,7 +1030,7 @@ function saveOutlineOpen(open: boolean): void {
 // Parameter table component
 // ============================================================
 
-function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, hiddenInstances, categoryOutOfScope, onOpenReview, diff, t }: {
+function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, hiddenInstances, categoryOutOfScope, onOpenReview, artifact, diff, t }: {
   params: ParamData[];
   sheetName: string;
   // The sheet's declared review axis (see Sheet.instances).
@@ -1052,6 +1052,11 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   // its own (nearest-wins: a param-level flag overrides the category's).
   categoryOutOfScope?: OutOfScope;
   onOpenReview: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
+  // The deployed-file panel, when this document has one: `idFor` says which
+  // preview (if any) holds this row, `open` shows it there. A single prop
+  // because the two halves are useless apart, and threading two through every
+  // level between App and a row would be twice the noise for one feature.
+  artifact?: ArtifactAccess;
   diff?: DiffStatusMap;
   t: Messages;
 }) {
@@ -1454,6 +1459,20 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
       );
     }
     if (tag) keySubline.push(html`<span class="rs-key-subline"><span class="rs-origin-tag" title=${tag.title}>${tag.label}</span></span>` as VNode);
+    // The way into the file this row is a line of. Only where there IS one: a
+    // row with no artifact (a product default, a variable-axis sheet) gets no
+    // affordance rather than one that opens nothing.
+    const artifactId = artifact?.idFor(sheetName, categoryPath, param.key);
+    if (artifactId !== undefined) {
+      keySubline.push(html`
+        <span class="rs-key-subline">
+          <button class="rs-artifact-chip" title=${t.artifactOpen}
+                  onClick=${(e: Event) => { e.stopPropagation(); artifact!.open(artifactId, param.key); }}>
+            ${t.artifactTitle}
+          </button>
+        </span>
+      ` as VNode);
+    }
     if (oos) {
       keySubline.push(html`
         <span class="rs-key-subline rs-oos-reason">
@@ -1654,7 +1673,7 @@ function categoryDefaultSummary(category: CategoryData): { count: number; allDef
   return { count, allDefault };
 }
 
-function CategorySection({ category, sheetName, sheetInstances, sheetIndex, sheetFilePath, parentPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, hiddenInstances, headingExtra, inheritedOutOfScope, onOpenReview, diff, t }: {
+function CategorySection({ category, sheetName, sheetInstances, sheetIndex, sheetFilePath, parentPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, hiddenInstances, headingExtra, inheritedOutOfScope, onOpenReview, artifact, diff, t }: {
   category: CategoryData;
   sheetName: string;
   sheetInstances?: string[];
@@ -1678,6 +1697,7 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
   // through nested categories; a category's own flag (nearest-wins) overrides it.
   inheritedOutOfScope?: OutOfScope;
   onOpenReview: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
+  artifact?: ArtifactAccess;
   diff?: DiffStatusMap;
   t: Messages;
 }) {
@@ -1738,7 +1758,7 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
                        columns=${columns} reviews=${reviews} reviewEnabled=${reviewEnabled}
                        showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
                        categoryOutOfScope=${effOutOfScope}
-                       onOpenReview=${onOpenReview} diff=${diff} t=${t} />
+                       onOpenReview=${onOpenReview} artifact=${artifact} diff=${diff} t=${t} />
       `}
 
       ${category.categories?.map((sub) => html`
@@ -1747,7 +1767,7 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
                             columns=${columns} reviews=${reviews} reviewEnabled=${reviewEnabled}
                             showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
                             inheritedOutOfScope=${effOutOfScope}
-                            onOpenReview=${onOpenReview} diff=${diff}
+                            onOpenReview=${onOpenReview} artifact=${artifact} diff=${diff}
                             t=${t} />
       `)}
     </div>
@@ -1841,6 +1861,14 @@ function navAnchorId(sheetIndex: number, path: string): string {
 }
 
 // Stable DOM id for a parameter row.
+// An id fragment inside an attribute selector. `CSS.escape` where it exists
+// (every browser this ships to), a conservative fallback where it does not
+// (happy-dom, in tests).
+function cssEscape(v: string): string {
+  const g = globalThis as { CSS?: { escape?: (s: string) => string } };
+  return g.CSS?.escape ? g.CSS.escape(v) : v.replace(/["\\]/g, "\\$&");
+}
+
 function paramAnchorId(sheetIndex: number, path: string, key: string): string {
   return `${navAnchorId(sheetIndex, path)}--${encodeIdPart(key)}`;
 }
@@ -2529,8 +2557,140 @@ function PivotView({ sheet, sheetIndex, hiddenInstances, showDefaults, reviews, 
 // Main app
 // ============================================================
 
-function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server, applyEnabled }: {
+// ============================================================
+// Artifact preview panel
+// ============================================================
+
+// The deployed file, beside the sheet.
+//
+// A value cannot be judged alone: `StartServers 2` is right or wrong depending
+// on the `<IfModule mpm_event_module>` around it, and a container is not a row
+// — it has no value, no definition site and nothing to review. So the file goes
+// next to the sheet rather than its brackets being turned into parameters.
+//
+// A PINNED PANEL, not a modal. The requirement was to review a setting WHILE
+// seeing its surrounding context; a full-screen overlay shows the context
+// INSTEAD of the row, which is the problem it was there to solve.
+//
+// It is a LENS, not data: no review affordances, no source maps of its own, no
+// place in the search index. The rows remain the only reviewable values. The
+// one thing it does besides scroll-and-highlight is the inverse jump — click a
+// line, land on its row.
+type ArtifactTarget = { id: string; key?: string; instance?: string };
+
+// What a row needs in order to offer "show me this line in the file".
+export type ArtifactAccess = {
+  idFor: (sheetName: string, categoryPath: string, key: string) => string | undefined;
+  open: (id: string, key: string) => void;
+};
+
+function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, t }: {
+  previews: ArtifactPreview[];
+  target: ArtifactTarget;
+  onClose: () => void;
+  onPick: (instance: string | undefined) => void;
+  onJumpRow: (sheet: string, key: string) => void;
+  t: Messages;
+}) {
+  const mine = previews.filter((a) => a.id === target.id);
+  const shown =
+    mine.find((a) => target.instance !== undefined && a.instances?.includes(target.instance)) ?? mine[0];
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+
+  // Scroll the row's own line into view whenever the target or the instance
+  // changes — that is the entire point of opening the panel from a row.
+  useLayoutEffect(() => {
+    const el = bodyRef.current?.querySelector(".rs-here");
+    if (el) (el as HTMLElement).scrollIntoView({ block: "center" });
+    else bodyRef.current?.scrollTo({ top: 0 });
+  }, [target.id, target.key, shown]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  if (!shown) return null;
+
+  // Only the lines that are the sheet ADMITTING A GAP. A line the toolchain
+  // fills in at deploy time is not one, and counting it made the warning fire
+  // on every file in a real project without once pointing at a setting — which
+  // is worse than not warning at all, since it buried the case that matters.
+  const gaps = shown.lines.filter((l) => l.kind === "unrendered" && l.cause !== "deploy-time").length;
+
+  return html`
+    <aside class="rs-artifact-panel" aria-label=${t.artifactTitle}>
+      <div class="rs-artifact-head">
+        ${/* Pinned to the panel's own top-right corner rather than laid out
+             beside the path: a deployed path is long and wraps, and a close
+             button that moves with the text is one a reader has to look for. */ ""}
+        <button class="rs-modal-close rs-artifact-close" onClick=${onClose} aria-label=${t.shortcutClose}>\u00d7</button>
+        <div class="rs-artifact-title">
+          <span class="rs-artifact-path">${shown.nature === "source" ? shown.source_file : (shown.deployed_path ?? shown.source_file)}</span>
+        </div>
+        <div class="rs-artifact-meta">
+          ${/* Provenance — which file to edit — and nothing else. A tally of how
+               many lines carried no Jinja is the lens describing its own optics:
+               a reviewer cannot act on it, and "verbatim" reads as a claim about
+               trust when it only means the template had no braces there. A
+               `nature: "source"` preview is the authored file itself, not
+               something rendered FROM it — "Rendered from" would be a false
+               claim, so it gets its own label instead. */ ""}
+          ${shown.nature === "source" ? t.artifactSourceFile : t.artifactRenderedFrom}: <code>${shown.source_file}</code>
+          ${/* The exception, and only when there IS one. Costs nothing at zero,
+               and when it fires it is the index that makes a marked line 200
+               rows down get found instead of scrolled past. */ ""}
+          ${gaps > 0
+            ? html`<br /><span class="rs-artifact-warn">${t.artifactUnrendered.replace("{n}", String(gaps))}</span>`
+            : null}
+        </div>
+        ${mine.length > 1 && html`
+          <div class="rs-artifact-tabs">
+            ${mine.map((a) => {
+              const label = (a.instances ?? []).join(" / ");
+              return html`<button class=${`rs-artifact-tab ${a === shown ? "rs-on" : ""}`}
+                                  onClick=${() => onPick(a.instances?.[0])}>${label}</button>`;
+            })}
+          </div>
+        `}
+      </div>
+      <div class="rs-artifact-body" ref=${bodyRef}>
+        ${shown.lines.map((line, i) => {
+          const here = line.key !== undefined && line.key === target.key;
+          const title =
+            line.kind === "absent"
+              ? t.artifactKindAbsent.replace("{reason}", line.reason ?? "")
+              : line.kind === "unrendered"
+                ? (line.cause === "deploy-time" ? t.artifactKindDeployTime : t.artifactKindUnrendered).replace(
+                  "{reason}",
+                  line.reason ?? ""
+                )
+                : line.key !== undefined
+                  ? t.artifactJumpRow
+                  : undefined;
+          return html`
+            <div class=${`rs-artifact-line rs-kind-${line.kind} ${line.key !== undefined ? "rs-has-row" : ""} ${here ? "rs-here" : ""}`}
+                 title=${title}
+                 onClick=${line.key !== undefined ? () => onJumpRow(shown.sheet, line.key!) : undefined}>
+              <span class="rs-artifact-no">${i + 1}</span>
+              <span class="rs-artifact-text">${line.text === "" ? "\u00a0" : line.text}</span>
+            </div>
+          `;
+        })}
+      </div>
+    </aside>
+  `;
+}
+
+function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverride, server, applyEnabled }: {
   data: SheetData;
+  // The deployed files this document's rows describe (ArtifactPanel). Per
+  // version, like `columns` — a template that changed between two revisions
+  // must not be redrawn under the older document.
+  artifacts?: ArtifactPreview[];
   reviewEnabled: boolean;
   lang: Lang;
   setLang: (l: Lang) => void;
@@ -2745,6 +2905,20 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
 
 
 
+  // The inverse jump: a line of the previewed file back to the row that reviews
+  // it. Found in the DOM rather than recomputed, because a row's anchor is
+  // `<sheet>--<category path>--<key>` and only the rendered tree knows which
+  // category path this key ended up under.
+  const jumpToRow = useCallback((_sheet: string, key: string) => {
+    const el = document.querySelector(`[id$="--${cssEscape(encodeIdPart(key))}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: "center" });
+    el.classList.remove("rs-jump-flash");
+    void (el as HTMLElement).offsetWidth;
+    el.classList.add("rs-jump-flash");
+    window.setTimeout(() => el.classList.remove("rs-jump-flash"), 1700);
+  }, []);
+
   const jumpToNav = useCallback((sheetIndex: number, id: string, fallbackId?: string, sheetName?: string, categoryPath?: string) => {
     setPaletteOpen(false);
     // Instant jump (no smooth animation) so far-away targets land immediately.
@@ -2945,12 +3119,53 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
 
   const title = data.metadata?.title ?? t.defaultTitle;
 
+  const [artifactTarget, setArtifactTarget] = useState<ArtifactTarget | null>(null);
+  // Which preview a row belongs to, resolved once per document. A sheet
+  // covering several artifacts keys them by component, which the viewer only
+  // knows as the outermost category — the same resolution `assembleSheets`
+  // does for a per-component binding. A key present in exactly one of the
+  // sheet's previews needs no disambiguation at all, which is every
+  // single-artifact sheet.
+  const artifactIndex = useMemo(() => {
+    // Keyed by sheet AND component, never by key alone. Two components of one
+    // sheet share a key space by design — a Keycloak realm sheet has `enabled`
+    // under every realm — so a component-scoped index is what stops a row
+    // offering to open a file that has no line for it. Measured on a real
+    // sheet: 28 lines in one file were matching 46 rows.
+    const out = new Map<string, string>();
+    for (const a of artifacts ?? []) {
+      for (const line of a.lines) {
+        if (line.key === undefined) continue;
+        out.set(`${a.sheet}\u0000${a.component ?? ""}\u0000${line.key}`, a.id);
+      }
+    }
+    return out;
+  }, [artifacts]);
+  const artifactFor = useCallback((sheetName: string, categoryPath: string, key: string): string | undefined => {
+    // The component is the outermost category, exactly as `assembleSheets`
+    // resolves it for a per-component binding — and it collapses away on a
+    // single-component sheet, which is why the unscoped lookup is the fallback
+    // rather than an error.
+    const head = categoryPath.split("/")[0];
+    return (
+      artifactIndex.get(`${sheetName}\u0000${head}\u0000${key}`) ??
+      artifactIndex.get(`${sheetName}\u0000\u0000${key}`)
+    );
+  }, [artifactIndex]);
+  const artifactAccess = useMemo<ArtifactAccess | undefined>(
+    () =>
+      (artifacts?.length ?? 0) === 0
+        ? undefined
+        : { idFor: artifactFor, open: (id, key) => setArtifactTarget({ id, key }) },
+    [artifacts, artifactFor]
+  );
+
   const hasMetadata = !!(data.metadata?.project || data.metadata?.version || data.metadata?.generated_at || data.metadata?.changelog?.length || data.metadata?.extra);
   // Tabs: overview (if metadata exists) + each sheet
   const OVERVIEW_TAB = -1;
 
   return html`
-    <div class=${`rs-app ${outlineOpen ? "rs-outline-open" : ""}`}>
+    <div class=${`rs-app ${outlineOpen ? "rs-outline-open" : ""} ${artifactTarget ? "rs-with-artifact" : ""}`}>
       <nav class=${`rs-sheet-tabs ${(data.groups?.length ?? 0) > 0 ? "rs-sheet-tabs-grouped" : ""}`} role="tablist">
         <div class="rs-tabs-nav">
           <button class=${`rs-toolbar-btn ${outlineOpen ? "rs-toolbar-btn-active" : ""}`} onClick=${() => setOutlineOpen(!outlineOpen)}
@@ -3164,7 +3379,7 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
                                     sheetFilePath=${sheet.file_path} parentPath="" depth=${1}
                                     columns=${data.columns} reviews=${reviews} reviewEnabled=${effReviewEnabled}
                                     showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
-                                    onOpenReview=${openReview} diff=${diff}
+                                    onOpenReview=${openReview} artifact=${artifactAccess} diff=${diff}
                                     t=${t} />
               `)}
             </section>
@@ -3197,6 +3412,13 @@ function App({ data, reviewEnabled, lang, setLang, diff, reviewsOverride, server
         <${PromptModal} text=${promptModalText} onClose=${() => setPromptModalText(null)} t=${t} />
       `}
 
+      ${artifactTarget && html`
+        <${ArtifactPanel} previews=${artifacts ?? []} target=${artifactTarget}
+                          onClose=${() => setArtifactTarget(null)}
+                          onPick=${(instance: string | undefined) => setArtifactTarget((c) => (c ? { ...c, instance } : c))}
+                          onJumpRow=${jumpToRow} t=${t} />
+      `}
+
       <${CellToolbarHost} onOpenReview=${openReview} t=${t} />
     </div>
   `;
@@ -3216,6 +3438,7 @@ type SheetVersion = {
   columns?: SheetData["columns"];
   groups?: SheetData["groups"];
   sheets: SheetData["sheets"];
+  artifacts?: ArtifactPreview[];
 };
 type Payload = { metadata?: SheetData["metadata"]; versions: SheetVersion[]; capabilities?: Capabilities };
 
@@ -3338,7 +3561,7 @@ function Root({ payload, reviewEnabled, initialLang, server }: { payload: Payloa
         fromId=${fromId} toId=${toId} onSelect=${setActiveId} onToggleCompare=${() => setCompare((c) => !c)}
         onFrom=${setFromId} onTo=${setToId} diffSummary=${diffModel?.summary}
         changedOnly=${changedOnly} onChangedOnly=${setChangedOnly} t=${t} />`}
-      <${App} data=${data} reviewEnabled=${reviewEnabled} lang=${lang} setLang=${setLang}
+      <${App} data=${data} artifacts=${shown.artifacts} reviewEnabled=${reviewEnabled} lang=${lang} setLang=${setLang}
         diff=${diffModel?.status} reviewsOverride=${diffModel?.reviews}
         server=${server} applyEnabled=${applyEnabled} />
     </div>

@@ -23,6 +23,9 @@ import { registerRecipe, type SheetRecipe, type RecipeIO, type JsonValue } from 
 import type { SheetInputs } from "../assemble.js";
 import { snapshotRecipe } from "./snapshot.js";
 import { keyTransformSchema, type KeyTransform, type KeyTransformStep } from "../keytransform.js";
+import { hclAttributeSites } from "../hcl.js";
+import { previewFile, previewId, addLineKey, type LineKeys } from "../preview.js";
+import type { ArtifactPreview } from "../types.js";
 
 // `address` is quoted in the structural path only when it has to be, exactly as
 // everywhere else — which is the detail a hand-written version gets wrong.
@@ -66,6 +69,13 @@ const schema = {
     empty_means_unset: { type: "boolean" },
     include: { type: "array", items: { type: "string" } },
     exclude: { type: "array", items: { type: "string" } },
+    // component id -> a directory of *.tf, resolved relative to the spec. What
+    // gets previewed beside the sheet is the module's own SOURCE, never the
+    // plan (see the module doc and tfSourceKey below for why): a reviewer
+    // judges `load_balancer_type = "application"` against the resource block
+    // it sits in, not against a 156 KB machine-generated document whose
+    // adjacent lines are punctuation.
+    sources: { type: "object", additionalProperties: { type: "string" } },
   },
   additionalProperties: false,
 };
@@ -96,8 +106,195 @@ export const terraformPlanRecipe: SheetRecipe = {
         component: { ...(declaredComponent ?? {}), from: "path", steps: [...COMPONENT_STEPS, ...(declaredComponent?.steps ?? [])] },
       }
     );
-    return { ...si, dictKeySteps: DICT_KEY_STEPS };
+    const withDictKeySteps: SheetInputs = { ...si, dictKeySteps: DICT_KEY_STEPS };
+    const sourcesSpec = sheetSpec.sources as Record<string, JsonValue> | undefined;
+    if (sourcesSpec === undefined) return withDictKeySteps;
+    const previews = buildSourcePreviews(withDictKeySteps, sourcesSpec, io);
+    return { ...withDictKeySteps, artifacts: [...(withDictKeySteps.artifacts ?? []), ...previews] };
   },
 };
 
 registerRecipe(terraformPlanRecipe);
+
+// The sheet's own final row keys, normalized -> every raw key that collapses
+// onto that normalization, in row order. The snapshot recipe backing this one
+// emits an EMPTY base layer (see snapshot.ts's module doc) — a plan's rows
+// live entirely in the overlay layers, one per instance — so there is no base
+// to look in, only overlays, each already keyed by KEY_STEPS' output.
+//
+// Grouped rather than collapsed to one winner up front: `normalizeTfKey`
+// strips a plan's array index, so `node[0].ami` and `node[1].ami` (two `count`
+// instances) land on the same normalized key even though they are two
+// genuinely different rows. The FIRST in row order is what a `.tf` line gets
+// (see buildFilePreview below), but every other member of the group is kept
+// so a file that hits a collapsed group can be told, not left to guess why
+// its second `count` instance never lit up.
+function buildRowKeyIndex(si: SheetInputs): Map<string, string[]> {
+  const groups = new Map<string, string[]>();
+  for (const layer of si.layers) {
+    if (layer.kind !== "overlay") continue;
+    for (const key of layer.entries.keys()) {
+      const norm = normalizeTfKey(key);
+      const g = groups.get(norm);
+      if (g) {
+        if (!g.includes(key)) g.push(key);
+      } else {
+        groups.set(norm, [key]);
+      }
+    }
+  }
+  return groups;
+}
+
+// One *.tf file, read once, turned into a `LineKeys` map via the bridge
+// (tfSourceKey + the row-key index) and handed to `previewFile`. `nature:
+// "source"` (types.ts) is what keeps the panel from claiming "Rendered from"
+// over an authored file review-sheet never rendered.
+//
+// An hcl entry that maps to nothing (`tfSourceKey` returns undefined — a
+// `variable.`/`locals.`/... declaration, per its own doc comment — or the
+// normalized key matches no row) is simply not a row and is skipped with no
+// warning: a `variables.tf` is pure context, and a provider default the plan
+// surfaced has no authored line, and both are expected and correct — "a row
+// the file has no line for gets none" is the rule already in force for every
+// other producer in this repo.
+function buildFilePreview(
+  sheetName: string,
+  component: string,
+  file: string,
+  content: string,
+  groups: Map<string, string[]>,
+): { preview: ArtifactPreview | undefined; matched: number; collapsed: string[][] } {
+  const keys: LineKeys = new Map();
+  // Which normalized-key groups (of size > 1) this FILE actually touched — a
+  // `.tf` file that never mentions `count`-indexed siblings never collapses
+  // anything, so this is per-file, not a blanket report of every collision the
+  // whole sheet's index contains.
+  const collapsedHere = new Map<string, string[]>();
+  let matched = 0;
+  // `hclAttributeSites`, not `extractFile`: what is wanted here is WHERE an
+  // attribute is written, and extraction answers a different question — it
+  // emits only the attributes it can VALUE, dropping every interpolation and
+  // reference, which is right for a row and wrong for a position. Measured on
+  // one project's five modules: 140 attributes assigned, 47 valued, so asking
+  // the extractor for lines found under a third of the file and left a row
+  // like `name_prefix = "iam-platform-${var.environment}-node-"` with no
+  // context at all.
+  for (const site of hclAttributeSites(content)) {
+    const srcKey = tfSourceKey(component, site.path);
+    if (srcKey === undefined) continue;
+    const group = groups.get(normalizeTfKey(srcKey));
+    if (group === undefined) continue;
+    addLineKey(keys, site.line, group[0]);
+    matched++;
+    if (group.length > 1) collapsedHere.set(group.join(SEP), group);
+  }
+  const preview = previewFile(
+    { id: previewId(sheetName, component, file.split("/").pop() ?? file), sheet: sheetName, component, source_file: file, nature: "source" },
+    content,
+    keys,
+    (m) => console.warn(`terraform-plan recipe: ${m}`)
+  );
+  return { preview, matched, collapsed: [...collapsedHere.values()] };
+}
+
+// The bridge to a component's own `.tf` source. Errors name the offender —
+// same discipline as the recipe's `names:` two-way check (snapshot.ts):
+// a declaration the sheet cannot back up is a build-time mistake, not a
+// silently-empty panel.
+function buildSourcePreviews(si: SheetInputs, sourcesSpec: Record<string, JsonValue>, io: RecipeIO): ArtifactPreview[] {
+  const groups = buildRowKeyIndex(si);
+  const componentIds = new Set(si.componentOf?.values() ?? []);
+  const previews: ArtifactPreview[] = [];
+
+  for (const [component, rawDir] of Object.entries(sourcesSpec)) {
+    if (typeof rawDir !== "string") {
+      throw new Error(`terraform-plan recipe: sheet "${si.name}": sources.${component} must be a string path`);
+    }
+    if (!io.listDir) {
+      throw new Error(
+        `terraform-plan recipe: sheet "${si.name}" declares "sources", which needs RecipeIO.listDir — the caller must supply it`
+      );
+    }
+    if (!componentIds.has(component)) {
+      throw new Error(
+        `terraform-plan recipe: sheet "${si.name}": sources declares component "${component}", which produced no rows on this sheet` +
+          (componentIds.size > 0 ? ` (this sheet's modules: ${[...componentIds].sort().join(", ")})` : " (this sheet has no modules)")
+      );
+    }
+    const dir = io.resolve(rawDir);
+    const entries = io.listDir(dir);
+    if (entries === null) {
+      throw new Error(`terraform-plan recipe: sheet "${si.name}": sources.${component} directory not found: ${dir}`);
+    }
+
+    // Sorted so preview order (and hence id assignment) is deterministic
+    // regardless of what the filesystem happens to hand back.
+    const files = entries.filter((f) => f.endsWith(".tf")).sort();
+    let componentMatched = 0;
+
+    for (const name of files) {
+      const path = `${dir}/${name}`;
+      const content = io.readFile(path);
+      if (content === null) throw new Error(`terraform-plan recipe: sheet "${si.name}": ${path} listed but could not be read`);
+      const { preview, matched, collapsed } = buildFilePreview(si.name, component, path, content, groups);
+      if (preview) previews.push(preview);
+      componentMatched += matched;
+      if (collapsed.length > 0) {
+        console.warn(
+          `terraform-plan recipe: sheet "${si.name}": ${path}: ${collapsed.length} row key group(s) collapse onto one line each ` +
+            `(index normalization) — only the first of each is shown: ${collapsed.map((g) => g.join(" / ")).join("; ")}`
+        );
+      }
+    }
+
+    // A declared rule that matched nothing is reported, never left to be
+    // noticed — the same stance keyglob.ts's unmatchedPatterns and this file's
+    // own `names:` check already take.
+    if (componentMatched === 0) {
+      console.warn(
+        `terraform-plan recipe: sheet "${si.name}": sources.${component} (${dir}) matched no rows in any *.tf file — check the directory is right`
+      );
+    }
+  }
+
+  return previews;
+}
+
+// The other half of the bridge to a module's own `.tf` source, wired up above
+// by `buildFilePreview`/`buildSourcePreviews`: a plan row is keyed `<component>.
+// <type>.<name>.<rest>` (KEY_STEPS above), while this repo's own hcl parser keys a
+// resource block `resource.<type>.<name>.<rest>` — Terraform's own address
+// grammar, minus the module segment the source file has no way to state,
+// since the module IS the file. Only a `resource.` block can become a row —
+// `variable.`/`locals.`/`output.`/`data.`/`terraform.`/`provider.`/`module.`
+// are declarations, defaults and metadata a plan never reproduces as a
+// `resource_changes` entry, so there is nothing on the plan side for them to
+// line up with.
+// A separator that cannot occur in a key. Written as an escape rather than as
+// the byte itself: a literal NUL in the source makes the whole file "binary" to
+// grep and diff, so it silently drops out of every search — which is how it
+// went unnoticed here until a search for a function in this file returned
+// nothing at all.
+const SEP = "\u0000";
+
+export function tfSourceKey(component: string, hclPath: string): string | undefined {
+  const segments = hclPath.split(".");
+  // Need at least `resource`, `<type>`, `<name>`, and one more segment to
+  // carry the argument itself — anything shorter names a resource but no
+  // particular value in it, so there is no row to point at.
+  if (segments[0] !== "resource" || segments.length < 4) return undefined;
+  const [, type, name, ...rest] = segments;
+  return [component, type, name, ...rest].join(".");
+}
+
+// Strips every `[<digits>]` from a key. The SAME normalization this file's
+// own `DICT_KEY_STEPS` (above) already applies when relating a plan row to
+// the provider's dictionary — needed here for the identical reason: the plan JSON
+// renders a nested block as an array (`health_check[0].path`) even though the
+// module's own `.tf` source never wrote an index (`health_check.path`), so
+// the two sides only line up once that plan-only artifact is stripped from
+// both.
+export function normalizeTfKey(key: string): string {
+  return key.replace(/\[[0-9]+\]/g, "");
+}

@@ -50,7 +50,11 @@
       "minItems": 1,
       "items": { "$ref": "#/$defs/sheet" }
     },
-    "capabilities": { "$ref": "#/$defs/capabilities" }
+    "capabilities": { "$ref": "#/$defs/capabilities" },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifactPreview" }
+    }
   },
   "$defs": {
     "langText": {
@@ -183,6 +187,37 @@
         "conditional": { "type": "boolean" },
         "generated": { "type": "boolean" },
         "ref": { "type": "string" }
+      }
+    },
+    "artifactPreview": {
+      "type": "object",
+      "required": ["id", "sheet", "source_file", "lines"],
+      "properties": {
+        "id": { "type": "string" },
+        "sheet": { "type": "string" },
+        "component": { "type": "string" },
+        "deployed_path": { "type": "string" },
+        "source_file": { "type": "string" },
+        "instances": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "nature": { "type": "string", "enum": ["artifact", "source"] },
+        "lines": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/artifactLine" }
+        }
+      }
+    },
+    "artifactLine": {
+      "type": "object",
+      "required": ["text", "kind"],
+      "properties": {
+        "text": { "type": "string" },
+        "kind": { "type": "string", "enum": ["verbatim", "substituted", "absent", "unrendered"] },
+        "key": { "type": "string" },
+        "reason": { "type": "string" },
+        "cause": { "type": "string", "enum": ["engine", "deploy-time"] }
       }
     }
   }

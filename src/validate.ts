@@ -82,7 +82,7 @@ export function validateVersionedInput(data: unknown): VersionedSheetInput {
       throw new Error(`Input data validation error:\n/versions/${i}/version: must be a non-empty string`);
     }
     try {
-      validateInput({ sheets: v.sheets, columns: v.columns });
+      validateInput({ sheets: v.sheets, columns: v.columns, artifacts: v.artifacts });
     } catch (e) {
       const msg = e instanceof Error ? e.message.replace(/^Input data validation error:\n/, "") : String(e);
       throw new Error(`Input data validation error (version "${v.version}"):\n${msg}`);

@@ -80,6 +80,11 @@ export type { SpecAssembleOpts } from "./assemble-spec.js";
 // (via the `recipe:` field on a sheet) — see spec.ts.
 export { registerRecipe, listRecipes, getRecipe } from "./recipe.js";
 export type { JsonValue, RecipeIO, SheetRecipe } from "./recipe.js";
+// Artifact preview engine: renders/reads the whole deployed file a sheet's
+// rows come from, for the viewer's ArtifactPanel. A recipe's own job (which
+// file, which rendering) stays with the recipe; this is the shared mechanics.
+export { MAX_PREVIEW_BYTES, addLineKey, previewId, previewFile, previewRendered } from "./preview.js";
+export type { LineKeys, PreviewSource } from "./preview.js";
 // BuildSpec loader: turns a declarative `build.yml` into a validated BuildSpec
 // (recipe-specific sheet fields validated against each named recipe's schema).
 export { loadBuildSpec, specDirOf } from "./spec.js";
