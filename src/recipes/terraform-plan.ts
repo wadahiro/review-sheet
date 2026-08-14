@@ -109,8 +109,16 @@ export const terraformPlanRecipe: SheetRecipe = {
     const withDictKeySteps: SheetInputs = { ...si, dictKeySteps: DICT_KEY_STEPS };
     const sourcesSpec = sheetSpec.sources as Record<string, JsonValue> | undefined;
     if (sourcesSpec === undefined) return withDictKeySteps;
-    const previews = buildSourcePreviews(withDictKeySteps, sourcesSpec, io);
-    return { ...withDictKeySteps, artifacts: [...(withDictKeySteps.artifacts ?? []), ...previews] };
+    // `sources:` is not merely a preview request — declaring it says "this
+    // directory IS the module's authored source", which is exactly the
+    // authority `SheetInputs.authoredKeys` needs (assemble.ts): every row the
+    // scan below did not find an assignment for is a value the AWS provider
+    // resolved, not one anyone here wrote, so it gets demoted to
+    // `origin: "default"`. There is no opt-out — a project that names
+    // `sources:` is making a factual claim about that directory, not asking
+    // for a sidebar.
+    const { previews, authoredKeys } = buildSourcePreviews(withDictKeySteps, sourcesSpec, io);
+    return { ...withDictKeySteps, artifacts: [...(withDictKeySteps.artifacts ?? []), ...previews], authoredKeys };
   },
 };
 
@@ -164,13 +172,20 @@ function buildFilePreview(
   file: string,
   content: string,
   groups: Map<string, string[]>,
-): { preview: ArtifactPreview | undefined; matched: number; collapsed: string[][] } {
+): { preview: ArtifactPreview | undefined; matched: number; collapsed: string[][]; authoredKeys: Set<string> } {
   const keys: LineKeys = new Map();
   // Which normalized-key groups (of size > 1) this FILE actually touched — a
   // `.tf` file that never mentions `count`-indexed siblings never collapses
   // anything, so this is per-file, not a blanket report of every collision the
   // whole sheet's index contains.
   const collapsedHere = new Map<string, string[]>();
+  // Every row key an assignment in this file backs — see normalizeTfKey: a
+  // `count`-indexed pair like `node[0].ami`/`node[1].ami` collapses onto one
+  // normalized form, so a single line can only LABEL one of them (`group[0]`,
+  // below), but every member the source assigned is equally authored. Feeding
+  // only `group[0]` here would silently claim the sibling was never stated at
+  // all, which is exactly the wrong answer for a `count`-replicated resource.
+  const authoredKeys = new Set<string>();
   let matched = 0;
   // `hclAttributeSites`, not `extractFile`: what is wanted here is WHERE an
   // attribute is written, and extraction answers a different question — it
@@ -179,7 +194,12 @@ function buildFilePreview(
   // one project's five modules: 140 attributes assigned, 47 valued, so asking
   // the extractor for lines found under a third of the file and left a row
   // like `name_prefix = "iam-platform-${var.environment}-node-"` with no
-  // context at all.
+  // context at all. It is also exactly what makes this same walk usable as
+  // the authorship discriminator (see `authoredKeys` above): a site is
+  // reported for every ASSIGNMENT, not only ones with a literal value, so
+  // `skip_final_snapshot = !var.deletion_protection` still counts as authored
+  // even though `hclIndex` (extraction) would have skipped it as an
+  // expression.
   for (const site of hclAttributeSites(content)) {
     const srcKey = tfSourceKey(component, site.path);
     if (srcKey === undefined) continue;
@@ -187,6 +207,7 @@ function buildFilePreview(
     if (group === undefined) continue;
     addLineKey(keys, site.line, group[0]);
     matched++;
+    for (const k of group) authoredKeys.add(k);
     if (group.length > 1) collapsedHere.set(group.join(SEP), group);
   }
   const preview = previewFile(
@@ -195,17 +216,55 @@ function buildFilePreview(
     keys,
     (m) => console.warn(`terraform-plan recipe: ${m}`)
   );
-  return { preview, matched, collapsed: [...collapsedHere.values()] };
+  return { preview, matched, collapsed: [...collapsedHere.values()], authoredKeys };
 }
 
-// The bridge to a component's own `.tf` source. Errors name the offender —
-// same discipline as the recipe's `names:` two-way check (snapshot.ts):
-// a declaration the sheet cannot back up is a build-time mistake, not a
-// silently-empty panel.
-function buildSourcePreviews(si: SheetInputs, sourcesSpec: Record<string, JsonValue>, io: RecipeIO): ArtifactPreview[] {
+// `si.componentOf` inverted: which row keys belong to each component. This is
+// the universe a component's `authored`/`demoted` counts are measured
+// against — the scan below only ever ADDS to a component's authored set, so
+// without the full membership there would be nothing to subtract it from.
+function keysByComponent(si: SheetInputs): Map<string, Set<string>> {
+  const byComponent = new Map<string, Set<string>>();
+  if (!si.componentOf) return byComponent;
+  for (const [key, component] of si.componentOf) {
+    let s = byComponent.get(component);
+    if (!s) {
+      s = new Set<string>();
+      byComponent.set(component, s);
+    }
+    s.add(key);
+  }
+  return byComponent;
+}
+
+// The bridge to a component's own `.tf` source, and — since the same scan
+// finds every assignment rather than every literal value (see
+// `hclAttributeSites`'s doc and `buildFilePreview` above) — the source of
+// truth for which of this sheet's rows are authored vs. provider-resolved.
+// Errors name the offender — same discipline as the recipe's `names:`
+// two-way check (snapshot.ts): a declaration the sheet cannot back up is a
+// build-time mistake, not a silently-empty panel.
+//
+// Scoped per component (design decision, see the recipe's module doc): a
+// component named in `sources:` gets its rows judged by the scan; a
+// component that produced rows but has NO `sources:` entry is not evidence
+// it authors nothing — it keeps every row at today's overlay/common origin,
+// unjudged, but that must be visible rather than indistinguishable from a
+// judged component, so it is warned about here too. A row belonging to no
+// component at all (a resource outside every module, see COMPONENT_STEPS)
+// has no component a `sources:` entry could ever name either, so it is folded
+// in the same way, silently — there is nothing to warn about that isn't
+// already covered by "this sheet has no modules".
+function buildSourcePreviews(
+  si: SheetInputs,
+  sourcesSpec: Record<string, JsonValue>,
+  io: RecipeIO
+): { previews: ArtifactPreview[]; authoredKeys: Set<string> } {
   const groups = buildRowKeyIndex(si);
+  const byComponent = keysByComponent(si);
   const componentIds = new Set(si.componentOf?.values() ?? []);
   const previews: ArtifactPreview[] = [];
+  const authoredKeys = new Set<string>();
 
   for (const [component, rawDir] of Object.entries(sourcesSpec)) {
     if (typeof rawDir !== "string") {
@@ -232,14 +291,16 @@ function buildSourcePreviews(si: SheetInputs, sourcesSpec: Record<string, JsonVa
     // regardless of what the filesystem happens to hand back.
     const files = entries.filter((f) => f.endsWith(".tf")).sort();
     let componentMatched = 0;
+    const componentAuthored = new Set<string>();
 
     for (const name of files) {
       const path = `${dir}/${name}`;
       const content = io.readFile(path);
       if (content === null) throw new Error(`terraform-plan recipe: sheet "${si.name}": ${path} listed but could not be read`);
-      const { preview, matched, collapsed } = buildFilePreview(si.name, component, path, content, groups);
+      const { preview, matched, collapsed, authoredKeys: fileAuthored } = buildFilePreview(si.name, component, path, content, groups);
       if (preview) previews.push(preview);
       componentMatched += matched;
+      for (const k of fileAuthored) componentAuthored.add(k);
       if (collapsed.length > 0) {
         console.warn(
           `terraform-plan recipe: sheet "${si.name}": ${path}: ${collapsed.length} row key group(s) collapse onto one line each ` +
@@ -256,9 +317,48 @@ function buildSourcePreviews(si: SheetInputs, sourcesSpec: Record<string, JsonVa
         `terraform-plan recipe: sheet "${si.name}": sources.${component} (${dir}) matched no rows in any *.tf file — check the directory is right`
       );
     }
+
+    for (const k of componentAuthored) authoredKeys.add(k);
+    // Never silent in either direction: a component judged "fully authored"
+    // and one silently missing half its rows must not look the same in the
+    // build log — see assemble.ts's SheetInputs.authoredKeys for what
+    // "demoted" means for the row (kept instances/value/source, origin ->
+    // "default").
+    const total = byComponent.get(component)?.size ?? 0;
+    const demoted = total - componentAuthored.size;
+    console.warn(
+      `terraform-plan recipe: sheet "${si.name}": sources.${component}: ${componentAuthored.size} row(s) authored by ${dir}, ` +
+        `${demoted} demoted to origin: "default" (a value the provider resolved, not stated in the module source)`
+    );
   }
 
-  return previews;
+  // A component this sheet produced rows for but that `sources:` never named
+  // has no authority behind it either way — it is not evidence the project
+  // authored nothing, so its rows keep today's overlay/common origin, but
+  // silently leaving it that way would make an unjudged component look
+  // exactly like a judged one on the rendered sheet. Warn once per component.
+  for (const component of componentIds) {
+    if (Object.hasOwn(sourcesSpec, component)) continue;
+    const keys = byComponent.get(component);
+    if (keys) for (const k of keys) authoredKeys.add(k);
+    console.warn(
+      `terraform-plan recipe: sheet "${si.name}": component "${component}" has no sources: entry — ` +
+        `its origins are unverified (every row stays overlay/common, none demoted to default)`
+    );
+  }
+
+  // A row belonging to no component at all (a resource outside every
+  // module — COMPONENT_STEPS drops it) can never be named by a `sources:`
+  // entry, which is keyed by component. It keeps today's behavior the same
+  // way an undeclared component does, and there is no component here to warn
+  // about.
+  for (const rawKeys of groups.values()) {
+    for (const key of rawKeys) {
+      if (!si.componentOf?.has(key)) authoredKeys.add(key);
+    }
+  }
+
+  return { previews, authoredKeys };
 }
 
 // The other half of the bridge to a module's own `.tf` source, wired up above

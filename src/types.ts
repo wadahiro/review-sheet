@@ -264,10 +264,23 @@ export type OutOfScope = {
 // Where a parameter's value comes from. `overlay` = per-environment variable
 // (has `instances`); `common` = a single shared value; `embedded` = a literal
 // baked into the deployable source (template literal / hardcoded arg), never
-// per-environment; `default` = the PRODUCT's own default, i.e. our deliverable
-// sets nothing at all — the row exists so the sheet can be the exhaustive
-// ledger of the product's parameters, and its `value` is the documented default
-// (never a location in our files, so it carries no `source`).
+// per-environment; `default` = the PRODUCT's own default, i.e. our authored
+// sources set nothing at all.
+//
+// This is a WHO-DECIDED taxonomy, not an evidence-channel one, and `default`
+// covers two evidence channels that both mean "not us": the documented
+// default (no `source` at all — the row exists so the sheet can be the
+// exhaustive ledger of the product's parameters), and a value OBSERVED in a
+// generated artifact (`source.generated: true` — e.g. a Terraform plan's
+// `change.after`, which reports a value the author wrote and one the provider
+// defaulted identically; nothing in the project's own source states it, so
+// the provider decided, which is `default` by the same rule). There is no
+// separate origin for the second case: `SourceLocation.generated` already
+// says "observed, not authored", and a fifth Origin value would only restate
+// what that field says. What must NOT happen either way is what makes the two
+// one value instead of two: **a `default` row never carries a location in a
+// file we author** — no `source` at all, or a `source` whose `generated` is
+// true, checked in validate.ts (findDefaultOriginErrors).
 //
 // Optional in the model — when absent it is derived (see `effectiveOrigin` in
 // prompt.ts): `instances` present -> "overlay", else "common". `embedded` and

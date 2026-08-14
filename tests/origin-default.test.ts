@@ -96,3 +96,68 @@ describe("origin: default", () => {
     expect(out.files[0].content).toContain("shared_buffers = 1GB");
   });
 });
+
+// Widened `default`: a value observed in a generated artifact (`source.
+// generated: true`, e.g. a Terraform plan's `change.after`) is `default`
+// too, and unlike the documented-default case above it DOES carry a source —
+// real evidence that must go on being checked, not counted apart and
+// skipped. See verify.ts's isDefault short-circuit and SheetInputs.
+// authoredKeys (assemble.ts).
+describe("origin: default with a source (observed in a generated artifact)", () => {
+  const plan = ["{", '  "enable_http2": true', "}"].join("\n");
+  const readPlan = (p: string): string | null => (p === "/tmp/plan.json" ? plan : null);
+
+  it("is verified like any other row instead of short-circuited as `default`", () => {
+    const withMatchingSource: SheetData = {
+      sheets: [
+        {
+          name: "aws",
+          categories: [
+            {
+              name: "ALB",
+              params: [
+                {
+                  key: "enable_http2",
+                  value: "true",
+                  origin: "default",
+                  source: { file: "/tmp/plan.json", line: 2, anchor: "enable_http2", generated: true },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const out = verifySources(withMatchingSource, readPlan);
+    // Not counted as `default` (nothing to resolve) — it resolved, so it's ok.
+    expect(out.default).toBe(0);
+    expect(out.ok).toBe(1);
+    expect(out.checks[0].status).toBe("ok");
+  });
+
+  it("still catches a stale value on a default row with a source", () => {
+    const withStaleValue: SheetData = {
+      sheets: [
+        {
+          name: "aws",
+          categories: [
+            {
+              name: "ALB",
+              params: [
+                {
+                  key: "enable_http2",
+                  value: "false",
+                  origin: "default",
+                  source: { file: "/tmp/plan.json", line: 2, anchor: "enable_http2", generated: true },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const out = verifySources(withStaleValue, readPlan);
+    expect(out.default).toBe(0);
+    expect(out.error).toBe(1);
+  });
+});

@@ -431,6 +431,103 @@ params:
   });
 });
 
+// SheetInputs.authoredKeys: a recipe's channel for "did my source actually
+// state this key" — a Terraform plan's `change.after` reports a value the
+// author wrote and one the provider defaulted IDENTICALLY, so `overlay`/
+// `common` is simply wrong for the keys nobody actually authored. Absent =
+// today's behavior untouched; present = every layer-derived key NOT named
+// demotes to `origin: "default"`, keeping its instances/value/source as
+// resolved.
+describe("SheetInputs.authoredKeys: demoting layer-derived rows to origin: default", () => {
+  function inputsWith(authoredKeys?: ReadonlySet<string>): SheetInputs[] {
+    return [
+      {
+        name: "app",
+        instances: ["staging", "production"],
+        layers: [
+          {
+            kind: "base",
+            entries: map([
+              ["db_host", entry("localhost")],
+              ["db_port", entry("5432")],
+              ["bound_key_mapped", entry("shared-value")],
+            ]),
+          },
+          {
+            kind: "overlay",
+            instance: "staging",
+            entries: map([
+              ["db_host", entry("staging-db", "staging.yml")],
+              ["db_port", entry("5433", "staging.yml")],
+            ]),
+          },
+        ],
+        embedded: [],
+        ...(authoredKeys ? { authoredKeys } : {}),
+      },
+    ];
+  }
+
+  it("absent: every existing sheet's origin is unaffected (opt-in, no behavior change)", () => {
+    const result = assembleSheets(inputsWith(undefined), baseOpts());
+    const params = result.sheets[0].categories[0].params!;
+    const dbHost = params.find((p) => p.key === "db_host") as InstanceParameter;
+    const dbPort = params.find((p) => p.key === "db_port") as InstanceParameter;
+    const bound = params.find((p) => p.key === "bound_key_mapped") as SimpleParameter;
+    expect(dbHost.origin).toBe("overlay"); // overridden by staging
+    expect(dbPort.origin).toBe("overlay"); // overridden by staging
+    expect(bound.origin).toBe("common"); // never overridden
+  });
+
+  it("present: named keys stay overlay/common; every other layer key becomes default, keeping instances and sources", () => {
+    const result = assembleSheets(inputsWith(new Set(["db_host"])), baseOpts());
+    const params = result.sheets[0].categories[0].params!;
+    const dbHost = params.find((p) => p.key === "db_host") as InstanceParameter;
+    const dbPort = params.find((p) => p.key === "db_port") as InstanceParameter;
+    const bound = params.find((p) => p.key === "bound_key_mapped") as SimpleParameter;
+
+    // Named: unaffected.
+    expect(dbHost.origin).toBe("overlay");
+    expect(dbHost.instances).toEqual([
+      { name: "staging", value: "staging-db", source: { file: "staging.yml", line: 1 } },
+      { name: "production", value: "localhost", source: { file: "base.yml", line: 1 } },
+    ]);
+
+    // Not named, Pattern B: demoted to default, but the row keeps its
+    // per-instance values and sources exactly as resolved — the whole point
+    // of not folding Pattern B into a single value (a row observed
+    // differently per environment is still worth a row).
+    expect(dbPort.origin).toBe("default");
+    expect(dbPort.instances).toEqual([
+      { name: "staging", value: "5433", source: { file: "staging.yml", line: 1 } },
+      { name: "production", value: "5432", source: { file: "base.yml", line: 1 } },
+    ]);
+
+    // Not named, Pattern A (common): demoted to default, keeping its own
+    // value and source untouched.
+    expect(bound.origin).toBe("default");
+    expect(bound.value).toBe("shared-value");
+    expect(bound.source).toEqual({ file: "base.yml", line: 1 });
+  });
+
+  it("never touches an embedded[] entry's own declared origin", () => {
+    const inputs: SheetInputs[] = [
+      {
+        name: "app",
+        instances: [],
+        layers: [{ kind: "base", entries: map([]) }],
+        embedded: [
+          { key: "embedded_literal", value: "baked-in", source: { file: "template.j2", line: 4 }, origin: "embedded" },
+        ],
+        authoredKeys: new Set<string>(), // names nothing at all
+      },
+    ];
+    const result = assembleSheets(inputs, baseOpts());
+    const embedded = result.sheets[0].categories[0].params!.find((p) => p.key === "embedded_literal") as SimpleParameter;
+    expect(embedded.origin).toBe("embedded"); // untouched — authoredKeys only governs layers
+  });
+});
+
 // The counterpart to the strict-metadata gate: that one catches a parameter with
 // no description, this one catches a description with no parameter. A recipe's
 // normalization filter that matches nothing (the PoC's case: filtering on

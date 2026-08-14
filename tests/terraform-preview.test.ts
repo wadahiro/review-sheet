@@ -9,7 +9,8 @@ import { tfSourceKey, normalizeTfKey } from "../src/recipes/terraform-plan";
 import { getRecipe } from "../src/recipe";
 import "../src/recipes/index.js";
 import type { RecipeIO } from "../src/recipe";
-import type { ArtifactLine } from "../src/types";
+import type { ArtifactLine, InstanceParameter } from "../src/types";
+import { assembleSheets, type AssembleOpts } from "../src/assemble";
 import { stubNonBuiltInProviders } from "./only-builtin-providers.js";
 
 describe("tfSourceKey", () => {
@@ -132,5 +133,137 @@ describe("terraform-plan recipe: sources: — previewing a module's .tf beside i
 
   it("a missing directory throws", () => {
     expect(() => recipe().load({ ...baseSheetSpec, sources: { alb: "does-not-exist" } }, io())).toThrow(/directory not found/);
+  });
+});
+
+// `sources:` now decides row ORIGIN too, not only preview placement
+// (assemble.ts's SheetInputs.authoredKeys): a row the module's own .tf never
+// assigns is exactly the same class of fact as a materialized one — nobody
+// here chose the value, the provider did — so it demotes to
+// `origin: "default"` while keeping whatever the plan actually observed for
+// it. Extends this file (rather than a sibling) because it is still the
+// terraform-plan recipe's `sources:` behavior end-to-end, just carried one
+// step further — through assembleSheets — instead of stopping at the
+// SheetInputs the recipe returns.
+describe("terraform-plan recipe: sources: demotes provider-resolved rows to origin: default", () => {
+  beforeEach(stubNonBuiltInProviders);
+
+  const FIXTURE_DIR = join(import.meta.dir, "fixtures", "terraform-preview");
+
+  function recipe() {
+    const r = getRecipe("terraform-plan");
+    if (!r) throw new Error("terraform-plan recipe is not registered");
+    return r;
+  }
+
+  const io = (): RecipeIO => ({
+    readFile: (p) => {
+      try {
+        return readFileSync(p, "utf-8");
+      } catch {
+        return null;
+      }
+    },
+    listDir: (p) => {
+      try {
+        return readdirSync(p);
+      } catch {
+        return null;
+      }
+    },
+    specDir: FIXTURE_DIR,
+    resolve: (p) => join(FIXTURE_DIR, p),
+    instances: ["staging"],
+  });
+
+  const baseSheetSpec = {
+    name: "aws",
+    recipe: "terraform-plan",
+    snapshots: { staging: "plan.json" },
+  };
+
+  // Every row the fixture's plan.json produces, filed under one flat
+  // category — enough to clear assembleSheets' hard "every row needs a
+  // category" gate without pulling sheet.yml's other machinery into a test
+  // about origin, not documentation.
+  const PROJECT_YAML = `
+params:
+  "alb.aws_lb.this.name":
+    category: AWS
+  "alb.aws_lb.this.load_balancer_type":
+    category: AWS
+  "alb.aws_lb.this.idle_timeout":
+    category: AWS
+  "alb.aws_lb_target_group.keycloak.name":
+    category: AWS
+  "alb.aws_lb_target_group.keycloak.port":
+    category: AWS
+  "alb.aws_lb_target_group.keycloak.health_check[0].path":
+    category: AWS
+`;
+
+  function assembleOpts(): AssembleOpts {
+    return {
+      projectPath: "project.yml",
+      readFile: (p) => (p === "project.yml" ? PROJECT_YAML : null),
+      strictMetadata: false,
+    };
+  }
+
+  function paramsByKey(sourcesSpec: Record<string, string>): Map<string, InstanceParameter> {
+    const si = recipe().load({ ...baseSheetSpec, sources: sourcesSpec }, io());
+    const result = assembleSheets([si], assembleOpts());
+    const params = result.sheets[0].categories[0].params! as InstanceParameter[];
+    return new Map(params.map((p) => [p.key, p]));
+  }
+
+  it("the authored attribute's row stays overlay", () => {
+    const params = paramsByKey({ alb: "module" });
+    const loadBalancerType = params.get("alb.aws_lb.this.load_balancer_type")!;
+    expect(loadBalancerType.origin).toBe("overlay");
+    expect(loadBalancerType.instances).toHaveLength(1);
+    expect(loadBalancerType.instances[0].value).toBe("application");
+    expect(loadBalancerType.instances[0].source?.generated).toBe(true);
+  });
+
+  it("the provider-only row becomes origin: default, keeping its instances and its generated source", () => {
+    const params = paramsByKey({ alb: "module" });
+    const idleTimeout = params.get("alb.aws_lb.this.idle_timeout")!;
+    expect(idleTimeout.origin).toBe("default");
+    expect(idleTimeout.instances).toHaveLength(1);
+    expect(idleTimeout.instances[0].value).toBe("60");
+    expect(idleTimeout.instances[0].source?.generated).toBe(true);
+  });
+
+  it("a component with no sources: entry keeps every row overlay — absence is not evidence of no authorship", () => {
+    // `sources: {}` — the sheet declares the block but never names "alb", the
+    // one component this plan produced. Same as omitting a source for it.
+    const params = paramsByKey({});
+    for (const [, param] of params) expect(param.origin).toBe("overlay");
+  });
+
+  it("reports authored/demoted counts for a judged component, and warns for an unjudged one", () => {
+    const warnings: string[] = [];
+    const spy = console.warn;
+    console.warn = (m: string) => warnings.push(String(m));
+    try {
+      paramsByKey({ alb: "module" });
+    } finally {
+      console.warn = spy;
+    }
+    const report = warnings.find((w) => w.includes("sources.alb:") && w.includes("authored"));
+    expect(report).toBeDefined();
+    expect(report).toContain("5 row(s) authored");
+    expect(report).toContain("1 demoted");
+
+    const warnings2: string[] = [];
+    console.warn = (m: string) => warnings2.push(String(m));
+    try {
+      paramsByKey({});
+    } finally {
+      console.warn = spy;
+    }
+    const unverified = warnings2.find((w) => w.includes('component "alb" has no sources: entry'));
+    expect(unverified).toBeDefined();
   });
 });
