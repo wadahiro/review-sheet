@@ -151,7 +151,16 @@ export function verifySources(data: SheetData, readFile: ReadFile, opts?: Extrac
     }
     // Nothing is set for this parameter, so nothing can (or should) resolve —
     // reported apart from "unmapped", which means a source map that failed.
-    if (entry.isDefault) {
+    // A `default` row CAN carry a source now (the widened definition in
+    // types.ts's Origin comment: a value observed in a generated artifact,
+    // `source.generated: true`, is `default` too) — that source is real
+    // evidence and must go on being checked like any other row's, or a
+    // Terraform-plan-derived sheet would stop verifying the hundreds of
+    // source maps it demoted from `overlay` to `default` (see
+    // SheetInputs.authoredKeys). Only a `default` row with NO source at all —
+    // the documented-default case, which has nothing to resolve — short-
+    // circuits here.
+    if (entry.isDefault && !entry.source) {
       checks.push({ target: entry.target, status: "default", message: "product default — nothing set, no source expected" });
       continue;
     }

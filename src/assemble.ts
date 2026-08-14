@@ -221,6 +221,27 @@ export type SheetInputs = {
   // everywhere else in this file (here it's not a row that's lost, but the
   // wiring a `ref` site exists to make checkable).
   referenceSites?: { variable: string; sites: SourceLocation[] }[];
+  // Of the keys this sheet produced from its `layers` (base + overlay), the
+  // ones the project's own authored source actually STATES — as opposed to a
+  // key that only appears because a generated artifact resolved it (e.g. a
+  // Terraform plan's `change.after`, which reports a provider default
+  // identically to an author-set value with no way to tell them apart from
+  // the plan alone).
+  //
+  // A CHANNEL, not a policy: it says "did my source author this", nothing
+  // more. When a recipe can answer that question (a Terraform plan checked
+  // against the module's own `.tf`), it sets this and every other layer key
+  // is demoted to `origin: "default"` below — same class of row as a
+  // materialized one (nobody in this project chose the value), just observed
+  // rather than documented. When a recipe CANNOT answer it (a CDK/Pulumi
+  // synth, where authorship lives in program logic no source map can
+  // recover), it leaves this unset and every row keeps today's overlay/common
+  // origin — that is a real limit of the channel, not a gap to paper over
+  // with a guess.
+  //
+  // Absent (the default for every existing recipe) changes nothing: this is
+  // opt-in, and no recipe in this codebase sets it yet.
+  authoredKeys?: ReadonlySet<string>;
 };
 
 // What a hook is told about the parameter it is looking at. `key` is the key as
@@ -555,6 +576,22 @@ function resolveKey(
   return variable !== undefined ? { paramKey: extractedKey, variable } : { paramKey: extractedKey };
 }
 
+// A layer-derived row's origin, before authoredKeys sees it, is always
+// overlay/common per resolveKey/the two buildDrafts passes below. authoredKeys
+// demotes every layer key it does NOT name to "default" — keeping whatever
+// instances/value/source the row already resolved to (a row observed
+// differently per environment is still worth a row; see SheetInputs.
+// authoredKeys). Applied by paramKey (the row's DISPLAY key, post-keyMap),
+// since that is what a recipe's authored-key set is stated in terms of.
+function demotedOrigin(
+  paramKey: string,
+  layerOrigin: "overlay" | "common",
+  authoredKeys: ReadonlySet<string> | undefined
+): "overlay" | "common" | "default" {
+  if (authoredKeys === undefined) return layerOrigin;
+  return authoredKeys.has(paramKey) ? layerOrigin : "default";
+}
+
 function buildOverlayInstances(
   instanceNames: string[],
   extractedKey: string,
@@ -666,9 +703,11 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
     let param: Parameter;
     if (overriddenBy.length > 0) {
       const instances = buildOverlayInstances(si.instances, extractedKey, baseEntry, overlays);
-      param = { key: paramKey, instances, origin: "overlay" } as InstanceParameter;
+      const origin = demotedOrigin(paramKey, "overlay", si.authoredKeys);
+      param = { key: paramKey, instances, origin } as InstanceParameter;
     } else {
-      param = { key: paramKey, value: baseEntry.value, source: baseEntry.source, origin: "common" } as SimpleParameter;
+      const origin = demotedOrigin(paramKey, "common", si.authoredKeys);
+      param = { key: paramKey, value: baseEntry.value, source: baseEntry.source, origin } as SimpleParameter;
     }
     attachReferenceSites(param, extractedKey);
     pushDraft(paramKey, withUnderKey(param, variable), variable, extractedKey, baseEntry.component);
@@ -683,7 +722,8 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
       const { paramKey, variable } = resolveKey(extractedKey, variableToBound, boundToVariable);
       const carriers = overlays.filter((o) => o.entries.has(extractedKey));
       const instances = buildOverlayInstances(si.instances, extractedKey, undefined, carriers);
-      const param = { key: paramKey, instances, origin: "overlay" } as InstanceParameter;
+      const origin = demotedOrigin(paramKey, "overlay", si.authoredKeys);
+      const param = { key: paramKey, instances, origin } as InstanceParameter;
       attachReferenceSites(param, extractedKey);
       pushDraft(paramKey, withUnderKey(param, variable), variable, extractedKey, ov.entries.get(extractedKey)?.component);
     }

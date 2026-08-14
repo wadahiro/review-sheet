@@ -1,7 +1,7 @@
 import Ajv, { type ErrorObject } from "ajv";
 import inputSchema from "./schema/input.schema.json";
 import reviewSchema from "./schema/review.schema.json";
-import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, Category } from "./types.js";
+import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, Category, SourceLocation } from "./types.js";
 
 const ajv = new Ajv({ allErrors: true });
 
@@ -46,6 +46,53 @@ function findEmbeddedOriginErrors(input: ParameterSheetInput): string[] {
   return errors;
 }
 
+// Cross-field rule that the schema alone cannot express: `origin: "default"`
+// means our authored sources set NOTHING (see the `Origin` comment in
+// types.ts) — either the documented default (no `source` at all) or a value
+// OBSERVED in a generated artifact (`source.generated: true`). A `source`
+// present without `generated: true` would be the row claiming a location in a
+// file THIS project authors while simultaneously claiming nobody set it —
+// exactly the false "this project set it" reading the widened `default`
+// exists to prevent. Checked per instance too (Pattern B): an
+// InstanceParameter has no single `source`, so each instance's own is
+// checked in place.
+function isGeneratedSource(source: SourceLocation | undefined): boolean {
+  return source?.generated === true;
+}
+
+function findDefaultOriginErrors(input: ParameterSheetInput): string[] {
+  const errors: string[] = [];
+  const walkCategories = (categories: Category[], path: string): void => {
+    for (let ci = 0; ci < categories.length; ci++) {
+      const category = categories[ci];
+      const catPath = `${path}/categories/${ci}`;
+      const params = category.params ?? [];
+      for (let pi = 0; pi < params.length; pi++) {
+        const param = params[pi];
+        if (param.origin !== "default") continue;
+        if ("instances" in param && param.instances !== undefined) {
+          param.instances.forEach((instance, ii) => {
+            if (instance.source !== undefined && !isGeneratedSource(instance.source)) {
+              errors.push(
+                `${catPath}/params/${pi}/instances/${ii}: default origin cannot carry a location in an authored ` +
+                  `file — source.generated must be true`
+              );
+            }
+          });
+        } else if ("source" in param && param.source !== undefined && !isGeneratedSource(param.source)) {
+          errors.push(
+            `${catPath}/params/${pi}: default origin cannot carry a location in an authored file — ` +
+              `source.generated must be true`
+          );
+        }
+      }
+      if (category.categories) walkCategories(category.categories, catPath);
+    }
+  };
+  input.sheets.forEach((sheet, si) => walkCategories(sheet.categories, `/sheets/${si}`));
+  return errors;
+}
+
 export function validateInput(data: unknown): ParameterSheetInput {
   if (!validateInputSchema(data)) {
     const errors = validateInputSchema.errors ?? [];
@@ -55,7 +102,7 @@ export function validateInput(data: unknown): ParameterSheetInput {
     );
   }
   const input = data as ParameterSheetInput;
-  const originErrors = findEmbeddedOriginErrors(input);
+  const originErrors = [...findEmbeddedOriginErrors(input), ...findDefaultOriginErrors(input)];
   if (originErrors.length > 0) {
     throw new Error(`Input data validation error:\n${originErrors.join("\n")}`);
   }

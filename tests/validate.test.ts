@@ -226,6 +226,102 @@ describe("validateInput", () => {
     expect(result.sheets[0].categories[0].params![0].origin).toBe("embedded");
   });
 
+  // Widened `default` (types.ts's Origin comment): our authored sources set
+  // nothing, so a `default` row must never carry a location in a file we
+  // author — no `source` at all, or one with `generated: true` (observed in
+  // a generated artifact, e.g. a Terraform plan). Mirrors the embedded-origin
+  // check just above.
+  it("rejects origin: default with a non-generated source", () => {
+    const data = {
+      sheets: [
+        {
+          name: "Test",
+          categories: [
+            {
+              name: "Category 1",
+              params: [
+                {
+                  key: "param1",
+                  value: "val1",
+                  origin: "default",
+                  source: { file: "main.tf", line: 3 },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(() => validateInput(data)).toThrow(
+      "default origin cannot carry a location in an authored file"
+    );
+  });
+
+  it("accepts origin: default with a generated source", () => {
+    const data = {
+      sheets: [
+        {
+          name: "Test",
+          categories: [
+            {
+              name: "Category 1",
+              params: [
+                {
+                  key: "param1",
+                  value: "val1",
+                  origin: "default",
+                  source: { file: "plan.json", line: 3, generated: true },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const result = validateInput(data);
+    expect(result.sheets[0].categories[0].params![0].origin).toBe("default");
+  });
+
+  it("accepts origin: default with no source at all (documented default)", () => {
+    const data = {
+      sheets: [
+        {
+          name: "Test",
+          categories: [{ name: "Category 1", params: [{ key: "param1", value: "val1", default: "val1", origin: "default" }] }],
+        },
+      ],
+    };
+    expect(() => validateInput(data)).not.toThrow();
+  });
+
+  it("rejects origin: default with a non-generated source on a Pattern B instance", () => {
+    const data = {
+      sheets: [
+        {
+          name: "Test",
+          categories: [
+            {
+              name: "Category 1",
+              params: [
+                {
+                  key: "param1",
+                  origin: "default",
+                  instances: [
+                    { name: "staging", value: "true", source: { file: "plan.json", line: 3, generated: true } },
+                    { name: "production", value: "true", source: { file: "main.tf", line: 3 } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(() => validateInput(data)).toThrow(
+      "default origin cannot carry a location in an authored file"
+    );
+  });
+
   it("rejects an unknown origin value", () => {
     const data = {
       sheets: [
