@@ -1113,3 +1113,104 @@ parameters:
     expect(categoryOf(input, "max_conn")).toBe("Connections");
   });
 });
+
+// `group_by: file` on a sheet whose COMPONENTS are already files.
+//
+// `templates:` naming each component after the file it deploys is the ordinary
+// shape for a sheet covering several artifacts, so the row already carries the
+// file as its component — and `group_by: file` then re-derives the same string
+// as a category, giving every tab a single child of its own name:
+//
+//     httpd.conf (component) > httpd.conf (category) > ServerTokens, …
+//
+// The level names what its parent already named, which is the same thing the
+// component level itself is dropped for on a single-component sheet.
+describe("group_by: file on a sheet whose components are files", () => {
+  const dict = `
+product: demoweb
+version: "1"
+provenance: extracted
+coverage: full
+parameters:
+  keepalive: { description: { en: Keep alive }, default: "On", group: core }
+`;
+  const files: Record<string, string> = {
+    "p.yml": `sheets:\n  web:\n    group_by: file\n    params: {}\n`,
+    "meta/demoweb@1.yml": dict,
+  };
+  const opts = (): AssembleOpts => ({
+    projectPath: "p.yml",
+    metadataDirs: ["meta"],
+    readFile: (p) => files[p] ?? null,
+    strictMetadata: false,
+    dictionaries: { web: [{ product: "demoweb", version: "1" }] },
+  });
+  // Two components, each named after the artifact it deploys — plus one row
+  // that is a line of NEITHER, which is what `group_by: file` is really for.
+  const inputs = (): SheetInputs[] => [
+    {
+      name: "web",
+      instances: [],
+      layers: [
+        {
+          kind: "base",
+          entries: new Map([
+            ["firewall_port", { value: "443", source: { file: "roles/web/defaults/main.yml", line: 1 } }],
+          ]),
+        },
+      ],
+      embedded: [
+        {
+          key: "ServerTokens",
+          value: "Prod",
+          component: "httpd.conf",
+          source: { file: "roles/web/templates/httpd.conf.j2", line: 1 },
+        },
+        {
+          key: "StartServers",
+          value: "4",
+          component: "00-mpm.conf",
+          source: { file: "roles/web/templates/00-mpm.conf.j2", line: 1 },
+        },
+      ],
+      componentFiles: new Map([
+        ["httpd.conf", { filePath: "httpd.conf", sourceFile: "roles/web/templates/httpd.conf.j2" }],
+        ["00-mpm.conf", { filePath: "00-mpm.conf", sourceFile: "roles/web/templates/00-mpm.conf.j2" }],
+      ]),
+    },
+  ];
+
+  const pathOf = (input: ReturnType<typeof assembleSheets>, key: string): string[] => {
+    const out: string[] = [];
+    const walk = (node: { name?: string; params?: { key: string }[]; categories?: unknown[] }, trail: string[]): void => {
+      const here = node.name === undefined ? trail : [...trail, node.name];
+      if (node.params?.some((p) => p.key === key)) out.push(...here);
+      for (const c of (node.categories ?? []) as typeof node[]) walk(c, here);
+    };
+    for (const c of input.sheets[0]!.categories ?? []) walk(c as never, []);
+    return out;
+  };
+
+  it("does not repeat the component as a category under itself", () => {
+    const input = assembleSheets(inputs(), opts());
+    expect(pathOf(input, "ServerTokens")).toEqual(["httpd.conf"]);
+    expect(pathOf(input, "StartServers")).toEqual(["00-mpm.conf"]);
+  });
+
+  // The whole point of the option is still served on the same sheet: a row
+  // written in no artifact keeps its own file's name, and it has no component
+  // to be folded into.
+  it("still files a row that is no artifact's line under its own file", () => {
+    const input = assembleSheets(inputs(), opts());
+    expect(pathOf(input, "firewall_port")).toEqual(["main.yml"]);
+  });
+
+  // A hand-written `category:` is never folded — the project said what it
+  // meant, and silently dropping it would make the file lie about the sheet.
+  it("keeps a declared category that matches the component", () => {
+    files["p.yml"] = `sheets:\n  web:\n    group_by: file\n    params:\n      ServerTokens: { category: httpd.conf }\n`;
+    const input = assembleSheets(inputs(), opts());
+    expect(pathOf(input, "ServerTokens")).toEqual(["httpd.conf", "httpd.conf"]);
+    files["p.yml"] = `sheets:\n  web:\n    group_by: file\n    params: {}\n`;
+  });
+});

@@ -1252,6 +1252,22 @@ function fileDrafts(
     // It has to be declared and can never be fallen into — see the empty-path
     // error below, which is what makes an undeclared row an error again.
     const declaredNoCategory = meta?.category === null;
+    // The artifact the row is written in, `.j2` stripped: a template is named
+    // for the file it produces, and that file is what a reviewer is holding. A
+    // row with no file of its own — a product default nobody set — resolves to
+    // undefined here and falls through to what it had before.
+    //
+    // Kept separate from `inner` because only a DERIVED name can be folded
+    // below: a project that writes `category:` by hand said what it meant.
+    const derivedFile =
+      declaredNoCategory || meta?.category || !groupByFile
+        ? undefined
+        : fileCategory(
+            d.param,
+            componentFiles?.get(d.component ?? "")?.filePath ?? sheetArtifact,
+            componentFiles?.get(d.component ?? "")?.sourceFile ?? sheetTemplate,
+            d.variable !== undefined
+          );
     const inner = declaredNoCategory
       ? []
       : meta?.category
@@ -1262,16 +1278,7 @@ function fileDrafts(
           ? [meta.category]
           : meta.category
         : groupByFile
-          ? // The artifact the row is written in, `.j2` stripped: a template is
-            // named for the file it produces, and that file is what a reviewer
-            // is holding. A row with no file of its own — a product default
-            // nobody set — falls through to what it had before.
-            (fileCategory(
-              d.param,
-              componentFiles?.get(d.component ?? "")?.filePath ?? sheetArtifact,
-              componentFiles?.get(d.component ?? "")?.sourceFile ?? sheetTemplate,
-              d.variable !== undefined
-            ) ?? bindingOrFallback(binding, d.fallbackCategoryPath))
+          ? (derivedFile ?? bindingOrFallback(binding, d.fallbackCategoryPath))
           : bindingOrFallback(binding, d.fallbackCategoryPath);
     // The component level appears only when the sheet HAS more than one. A
     // sheet covering a single component is that component — naming it again
@@ -1294,7 +1301,25 @@ function fileDrafts(
     // defeated the moment a second component appeared — a build-breaking
     // omission turning into a silent one because a sibling was added
     // elsewhere.
-    const path = inner === undefined ? undefined : showComponent ? [d.component!, ...inner] : inner;
+    // A derived file name that repeats the component says nothing, and the
+    // level it opens holds exactly one child. `templates:` naming each
+    // component after the file it deploys is the ordinary shape — the
+    // component IS the file — so `group_by: file` re-derives an identity the
+    // row already carries and every tab reads `httpd.conf > httpd.conf`.
+    // Folded here for the same reason the component level itself is dropped on
+    // a single-component sheet (see `showComponent`): a level that names what
+    // its parent already named is not structure.
+    //
+    // Only the DERIVED name folds. `group_by: file` still earns its keep on
+    // the same sheet for a row that is NOT a line of any artifact — an Ansible
+    // variable the templates never render — which is exactly the case
+    // fileCategory's last branch exists for, and which keeps its own file's
+    // name here.
+    const folded =
+      inner !== undefined && showComponent && derivedFile !== undefined && inner[0] === d.component
+        ? inner.slice(1)
+        : inner;
+    const path = folded === undefined ? undefined : showComponent ? [d.component!, ...folded] : folded;
     if (!path || path.length === 0) {
       // A declared `category: null` that resolved to nothing means the sheet
       // has no component level to file under — either no component at all, or

@@ -657,6 +657,21 @@ unset rows", so the default view of a `group_by: file` sheet IS the file — in
 the reference project, 22 rows of keycloak.conf's own settings rather than the
 149-row ledger behind them.
 
+**On a sheet whose COMPONENTS are already files, most of this has nothing left
+to do.** `templates:` naming each component after the artifact it deploys is
+the ordinary shape, so every artifact row already carries the file as its
+component and `group_by: file` only re-derives it. A derived name equal to the
+component is folded away rather than opening a level with one child of its own
+name (`httpd.conf > httpd.conf > ServerTokens`), for the same reason the
+component level itself disappears on a single-component sheet: a level that
+names what its parent already named is not structure. A hand-written
+`category:` is never folded — the project said what it meant.
+
+What the option still does there is the last row of the table above: a variable
+that is a line of NO artifact keeps its own file's name, instead of being filed
+under whichever component it happens to sit beside. If a sheet has no such rows,
+`group_by: file` changes nothing on it and can be dropped.
+
 #### `data_maps:` — a path whose children are data
 
 ```yaml
