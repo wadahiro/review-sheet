@@ -14,6 +14,7 @@
 // recorded in the model's source maps.
 
 import { resolve as resolvePath } from "node:path";
+import type { DictionaryBinding } from "./metadata.js";
 import {
   assembleSheetsWithReport,
   type AssembleHooks,
@@ -120,8 +121,17 @@ export function assembleFromSpecWithReport(
     // findings #10).
     const instances = sheetSpec.instances ?? spec.instances;
     const component = sheetSpec.component as ComponentDecl | undefined;
-    const io: RecipeIO = { ...baseIo, instances, component };
+    const io: RecipeIO = { ...baseIo, instances, component, dataMaps: spec.data_maps };
     const si = recipe.load(sheetSpec, io);
+    // A recipe that knows the shape of its rows can say how a product
+    // dictionary's keys relate to them (SheetInputs.dictKeySteps). Applied only
+    // where the binding declares nothing: the project's own `key_steps` is a
+    // statement about ITS dictionary and always wins.
+    if (si.dictKeySteps) {
+      for (const d of (sheetSpec.dictionaries ?? []) as unknown as DictionaryBinding[]) {
+        if (d.key_steps === undefined) d.key_steps = si.dictKeySteps;
+      }
+    }
     // A LITERAL component declaration says the same thing about every row on
     // the sheet, so it is applied here rather than in each recipe: a recipe
     // that reads a flat config file has nothing to contribute to the answer.

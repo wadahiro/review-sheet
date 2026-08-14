@@ -32,6 +32,7 @@ import {
   labelForSheet,
   groupForSheet,
   compareComponentsForSheet,
+  declaredComponentsForSheet,
   sheetGroups,
   checkProjectMetaSheets,
   type ProjectMetaDoc,
@@ -40,6 +41,7 @@ import {
 import { findDictionary, dictionaryCoverage } from "./providers/dictionary.js";
 import { bindKey, isBindError, loadBindSources, BIND_METHODS, type Binding, type BindSource, type BindMethod } from "./bind.js";
 import type { DictionaryBinding } from "./metadata.js";
+import type { KeyTransformStep } from "./keytransform.js";
 import type {
   ParameterSheetInput,
   SourceLocation,
@@ -118,6 +120,13 @@ export type SheetInputs = {
   instances: string[]; // ordered; value-column order
   layers: ValueLayer[]; // exactly one base; error otherwise
   embedded: EmbeddedEntry[]; // already keyed (product-side)
+  // How a row of THIS sheet relates to a product dictionary's keys, when the
+  // recipe knows — a Terraform plan row is `<module>.<type>.<name>.<arg>` and
+  // the provider documents `<type>.<arg>`, which follows from the plan's shape
+  // rather than from anything a project chose. Applied to a binding that
+  // declares no `key_steps` of its own (assemble-spec.ts); a project that
+  // declares them still wins.
+  dictKeySteps?: KeyTransformStep[];
   // Rows whose display key is a PRODUCT key rather than their extracted
   // identity (an Ansible variable, a structural path, ...) — see
   // resolveKey() below. A base/overlay entry whose extracted key appears here
@@ -1183,11 +1192,16 @@ function fileDrafts(
   // keep first-appearance order.
   // Order one node's children by the sheet's declared list, keeping anything
   // undeclared in first-appearance order after it.
+  // Every declared name that actually ordered something, collected as it goes:
+  // a declaration matching nothing is reported below rather than dropped.
+  const declaredUsed = new Set<string>();
   const declaredFirst = (node: Node): string[] => {
     const first = declaredCategories.filter((name) => node.children.has(name));
+    for (const name of first) declaredUsed.add(name);
     return [...first, ...node.childOrder.filter((name) => !first.includes(name))];
   };
   const declared = declaredCategories.filter((name) => root.children.has(name));
+  for (const name of declared) declaredUsed.add(name);
   // A component's place in the reading order is the order the SPEC declares it
   // in — the static files, the templates — not the order its rows happen to
   // reach the assembler. Those differ whenever a component's values arrive
@@ -1226,7 +1240,50 @@ function fileDrafts(
     return cat;
   }
 
-  return order.map((name) => toCategory(root.children.get(name)!, componentCount > 1));
+  const categories = order.map((name) => toCategory(root.children.get(name)!, componentCount > 1));
+
+  // A declared category that ordered nothing is wiring the author wrote and no
+  // row ever saw — the same failure keyglob and keytransform already report for
+  // a pattern that matched nothing (`unmatchedPatterns`, `unmatchedDropPatterns`),
+  // and it was the one place here that stayed silent. It is not harmless: a
+  // dictionary's `group` is a PATH, so a name declared in the old flat spelling
+  // ("Tokens / Access tokens" for what is now the head "Tokens") quietly orders
+  // nothing at all, and the tab sits wherever emission order happens to put it.
+  //
+  // Reported after the tree is built, not while filtering, because on a sheet
+  // with components a name may order nothing at the root and still order
+  // something inside every component.
+  if (declaredCategories.length > 0) {
+    const used = new Set<string>();
+    const collect = (cats: Category[]): void => {
+      for (const c of cats) {
+        used.add(c.name);
+        collect(c.categories ?? []);
+      }
+    };
+    collect(categories);
+    for (const name of declaredCategories) {
+      if (declaredUsed.has(name)) continue;
+      // The name IS in use, just not at the level a declaration governs: a
+      // dictionary's `group` is a PATH, and only its head is a tab. Saying
+      // "did you mean X?" about the very name written would be absurd, and it
+      // would hide the actual rule.
+      if (used.has(name)) {
+        categoryWarnings.push(
+          `${sheetName}: declared category "${name}" ordered nothing — it exists, but nested under another. ` +
+            `A declaration names a TOP-level tab, so declare the head of its path instead`
+        );
+        continue;
+      }
+      const hint = suggestNearest(name, used);
+      categoryWarnings.push(
+        `${sheetName}: declared category "${name}" ordered nothing — no row is filed under it` +
+          (hint ? `; did you mean "${hint}"?` : "")
+      );
+    }
+  }
+
+  return categories;
 }
 
 // Iterative Levenshtein distance — used only for the "did you mean" hint on
@@ -1357,6 +1414,7 @@ export function assembleSheetsWithReport(
   const sheets: Sheet[] = [];
   const materializeReports: MaterializeReport[] = [];
   const uiReports: UiReport[] = [];
+  const deadComponents: string[] = [];
   // Every sheet's resolved bindings (bindDrafts' return value), keyed by
   // sheet name then parameter key — handed to enrich() below so its
   // dictionary provider does a plain lookup instead of re-running its own key
@@ -1439,6 +1497,22 @@ export function assembleSheetsWithReport(
     }
     const components = new Set(drafts.map((d) => d.component).filter((c): c is string => c !== undefined));
     componentLevel.set(si.name, { shows: components.size > 1, only: components.size === 1 ? [...components][0] : undefined });
+    // The other half of the same two-way check `component: names:` has: a
+    // sheet.yml block for a component this sheet never produced. It needs its
+    // own check because the unused-param one cannot see it — a dead block is
+    // usually a copy of a SIBLING sheet's, so every key in it (`enabled`,
+    // `protocol`) exists on this sheet under a different component and looks
+    // used. Measured on a real spec: two sheets each carried the other's
+    // component block, 90 lines of documentation applying to nothing, with no
+    // complaint from any gate.
+    for (const declared of declaredComponentsForSheet(projectMeta, si.name)) {
+      if (components.has(declared)) continue;
+      const hint = suggestNearest(declared, components);
+      deadComponents.push(
+        `${si.name}: metadata declares component "${declared}", which this sheet produces no rows for` +
+          (hint ? ` — did you mean "${hint}"?` : ` (produced: ${[...components].sort().join(", ") || "none"})`)
+      );
+    }
     const sheetVariables = new Map<string, string>();
     for (const d of drafts) if (d.variable !== undefined) sheetVariables.set(d.key, d.variable);
     allVariables.set(si.name, sheetVariables);
@@ -1769,6 +1843,13 @@ export function assembleSheetsWithReport(
           .join("\n"),
       unusedEntries,
       scaffoldShape
+    );
+  }
+
+  if (deadComponents.length > 0 && opts.strictMetadata !== false) {
+    throw new Error(
+      `assemble: ${deadComponents.length} component block(s) in the project metadata describe a component no sheet ` +
+        `produced:\n${deadComponents.map((d) => `  ${d}`).join("\n")}`
     );
   }
 

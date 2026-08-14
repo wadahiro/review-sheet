@@ -49,7 +49,13 @@ const jinja2Parser: ConfigParser = {
     // brace-structured format (nginx/httpd) does not mis-scan `{{ }}` / `{% %}`.
     // Restore the original `{{ … }}` text on each extracted value afterwards.
     const { masked, restore } = maskJinja(content);
-    const base = resolveParser(baseName, masked);
+    // A caller-supplied base format WINS over the stripped name. It is only
+    // ever supplied when that name yields no structured format of its own (see
+    // ExtractOptions.baseFormat), and in that case it is the better witness: a
+    // bare `.conf` resolves to the generic key=value parser, which is a guess
+    // from an extension thousands of unrelated files share, while the path the
+    // artifact is DEPLOYED to says what it actually is.
+    const base = (opts?.baseFormat ? getParser(opts.baseFormat) : undefined) ?? resolveParser(baseName, masked);
     if (!base) return [];
     const cond = conditionalLineSet(content);
     // Pass opts through unchanged: the base format is whatever the delegate

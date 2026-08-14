@@ -28,6 +28,12 @@ export function structuredFormat(file: string): Format | "xml" | "toml" | "syste
   if (lower.endsWith(".xml")) return "xml";
   if (lower.endsWith(".toml")) return "toml";
   if (/\.(service|timer|socket|mount|target|path|slice|scope|automount|netdev|network|link)$/.test(lower)) return "systemd";
+  // A systemd drop-in: `*.conf` under a `*.conf.d/` directory, which is how
+  // every one of its daemons is configured without editing the shipped file
+  // (journald.conf.d, system.conf.d, resolved.conf.d). Same INI-with-sections
+  // grammar as a unit; only the extension differs, and `.conf` alone is far too
+  // common to claim.
+  if (/\.conf\.d\/[^/]+\.conf$/.test(lower)) return "systemd";
   return null;
 }
 

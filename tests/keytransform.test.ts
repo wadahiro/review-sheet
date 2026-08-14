@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { makeKeyTransformer, selectKeySource, type KeyTransform } from "../src/keytransform";
+import { makeKeyTransformer, selectKeySource, splitKeySteps, splitComponentSteps, type KeyTransform } from "../src/keytransform";
 
 describe("selectKeySource", () => {
   it("defaults to the leaf key", () => {
@@ -96,5 +96,43 @@ describe("makeKeyTransformer", () => {
     const t = makeKeyTransformer(transform);
     t.apply("AWS_REGION"); // never matches ^KC_
     expect(t.unmatchedDropPatterns()).toEqual([]);
+  });
+});
+
+// `split:` — one declaration standing in for the pair of regexes every sheet
+// over an identity-keyed list otherwise writes by hand, against the tool's own
+// address grammar. See StructuralSplit.
+describe("structural split", () => {
+  const run = (split: Parameters<typeof splitKeySteps>[0], path: string) => ({
+    key: makeKeyTransformer({ from: "path", steps: splitKeySteps(split) }).apply(path),
+    component: makeKeyTransformer({ from: "path", steps: splitComponentSteps(split) }).apply(path),
+  });
+
+  it("splits a member into its identity and the rest of its address", () => {
+    expect(run({ at: "clients", by: "clientId" }, "clients[clientId=account].enabled")).toEqual({
+      key: "enabled",
+      component: "account",
+    });
+  });
+
+  // structural.ts quotes an identity only when it has to, which is exactly the
+  // detail a hand-written pattern gets wrong (and then matches nothing).
+  it("accepts the identity quoted or bare", () => {
+    expect(run({ at: "clients", by: "clientId" }, 'clients[clientId="a-b.c"].enabled').component).toBe("a-b.c");
+  });
+
+  it("keeps the whole remaining address, dots and all", () => {
+    expect(run({ at: "clients", by: "clientId" }, "clients[clientId=x].attributes.pkce").key).toBe("attributes.pkce");
+  });
+
+  it("with `only`, drops the members this sheet does not review", () => {
+    const split = { at: "clients", by: "clientId", only: ["wanted"] };
+    expect(run(split, "clients[clientId=wanted].enabled").key).toBe("enabled");
+    expect(run(split, "clients[clientId=other].enabled").key).toBeUndefined();
+  });
+
+  // A sheet reading env files alongside the list must not lose them.
+  it("leaves a row that is not a member of the list untouched", () => {
+    expect(run({ at: "clients", by: "clientId", only: ["x"] }, "SSO_HOST").key).toBe("SSO_HOST");
   });
 });

@@ -35,8 +35,34 @@
 // a worked example of both.
 export type KeyTransformStep =
   | { pattern: string; replace: string; flags?: string; on_no_match?: "drop" | "keep" }
+  // Drop the entry when the pattern DOES match — the mirror of
+  // `on_no_match: "drop"`, which drops when it does not. Needed to express
+  // selection ("this sheet reviews these two of the list, not the other two")
+  // without a negative lookahead: rewrite the wanted ones first, then drop
+  // whatever is still addressed as a member of the list.
+  | { drop: string; flags?: string }
   | { lowercase: true }
   | { uppercase: true };
+
+// A structural split: "this source holds a LIST of things, each addressed by an
+// identity field; each one is a component, and a row's key is what follows".
+//
+// It exists because that sentence was otherwise written as a pair of regexes
+// over the tool's OWN address grammar — `^clients\[clientId=("?)(.+?)\1\]\.(.+)$`
+// — once per list, in every project. The quoting alternation there is a project
+// reverse-engineering `structural.ts`'s output format; getting it wrong fails
+// silently, by matching nothing. Declaring the split lets the tool write those
+// patterns, since it is the one that decided how an address is spelled.
+export type StructuralSplit = {
+  // The field holding the list (`clients` in `clients[clientId=x].protocol`).
+  at: string;
+  // The field each element is addressed BY (`clientId`).
+  by: string;
+  // Which elements this sheet reviews. Omitted = all of them. A listed value
+  // that no element has is an error, like every other declaration here that
+  // matches nothing.
+  only?: string[];
+};
 
 export type KeyTransform = {
   // Where the untransformed key comes from: the extracted leaf key (default,
@@ -44,7 +70,9 @@ export type KeyTransform = {
   // address (Entry.source.path, falling back to the leaf key when the format
   // has none — e.g. a flat tfvars file, where they are identical anyway).
   from?: "key" | "path";
-  steps: KeyTransformStep[];
+  // Optional: `{ from: path }` alone means "key by the structural address,
+  // verbatim", which used to have to be spelled as a no-op `^(.*)$ -> $1`.
+  steps?: KeyTransformStep[];
 };
 
 export type KeyTransformer = {
@@ -62,8 +90,53 @@ export function selectKeySource(from: KeyTransform["from"], key: string, path: s
   return from === "path" ? (path ?? key) : key;
 }
 
+// Regex-escape a literal for embedding in a generated pattern.
+function esc(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// The steps a `split:` stands for. Written here, next to the transformer that
+// runs them, because the whole point is that the tool owns the address grammar
+// these patterns have to match: `structural.ts` emits `[field=value]` with the
+// value quoted only when it has to be, so the quote is optional and captured.
+//
+// Two steps, in this order: rewrite the members this sheet reviews down to the
+// remainder of their address, then drop whatever is still addressed as a member
+// (that is the `only:` selection). A row that is not a member of the list at
+// all — a plain variable from an env file on the same sheet — matches neither
+// and passes through untouched.
+export function splitKeySteps(split: StructuralSplit, membersOnly = false): KeyTransformStep[] {
+  const member = `^${esc(split.at)}\\[${esc(split.by)}=("?)`;
+  const values = split.only ? `(?:${split.only.map(esc).join("|")})` : `(?:.+?)`;
+  const steps: KeyTransformStep[] = [
+    // "keep" by default: a source can hold rows that are not members of the
+    // list — the env file feeding them, on the same sheet — and those must
+    // survive. A source that IS the list says so with `members_only`, and then
+    // anything else in it is noise to drop.
+    { pattern: `${member}${values}\\1\\]\\.(.+)$`, replace: "$2", on_no_match: membersOnly ? "drop" : "keep" },
+  ];
+  if (split.only) steps.push({ drop: `${member}` });
+  return steps;
+}
+
+// The identity itself, for the component side of the same declaration.
+export function splitComponentSteps(split: StructuralSplit, more = false): KeyTransformStep[] {
+  const values = split.only ? `(?:${split.only.map(esc).join("|")})` : `(?:.+?)`;
+  return [
+    {
+      pattern: `^${esc(split.at)}\\[${esc(split.by)}=("?)(${values})\\1\\]\\..+$`,
+      replace: "$2",
+      // A row that is not a member belongs to no component — unless the sheet
+      // has further rules for it, in which case it has to survive to reach
+      // them. (A sheet reading the list AND the env variables that feed it
+      // files those variables under the member they belong to.)
+      on_no_match: more ? "keep" : "drop",
+    },
+  ];
+}
+
 export function makeKeyTransformer(transform: KeyTransform): KeyTransformer {
-  const tracked = transform.steps.map((step) => ({
+  const tracked = (transform.steps ?? []).map((step) => ({
     step,
     // Only a "drop" pattern step needs tracking; everything else starts
     // "used" so it never shows up in unmatchedDropPatterns().
@@ -80,6 +153,8 @@ export function makeKeyTransformer(transform: KeyTransform): KeyTransformer {
           key = key.toLowerCase();
         } else if ("uppercase" in s) {
           key = key.toUpperCase();
+        } else if ("drop" in s) {
+          if (new RegExp(s.drop, s.flags).test(key)) key = undefined;
         } else {
           // Two separate RegExp instances (not one reused across test/replace):
           // a global-flagged regex is stateful (lastIndex) across calls, and
@@ -106,7 +181,6 @@ export function makeKeyTransformer(transform: KeyTransform): KeyTransformer {
 // everywhere it appears.
 export const keyTransformSchema = {
   type: "object",
-  required: ["steps"],
   properties: {
     from: { enum: ["key", "path"] },
     steps: {
@@ -123,6 +197,11 @@ export const keyTransformSchema = {
               flags: { type: "string" },
               on_no_match: { enum: ["drop", "keep"] },
             },
+            additionalProperties: false,
+          },
+          {
+            required: ["drop"],
+            properties: { drop: { type: "string" }, flags: { type: "string" } },
             additionalProperties: false,
           },
           { required: ["lowercase"], properties: { lowercase: { const: true } }, additionalProperties: false },
