@@ -767,6 +767,15 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
 
   // 3) Embedded literals, appended after all base-derived params, in order.
   for (const e of si.embedded) {
+    // A row a recipe emitted per ARTIFACT LINE arrives here already keyed by
+    // the product's own key (ansible's `rows: artifact` on a sheet with
+    // components puts its rows in `embedded`, not in a layer), so keyMap has
+    // nothing to rename — but it still says WHICH variable backs the line, and
+    // that belongs in the under_key column exactly as it does for a layer row.
+    // This is resolveKey's second tier, reached the same way. A literal, and
+    // any entry keyMap has no opinion on, resolves to undefined and is
+    // untouched.
+    const variable = boundToVariable.get(e.key);
     const param = (
       e.instances !== undefined
         ? // Pattern B, exactly as a base+overlay row would be: the instances a
@@ -783,7 +792,7 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
             ? { key: e.key, value: e.value, default: e.value, origin: "default" }
             : { key: e.key, value: e.value, source: e.source, origin: "embedded" }
     ) as Parameter;
-    pushDraft(e.key, param, undefined, undefined, e.component, e.categoryPath);
+    pushDraft(e.key, withUnderKey(param, variable), variable, undefined, e.component, e.categoryPath);
   }
 
   return drafts;

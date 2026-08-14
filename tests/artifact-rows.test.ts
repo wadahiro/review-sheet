@@ -293,3 +293,110 @@ describe("rows: artifact renders a conditional line for the instances that have 
     expect(user.instances?.map((i) => `${i.name}=${i.value}`)).toEqual(["local=appsvc", "prod=prodsvc"]);
   });
 });
+
+// A sheet with COMPONENTS gets the under_key column too.
+//
+// It did not, and nothing said so: `keyMap` was pushed under `if (only &&
+// !scoped)`, so declaring `component:` on a template silently turned the whole
+// mechanism off. `Draft.variable` is the only source of both the under_key
+// column and `fileCategory`'s "is this line part of the artifact" test, so a
+// scoped sheet lost the column outright AND, under `group_by: file`, filed
+// every overlay-driven row under the GROUP_VARS file it was overridden in
+// rather than the artifact it is a line of. The one test that covered keyMap
+// used `template:` (singular), which is unscoped, so nothing caught it.
+describe("rows: artifact keeps the variable behind a row on a sheet with components", () => {
+  it("emits keyMap for a scoped sheet", () => {
+    const byBound = new Map((policySheet().keyMap ?? []).map((m) => [m.boundKey, m.variable]));
+    expect(byBound.get("/var/log/app/*.log.rotate")).toBe("app_rotate_keep");
+    expect(byBound.get("/var/log/app/*.log.su")).toBe("app_user");
+  });
+
+  // The row's VALUE variable, never the one that only spells its key. This
+  // fixture is the case that tells them apart: the block is addressed
+  // `{{ app_log_dir }}/*.log`, so a row inside it has `app_log_dir` first in
+  // `vars` while its value came from something else entirely. Naming the row
+  // after the directory it happens to live in would be wrong in the one column
+  // whose whole job is "which variable do I edit to change this".
+  it("names the value's variable, not the key's", () => {
+    const byBound = new Map((policySheet().keyMap ?? []).map((m) => [m.boundKey, m.variable]));
+    expect([...byBound.values()]).not.toContain("app_log_dir");
+  });
+
+  // A line whose value is a bare flag (`missingok`) came from no variable at
+  // all, and gets no entry rather than borrowing the block's.
+  it("leaves a row no variable backs out of keyMap", () => {
+    const byBound = new Map((policySheet().keyMap ?? []).map((m) => [m.boundKey, m.variable]));
+    expect(byBound.has("/var/log/app/*.log.missingok")).toBe(false);
+  });
+
+  // An overlay-only variable is still the answer to "which variable backs this
+  // line" even though there is no base definition site for `apply` to edit —
+  // the two questions are separate, and resolving them from one lookup meant a
+  // variable a group_vars file alone sets showed no under_key anywhere.
+  it("names a variable only an overlay sets", () => {
+    const byBound = new Map((condSheet().keyMap ?? []).map((m) => [m.boundKey, m.variable]));
+    expect(byBound.get("Service.Environment[1]")).toBe("app_extra_env");
+  });
+
+  it("carries the variable onto the row itself", () => {
+    const row = condSheet().embedded.find((e) => e.key === "Service.User")!;
+    expect(row).toBeDefined();
+    const byBound = new Map((condSheet().keyMap ?? []).map((m) => [m.boundKey, m.variable]));
+    expect(byBound.get("Service.User")).toBe("app_user");
+  });
+});
+
+// Two components, one row key, two variables — no honest single answer.
+//
+// keyMap is one flat table per sheet (assemble builds `boundToVariable` from it
+// with no component), so `Service.User` backed by `app_user` in one unit and
+// `other_user` in another cannot be shown correctly under both. Dropped and
+// reported, the same way this module already drops one variable that backs
+// several directives, rather than silently showing whichever was read last.
+describe("rows: artifact refuses an ambiguous under_key across components", () => {
+  function twoUnits() {
+    const r = getRecipe("ansible")!;
+    return r.load(
+      {
+        name: "os",
+        recipe: "ansible",
+        rows: "artifact",
+        defaults: "defaults.yml",
+        overlays: { local: "local.yml", prod: "prod.yml" },
+        templates: [
+          { path: "app.service.j2", component: "app.service", deployed_path: "/etc/systemd/system/app.service" },
+          { path: "other.service.j2", component: "other.service", deployed_path: "/etc/systemd/system/other.service" },
+        ],
+      },
+      condIo
+    );
+  }
+
+  it("drops the entry rather than picking one", () => {
+    const byBound = new Map((twoUnits().keyMap ?? []).map((m) => [m.boundKey, m.variable]));
+    expect(byBound.has("Service.User")).toBe(false);
+  });
+
+  it("says which key and which variables", () => {
+    const warnings: string[] = [];
+    const real = console.warn;
+    console.warn = (...a: unknown[]) => void warnings.push(a.join(" "));
+    try {
+      twoUnits();
+    } finally {
+      console.warn = real;
+    }
+    const hit = warnings.find((w) => w.includes("Service.User"));
+    expect(hit).toBeDefined();
+    expect(hit).toContain("app_user");
+    expect(hit).toContain("other_user");
+    expect(hit).toContain("other.service");
+  });
+
+  // A key only ONE component has is unaffected — the ambiguity rule is per key,
+  // not a switch the presence of a second component throws.
+  it("keeps an unambiguous key on the same sheet", () => {
+    const byBound = new Map((twoUnits().keyMap ?? []).map((m) => [m.boundKey, m.variable]));
+    expect(byBound.get("Service.Environment[1]")).toBe("app_extra_env");
+  });
+});
