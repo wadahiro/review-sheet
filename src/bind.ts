@@ -55,6 +55,11 @@ import { findDictionary, type DictionaryDoc, type DictionaryParam } from "./prov
 //                the more powerful and so the less specific statement, and
 //                above `leaf` because a caller that went to the trouble of
 //                declaring the rewrite means it.
+//   repeat     - the key with a trailing repetition index dropped
+//                (`Service.Environment[1]` -> `Service.Environment`). A
+//                repeated directive is the same parameter written twice, and
+//                the product documents it once. Immediately after `exact`
+//                because it IS the key, minus bookkeeping no product states.
 //   leaf       - the last identity-bearing segment of a dotted/bracketed
 //                structural path (see leafKey()) IS a dictionary key,
 //                verbatim. Handles a repeated or nested structural leaf
@@ -69,7 +74,7 @@ import { findDictionary, type DictionaryDoc, type DictionaryParam } from "./prov
 //                `Timeout` and `TimeOut` (unlikely, but not this module's
 //                problem to prevent) still prefers whichever one actually
 //                matches exactly.
-export type BindMethod = "alias" | "exact" | "prefix" | "derived" | "leaf" | "normalized";
+export type BindMethod = "alias" | "exact" | "repeat" | "prefix" | "derived" | "leaf" | "normalized";
 
 // A resolved binding. `entry` is the dictionary's own DictionaryParam,
 // unfiltered — including `kind: "container"` entries. A container (Apache's
@@ -154,7 +159,7 @@ export type ProjectDictKey = string | null | undefined;
 // and why this is the order. Exported so a caller building a per-method
 // tally (assemble.ts's BindingReport) enumerates every possible method
 // without re-deriving this list.
-export const BIND_METHODS: readonly BindMethod[] = ["alias", "exact", "prefix", "derived", "leaf", "normalized"];
+export const BIND_METHODS: readonly BindMethod[] = ["alias", "exact", "repeat", "prefix", "derived", "leaf", "normalized"];
 const TIERS = BIND_METHODS;
 
 // The three delimiter conventions this project's key spaces actually use:
@@ -209,7 +214,7 @@ export function leafKey(key: string): string {
 // that tier does not apply to this key/binding at all (no dict_key declared,
 // key_prefix does not match, or the leaf is identical to the raw key).
 function candidateForMethod(
-  method: "alias" | "exact" | "prefix" | "derived" | "leaf",
+  method: "alias" | "exact" | "repeat" | "prefix" | "derived" | "leaf",
   key: string,
   dictKey: ProjectDictKey,
   source: BindSource
@@ -220,6 +225,17 @@ function candidateForMethod(
       return typeof dictKey === "string" ? dictKey : undefined;
     case "exact":
       return key;
+    case "repeat": {
+      // A repeated directive's index is bookkeeping, not identity: a unit with
+      // two `Environment=` lines has two rows, and the product documents ONE
+      // `Environment`. Every parser here indexes repeats the same way
+      // (`Service.ExecStartPre[1]`, `postrotate[1]`), so one rule covers them
+      // all — and it is deliberately not the `leaf` tier, which would ALSO
+      // discard the section and hand `Service.Environment[0]` the answer for a
+      // bare `Environment` in some other section.
+      const stripped = key.replace(/\[\d+\]$/, "");
+      return stripped !== key ? stripped : undefined;
+    }
     case "prefix":
       return binding.key_prefix && key.startsWith(binding.key_prefix) ? key.slice(binding.key_prefix.length) : undefined;
     case "derived": {

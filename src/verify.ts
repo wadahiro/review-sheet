@@ -187,13 +187,29 @@ export function verifySources(data: SheetData, readFile: ReadFile, opts?: Extrac
         // via locateLine) already confirms containment itself and echoes
         // `expected` back, so `.includes` holds there too — one rule covers
         // both locate paths.
-        const matched = isRef ? loc.value.includes(entry.value) : loc.value === entry.value;
+        // Three relations, not two. `ref`: the site holds a reference TO the
+        // value, so the row's text must appear in the site. `substituted`: the
+        // site holds a PART of the row (the variable's value inside a rendered
+        // line), so the site's text must appear in the row. Otherwise: equal.
+        const isSubstituted = entry.source?.substituted === true;
+        const matched = isRef
+          ? loc.value.includes(entry.value)
+          : isSubstituted
+            ? entry.value.includes(loc.value)
+            : loc.value === entry.value;
         if (matched) {
           checks.push(
             loc.fallback === undefined
               ? { target: entry.target, file, status: "ok", message: "verified" }
               : { target: entry.target, file, status: "ok", message: `verified by line fallback — ${loc.fallback}`, fallback: loc.fallback }
           );
+        } else if (isSubstituted) {
+          checks.push({
+            target: entry.target,
+            file,
+            status: "error",
+            message: `"${loc.value}" is no longer part of the rendered line "${entry.value}" — variable renamed, or the template changed around it?`,
+          });
         } else if (isRef) {
           checks.push({ target: entry.target, file, status: "error", message: `reference "${entry.value}" no longer present — value hardcoded or wiring changed?` });
         } else {

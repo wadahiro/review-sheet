@@ -41,7 +41,7 @@ describe("import --spec dictionary-binding report", () => {
     const out = join(work, "no-report.json");
     const run = runImport(["-o", out]);
     expect(run.code).toBe(0);
-    expect(run.stderr).toContain("bindings: 1 alias, 0 exact, 0 prefix, 0 derived, 0 leaf, 1 normalized, 1 none");
+    expect(run.stderr).toContain("bindings: 1 alias, 0 exact, 0 repeat, 0 prefix, 0 derived, 0 leaf, 1 normalized, 1 none");
     // Every "normalized" row, and nothing else, lands on stdout.
     expect(run.stdout.trim().split("\n")).toEqual(["normalized: app > my_time_out -> widget@1:MyTimeOut"]);
   });
@@ -68,7 +68,7 @@ describe("import --spec dictionary-binding report", () => {
     // A "none" row carries no dictKey/product/version — there is no entry to name.
     expect(byKey.stray_thing).toEqual({ sheet: "app", key: "stray_thing", method: "none" });
 
-    expect(doc.summary).toEqual({ alias: 1, exact: 0, prefix: 0, derived: 0, leaf: 0, normalized: 1, none: 1 });
+    expect(doc.summary).toEqual({ alias: 1, exact: 0, repeat: 0, prefix: 0, derived: 0, leaf: 0, normalized: 1, none: 1 });
   });
 
   it("rejects --bind-report without --spec", () => {

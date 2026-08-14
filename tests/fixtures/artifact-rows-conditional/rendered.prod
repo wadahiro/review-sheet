@@ -1,0 +1,6 @@
+[Unit]
+Description=App
+
+[Service]
+User=prodsvc
+ExecStart=/usr/bin/app

@@ -1,0 +1,12 @@
+# Rotation policy for the app's own logs.
+/var/log/app/*.log {
+    daily
+    rotate 30
+    missingok
+    notifempty
+    copytruncate
+    su appsvc appsvc
+    postrotate
+        /bin/systemctl reload app.service > /dev/null 2>/dev/null || true
+    endscript
+}

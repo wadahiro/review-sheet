@@ -1,0 +1,8 @@
+[Unit]
+Description=App
+
+[Service]
+User=appsvc
+Environment=APP_CONSOLE=1
+Environment=APP_TRACE=1
+ExecStart=/usr/bin/app

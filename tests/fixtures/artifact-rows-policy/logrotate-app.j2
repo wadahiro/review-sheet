@@ -1,0 +1,12 @@
+# Rotation policy for the app's own logs.
+{{ app_log_dir }}/*.log {
+    {{ app_rotate_frequency }}
+    rotate {{ app_rotate_keep }}
+    missingok
+    notifempty
+    copytruncate
+    su {{ app_user }} {{ app_user }}
+    postrotate
+        /bin/systemctl reload app.service > /dev/null 2>/dev/null || true
+    endscript
+}

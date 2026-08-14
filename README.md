@@ -131,6 +131,7 @@ Supported formats (inferred per file extension, or forced with `--format`):
 | Format | Files | Notes |
 | --- | --- | --- |
 | `jinja2` | *.j2 | Templates (.j2): base-format structure + the {{ variable }} behind each value (extraction aid). |
+| `logrotate` | /etc/logrotate.conf, /etc/logrotate.d/*, logrotate-*.j2 | `/path/*.log { … }` blocks: flags, `name args`, and script bodies. |
 | `haproxy` | haproxy.cfg *.cfg (content-detected) | Sections and directives; named sections + repeated directive by 1st arg. |
 | `httpd` | httpd.conf .htaccess conf.d/*.conf *.conf (content-detected) | Apache directives and <Tag> containers by label; repeats indexed. |
 | `nginx` | nginx.conf *.conf (content-detected) | Directives and {} blocks; labeled blocks by label; repeats indexed. |
