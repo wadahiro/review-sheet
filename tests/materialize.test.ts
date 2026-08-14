@@ -1048,3 +1048,68 @@ describe("a declared category that orders nothing", () => {
     expect(result.categoryWarnings.filter((w) => w.includes("Connections"))).toEqual([]);
   });
 });
+
+// `group_by: file` — group a row by the file it is WRITTEN IN, which is how an
+// incumbent paper parameter sheet is organised, and the only workable answer
+// for a product whose own grouping is a bad review split (httpd's dictionary
+// `group` is the Apache MODULE, so grouping by it collapses General, KeepAlive
+// and Logging into one "core" tab).
+describe("group_by: file", () => {
+  const dict = `
+product: demodb
+version: "1"
+provenance: extracted
+coverage: full
+parameters:
+  max_conn:
+    description: { en: Maximum connections }
+    default: 100
+    group: Connections
+  wal_level:
+    description: { en: WAL detail }
+    default: replica
+    group: Write-Ahead Log
+`;
+  const files: Record<string, string> = {
+    "p.yml": `sheets:\n  db:\n    group_by: file\n    params: {}\n`,
+    "meta/demodb@1.yml": dict,
+  };
+  const opts = (): AssembleOpts => ({
+    projectPath: "p.yml",
+    metadataDirs: ["meta"],
+    readFile: (p) => files[p] ?? null,
+    strictMetadata: false,
+    dictionaries: { db: [{ product: "demodb", version: "1", materialize: true }] },
+  });
+  const inputs: SheetInputs[] = [
+    {
+      name: "db",
+      instances: [],
+      layers: [
+        {
+          kind: "base",
+          entries: new Map([["max_conn", { value: "200", source: { file: "/etc/postgresql/postgresql.conf.j2", line: 1 } }]]),
+        },
+      ],
+      embedded: [],
+    },
+  ];
+
+  it("files a row under the artifact it is written in, not the product's grouping", () => {
+    const input = assembleSheets(inputs, opts());
+    expect(categoryOf(input, "max_conn")).toBe("postgresql.conf");
+  });
+
+  // A product default nobody set is written nowhere, so there is no file to
+  // group it by and it keeps the fallback it already had.
+  it("leaves a row with no file of its own on its previous fallback", () => {
+    const input = assembleSheets(inputs, opts());
+    expect(categoryOf(input, "wal_level")).toBe("Write-Ahead Log");
+  });
+
+  it("does nothing when the sheet does not ask for it", () => {
+    files["p.yml"] = `sheets:\n  db:\n    params: {}\n`;
+    const input = assembleSheets(inputs, opts());
+    expect(categoryOf(input, "max_conn")).toBe("Connections");
+  });
+});

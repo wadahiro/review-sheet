@@ -569,6 +569,94 @@ The map is consulted on the row's own key and on its structural path, before any
 files the rows that feed them. An assignment naming a key no row produced is
 reported, like every other declaration here that matches nothing.
 
+#### `rows: artifact` — a row is a LINE of the deployed file
+
+```yaml
+- name: httpd reverse proxy
+  recipe: ansible
+  rows: artifact
+  template: ../../roles/httpd/templates/httpd.conf.j2
+  deployed_path: /etc/httpd/conf/httpd.conf
+```
+
+By default a template-driven sheet keys a row by the Ansible VARIABLE behind it.
+That axis cannot represent two things the file plainly contains, and both were
+measured on a real project by rendering its templates with real variables and
+diffing the result against the sheet:
+
+| the template says | the variable axis showed | why |
+| --- | --- | --- |
+| `CustomLog "{{ x }}" proxied` | the path only | the row is the variable, so the literal text around it has nowhere to go — the sheet could not answer "which access-log format" |
+| `ProxyPass … {{ b }}…` and `ProxyPassReverse … {{ b }}…`, twice over | two rows named after the variables | one variable cannot honestly claim any single directive, so all four lines were dropped (it warns) |
+
+`rows: artifact` puts the row on the file's own axis: keyed by the line's
+structural path (`IfModule.StartServers`, `ProxyPass[1]` — the way the FILE
+addresses it, which is also the only spelling that keeps two `<IfModule>` blocks
+apart), valued at the line's text with each `{{ var }}` resolved, and with the
+variable moved to the `under_key` column that already exists for it.
+
+**Only a plain `{{ var }}` and the pure filters (`lower`/`upper`/`trim`) are
+substituted.** This is deliberately not a Jinja2 implementation: an expression,
+an unknown filter or a name nothing defines is left exactly as written and
+REPORTED. A partial engine that guessed would print a value that looks rendered
+and is wrong, which is worse than admitting the line cannot be resolved — and
+the report earns its keep: it is what caught a sheet reading the wrong variables
+file, where the silent version would have shown `{{ keycloak_user }}` as a value.
+
+Such a row's source is the VARIABLE's definition site, marked
+`substituted: true`, which changes what the two cores do with it:
+
+- **verify** checks CONTAINMENT — the site's value must still appear in the
+  row's rendered line. (The mirror of a `ref` site, where the row's value must
+  appear in the site.) A rename or a template change around the variable is
+  reported as exactly that.
+- **apply** HOLDS. The suggested value is a whole line, and deciding which part
+  of it the reviewer meant is where a config edit turns into a template edit:
+  `CustomLog "…" proxied` can be changed in the variable or in the template, and
+  only a human can say which was meant.
+
+Opt in per sheet. Existing sheets keep the variable axis, and switching one
+re-keys the rows a variable used to stand for — a real change to that sheet's
+review targets, which is why it is never automatic.
+
+#### `group_by: file` — one page per file, as a paper sheet has it
+
+```yaml
+"httpd reverse proxy":
+  group_by: file
+  categories: [httpd.conf, Reverse proxy, Host access]
+```
+
+Groups a row the project does not categorise by hand by the FILE it belongs to.
+That is how an incumbent parameter sheet is organised — one page per
+configuration file, its settings listed as the file states them, walked down
+beside the real thing — and it is the answer for a product whose own grouping is
+unusable as a review split. Apache is the case that forced it: httpd's
+dictionary `group` is the MODULE a directive belongs to (`core`, `mpm_common`),
+so grouping by it collapses General, KeepAlive and Logging into one "core" tab,
+and the only way out was a category line per row.
+
+**Which file a row belongs to is decided from the model, not assumed.** The
+distinction that matters is between a row that IS a line of the deployed
+artifact and a row that merely lives in the same role:
+
+| the row | belongs to |
+| --- | --- |
+| sourced from the template itself | the artifact |
+| carries an `under_key` variable | the artifact — its value is written elsewhere, which is what the under_key column is for |
+| has no source at all | the artifact — a product default nobody set, and the artifact is where it would be set |
+| anything else | its own file |
+
+That last line is load-bearing. `keycloak_dist_src` tells the role where to
+download the distribution from; it is not a line of keycloak.conf, and filing it
+there makes the sheet claim something false about the file. Such rows keep a
+category of their own, which is why the example above declares three.
+
+Note what the reader sees: rows the project does not set are hidden behind "show
+unset rows", so the default view of a `group_by: file` sheet IS the file — in
+the reference project, 22 rows of keycloak.conf's own settings rather than the
+149-row ledger behind them.
+
 #### `data_maps:` — a path whose children are data
 
 ```yaml
@@ -1168,6 +1256,7 @@ required for `space`, which has no dedicated extension).
 | Format | Summary | Details |
 | --- | --- | --- |
 | `jinja2` | Templates (.j2): base-format structure + the {{ variable }} behind each value (extraction aid). | [details](formats/jinja2.md) |
+| `logrotate` | `/path/*.log { … }` blocks: flags, `name args`, and script bodies. | [details](formats/logrotate.md) |
 | `haproxy` | Sections and directives; named sections + repeated directive by 1st arg. | [details](formats/haproxy.md) |
 | `httpd` | Apache directives and <Tag> containers by label; repeats indexed. | [details](formats/httpd.md) |
 | `nginx` | Directives and {} blocks; labeled blocks by label; repeats indexed. | [details](formats/nginx.md) |

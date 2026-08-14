@@ -27,6 +27,13 @@ export type SourceLocation = {
   // apply.ts never treats the site as a write target. Meaningful only on an
   // `additional_sources` entry (see types.ts's `ParameterBase`).
   ref?: string;
+  // The mirror of `ref`: this site holds a PART of the row's value, not a
+  // reference to it — the variable's value substituted into a template's line
+  // (see types.ts's SourceLocation.substituted and the ansible recipe's
+  // `rows: artifact`). verify checks containment the other way round; apply
+  // holds, because deciding which part of the line a reviewer meant to change
+  // is how a config edit turns into a template edit.
+  substituted?: boolean;
 };
 
 export type ParamData = {
@@ -103,6 +110,14 @@ export type SheetData = {
 // recognize it and show the translated `applySkippedGenerated` i18n message
 // instead of this raw English text.
 export const HELD_REASON_GENERATED = "Cannot apply directly: source file is generated";
+// A row whose value is the artifact's rendered LINE, of which the mapped source
+// holds only the variable's part (SourceLocation.substituted). Held rather than
+// written: the suggested value is a whole line, and deciding which part of it
+// the reviewer meant to change is exactly where a config edit turns into a
+// template edit — `CustomLog "…" proxied` can be changed in the variable or in
+// the template, and only a human can say which was meant.
+export const HELD_REASON_SUBSTITUTED =
+  "Cannot apply directly: the row is a rendered line and this source holds only the variable inside it";
 
 // Held reason for a change against an `origin: "default"` row: the parameter is
 // at the product's default because our deliverable sets it NOWHERE, so there is

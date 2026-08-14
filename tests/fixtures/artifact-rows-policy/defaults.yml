@@ -1,0 +1,4 @@
+app_log_dir: /var/log/app
+app_rotate_frequency: daily
+app_rotate_keep: 30
+app_user: appsvc

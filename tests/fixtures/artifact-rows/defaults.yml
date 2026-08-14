@@ -1,0 +1,8 @@
+app_port: 80
+app_root: /var/www/html
+app_access_log: /var/log/app/access_log
+app_log_level: WARN
+app_health_backend: http://127.0.0.1:9000
+app_backend: http://127.0.0.1:8080
+app_start_servers: 3
+app_threads: 25

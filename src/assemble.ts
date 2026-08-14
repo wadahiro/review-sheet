@@ -33,12 +33,14 @@ import {
   groupForSheet,
   compareComponentsForSheet,
   declaredComponentsForSheet,
+  groupByForSheet,
   sheetGroups,
   checkProjectMetaSheets,
   type ProjectMetaDoc,
   type UnderKeyMeta,
 } from "./providers/project.js";
 import { findDictionary, dictionaryCoverage } from "./providers/dictionary.js";
+import { baseFileName } from "./jinja2.js";
 import { bindKey, isBindError, loadBindSources, BIND_METHODS, type Binding, type BindSource, type BindMethod } from "./bind.js";
 import type { DictionaryBinding } from "./metadata.js";
 import type { KeyTransformStep } from "./keytransform.js";
@@ -86,7 +88,27 @@ export type ValueLayer =
 // with). Those rows must not claim a definition site in our config — see the
 // `Origin` comment in types.ts — so the source is dropped here and the value
 // doubles as the documented default.
-export type EmbeddedEntry = { key: string; value: string; source: SourceLocation; component?: string; origin?: "embedded" | "default" };
+// `categoryPath` is the FILE'S OWN structure as the parser read it (a logrotate
+// block's log patterns, a systemd `[Section]`) — the last-resort category, used
+// only when the project declared none and the row bound to no dictionary. It is
+// the same rank as a materialized row's `fallbackCategoryPath`, and never
+// outranks either of those two.
+export type EmbeddedEntry = {
+  key: string;
+  value: string;
+  source: SourceLocation;
+  component?: string;
+  origin?: "embedded" | "default";
+  categoryPath?: string[];
+  // Per-instance values, when the row differs between environments — or is
+  // there for some and not others, which an instance list expresses by simply
+  // omitting the ones it is absent from. Set INSTEAD of `value`, which is then
+  // only the fallback for a caller that ignores this. A component's rows used
+  // to be flatly single-valued: the recipe warned and displayed the base value,
+  // which is a sheet stating something about staging that is only true of
+  // production.
+  instances?: Instance[];
+};
 
 // A binding from a bound (product) key to the variable that backs it, e.g.
 // { boundKey: "db-url", variable: "kc_db_url" }.
@@ -428,9 +450,12 @@ export type AssembleOpts = {
 const EMPTY_PROJECT_META: ProjectMetaDoc = { params: {} };
 
 // A single not-yet-filed parameter, plus the variable it was bound from (for
-// the under_key column) if any. `fallbackCategoryPath` is set only for
-// materialized rows (see materializeDrafts): a project-set parameter must
-// still declare its category in the project metadata or fail the build.
+// the under_key column) if any. `fallbackCategoryPath` is the LAST-resort
+// category, behind the project's own `category:` and behind a bound
+// dictionary's `group`: a materialized row's dictionary group (see
+// materializeDrafts), or an embedded row's own container in the file it was
+// read from (EmbeddedEntry.categoryPath). A project-set parameter with neither
+// still has to declare its category in the project metadata or fail the build.
 //
 // A PATH, not a single name: a materialized row is filed two levels deep —
 // under one parent category for "the project sets nothing here", then
@@ -454,6 +479,18 @@ function groupPath(group: string | string[] | undefined): string[] {
     return segs.length > 0 ? segs : [UNCATEGORIZED];
   }
   return [group || UNCATEGORIZED];
+}
+
+// A bound dictionary's own grouping of the entry, when it HAS one. A dictionary
+// whose product has no arrangement of its own to state (logrotate's man page
+// lists its directives alphabetically) leaves `group` unset, and for those the
+// row's own fallback — the container the parser read it out of — says more than
+// UNCATEGORIZED does. Binding still outranks the fallback whenever it has an
+// answer; this only stops "bound, to an entry that groups nothing" from
+// counting as one.
+function bindingOrFallback(binding: Binding | undefined, fallback: string[] | undefined): string[] | undefined {
+  if (binding && binding.entry.group !== undefined) return groupPath(binding.entry.group);
+  return fallback ?? (binding ? [UNCATEGORIZED] : undefined);
 }
 
 // Just the tab: the first segment of the path above, or undefined when the
@@ -495,10 +532,21 @@ function groupHead(group: string | string[] | undefined): string | undefined {
 // which tagged every row unconditionally once the sheet opted in — that
 // per-SHEET switch no longer exists, so "worth tagging" is decided per row
 // instead, by whether it actually resolved to a DIFFERENT key.)
-function resolveKey(extractedKey: string, variableToBound: Map<string, string>): { paramKey: string; variable?: string } {
+function resolveKey(
+  extractedKey: string,
+  variableToBound: Map<string, string>,
+  boundToVariable: Map<string, string>
+): { paramKey: string; variable?: string } {
   const bound = variableToBound.get(extractedKey);
   if (bound !== undefined) return { paramKey: bound, variable: extractedKey };
-  return { paramKey: extractedKey };
+  // Already keyed by the product key, with a variable behind it. That is what a
+  // recipe emitting one row per ARTIFACT LINE produces (ansible's
+  // `rows: artifact`): there is nothing to rename — the row was never keyed by
+  // the variable — but the variable still belongs in the under_key column, and
+  // every rule that asks "is there a variable behind this row" still has to
+  // see one.
+  const variable = boundToVariable.get(extractedKey);
+  return variable !== undefined ? { paramKey: extractedKey, variable } : { paramKey: extractedKey };
 }
 
 function buildOverlayInstances(
@@ -531,7 +579,12 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
     }
   }
   const variableToBound = new Map<string, string>();
-  if (si.keyMap) for (const m of si.keyMap) variableToBound.set(m.variable, m.boundKey);
+  const boundToVariable = new Map<string, string>();
+  if (si.keyMap)
+    for (const m of si.keyMap) {
+      variableToBound.set(m.variable, m.boundKey);
+      boundToVariable.set(m.boundKey, m.variable);
+    }
 
   // referenceSites is keyed by the LAYER key (extractedKey), not the resolved
   // product key — a variable's own `resolveKey` lookup happens independently,
@@ -560,7 +613,14 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
 
   // Every draft goes through the hooks here, so `keyFor`/`mapParam` see base
   // params, overlay-only params and embedded literals alike.
-  function pushDraft(key: string, param: Parameter, variable?: string, extractedKey?: string, entryComponent?: string): void {
+  function pushDraft(
+    key: string,
+    param: Parameter,
+    variable?: string,
+    extractedKey?: string,
+    entryComponent?: string,
+    fallbackCategoryPath?: string[]
+  ): void {
     const ctx: ParamContext = { sheet: si.name, key, variable };
     // Looked up by the EXTRACTED key — the one the RECIPE saw and computed
     // `componentOf` against — not by the key after keyMap renamed the row to a
@@ -575,7 +635,7 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
     }
     const mapped = hooks?.mapParam ? hooks.mapParam(param, ctx) : param;
     if (mapped === null) return;
-    drafts.push({ key: mapped.key, param: mapped, variable, component });
+    drafts.push({ key: mapped.key, param: mapped, variable, component, fallbackCategoryPath });
   }
 
   // 1) Base-layer keys, in insertion order.
@@ -594,7 +654,7 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
       pushDraft(extractedKey, param, undefined, undefined, baseEntry.component);
       continue;
     }
-    const { paramKey, variable } = resolveKey(extractedKey, variableToBound);
+    const { paramKey, variable } = resolveKey(extractedKey, variableToBound, boundToVariable);
     const overriddenBy = overlays.filter((ov) => ov.entries.has(extractedKey));
 
     let param: Parameter;
@@ -614,7 +674,7 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
     for (const [extractedKey] of ov.entries) {
       if (seen.has(extractedKey)) continue;
       seen.add(extractedKey);
-      const { paramKey, variable } = resolveKey(extractedKey, variableToBound);
+      const { paramKey, variable } = resolveKey(extractedKey, variableToBound, boundToVariable);
       const carriers = overlays.filter((o) => o.entries.has(extractedKey));
       const instances = buildOverlayInstances(si.instances, extractedKey, undefined, carriers);
       const param = { key: paramKey, instances, origin: "overlay" } as InstanceParameter;
@@ -643,11 +703,15 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
   // 3) Embedded literals, appended after all base-derived params, in order.
   for (const e of si.embedded) {
     const param = (
-      e.origin === "default"
-        ? { key: e.key, value: e.value, default: e.value, origin: "default" }
-        : { key: e.key, value: e.value, source: e.source, origin: "embedded" }
-    ) as SimpleParameter;
-    pushDraft(e.key, param, undefined, undefined, e.component);
+      e.instances !== undefined
+        ? // Pattern B, exactly as a base+overlay row would be: the instances a
+          // row is absent from are the ones missing from this list.
+          { key: e.key, instances: e.instances, origin: "overlay" }
+        : e.origin === "default"
+          ? { key: e.key, value: e.value, default: e.value, origin: "default" }
+          : { key: e.key, value: e.value, source: e.source, origin: "embedded" }
+    ) as Parameter;
+    pushDraft(e.key, param, undefined, undefined, e.component, e.categoryPath);
   }
 
   return drafts;
@@ -948,6 +1012,48 @@ function materializeDrafts(
   return { drafts: out, report, bindings };
 }
 
+// The file a row is written in, as a one-segment category path. Reads the
+// row's own source first and an instance's second: a Pattern B row has no
+// single source, but every instance of it is written in a file of the same
+// KIND (one per environment), so the first is representative — and that is the
+// same assumption `source_file` display fallbacks already make.
+// Which file a row belongs to, for `group_by: file`.
+//
+// The distinction that matters is between a row that IS a line of the deployed
+// artifact and a row that merely lives in the same role. `db-url` is a line of
+// keycloak.conf whose VALUE happens to come from a variable — the variable is
+// provenance, already shown in the under_key column, and grouping by it would
+// split one file's settings across two headings for a reason about how the
+// file is built. `keycloak_dist_src` is not a line of keycloak.conf at all: it
+// tells the role where to download the distribution from, and filing it there
+// makes the sheet claim something false about the file.
+//
+// The evidence is already in the model, so this is decided rather than assumed:
+//
+//   - sourced from the template itself       -> a literal line of the artifact
+//   - carries a keyMap variable (under_key)  -> a line of the artifact whose
+//                                               value is written elsewhere
+//   - no source at all                       -> a product default of the
+//                                               artifact: nobody set it, but
+//                                               the artifact is where it would
+//                                               be set
+//   - anything else                          -> its own file. A variable that
+//                                               never reaches the artifact.
+function fileCategory(
+  param: Parameter,
+  artifact: string | undefined,
+  templateSource: string | undefined,
+  hasVariable: boolean
+): string[] | undefined {
+  const own =
+    ("source" in param ? param.source?.file : undefined) ??
+    ("instances" in param ? param.instances?.find((i) => i.source?.file)?.source?.file : undefined);
+  const partOfArtifact = own === undefined || hasVariable || (templateSource !== undefined && own === templateSource);
+  const file = partOfArtifact ? (artifact ?? own) : own;
+  if (file === undefined) return undefined;
+  return [baseFileName(file.split("/").pop() ?? file)];
+}
+
 function fileDrafts(
   sheetName: string,
   drafts: Draft[],
@@ -958,6 +1064,13 @@ function fileDrafts(
   // order declared, so `declared` below is empty, `order` reduces to plain
   // first-appearance, and the ghost-tab check below is skipped entirely.
   declaredCategories: string[],
+  groupByFile: boolean,
+  // What this sheet DEPLOYS, when it says so (Sheet.file_path). Used only by
+  // `group_by: file` — see fileCategory.
+  sheetArtifact: string | undefined,
+  // The file the artifact is BUILT from (Sheet.source_file) — a row sourced
+  // there is a literal line of it.
+  sheetTemplate: string | undefined,
   missingCategory: string[],
   scaffoldEntries: ScaffoldEntry[],
   // Formatted "sheet > key: category "X" is not in..." messages, one per
@@ -1067,9 +1180,18 @@ function fileDrafts(
           typeof meta.category === "string"
           ? [meta.category]
           : meta.category
-        : binding
-          ? groupPath(binding.entry.group)
-          : d.fallbackCategoryPath;
+        : groupByFile
+          ? // The artifact the row is written in, `.j2` stripped: a template is
+            // named for the file it produces, and that file is what a reviewer
+            // is holding. A row with no file of its own — a product default
+            // nobody set — falls through to what it had before.
+            (fileCategory(
+              d.param,
+              componentFiles?.get(d.component ?? "")?.filePath ?? sheetArtifact,
+              componentFiles?.get(d.component ?? "")?.sourceFile ?? sheetTemplate,
+              d.variable !== undefined
+            ) ?? bindingOrFallback(binding, d.fallbackCategoryPath))
+          : bindingOrFallback(binding, d.fallbackCategoryPath);
     // The component level appears only when the sheet HAS more than one. A
     // sheet covering a single component is that component — naming it again
     // above every category would add a level that says nothing, and would make
@@ -1646,6 +1768,9 @@ export function assembleSheetsWithReport(
       draftBindings,
       projectMeta,
       declaredCategories,
+      groupByForSheet(projectMeta, si.name) === "file",
+      si.filePath,
+      si.sourceFile,
       missingCategory,
       missingCategoryEntries,
       ghostCategories,

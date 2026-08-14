@@ -280,6 +280,17 @@ export type SourceLocation = {
   // `additional_sources` on `ParameterBase`). Meaningful only on an
   // `additional_sources` entry, never on a parameter's primary `source`.
   ref?: string;
+  // This row's value is the ARTIFACT's line, composed by substituting the
+  // value at this site into a template's text — `CustomLog "{{ x }}" proxied`
+  // becomes `CustomLog "/var/log/httpd/access_log" proxied`, of which this site
+  // holds only the path. See the ansible recipe's `rows: artifact`.
+  //
+  // The relation is therefore containment in the OTHER direction from `ref`:
+  // there the site holds a reference to the value, here the site holds a PART
+  // of it. verify checks that what the site says still appears in the row;
+  // apply holds, because writing back means deciding which part of the line the
+  // reviewer meant to change, and getting that wrong edits a template.
+  substituted?: boolean;
 };
 
 export type ColumnDefinition = {

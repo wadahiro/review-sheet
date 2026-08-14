@@ -12,6 +12,7 @@ import {
   resolveSource,
   buildPromptText,
   HELD_REASON_GENERATED,
+  HELD_REASON_SUBSTITUTED,
   HELD_REASON_DEFAULT,
   HELD_REASON_SHARED_INSTANCE,
   type SheetData,
@@ -180,6 +181,13 @@ export function computeApply(
         // so it is always held for the AI-prompt/manual fallback instead.
         if (tgt.source?.generated) {
           results.push({ ...base, status: "held", reason: HELD_REASON_GENERATED });
+          anyHeld = true;
+          continue;
+        }
+        // See HELD_REASON_SUBSTITUTED: the value here is a whole rendered line
+        // and the site holds one variable inside it.
+        if (tgt.source?.substituted) {
+          results.push({ ...base, status: "held", reason: HELD_REASON_SUBSTITUTED });
           anyHeld = true;
           continue;
         }

@@ -1,0 +1,2 @@
+app_debug_console: "yes"
+app_extra_env: "APP_TRACE=1"

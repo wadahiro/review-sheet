@@ -23,9 +23,17 @@ const systemdParser: ConfigParser = {
     examples: ["Service.ExecStart", "Service.ExecStartPre[1]", "Unit.Description"],
   },
   detect: (file) =>
-    /\.(service|timer|socket|mount|target|path|slice|scope|automount|netdev|network|link)$/.test(
+    /\.(service|timer|socket|mount|target|path|slice|scope|automount|netdev|network|link)$/.test(file.toLowerCase()) ||
+    // A daemon's own configuration and its drop-ins: journald.conf,
+    // system.conf, and any `*.conf` under a `*.conf.d/` directory — the way
+    // every systemd daemon is configured without editing the shipped file.
+    // Same INI-with-sections grammar as a unit; only the extension differs, and
+    // a bare `.conf` is far too common to claim on its own, which is why the
+    // directory has to be part of the evidence.
+    /(^|\/)(journald|system|logind|resolved|networkd|timesyncd|coredump|homed|oomd|pstore|sleep|user)\.conf$/.test(
       file.toLowerCase()
-    ),
+    ) ||
+    /\.conf\.d\/[^/]+\.conf$/.test(file.toLowerCase()),
   extract: (content) =>
     systemdIndex(content).map((e) => ({
       categoryPath: e.categoryPath,

@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+# Every shape the artifact axis exists for. Kept next to `rendered.conf`, which
+# is what this template produces with `defaults.yml` — the test asserts the two
+# agree row for row, so a change to either that does not change the other fails.
+Listen {{ app_port }}
+DocumentRoot "{{ app_root }}"
+CustomLog "{{ app_access_log }}" combined
+LogLevel {{ app_log_level | lower }}
+ProxyPass "/health" "{{ app_health_backend }}/health"
+ProxyPassReverse "/health" "{{ app_health_backend }}/health"
+ProxyPass "/" "{{ app_backend }}/"
+ProxyPassReverse "/" "{{ app_backend }}/"
+<IfModule mpm_event_module>
+    StartServers {{ app_start_servers }}
+    ThreadsPerChild {{ app_threads }}
+</IfModule>
