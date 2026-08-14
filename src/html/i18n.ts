@@ -137,6 +137,22 @@ type Messages = {
   originDefault: string;
   originDefaultTip: string;
   originEmbeddedTip: string;
+  // `asInstalled` is the default column's heading on a sheet that has a
+  // baseline (ansible recipe's `baseline:`). ONE column, not two: the vendor's
+  // shipped file and the product's documented default are two SOURCES for a
+  // single question the reader has — "what does a freshly installed host do
+  // here?" — and a column each put the tool's own plumbing on screen instead of
+  // the answer. The shipped value wins, because it is what the host has.
+  //
+  // `originBaselineDisabled` is the value cell's own text for an `origin:
+  // "baseline"` row: nothing is in effect at all, a different fact from
+  // `originDefault` ("not set here, the product default applies"), so it gets
+  // its own word. That row's as-installed cell shows what the VENDOR had, and
+  // deliberately not what applies instead — the container may have been removed
+  // along with the directive, and answering that needs the product's own merge
+  // semantics, which this tool does not model.
+  asInstalled: string;
+  originBaselineDisabled: string;
   sheetSourceLabel: string;
   applyToFiles: string;
   applyPreviewTitle: string;
@@ -280,6 +296,8 @@ const ja: Messages = {
   originDefault: "未設定",
   originDefaultTip: "この構成では設定していない（効いている値は製品のデフォルト値）",
   originEmbeddedTip: "変数を介さずファイルに直接書かれた値。環境ごとに変えることはできず、変更するにはそのファイル自体を編集する",
+  asInstalled: "インストール時",
+  originBaselineDisabled: "無効化",
   sheetSourceLabel: "生成元",
   applyToFiles: "ファイルに反映",
   applyPreviewTitle: "変更のプレビュー",
@@ -416,6 +434,8 @@ const en: Messages = {
   originDefault: "not set",
   originDefaultTip: "Not set here — the value in effect is the product's own default",
   originEmbeddedTip: "Written straight into the file rather than through a variable: the same in every environment, and changed by editing that file",
+  asInstalled: "As installed",
+  originBaselineDisabled: "not present",
   sheetSourceLabel: "Source",
   applyToFiles: "Apply to files",
   applyPreviewTitle: "Preview changes",

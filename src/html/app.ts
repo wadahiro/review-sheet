@@ -1267,6 +1267,11 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
 
   const descPresent = visibleParams.some((p) => p.description);
   const remarksPresent = visibleParams.some((p) => p.remarks);
+  // The "Shipped" column (ansible recipe's `baseline:`) — shown only when some
+  // row on this sheet actually carries one, same gating `descPresent`/
+  // `remarksPresent` use, so a sheet that never declares `baseline:` renders
+  // byte-for-byte as it did before this column existed.
+  const baselinePresent = visibleParams.some((p) => p.baseline !== undefined);
 
   // Leading metadata lines (freeze-eligible): description (col 2) and default.
   const leadingLines: TableLine[] = [];
@@ -1277,8 +1282,21 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     });
   }
   leadingLines.push({
-    key: "__default", label: t.defaultValue, lineKind: "attr", colClass: "rs-col-default", colStyle: "", freezePos: descPresent ? 3 : 2,
-    cell: (param) => ({ kind: "review", value: param.default ?? "-", target: baseTarget(param), field: "default", className: "rs-col-default", isCode: true, copyable: false }),
+    key: "__default", label: baselinePresent ? t.asInstalled : t.defaultValue, lineKind: "attr", colClass: "rs-col-default", colStyle: "", freezePos: descPresent ? 3 : 2,
+    // What is in effect on a freshly installed host, which is the one thing a
+    // reviewer needs in order to judge our value: the vendor's shipped file if
+    // it states this directive, the product's documented default if it does
+    // not. ONE column — the two used to be shown side by side, which put the
+    // tool's own two sources on screen instead of the reader's one question,
+    // and the vendor's file wins because it is what the host actually has.
+    //
+    // On a `baseline` row (the vendor shipped it and we removed it) this shows
+    // what the vendor had. It deliberately does NOT say what applies instead:
+    // the container may have been removed with the directive, and answering
+    // that needs the product's own merge semantics, which this tool does not
+    // model. The row exists so a reviewer asks the question, not so the sheet
+    // answers it wrongly.
+    cell: (param) => ({ kind: "review", value: param.baseline ?? param.default ?? "-", target: baseTarget(param), field: "default", className: "rs-col-default", isCode: true, copyable: false }),
   });
 
   // Value lines: one per instance (Pattern B) or a single value column (Pattern A).
@@ -1329,7 +1347,13 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
           // say this host is NOT a forward proxy, read as "not set" and left a
           // reviewer to work the truth out of the remarks. `origin` is the fact
           // that decides it, and the model has carried it all along.
-          const isUnset = effectiveOrigin(param) === "default";
+          //
+          // `origin: "baseline"` reads the same way visually (empty, muted
+          // cell) but is a different fact from "default" — nothing the product
+          // ships is in effect either, because the vendor's directive is not in
+          // the deployed file at all — so it gets its own label.
+          const baselineAbsent = effectiveOrigin(param) === "baseline";
+          const isUnset = effectiveOrigin(param) === "default" || baselineAbsent;
           const isSameAsDefault = common === def;
           return {
             kind: "review",
@@ -1339,7 +1363,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
             className: `rs-col-value ${isUnset ? "rs-cell-unset" : isSameAsDefault ? "rs-same-as-default" : "rs-changed rs-cell-common"}`,
             isCode: true,
             copyable: !isUnset,
-            unsetLabel: t.usesDefault,
+            unsetLabel: baselineAbsent ? t.originBaselineDisabled : t.usesDefault,
             sharedRow: true,
           };
         },
@@ -1348,12 +1372,26 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
         key: "__value", label: t.setValue, lineKind: "value", colClass: "rs-col-value", colStyle: "",
         cell: (param) => {
           const value = param.value ?? "";
+          // See the hasInstances branch above for why `baseline` origin gets
+          // its own disabled reading rather than looking like an ordinary
+          // (empty) value.
+          const baselineAbsent = effectiveOrigin(param) === "baseline";
           const isSameAsDefault = value === (param.default ?? "");
-          return { kind: "review", value, target: baseTarget(param), field: "value", className: `rs-col-value ${isSameAsDefault ? "rs-same-as-default" : "rs-changed"}`, isCode: true, copyable: true };
+          return {
+            kind: "review",
+            value,
+            target: baseTarget(param),
+            field: "value",
+            className: `rs-col-value ${baselineAbsent ? "rs-cell-unset" : isSameAsDefault ? "rs-same-as-default" : "rs-changed"}`,
+            isCode: true,
+            copyable: !baselineAbsent,
+            unsetLabel: baselineAbsent ? t.originBaselineDisabled : undefined,
+          };
         },
       }];
 
-  // Trailing attribute lines: remarks then any author-defined custom columns.
+  // Trailing attribute lines: remarks, then the "Shipped" baseline column (when
+  // any row has one), then any author-defined custom columns.
   const trailingLines: TableLine[] = [];
   if (remarksPresent) {
     trailingLines.push({

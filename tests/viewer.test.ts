@@ -1601,3 +1601,97 @@ describe("artifact panel", () => {
     expect(host.querySelector(".rs-artifact-path")?.textContent).toBe("modules/ec2/main.tf");
   });
 });
+
+// ---- the "Shipped" (baseline) column -----------------------------------
+//
+// ansible recipe's `baseline:` — a committed copy of what the vendor shipped,
+// compared against the deployed artifact. Three row shapes: inherited
+// unchanged (value equals baseline), changed (value differs from baseline),
+// and `origin: "baseline"` (the vendor shipped this key and this deliverable
+// does not have it at all).
+
+const WITH_BASELINE = {
+  metadata: { title: "t" },
+  versions: [
+    {
+      version: "current",
+      sheets: [
+        {
+          name: "web",
+          categories: [
+            {
+              name: "httpd.conf",
+              params: [
+                // Inherited unchanged: same value both sides.
+                { key: "ServerRoot", value: '"/etc/httpd"', baseline: '"/etc/httpd"', description: "Server root" },
+                // Changed from what the vendor shipped.
+                { key: "Listen", value: "8080", baseline: "80", description: "Port" },
+                // A row this sheet's baseline comparison never touches (no
+                // template literal keyed to a variable here — a plain PARAMETER
+                // with no baseline at all): the Shipped column must render it
+                // blank, not "unchanged".
+                { key: "ServerAdmin", value: "root@localhost", description: "Admin address" },
+                // The vendor shipped this and this deliverable does not have it.
+                { key: "KeepAlive", value: "", baseline: "Off", origin: "baseline" as const, description: "Keep-alive" },
+                // Vendor shipped 60; the product documents 300. The host has 60.
+                { key: "Timeout", value: "60", baseline: "60", default: "300", description: "Timeout" },
+                // We added it; the vendor's file says nothing, so the documented
+                // default is the only answer to "what without our line".
+                { key: "AddedByUs", value: "120", default: "300", description: "Added" },
+                // Removed by us. The vendor had None.
+                { key: "Removed", value: "", baseline: "None", default: "FollowSymlinks", origin: "baseline" as const, description: "Removed" },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+function mountBaseline(): HTMLElement {
+  openSheetTab();
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  render(h(Root, { payload: WITH_BASELINE, reviewEnabled: true, initialLang: "ja", server: false }), host);
+  return host;
+}
+
+function cellText(host: HTMLElement, key: string, cls: string): string {
+  const rows = [...host.querySelectorAll("tbody tr")];
+  const row = rows.find((r) => r.querySelector(".rs-col-key code")?.textContent === key);
+  if (!row) throw new Error(`row not found: ${key}`);
+  const cell = row.querySelector(`td.${cls}`);
+  if (!cell) throw new Error(`no .${cls} cell on row: ${key}`);
+  return (cell.textContent ?? "").trim();
+}
+
+describe("viewer: the as-installed column", () => {
+  // ONE column, not two. The vendor's shipped file and the product's documented
+  // default are the tool's two sources for a single question the reader has —
+  // "what does a freshly installed host do here?" — and showing them side by
+  // side put the tool's plumbing on screen instead of the answer. The shipped
+  // value wins because it is what the host actually has.
+  it("is headed as-installed and prefers the shipped value over the documented default", async () => {
+    const host = mountBaseline();
+    const heads = [...host.querySelectorAll("thead th")].map((e) => e.textContent?.trim());
+    expect(heads).toContain("インストール時");
+    expect(heads).not.toContain("出荷時");
+    // Timeout: vendor shipped 60, the product documents 300 — 60 is what the
+    // host has.
+    expect(cellText(host, "Timeout", "rs-col-default")).toBe("60");
+  });
+
+  it("falls back to the documented default where the vendor's file says nothing", async () => {
+    const host = mountBaseline();
+    expect(cellText(host, "AddedByUs", "rs-col-default")).toBe("300");
+  });
+
+  it("shows what the vendor had on a row we disabled, and claims nothing about what applies instead", async () => {
+    const host = mountBaseline();
+    // The vendor's value, NOT the documented default: with the container
+    // possibly removed alongside the directive, what applies now needs the
+    // product's merge semantics, which this tool does not model.
+    expect(cellText(host, "Removed", "rs-col-default")).toBe("None");
+  });
+});

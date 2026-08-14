@@ -75,7 +75,13 @@ import type {
 // the whole point of giving each client a component — one map entry keyed
 // `protocol` can only hold one of them, and the other row loses its component
 // silently.
-export type ExtractedEntry = { value: string; source: SourceLocation; origin?: "embedded"; component?: string };
+// `baseline` (the vendor's shipped value for this same key — see types.ts's
+// `ParameterBase.baseline`) rides on the entry rather than being looked up
+// separately for the same reason `component` does: the ansible recipe's
+// `baseline:` matches it onto a row it has already built (the row's own
+// `key`), and threading it through here is what lets buildDrafts carry it onto
+// the Parameter without a second key-indexed pass of its own.
+export type ExtractedEntry = { value: string; source: SourceLocation; origin?: "embedded"; component?: string; baseline?: string };
 // Insertion order is significant: it drives Pattern A/B emission order.
 export type ExtractedMap = Map<string, ExtractedEntry>;
 
@@ -89,6 +95,14 @@ export type ValueLayer =
 // with). Those rows must not claim a definition site in our config — see the
 // `Origin` comment in types.ts — so the source is dropped here and the value
 // doubles as the documented default.
+// `baseline` is the ansible recipe's `baseline:` doing the mirror-image thing:
+// a key the vendor's shipped file has and the deployed artifact does not —
+// filed as a NEW row rather than matched onto an existing one (see
+// ExtractedEntry.baseline for that case), value "" (nothing is in effect),
+// with `value` here carrying the VENDOR'S value instead — buildDrafts moves it
+// onto `baseline` and drops `source` for the same "no definition site in our
+// config" reason `default` drops it, one level stricter: `baseline` has no
+// evidence-channel exception at all (see the `Origin` comment in types.ts).
 // `categoryPath` is the FILE'S OWN structure as the parser read it (a logrotate
 // block's log patterns, a systemd `[Section]`) — the last-resort category, used
 // only when the project declared none and the row bound to no dictionary. It is
@@ -99,7 +113,7 @@ export type EmbeddedEntry = {
   value: string;
   source: SourceLocation;
   component?: string;
-  origin?: "embedded" | "default";
+  origin?: "embedded" | "default" | "baseline";
   categoryPath?: string[];
   // Per-instance values, when the row differs between environments — or is
   // there for some and not others, which an instance list expresses by simply
@@ -700,14 +714,19 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
     const { paramKey, variable } = resolveKey(extractedKey, variableToBound, boundToVariable);
     const overriddenBy = overlays.filter((ov) => ov.entries.has(extractedKey));
 
+    // The vendor's value for this same key (ansible recipe's `baseline:`,
+    // ExtractedEntry.baseline), when this sheet compares against one — carried
+    // onto the Parameter alongside whichever shape the row resolves to below,
+    // Pattern A or B: it is a property of the KEY, not of one value shape.
+    const baselineField = baseEntry.baseline !== undefined ? { baseline: baseEntry.baseline } : {};
     let param: Parameter;
     if (overriddenBy.length > 0) {
       const instances = buildOverlayInstances(si.instances, extractedKey, baseEntry, overlays);
       const origin = demotedOrigin(paramKey, "overlay", si.authoredKeys);
-      param = { key: paramKey, instances, origin } as InstanceParameter;
+      param = { key: paramKey, instances, origin, ...baselineField } as InstanceParameter;
     } else {
       const origin = demotedOrigin(paramKey, "common", si.authoredKeys);
-      param = { key: paramKey, value: baseEntry.value, source: baseEntry.source, origin } as SimpleParameter;
+      param = { key: paramKey, value: baseEntry.value, source: baseEntry.source, origin, ...baselineField } as SimpleParameter;
     }
     attachReferenceSites(param, extractedKey);
     pushDraft(paramKey, withUnderKey(param, variable), variable, extractedKey, baseEntry.component);
@@ -753,9 +772,16 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
         ? // Pattern B, exactly as a base+overlay row would be: the instances a
           // row is absent from are the ones missing from this list.
           { key: e.key, instances: e.instances, origin: "overlay" }
-        : e.origin === "default"
-          ? { key: e.key, value: e.value, default: e.value, origin: "default" }
-          : { key: e.key, value: e.value, source: e.source, origin: "embedded" }
+        : e.origin === "baseline"
+          ? // The vendor's key, absent from the deployed artifact: nothing is in
+            // effect (`value: ""`), and `e.value` — what extraction actually
+            // read off the vendor's file — becomes `baseline` instead of
+            // `value`, the same slot-swap `default` does for `default` above.
+            // No `source`: see the `Origin` comment in types.ts.
+            { key: e.key, value: "", baseline: e.value, origin: "baseline" }
+          : e.origin === "default"
+            ? { key: e.key, value: e.value, default: e.value, origin: "default" }
+            : { key: e.key, value: e.value, source: e.source, origin: "embedded" }
     ) as Parameter;
     pushDraft(e.key, param, undefined, undefined, e.component, e.categoryPath);
   }

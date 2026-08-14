@@ -43,6 +43,8 @@ export type ParamData = {
   label?: LangText | string;
   description?: LangText;
   default?: string;
+  // The vendor's shipped value — see types.ts's `ParameterBase.baseline`.
+  baseline?: string;
   remarks?: LangText;
   value?: string;
   source?: SourceLocation;
@@ -125,6 +127,16 @@ export const HELD_REASON_SUBSTITUTED =
 // deterministic core deliberately does not do (where a new setting belongs is a
 // judgement call). Step 3 of the prompt protocol below covers it.
 export const HELD_REASON_DEFAULT = "Cannot apply directly: parameter is at the product default (nothing is set) — the setting has to be added";
+
+// Held reason for a change against an `origin: "baseline"` row: the vendor
+// shipped this key and this deliverable does not have it anywhere, so — like
+// `HELD_REASON_DEFAULT` — there is no line to rewrite. Kept as its own
+// constant rather than reusing HELD_REASON_DEFAULT because the two are
+// different facts for a reader of the held prompt: one says "the product's
+// own default applies", the other says "the vendor's directive is not in
+// effect at all, and re-adding it is what the change means".
+export const HELD_REASON_BASELINE =
+  "Cannot apply directly: the vendor shipped this parameter and this deliverable does not have it — there is no line to edit";
 
 // Held reason for a change aimed at ONE environment on a row that stores a
 // single shared value. Editing that value would move every environment, and

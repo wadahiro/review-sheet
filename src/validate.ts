@@ -93,6 +93,42 @@ function findDefaultOriginErrors(input: ParameterSheetInput): string[] {
   return errors;
 }
 
+// Cross-field rule that the schema alone cannot express: `origin: "baseline"`
+// means the vendor shipped this key and this deliverable does not have it
+// ANYWHERE — see the `Origin` comment in types.ts. Unlike `default`, there is
+// no evidence-channel exception: a `baseline` row must never carry a `source`,
+// full stop, because nothing in our files holds it. Checked per instance too,
+// for the same Pattern B reason findDefaultOriginErrors is.
+function findBaselineOriginErrors(input: ParameterSheetInput): string[] {
+  const errors: string[] = [];
+  const walkCategories = (categories: Category[], path: string): void => {
+    for (let ci = 0; ci < categories.length; ci++) {
+      const category = categories[ci];
+      const catPath = `${path}/categories/${ci}`;
+      const params = category.params ?? [];
+      for (let pi = 0; pi < params.length; pi++) {
+        const param = params[pi];
+        if (param.origin !== "baseline") continue;
+        if ("instances" in param && param.instances !== undefined) {
+          param.instances.forEach((instance, ii) => {
+            if (instance.source !== undefined) {
+              errors.push(
+                `${catPath}/params/${pi}/instances/${ii}: baseline origin cannot carry a source — nothing in our ` +
+                  `files holds it`
+              );
+            }
+          });
+        } else if ("source" in param && param.source !== undefined) {
+          errors.push(`${catPath}/params/${pi}: baseline origin cannot carry a source — nothing in our files holds it`);
+        }
+      }
+      if (category.categories) walkCategories(category.categories, catPath);
+    }
+  };
+  input.sheets.forEach((sheet, si) => walkCategories(sheet.categories, `/sheets/${si}`));
+  return errors;
+}
+
 export function validateInput(data: unknown): ParameterSheetInput {
   if (!validateInputSchema(data)) {
     const errors = validateInputSchema.errors ?? [];
@@ -102,7 +138,11 @@ export function validateInput(data: unknown): ParameterSheetInput {
     );
   }
   const input = data as ParameterSheetInput;
-  const originErrors = [...findEmbeddedOriginErrors(input), ...findDefaultOriginErrors(input)];
+  const originErrors = [
+    ...findEmbeddedOriginErrors(input),
+    ...findDefaultOriginErrors(input),
+    ...findBaselineOriginErrors(input),
+  ];
   if (originErrors.length > 0) {
     throw new Error(`Input data validation error:\n${originErrors.join("\n")}`);
   }

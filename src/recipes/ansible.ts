@@ -58,8 +58,24 @@
 // This recipe never reads the project metadata: categories, out_of_scope, and
 // descriptions are the assembler/enrich()'s job (see assemble.ts), not this
 // recipe's.
+//
+// `baseline:` (rows: artifact only) states the delta from a vendor's shipped
+// file explicitly, for the common infrastructure practice of taking the RPM's
+// config, editing some values, and commenting out the rest: without it, a
+// directive the vendor shipped that this project disabled has no row at all
+// (visible only as an absence), and a value this project changed looks
+// identical to one it inherited untouched. No comment parsing — the baseline's
+// ACTIVE directives are the row set, matched by the SAME key each artifact row
+// already uses (structural path, or the leaf when the format has none); see
+// architecture.md for why comment-scraping was measured and refused. Per key:
+// baseline AND deployed both have it -> the existing row gets `baseline` set
+// alongside its `value`; baseline has it and deployed does not -> a NEW row,
+// `origin: "baseline"`, value "" (nothing is in effect); deployed has it and
+// baseline does not -> unchanged (this project added it). Unscoped only (a
+// single `template:`) — see the "baseline" block below for why.
 
 import { extractFile } from "../extract.js";
+import { resolveParser } from "../parser.js";
 import type { Entry } from "../parser.js";
 import { structuredFormat } from "../structural.js";
 import {
@@ -148,6 +164,19 @@ const schema = {
     // (sheet.yml's under_key:, P7): a display fact, not a data-source one.
     // assemble.ts enforces "any keyMap entry requires an under_key" at
     // assembly time, reading it off sheet.yml.
+    //
+    // A committed copy of what the vendor's package shipped (a distro's
+    // conf.d/*.conf before this project touched it), compared against the
+    // deployed artifact's row set — see the module doc's "baseline" section.
+    // Valid only under `rows: artifact` (rejected otherwise below, in `load`):
+    // "variable" rows have no LINE for a baseline key to be absent from, so
+    // "the vendor has this and we don't" is not a fact that axis can state.
+    baseline: {
+      type: "object",
+      required: ["file"],
+      properties: { file: { type: "string" } },
+      additionalProperties: false,
+    },
   },
   additionalProperties: false,
 };
@@ -252,6 +281,13 @@ export const ansibleRecipe: SheetRecipe = {
   load(sheetSpec, io: RecipeIO): SheetInputs {
     const name = asString(sheetSpec.name, "name");
     const rowsArtifact = sheetSpec.rows === "artifact";
+    const baselineSpec = sheetSpec.baseline as Record<string, JsonValue> | undefined;
+    if (baselineSpec !== undefined && !rowsArtifact) {
+      throw new Error(
+        `ansible recipe: sheet "${name}" declares "baseline", which is valid only with rows: artifact — a ` +
+          `"variable" row has no LINE for a vendor key to be absent from`
+      );
+    }
 
     // Defaults + overlays + static_files + include/exclude: identical shape
     // and semantics to "layered" — every row keyed by its extracted identity.
@@ -731,6 +767,133 @@ export const ansibleRecipe: SheetRecipe = {
       }
       baseMap = bound;
 
+      // baseline: the vendor's shipped file, compared against the deployed
+      // artifact's row set (`presence`, one entry per template line that
+      // became a row — see the module doc's "baseline" section and
+      // architecture.md). Deliberately unscoped-only (`scoped` false, i.e. a
+      // single `template:`, not `templates:`): one baseline file can only
+      // honestly answer for one deployed file, and a sheet covering several
+      // (`templates:`) would need to say which one each vendor key belongs to,
+      // which nothing here decides.
+      if (baselineSpec !== undefined) {
+        if (scoped) {
+          throw new Error(
+            `ansible recipe: sheet "${name}" declares "baseline" together with several templates/components — ` +
+              `baseline compares one vendor file against one deployed file; use a single "template:" instead`
+          );
+        }
+        const spec = specs[0];
+        // The template's own text, for the commented-line search below. `read`
+        // holds it already — this sheet has exactly one entry (unscoped).
+        const templateText = read[0].content;
+        const baselineFile = asString(baselineSpec.file, "baseline.file");
+        const { file: resolvedBaselineFile, content: baselineContent } = readRequired(
+          io,
+          baselineFile,
+          `sheet "${name}"'s baseline file`
+        );
+        // Read with the parser the DEPLOYED artifact resolves to, not the one
+        // the baseline's own filename suggests. A pinned vendor copy is named
+        // for its package version (`httpd.conf@httpd-2.4.37-43.module+el8…`),
+        // which no format detection recognises — it fell through to the generic
+        // key=value parser and produced ZERO entries, which the zero-overlap
+        // warning then correctly called "almost certainly the wrong file". It
+        // was the right file read the wrong way. `formatOf` cannot help here
+        // either: it only answers for STRUCTURED formats (yaml/json/xml/toml),
+        // and httpd is not one.
+        //
+        // The baseline IS the deployed artifact, one revision back, so the
+        // deployed path is the honest witness to its format.
+        const baselineFormat = resolveParser(spec.deployedPath ?? baseFileName(spec.path), baselineContent)?.name as
+          | Parameters<typeof extractFile>[2]
+          | undefined;
+        // No jinja2 masking needed: the vendor's file is never a template.
+        const baselineEntries = extractFile(baselineContent, resolvedBaselineFile, baselineFormat, {
+          ...io.extractOptions,
+          baseFormat: formatOf(spec),
+        });
+        // Same addressing as an artifact row's own key (rawKey above, minus
+        // the jinja substitution a vendor file never needs): the structural
+        // path when the format has one, the leaf otherwise — so a baseline key
+        // and a deployed row's key are directly comparable strings.
+        const baselineKeyOf = (entry: Entry): string => entry.source.path ?? entry.key;
+        const baselineMap = new Map<string, Entry>();
+        for (const entry of baselineEntries) baselineMap.set(baselineKeyOf(entry), entry);
+        const deployedKeys = new Set(presence.map((p) => p.key));
+
+        let unchangedCount = 0;
+        let changedCount = 0;
+        for (const [key, entry] of baselineMap) {
+          if (!deployedKeys.has(key)) continue;
+          const row = bound.get(key);
+          if (!row) continue; // scoped only, guarded above — never hit here
+          row.baseline = entry.value;
+          if (row.value === entry.value) unchangedCount++;
+          else changedCount++;
+        }
+        const addedCount = [...deployedKeys].filter((k) => !baselineMap.has(k)).length;
+        // Every vendor key the deployed artifact does not have: a NEW row,
+        // `origin: "baseline"` — "the vendor shipped this and we do not have
+        // it" — value "", the vendor's value recorded on `baseline`. Filed
+        // under the vendor file's own container structure (categoryPath),
+        // the same last-resort rank a materialized row's fallback gets.
+        const missing = [...baselineMap].filter(([k]) => !deployedKeys.has(k));
+        // Where the deployed file COMMENTED it out, if it did. A disabled
+        // directive is usually still in the file with a `#` in front of it, and
+        // that line is the place a reviewer wants to see — with whatever comment
+        // the author left above it saying why.
+        //
+        // Found by exact text, not by parsing comments: the baseline's own line,
+        // trimmed, against each template line with its comment marker stripped
+        // and trimmed. This is the narrow, safe version of the thing this design
+        // otherwise refuses — nothing here DECIDES whether a comment is a
+        // directive, it looks for one known string. A line the author reworded
+        // while disabling it simply does not match, and the row keeps its
+        // meaning with no preview line, which is honest.
+        const baselineLines = baselineContent.split("\n");
+        const templateLines = templateText.split("\n");
+        const disabledAt = new Map<string, number>();
+        for (const [key, entry] of missing) {
+          const want = (baselineLines[(entry.source.line ?? 0) - 1] ?? "").trim();
+          if (want === "") continue;
+          const at = templateLines.findIndex((l: string) => {
+            const t = l.trim();
+            return t.startsWith("#") && t.replace(/^#+\s*/, "").trim() === want;
+          });
+          if (at !== -1) disabledAt.set(key, at + 1);
+        }
+        for (const [key, entry] of missing) {
+          embedded.push({
+            key,
+            value: entry.value,
+            source: { file: resolvedBaselineFile },
+            origin: "baseline",
+            categoryPath: entry.categoryPath,
+          });
+          // The row and the commented line point at each other, exactly as an
+          // ordinary row and its live line do.
+          rowAtLine(spec.path, disabledAt.get(key), key);
+        }
+
+        // Never silent: a wrong file looks exactly like "the vendor shipped
+        // nothing this project kept" (0 in common) unless it is called out —
+        // reported apart from the ordinary count line so it reads as a
+        // warning, not a statistic.
+        if (unchangedCount + changedCount === 0) {
+          console.warn(
+            `ansible recipe: sheet "${name}": baseline "${baselineFile}" shares NO keys with the deployed ` +
+              `artifact (${baselineMap.size} read from baseline, ${deployedKeys.size} in the deployed artifact) — ` +
+              `almost certainly the wrong file`
+          );
+        } else {
+          console.warn(
+            `ansible recipe: sheet "${name}": baseline "${baselineFile}" — ${unchangedCount} inherited unchanged, ` +
+              `${changedCount} changed, ${addedCount} added (not in the vendor's file), ${missing.length} the ` +
+              `vendor ships that this deliverable does not`
+          );
+        }
+      }
+
       // One preview per template per DISTINCT rendering. Most files do not
       // differ between environments at all, and three identical copies of one
       // file is three times the reading for no information — so instances that
@@ -822,6 +985,7 @@ export const ansibleRecipe: SheetRecipe = {
           layer.entries = rekeyed;
         }
       }
+
     }
 
     const layers: ValueLayer[] = [{ kind: "base", entries: baseMap }, ...overlayLayers];
