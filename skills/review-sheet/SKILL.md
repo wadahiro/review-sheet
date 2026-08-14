@@ -1546,12 +1546,33 @@ scope like any other.
 
 The build spec's `enrich.project` points at it. One entry per parameter,
 keyed by the parameter's own key exactly as the recipe emits it, plus that
-sheet's own display config: `categories:` (top-level tab order) and
-`under_key:` (the ansible recipe's provenance column — id + bilingual label).
-Both are display facts about how a sheet is READ, not about where its data
-comes from, so they live here rather than in `build.yml` — dictionary
-bindings (`sheets[].dictionaries`, a data-SOURCE fact) still are declared per
-sheet in `build.yml`.
+sheet's own display config. Everything here is a display fact about how a
+sheet is READ, not about where its data comes from, which is what decides the
+file it goes in: dictionary bindings (`sheets[].dictionaries`), the recipe,
+and the input paths are data-SOURCE facts and stay in `build.yml`.
+
+The whole schema — `loadProjectMeta` rejects a field not on this list, so
+this is the complete set, not a selection (providers/project.ts's
+`ProjectMetaDoc` / `ProjectMetaSheetDoc` / `ProjectMetaParam`; tests/docs.test.ts
+fails when one of them is missing from this section):
+
+| where | field | what it decides |
+|---|---|---|
+| document | `groups:` | the sheet groups this document has, IN READING ORDER — the header's first row |
+| document | `sheets:` | per-sheet namespace (below); mutually exclusive with a top-level `params:` |
+| sheet | `group:` | which of `groups:` this sheet is read under |
+| sheet | `label:` | the sheet's display name, `{ ja, en }` — the name stays its identity |
+| sheet | `categories:` | top-level tab order, and the ghost-tab guard |
+| sheet | `group_by: file` | file a row the project does not categorise by the artifact it is written in |
+| sheet | `under_key:` | the provenance sub-line column — `id` + bilingual label |
+| sheet | `compare_components:` | this sheet's components are comparable side by side |
+| sheet | `components:` | per-COMPONENT `params:`, for a sheet whose rows are named by the product's own field |
+| sheet | `params:` | the rows themselves |
+| param | `category:` | this row's category — a string, a LIST (a path), or `null` for none |
+| param | `dict_key:` | bind this row to a differently-named dictionary entry (rare — see the next section) |
+| param | `description:` | the row's description, when no dictionary supplies one |
+| param | `remarks:` | a project note shown beside the row — not the description |
+| param | `out_of_scope:` | excluded from THIS review, with a reason and an owner |
 
 For a **single-sheet** spec (and for `import -f --project`, which has no
 concept of a spec at all), it is flat — `categories:`/`under_key:` at the top
@@ -1576,8 +1597,18 @@ For a **multi-sheet** spec, use `sheets:` instead — `params:`/`categories:`/
 `sheets[].name`):
 
 ```yaml
+# Sheet groups — the header's first row, in reading order. Omit entirely and
+# the header stays a flat tab strip.
+groups:
+  - name: platform
+    label: { ja: "基盤", en: "Platform" }
+  - name: sso-server
+    label: { ja: "SSO サーバ", en: "SSO server" }
+
 sheets:
-  "keycloak configuration":
+  "keycloak configuration":          # the key IS build.yml's sheets[].name
+    group: sso-server                # which group it is read under
+    label: { ja: "Keycloak (設定ファイル)", en: "Keycloak (configuration files)" }
     categories: [Hostname, Database]
     under_key:
       id: ansible_var
@@ -1585,10 +1616,30 @@ sheets:
     params:
       kc_hostname: { category: Hostname }
   "httpd reverse proxy":
+    group: sso-server
+    label: { ja: "Apache HTTPD", en: "Apache HTTPD" }
     categories: [General]
     params:
       httpd_listen: { category: General }
 ```
+
+**Sheet groups are the outer level of what a reader navigates** — "SSO server
+> Apache HTTPD". `groups:` declares them once, in reading order, and each
+sheet names one with `group:`. Declaring the order is the point: deriving it
+from first appearance would silently reshuffle the whole header the day a
+sheet is added in the middle. Checked both ways, like every other list here —
+a sheet naming an undeclared group, a declared group no sheet uses, and an
+ungrouped sheet in a grouped document are all build errors, not a tab that
+quietly appears or quietly does not. A group is display structure only: it
+appears in no review target, so grouping an existing document orphans no
+finding.
+
+**`label:` is what a reader sees; the sheet's NAME is its identity.** The
+name keys every review target, diff and CLI message, so a tab can be renamed
+in either language without orphaning a finding filed against it. Nothing sets
+the in-sheet heading levels (`h3`/`h4`/`h5`) — those follow the category tree's
+depth, so shaping the tree with `category:` / `group_by:` / a dictionary's own
+`group:` is how you shape the headings.
 
 **Ghost tabs.** Once a sheet declares `categories:`, any category actually
 used that isn't on the list — almost always a typo in some param's
