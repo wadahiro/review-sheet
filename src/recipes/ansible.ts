@@ -24,6 +24,20 @@
 //     (assemble.ts's SheetInputs.keyMap), so the row is named after the
 //     PRODUCT's own key for that directive (e.g. Keycloak's `db-url`), with
 //     the variable surfaced via the sheet's `under_key` column.
+//
+//     Under `rows: artifact` the row is already keyed by the line, so keyMap
+//     renames nothing there — it answers only "which variable backs this
+//     line", for the under_key column and for the "is this line part of the
+//     artifact" test `group_by: file` makes (assemble.ts's fileCategory). It
+//     is emitted for a SCOPED sheet (`templates:` with components) as well,
+//     with one restriction that scope alone creates: keyMap is one flat table
+//     per sheet, so a row key two components back with DIFFERENT variables
+//     (`Service.User` in two units) has no honest entry and is dropped with a
+//     warning naming both. The variable taken is the one the line's VALUE came
+//     from — never one that merely spells its KEY, as a logrotate block's
+//     `{{ app_log_dir }}` does — and it counts whether the variable is set in
+//     `defaults:` or only in an overlay: where a value is DEFINED (what apply
+//     edits) and which variable backs a line are two questions.
 //   - `{{ var }}` backing MORE than one template entry (e.g. httpd's
 //     ProxyPass and ProxyPassReverse both driven by the same backend
 //     variable) has no single product key to legitimately claim — there is
@@ -397,6 +411,16 @@ export const ansibleRecipe: SheetRecipe = {
 
     const embedded: EmbeddedEntry[] = [...core.embedded]; // static_files' embedded entries
     const keyMap: KeyMapEntry[] = [];
+    // Candidate row-key -> variable pairs, resolved into `keyMap` once every
+    // template has been read. Collected rather than pushed directly because a
+    // SCOPED sheet can produce the same row key twice — `Unit.Description`
+    // exists in every unit — while keyMap is one flat table per sheet
+    // (assemble.ts builds `boundToVariable` from it without a component). A key
+    // two components back with DIFFERENT variables therefore has no honest
+    // entry, and is dropped with a warning: the same rule this module already
+    // applies to one variable backing several directives, applied along the
+    // other axis.
+    const keyMapCandidates: { key: string; variable: string; component?: string }[] = [];
     const componentOf = new Map<string, string>();
     const componentLabels = new Map<string, LangText>();
     let baseMap: ExtractedMap = defaultsMap;
@@ -631,11 +655,16 @@ export const ansibleRecipe: SheetRecipe = {
                   `that looks rendered and is wrong`
               );
             }
-            // The variable's own definition site, so `apply` still has
-            // something it can edit — the rendered file does not exist in the
-            // repository. A line mixing several variables has no single one, so
-            // it points at the template and apply will hold.
-            const only = valueVars.length === 1 ? defaultsMap.get(valueVars[0]) : undefined;
+            // The single variable this line's VALUE came from, if there is
+            // one. A line mixing several has none, and neither does a line
+            // whose only variable spells its KEY (a logrotate block's
+            // `{{ keycloak_home }}`) — see the comment above.
+            const onlyVar = valueVars.length === 1 ? valueVars[0] : undefined;
+            // Its own definition site, so `apply` still has something it can
+            // edit — the rendered file does not exist in the repository. A
+            // variable only an overlay sets has no base definition site, so
+            // this stays undefined and the row points at the template.
+            const only = onlyVar !== undefined ? defaultsMap.get(onlyVar) : undefined;
             for (const v of vars) consumedVars.add(v);
             const source = only ? { ...only.source, substituted: true } : { ...entry.source, file };
             if (scoped) {
@@ -672,7 +701,12 @@ export const ansibleRecipe: SheetRecipe = {
             } else {
               bound.set(key, { value: text, source });
             }
-            if (only && !scoped) keyMap.push({ boundKey: key, variable: vars[0] });
+            // `onlyVar`, not `only`: the under_key column asks WHICH variable
+            // backs this line, which is answerable for a variable an overlay
+            // alone sets even though there is no base site for apply to edit.
+            // And not `vars[0]`, which is the KEY's variable whenever the key
+            // is templated too — the row's value is what the column is about.
+            if (onlyVar !== undefined) keyMapCandidates.push({ key, variable: onlyVar, component: spec.component });
             if (spec.component !== undefined) {
               for (const v of vars) {
                 const seenIn = templateOfVariable.get(v);
@@ -986,6 +1020,29 @@ export const ansibleRecipe: SheetRecipe = {
         }
       }
 
+    }
+
+    // One entry per row key that resolved to exactly ONE variable across every
+    // component. Ambiguity is reported, never resolved by picking a side.
+    {
+      const byKey = new Map<string, { variables: Set<string>; components: Set<string> }>();
+      for (const c of keyMapCandidates) {
+        let e = byKey.get(c.key);
+        if (!e) byKey.set(c.key, (e = { variables: new Set(), components: new Set() }));
+        e.variables.add(c.variable);
+        if (c.component !== undefined) e.components.add(c.component);
+      }
+      for (const [key, e] of byKey) {
+        if (e.variables.size === 1) {
+          keyMap.push({ boundKey: key, variable: [...e.variables][0] });
+          continue;
+        }
+        console.warn(
+          `ansible recipe: sheet "${name}": ${key} is backed by ${[...e.variables].join(", ")} in different ` +
+            `components (${[...e.components].join(", ")}), so no single variable can be shown under it — ` +
+            `the row keeps its own name and the under_key column stays empty for it`
+        );
+      }
     }
 
     const layers: ValueLayer[] = [{ kind: "base", entries: baseMap }, ...overlayLayers];
