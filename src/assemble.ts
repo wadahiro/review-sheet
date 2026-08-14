@@ -1841,7 +1841,30 @@ export function assembleSheetsWithReport(
       ...(si.sourceFile ? { source_file: si.sourceFile } : {}),
       categories,
     });
-    if (si.artifacts) artifacts.push(...si.artifacts);
+    // A preview line names the row it IS. A recipe builds previews before this
+    // assembler has finished deciding which rows survive — a dictionary's
+    // `ui: "absent"` drops one, a project's filter removes another — so a line
+    // can be left naming a row that is not on the sheet. Clicking it does
+    // nothing, which is the same "an affordance that opens nothing is worse
+    // than none" rule the row side already follows, seen from the other end.
+    // Measured: 13 lines across two sheets, every one of them a field the
+    // product's own UI does not have.
+    if (si.artifacts) {
+      const onSheet = new Set<string>();
+      const collect = (cats: Category[]): void => {
+        for (const c of cats) {
+          for (const p of c.params ?? []) onSheet.add(p.key);
+          if (c.categories) collect(c.categories);
+        }
+      };
+      collect(categories);
+      for (const a of si.artifacts) {
+        artifacts.push({
+          ...a,
+          lines: a.lines.map((l) => (l.key !== undefined && !onSheet.has(l.key) ? { ...l, key: undefined } : l)),
+        });
+      }
+    }
 
     if (underKey && !underKeyColumns.has(underKey.id)) {
       underKeyColumns.set(underKey.id, {

@@ -220,3 +220,42 @@ describe("an artifact preview enforces the size gate", () => {
     expect(warnings[0]).toContain(`${Math.round(MAX_PREVIEW_BYTES / 1024)} KB`);
   });
 });
+
+// A preview line names the row it IS — and a recipe builds previews before the
+// assembler has finished deciding which rows survive. A dictionary's
+// `ui: "absent"` drops a row the product's own console does not have; a
+// project's filter removes another. The line must not be left naming it.
+describe("a preview line never names a row the sheet does not have", () => {
+  it("drops the key when the row did not survive assembly", async () => {
+    const { assembleSheets } = await import("../src/assemble");
+    const meta = 'params:\n  kept:\n    category: C\n    description: d\n';
+    const out = assembleSheets(
+      [
+        {
+          name: "s",
+          instances: [],
+          layers: [{ kind: "base", entries: new Map([["kept", { value: "1", source: { file: "f", line: 1 } }]]) }],
+          embedded: [],
+          artifacts: [
+            {
+              id: "s",
+              sheet: "s",
+              source_file: "f",
+              lines: [
+                { text: "kept = 1", kind: "verbatim", key: "kept" },
+                { text: "gone = 2", kind: "verbatim", key: "gone" },
+              ],
+            },
+          ],
+        },
+      ],
+      { projectPath: "sheet.yml", readFile: (p) => (p === "sheet.yml" ? meta : null) }
+    );
+    const lines = out.artifacts![0].lines;
+    expect(lines[0].key).toBe("kept");
+    // The row was never assembled — the line keeps its TEXT (it is still a line
+    // of the file) and loses the claim to be a row.
+    expect(lines[1].key).toBeUndefined();
+    expect(lines[1].text).toBe("gone = 2");
+  });
+});

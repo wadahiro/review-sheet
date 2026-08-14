@@ -1320,6 +1320,8 @@ const WITH_ARTIFACT = {
                 { key: "Listen", value: "80", description: "Port" },
                 // Set here, but no line of the file is this one.
                 { key: "ServerAdmin", value: "root@localhost", description: "Admin address" },
+                // A product default: hidden until the reader asks for unset rows.
+                { key: "Mutex", value: "default", origin: "default" as const, description: "Mutex" },
               ],
             },
           ],
@@ -1341,6 +1343,8 @@ const WITH_ARTIFACT = {
             // Written by the toolchain at deploy time — not a gap, and not
             // counted as one.
             { text: "# {{ ansible_managed }}", kind: "unrendered" as const, cause: "deploy-time" as const, reason: "{{ ansible_managed }}" },
+            // A line whose row is a product default — hidden until asked for.
+            { text: "Mutex default", kind: "verbatim" as const, key: "Mutex" },
             { text: "</IfModule>", kind: "verbatim" as const },
             { text: "LogLevel debug", kind: "absent" as const, reason: "httpd_debug" },
           ],
@@ -1529,6 +1533,24 @@ describe("artifact panel", () => {
     // …and no tally of how the tool built the document. A reviewer cannot act
     // on "31 lines had no Jinja on them".
     expect(host.querySelector(".rs-artifact-meta")?.textContent).not.toContain("verbatim");
+  });
+
+  it("shows the unset rows when a line points at one that is hidden", async () => {
+    const host = mountArtifact();
+    // `Mutex` is a product default, hidden until the reader asks for unset rows.
+    (rowFor(host, "Listen").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await Promise.resolve();
+    const line = [...host.querySelectorAll(".rs-artifact-line.rs-has-row")].find(
+      (l) => l.querySelector(".rs-artifact-text")?.textContent?.includes("Mutex")
+    );
+    expect(line).toBeDefined();
+    (line as HTMLElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    // The row is rendered now. Doing nothing was the alternative, and the
+    // reader has just pointed at the line and said "this one".
+    const keys = [...host.querySelectorAll("tbody tr .rs-col-key code")].map((e) => e.textContent);
+    expect(keys).toContain("Mutex");
   });
 
   it("closes, and stays out of the way of print", async () => {
