@@ -2910,13 +2910,26 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
   // `<sheet>--<category path>--<key>` and only the rendered tree knows which
   // category path this key ended up under.
   const jumpToRow = useCallback((_sheet: string, key: string) => {
-    const el = document.querySelector(`[id$="--${cssEscape(encodeIdPart(key))}"]`);
-    if (!el) return;
-    el.scrollIntoView({ block: "center" });
-    el.classList.remove("rs-jump-flash");
-    void (el as HTMLElement).offsetWidth;
-    el.classList.add("rs-jump-flash");
-    window.setTimeout(() => el.classList.remove("rs-jump-flash"), 1700);
+    const land = (): boolean => {
+      const el = document.querySelector(`[id$="--${cssEscape(encodeIdPart(key))}"]`);
+      if (!el) return false;
+      el.scrollIntoView({ block: "center" });
+      el.classList.remove("rs-jump-flash");
+      void (el as HTMLElement).offsetWidth;
+      el.classList.add("rs-jump-flash");
+      window.setTimeout(() => el.classList.remove("rs-jump-flash"), 1700);
+      return true;
+    };
+    if (land()) return;
+    // Not rendered — almost always because the row is a product default and the
+    // unset rows are hidden. Show them and try again on the next paint, rather
+    // than doing nothing: a click that silently accomplishes nothing is the
+    // same failure as an affordance that opens nothing, and the reader has just
+    // pointed at the line and said "this one".
+    setShowDefaults(true);
+    // A macrotask, not a microtask: the re-render is queued by the state change
+    // above and has to have happened before the row can be found.
+    window.setTimeout(land, 0);
   }, []);
 
   const jumpToNav = useCallback((sheetIndex: number, id: string, fallbackId?: string, sheetName?: string, categoryPath?: string) => {
