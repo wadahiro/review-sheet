@@ -1599,3 +1599,73 @@ parameters:
     expect(byComponent.get("beta-side")!.default).toBe("2222");
   });
 });
+
+// The other half of the two-way check a build.yml `component: names:` already
+// has. It needs its own, because the unused-param check cannot see a dead
+// block: such a block is usually a copy of a SIBLING sheet's, so every key in
+// it exists on this sheet under a different component and looks used.
+describe("a metadata block for a component the sheet never produced", () => {
+  const files: Record<string, string> = {
+    "p.yml": [
+      "sheets:",
+      "  s:",
+      "    components:",
+      "      real:",
+      "        params:",
+      "          a: { category: C, description: d }",
+      "      ghost:",
+      "        params:",
+      "          a: { category: C, description: d }",
+      "      other:",
+      "        params:",
+      "          b: { category: C, description: d }",
+      "",
+    ].join("\n"),
+  };
+  const inputs: SheetInputs[] = [
+    {
+      name: "s",
+      instances: [],
+      layers: [{ kind: "base", entries: map([]) }],
+      embedded: [
+        { key: "a", value: "1", source: { file: "f", line: 1 }, component: "real" },
+        { key: "b", value: "2", source: { file: "f", line: 2 }, component: "other" },
+      ],
+    },
+  ];
+  const opts = (over: Partial<AssembleOpts> = {}): AssembleOpts => ({
+    projectPath: "p.yml",
+    readFile: (f) => files[f] ?? null,
+    ...over,
+  });
+
+  it("is a named build failure, with a suggestion", () => {
+    expect(() => assembleSheets(inputs, opts())).toThrow(/declares component "ghost", which this sheet produces no rows for/);
+  });
+
+  it("says nothing about a block whose component the sheet does produce", () => {
+    files["p.yml"] = `sheets:\n  s:\n    components:\n      real:\n        params:\n          a: { category: C, description: d }\n      other:\n        params:\n          b: { category: C, description: d }\n`;
+    expect(() => assembleSheets(inputs, opts())).not.toThrow();
+  });
+
+  // Same escape hatch as its sibling check (unused project params): this is
+  // documentation hygiene, not a broken sheet.
+  it("is downgraded by strictMetadata: false", () => {
+    files["p.yml"] = [
+      "sheets:",
+      "  s:",
+      "    components:",
+      "      real:",
+      "        params:",
+      "          a: { category: C, description: d }",
+      "      ghost:",
+      "        params:",
+      "          a: { category: C, description: d }",
+      "      other:",
+      "        params:",
+      "          b: { category: C, description: d }",
+      "",
+    ].join("\n");
+    expect(() => assembleSheets(inputs, opts({ strictMetadata: false }))).not.toThrow();
+  });
+});

@@ -65,6 +65,18 @@ export type ExtractOptions = {
   // In-source annotation marker, default "@rs" (see annotation.ts). Consumed
   // by the ts/py annotation parsers' extract/locate/edit.
   marker?: string;
+  // The base format of a `.j2`, when its own stripped name cannot say. A
+  // template is named for the file it produces, and that name is usually
+  // enough (`keycloak.conf.j2` -> `.conf`) — until it is not: a systemd drop-in
+  // is a bare `.conf`, claimed by nothing, and only the path it is DEPLOYED to
+  // identifies it. Consumed by the jinja2 parser as a fallback, never as an
+  // override: it must not silently reinterpret a template whose own name is
+  // unambiguous.
+  //
+  // Deliberately not `format` on extractFile: naming a format there SKIPS
+  // detection entirely, which for a `.j2` means skipping the jinja2 parser and
+  // with it every `{{ var }}` link — the rows come out holding template text.
+  baseFormat?: string;
 };
 
 export interface ParserMeta {

@@ -47,6 +47,7 @@ export type BuildSpec = {
   // property of the project's DATA, so it belongs to the spec rather than to
   // every command line that builds from it.
   id_fields?: string[];
+  data_maps?: string[];
   sheets: Array<
     {
       name: string;
@@ -189,6 +190,7 @@ const componentSchema = {
     purpose: langTextSchema,
     from: { enum: ["key", "path"] },
     steps: { type: "array" },
+    map: { type: "object", additionalProperties: { type: "string" } },
     names: { type: "object" },
   },
   additionalProperties: false,
@@ -228,6 +230,7 @@ const specSchema = {
       additionalProperties: false,
     },
     id_fields: { type: "array", items: { type: "string" } },
+    data_maps: { type: "array", items: { type: "string" } },
     sheets: {
       type: "array",
       minItems: 1,

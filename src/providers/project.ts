@@ -223,6 +223,17 @@ export function componentParamsForSheet(
   return out;
 }
 
+// The components this sheet's metadata declares a block for. Compared against
+// the components the sheet actually PRODUCED (assemble.ts), the same two-way
+// check `component: names:` has on the build.yml side: a block for a component
+// no row belongs to is documentation applying to nothing, and the ordinary
+// "unused param" check cannot see it — those keys (`enabled`, `protocol`) exist
+// on the sheet under a DIFFERENT component, so every one of them looks used.
+export function declaredComponentsForSheet(doc: ProjectMetaDoc, sheet: string | undefined): string[] {
+  if (!doc.sheets || sheet === undefined) return [];
+  return Object.keys(doc.sheets[sheet]?.components ?? {});
+}
+
 // This sheet's own declared top-level tab display order (see this file's
 // header). Empty = nothing declared, so the caller (assemble.ts's fileDrafts)
 // falls back to first-appearance order and skips the ghost-tab check

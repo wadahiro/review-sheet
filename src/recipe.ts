@@ -48,6 +48,19 @@ export type RecipeIO = {
   // assemble-spec.ts, because it says the same thing about every row and needs
   // nothing from the recipe to do it.
   component?: Record<string, unknown>;
+  // The spec's `data_maps:` — paths whose CHILDREN are data rather than fields
+  // of a schema (Keycloak's `attributes`, any free-form map). A key under one
+  // is spelled `attributes["saml.client.signature"]` instead of dotted, so a
+  // dotted data key is not read as structure.
+  //
+  // A fact about the config file's SHAPE, exactly like `id_fields`, and here
+  // for the same reason: YAML cannot say it, and it has to be known while the
+  // KEY is formed. It deliberately cannot come from the bound dictionary —
+  // spelling driven by a dictionary would make row identity a function of
+  // which dictionary version is bound, and a free-form map's coverage is
+  // partial by nature, so known keys would come out bracketed and unknown ones
+  // dotted.
+  dataMaps?: string[];
 };
 
 export type SheetRecipe = {

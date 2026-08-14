@@ -66,7 +66,7 @@ import { baseFileName } from "../jinja2.js";
 import { registerRecipe, type SheetRecipe, type RecipeIO, type JsonValue } from "../recipe.js";
 import type { SheetInputs, ExtractedMap, ValueLayer, EmbeddedEntry, KeyMapEntry } from "../assemble.js";
 import type { LangText } from "../types.js";
-import { layeredRecipe, sourceOrListSchema } from "./layered.js";
+import { layeredRecipe, sourceOrListSchema, splitSchema } from "./layered.js";
 
 const schema = {
   type: "object",
@@ -80,6 +80,10 @@ const schema = {
     // sheet that genuinely needs two: a systemd unit template interpolates
     // both the role's defaults/ and its vars/.)
     defaults: sourceOrListSchema,
+    // Same shared shape as layered's, for the same reason `defaults` is: this
+    // recipe hands the sheet straight to `layeredRecipe.load`, so a narrower
+    // copy here would only refuse a declaration that already works.
+    split: splitSchema,
     // One template, or several. `template`/`deployed_path` describe a sheet
     // that IS one deployed artifact; `templates` describes a sheet that covers
     // several, each becoming a component (see the module doc). Declaring both
@@ -163,6 +167,18 @@ function productKeyOf(entry: Entry, structured: boolean): string {
 // from which, and because two of them routinely share a row key (two systemd
 // units both have Unit.Description).
 type TemplateSpec = { path: string; deployedPath?: string; component?: string };
+
+// A template's format is the DEPLOYED artifact's format. The template's own
+// name is normally a good proxy (`keycloak.conf.j2` -> `.conf`... which is
+// exactly where the proxy fails: a bare `.conf` is claimed by nothing, while
+// the path it lands at, `/etc/systemd/journald.conf.d/iam-platform.conf`, is
+// unambiguous). Consulted only when the template name yields nothing, so no
+// existing sheet changes parser.
+function formatOf(spec: TemplateSpec): string | undefined {
+  if (structuredFormat(baseFileName(spec.path)) !== null) return undefined;
+  const deployed = spec.deployedPath === undefined ? null : structuredFormat(spec.deployedPath);
+  return deployed === null ? undefined : deployed;
+}
 
 function templateSpecs(sheetSpec: Record<string, JsonValue>, name: string): TemplateSpec[] {
   const single = sheetSpec.template;
@@ -251,11 +267,17 @@ export const ansibleRecipe: SheetRecipe = {
         return {
           spec,
           file: t.file,
-          entries: extractFile(t.content, t.file, undefined, io.extractOptions),
+          // Format from the DEPLOYED path when the template's own name cannot
+          // answer: `journald-iam-platform.conf.j2` is a bare `.conf`, which is
+          // far too common a suffix to claim, while the artifact it becomes —
+          // `/etc/systemd/journald.conf.d/iam-platform.conf` — says exactly
+          // what it is. The template name stays the SOURCE either way; only the
+          // parser choice moves.
+          entries: extractFile(t.content, t.file, undefined, { ...io.extractOptions, baseFormat: formatOf(spec) }),
           // A `.j2` resolves to its base format by name (realm-corp.json.j2 ->
           // .json), which is also what decides whether a row's identity is its
           // path or its leaf — see productKeyOf.
-          structured: structuredFormat(baseFileName(t.file)) !== null,
+          structured: structuredFormat(baseFileName(t.file)) !== null || formatOf(spec) !== undefined,
         };
       });
 

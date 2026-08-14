@@ -551,6 +551,130 @@ The collision error itself proposes a block shaped exactly like this
 whenever the colliding entries' structural paths share a distinguishable
 prefix — paste it in as the source's own `key:` field.
 
+#### `component: { map: ... }` — assigning a row that no transform can reach
+
+```yaml
+component:
+  map:
+    SSO_LDAP_CORP_PASSWORD: corp-ldap
+```
+
+An environment variable feeding one member's field is not addressed as part of
+the list, so nothing about its NAME derives the member. The fact is an
+assignment, and writing an assignment as a regex (`^SSO_LDAP_CORP_PASSWORD$` ->
+`corp-ldap`) only hides what it is.
+
+The map is consulted on the row's own key and on its structural path, before any
+`steps`, so it composes with a `split:` — the split files the members, the map
+files the rows that feed them. An assignment naming a key no row produced is
+reported, like every other declaration here that matches nothing.
+
+#### `data_maps:` — a path whose children are data
+
+```yaml
+data_maps: [attributes]     # spec level, beside id_fields
+```
+
+A free-form map's keys are DATA, not fields of a schema, and they routinely
+contain dots (`saml.client.signature`). Without this the key reads as three
+levels of structure; with it the row is spelled
+`attributes["saml.client.signature"]` and the dotted name stays one name.
+
+It sits beside `id_fields` because it is the same kind of statement: a fact
+about the config file's SHAPE that the format itself cannot express, needed
+while the KEY is formed. It deliberately cannot come from a bound dictionary —
+that would make a row's identity a function of which dictionary VERSION is
+bound (document one more attribute and its key flips, orphaning every review
+filed under the old one), and a free-form map's coverage is partial by nature,
+so known keys would come out bracketed and unknown ones dotted.
+
+Only the spelling changes: `attributes["x"]` and `attributes.x` parse to the
+same steps, so `source.path` is untouched and verify/apply resolve either way.
+
+#### `recipe: terraform-plan`
+
+A sheet whose subject is a rendered plan (`terraform show -json`). This is
+`snapshot` with the plan's shape written down, so a project does not re-derive
+Terraform's address grammar in three hand-written patterns:
+
+```yaml
+- name: aws infrastructure
+  recipe: terraform-plan
+  instances: [staging, production]
+  snapshots:
+    staging: ../../platforms/aws-ec2/terraform/plan.staging.json
+    production: ../../platforms/aws-ec2/terraform/plan.production.json
+  empty_means_unset: true
+  exclude: ["**.tags_all.**", "**.tags.**", "**.timeouts"]
+```
+
+What the recipe supplies, and a project therefore does not:
+
+| | |
+|---|---|
+| key | `ec2.aws_instance.node[0].ami` — module, resource type, name, argument. The module STAYS: `aws_lb.this` is unique only within one, so two ALB modules would otherwise collide on every row. A resource in no module gets `root`, Terraform's own name for it, so every key has one shape |
+| component | the module. `names:` — what each module IS to a reader — stays the project's |
+| dictionary key | `aws_lb.idle_timeout`: a provider documents an argument of a resource TYPE, not of one instance in one module. Applied to a binding that declares no `key_steps` of its own |
+| `id_fields` | `address`, which is how a plan addresses its `resource_changes` |
+| what is dropped | everything that is not a resource argument — `format_version`, `relevant_attributes`, `errored`, output changes — by failing to match one pattern, rather than by a list of section names someone keeps up with |
+
+A project's own `key: { steps: [...] }` composes after the plan's, and
+`empty_means_unset` matters here: HCL's attrs-as-blocks fills every unset
+optional string inside a block with `""`, so one route's `gateway_id` holds a
+value while its mutually exclusive siblings come back empty.
+
+The recipe never runs Terraform. A plan is an ordinary committed artifact, which
+is what keeps `import --spec` hermetic — a stale plan is a stale sheet, and
+re-rendering is part of changing the HCL.
+
+#### `split:` — a source holding an identity-keyed list
+
+A configuration file often holds a LIST of things of one kind, each addressed
+by an identity field: several clients, several providers, several units. Each
+one is a component (they share a key space — that is what a component is for),
+and a row's key is what follows the identity in its address.
+
+```yaml
+- name: keycloak clients
+  recipe: layered
+  split:
+    at: clients          # the field holding the list
+    by: clientId         # the field each element is addressed by
+    only: [poc-oidc, poc-oidc-batch]   # optional: the members THIS sheet reviews
+```
+
+That one declaration does four things, and doing them separately is how they
+drift apart:
+
+- **the component** is the identity (`poc-oidc`)
+- **the key** is the rest of the address (`protocol`, `attributes.pkce`)
+- **`only:`** drops the members this sheet does not review — and a name in it
+  that no element has is a build error, like every other declaration here that
+  matches nothing
+- **`by:` is the identity field**, so `id_fields` does not have to say it again
+  somewhere else in the spec
+
+Rows that are not members of the list at all pass through untouched, which is
+what lets a sheet read the list and a flat env file side by side.
+
+**Write this instead of the equivalent regexes.** The pair it replaces —
+`^clients\[clientId=("?)(.+?)\1\]\.(.+)$` once for the key and once for the
+component — is a project reverse-engineering the tool's own address grammar:
+`structural.ts` quotes an identity only when it has to, so the optional-quote
+alternation is load-bearing, and getting it wrong fails by matching nothing.
+The tool decided how an address is spelled, so the tool should write the
+pattern.
+
+A source's own `key: { steps: [...] }` still composes AFTER the split, which is
+where the genuine judgement goes — which sub-objects of a member are review
+material and which are the product's bookkeeping.
+
+A `component:` transform composes after it too, rather than being refused: a
+sheet can hold rows that are not members of the list and still belong to one —
+the environment variable feeding a member's field is the case. The split's own
+step runs first, and when further steps follow, a non-member survives it to
+reach them instead of being filed under no component.
+
 #### A static file that records the PRODUCT's defaults (`origin: default`)
 
 Not every file a spec reads is part of what the project ships. A snapshot

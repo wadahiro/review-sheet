@@ -854,3 +854,158 @@ describe("layered recipe: a merged row keeps the component of the file that refe
     expect(warnings.join("\n")).toContain('"IDLE" is merged by two components (poc, other)');
   });
 });
+
+// `split:` — the sheet-level declaration standing in for the `key:` +
+// `component:` pair that an identity-keyed list otherwise needs, written twice
+// against the tool's own address grammar.
+describe("layered recipe: split (an identity-keyed list of components)", () => {
+  const yaml = [
+    "clients:",
+    "  - clientId: alpha",
+    "    enabled: true",
+    "    attributes:",
+    "      pkce: S256",
+    "  - clientId: beta",
+    "    enabled: false",
+    "",
+  ].join("\n");
+  const files: Record<string, string> = { "/r/realm.yml": yaml, "/r/env.properties": "SSO_HOST=example.com\n" };
+  const io: RecipeIO = {
+    readFile: (p) => files[p] ?? null,
+    specDir: "/r",
+    resolve: (p) => `/r/${p.split("/").pop()}`,
+    instances: [],
+  };
+
+  it("makes each member a component and keys rows by the rest of the address", () => {
+    const si = layeredRecipe().load(
+      { name: "s", recipe: "layered", split: { at: "clients", by: "clientId" }, static_files: [{ path: "realm.yml" }] },
+      io
+    );
+    expect(si.embedded.map((e) => `${e.component}/${e.key}`).sort()).toEqual([
+      "alpha/attributes.pkce",
+      "alpha/enabled",
+      "beta/enabled",
+    ]);
+  });
+
+  it("reviews only the members `only` names, and leaves non-members alone", () => {
+    const si = layeredRecipe().load(
+      {
+        name: "s",
+        recipe: "layered",
+        split: { at: "clients", by: "clientId", only: ["alpha"] },
+        defaults: "env.properties",
+        static_files: [{ path: "realm.yml" }],
+      },
+      io
+    );
+    expect(si.embedded.map((e) => `${e.component}/${e.key}`).sort()).toEqual(["alpha/attributes.pkce", "alpha/enabled"]);
+    // The env file on the same sheet is not a member of the list and survives.
+    const base = si.layers.find((l) => l.kind === "base")!;
+    expect([...base.entries.keys()]).toEqual(["SSO_HOST"]);
+  });
+
+  // Same two-way rule as `names:`: a selection naming something no row produced
+  // reviews less than it claims, and says so.
+  it("refuses a selection naming a member no row produced", () => {
+    expect(() =>
+      layeredRecipe().load(
+        {
+          name: "s",
+          recipe: "layered",
+          split: { at: "clients", by: "clientId", only: ["alpha", "gamma"] },
+          static_files: [{ path: "realm.yml" }],
+        },
+        io
+      )
+    ).toThrow(/split selects a member no row produced: gamma/);
+  });
+
+  // Composed, not refused: a sheet can hold rows that are not members of the
+  // list and still belong to one — the env variable feeding a member's field.
+  it("composes a component transform after the split", () => {
+    const si = layeredRecipe().load(
+      { name: "s", recipe: "layered", split: { at: "clients", by: "clientId" }, defaults: "env.properties", static_files: [{ path: "realm.yml" }] },
+      { ...io, component: { steps: [{ pattern: "^SSO_HOST$", replace: "alpha" }] } }
+    );
+    expect(si.componentOf?.get("SSO_HOST")).toBe("alpha");
+    expect(si.componentOf?.get("enabled")).toBe("beta");
+  });
+
+  it("composes the source's own steps after the split", () => {
+    const si = layeredRecipe().load(
+      {
+        name: "s",
+        recipe: "layered",
+        split: { at: "clients", by: "clientId" },
+        static_files: [{ path: "realm.yml", key: { steps: [{ pattern: "^attributes\\..*$", replace: "", on_no_match: "keep" }, { pattern: "^$", replace: "", on_no_match: "keep" }, { pattern: "^(.+)$", replace: "$1", on_no_match: "drop" }] } }],
+      },
+      io
+    );
+    expect(si.embedded.map((e) => `${e.component}/${e.key}`).sort()).toEqual(["alpha/enabled", "beta/enabled"]);
+  });
+});
+
+// `data_maps:` — a path whose CHILDREN are data, not fields of a schema. The
+// key has to say so, or a dotted data key reads as structure.
+describe("layered recipe: data_maps", () => {
+  const yaml = ["attributes:", "  saml.client.signature: 'true'", "  plain: x", "port: 8080", ""].join("\n");
+  const files: Record<string, string> = { "/r/c.yml": yaml };
+  const io: RecipeIO = {
+    readFile: (p) => files[p] ?? null,
+    specDir: "/r",
+    resolve: () => "/r/c.yml",
+    instances: [],
+    dataMaps: ["attributes"],
+  };
+
+  it("brackets a key under a declared data map and leaves everything else alone", () => {
+    const si = layeredRecipe().load({ name: "s", recipe: "layered", static_files: [{ path: "c.yml" }] }, io);
+    expect(si.embedded.map((e) => e.key).sort()).toEqual([
+      'attributes["plain"]',
+      'attributes["saml.client.signature"]',
+      "port",
+    ]);
+  });
+
+  it("does nothing when the spec declares no data map", () => {
+    const si = layeredRecipe().load({ name: "s", recipe: "layered", static_files: [{ path: "c.yml" }] }, { ...io, dataMaps: undefined });
+    expect(si.embedded.map((e) => e.key)).toContain("attributes.plain");
+  });
+});
+
+// `component: { map: ... }` — a literal assignment for the rows a transform
+// cannot reach: an env variable feeding one member's field is not addressed as
+// part of the list, so nothing about its name derives the member.
+describe("layered recipe: component map", () => {
+  const files: Record<string, string> = { "/r/env.properties": "SSO_LDAP_CORP_PASSWORD=x\nOTHER=y\n" };
+  const io: RecipeIO = {
+    readFile: (p) => files[p] ?? null,
+    specDir: "/r",
+    resolve: () => "/r/env.properties",
+    instances: [],
+    component: { map: { SSO_LDAP_CORP_PASSWORD: "corp-ldap" } },
+  };
+
+  it("files a named key under the component it is assigned to", () => {
+    const si = layeredRecipe().load({ name: "s", recipe: "layered", defaults: "env.properties" }, io);
+    expect(si.componentOf?.get("SSO_LDAP_CORP_PASSWORD")).toBe("corp-ldap");
+    expect(si.componentOf?.get("OTHER")).toBeUndefined();
+  });
+
+  it("warns about an assignment no row produced", () => {
+    const warnings: string[] = [];
+    const spy = console.warn;
+    console.warn = (m: string) => warnings.push(String(m));
+    try {
+      layeredRecipe().load(
+        { name: "s", recipe: "layered", defaults: "env.properties" },
+        { ...io, component: { map: { SSO_LDAP_CORP_PASSWORD: "corp-ldap", GONE: "corp-ldap" } } }
+      );
+    } finally {
+      console.warn = spy;
+    }
+    expect(warnings.join("\n")).toContain("component map names 1 key(s) no row produced: GONE");
+  });
+});

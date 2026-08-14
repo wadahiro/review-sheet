@@ -1012,3 +1012,39 @@ parameters:
     expect(set.out_of_scope).toBeUndefined();
   });
 });
+
+// A declared `categories:` entry that orders nothing is wiring nobody sees —
+// the same failure keyglob/keytransform already report for a pattern that
+// matched nothing. It is how a dictionary group's old FLAT spelling
+// ("Tokens / Access tokens" for what is now the path head "Tokens") can sit in
+// a sheet for months ordering nothing at all.
+describe("a declared category that orders nothing", () => {
+  const files2: Record<string, string> = {
+    "p.yml": `categories: [Connections, Tokens / Access tokens]\nparams:\n  max_conn: { category: Connections, description: d }\n`,
+    "meta/demodb@1.yml": DICT_YAML,
+  };
+
+  it("is reported, with a suggestion drawn from the categories that do exist", () => {
+    const result = assembleSheetsWithReport(sheetInputs(["db_max_conn"]), {
+      projectPath: "p.yml",
+      metadataDirs: ["meta"],
+      readFile: (p) => files2[p] ?? null,
+      strictMetadata: false,
+      dictionaries: { db: [{ product: "demodb", version: "1", key_prefix: "db_" }] },
+    });
+    const unused = result.categoryWarnings.filter((w) => w.includes("ordered nothing"));
+    expect(unused).toHaveLength(1);
+    expect(unused[0]).toContain('"Tokens / Access tokens"');
+  });
+
+  it("says nothing about a declared category that does order something", () => {
+    const result = assembleSheetsWithReport(sheetInputs(["db_max_conn"]), {
+      projectPath: "p.yml",
+      metadataDirs: ["meta"],
+      readFile: (p) => files2[p] ?? null,
+      strictMetadata: false,
+      dictionaries: { db: [{ product: "demodb", version: "1", key_prefix: "db_" }] },
+    });
+    expect(result.categoryWarnings.filter((w) => w.includes("Connections"))).toEqual([]);
+  });
+});

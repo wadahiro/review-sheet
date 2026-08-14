@@ -59,7 +59,16 @@ import type { ExtractOptions } from "../parser.js";
 import { registerRecipe, type SheetRecipe, type RecipeIO, type JsonValue } from "../recipe.js";
 import type { SheetInputs, ExtractedMap, EmbeddedEntry, KeyMapEntry, ValueLayer } from "../assemble.js";
 import { makeKeySelector, type KeySelector } from "../keyglob.js";
-import { makeKeyTransformer, selectKeySource, keyTransformSchema, type KeyTransform } from "../keytransform.js";
+import {
+  makeKeyTransformer,
+  selectKeySource,
+  keyTransformSchema,
+  splitKeySteps,
+  splitComponentSteps,
+  type KeyTransform,
+  type KeyTransformStep,
+  type StructuralSplit,
+} from "../keytransform.js";
 import { compileSubstitution, bindReferences, type ReferenceSite } from "../substitution.js";
 import type { LangText } from "../types.js";
 
@@ -109,15 +118,28 @@ const staticFilesSchema = {
       exclude: { type: "array", items: { type: "string" } },
       substitution: substitutionSchema,
       component: { type: "string" },
+      members_only: { type: "boolean" },
       origin: { enum: ["embedded", "default"] },
     },
     additionalProperties: false,
   },
 };
 
+export const splitSchema = {
+  type: "object",
+  required: ["at", "by"],
+  properties: {
+    at: { type: "string" },
+    by: { type: "string" },
+    only: { type: "array", items: { type: "string" }, minItems: 1 },
+  },
+  additionalProperties: false,
+};
+
 const schema = {
   type: "object",
   properties: {
+    split: splitSchema,
     defaults: sourceOrListSchema,
     overlays: { type: "object", additionalProperties: sourceOrListSchema },
     static_files: staticFilesSchema,
@@ -211,22 +233,55 @@ type ComponentDeriver = {
   finish: () => { componentOf: Map<string, string>; componentLabels?: Map<string, LangText> } | undefined;
 };
 
-function makeComponentDeriver(io: RecipeIO, sheetName: string, warn: (message: string) => void): ComponentDeriver {
-  const spec = io.component as
-    | (KeyTransform & { names?: Record<string, { name?: LangText | string }> })
-    | undefined;
-  if (!spec?.steps) return { note: () => {}, idFor: () => "", finish: () => undefined };
+type ComponentSpec = KeyTransform & {
+  names?: Record<string, { name?: LangText | string }>;
+  // Literal "this key belongs to that component", for the rows a transform
+  // cannot reach: an environment variable feeding one member's field is not
+  // addressed as part of the list, so nothing about its NAME derives the
+  // member — the fact is an assignment, and writing an assignment as a regex
+  // (`^SSO_LDAP_CORP_PASSWORD$` -> `corp-ldap`) only obscures it.
+  map?: Record<string, string>;
+};
+
+function makeComponentDeriver(
+  spec: ComponentSpec | undefined,
+  sheetName: string,
+  warn: (message: string) => void,
+  // Declared by `split: { only: [...] }`: every id the sheet says it reviews.
+  // Checked against what the rows actually produced, the same two-way check
+  // `names:` has — a selection naming something no element has is a selection
+  // that silently reviews less than it claims.
+  requiredIds?: string[]
+): ComponentDeriver {
+  if (!spec?.steps && !spec?.map) return { note: () => {}, idFor: () => "", finish: () => undefined };
 
   const transformer = makeKeyTransformer(spec);
+  const mapped = new Map(Object.entries(spec.map ?? {}));
+  const unusedMapKeys = new Set(mapped.keys());
+  // The map is consulted on the row's own key AND on its structural path, so an
+  // assignment can name either — whichever the reader would recognise.
+  const assign = (entryKey: string, entryPath: string | undefined): string | undefined => {
+    for (const candidate of [entryKey, entryPath]) {
+      if (candidate !== undefined && mapped.has(candidate)) {
+        unusedMapKeys.delete(candidate);
+        return mapped.get(candidate);
+      }
+    }
+    return undefined;
+  };
   const componentOf = new Map<string, string>();
   const ids = new Set<string>();
 
   return {
+    // With no `steps`, an unassigned row belongs to NO component: the identity
+    // the transformer would return is the row's own key, which would make every
+    // unassigned row a component of its own.
     idFor(entryKey, entryPath) {
-      return transformer.apply(selectKeySource(spec.from, entryKey, entryPath)) ?? "";
+      return assign(entryKey, entryPath) ?? (spec.steps ? transformer.apply(selectKeySource(spec.from, entryKey, entryPath)) ?? "" : "");
     },
     note(entryKey, entryPath, finalKey) {
-      const id = transformer.apply(selectKeySource(spec.from, entryKey, entryPath));
+      const id =
+        assign(entryKey, entryPath) ?? (spec.steps ? transformer.apply(selectKeySource(spec.from, entryKey, entryPath)) : undefined);
       if (id === undefined) return; // belongs to no component; falls back downstream
       ids.add(id);
       componentOf.set(finalKey, id);
@@ -235,6 +290,18 @@ function makeComponentDeriver(io: RecipeIO, sheetName: string, warn: (message: s
       const unmatched = transformer.unmatchedDropPatterns();
       if (unmatched.length > 0) {
         warn(`sheet "${sheetName}": component transform pattern matched nothing: ${unmatched.join(", ")}`);
+      }
+      // An assignment naming a key no row produced is wiring for nothing — the
+      // same rule as a pattern, a glob or a `names:` entry that matched nothing.
+      if (unusedMapKeys.size > 0) {
+        warn(`sheet "${sheetName}": component map names ${unusedMapKeys.size} key(s) no row produced: ${[...unusedMapKeys].sort().join(", ")}`);
+      }
+      const missing = (requiredIds ?? []).filter((id) => !ids.has(id));
+      if (missing.length > 0) {
+        throw new Error(
+          `layered recipe: sheet "${sheetName}": split selects ${missing.length === 1 ? "a member" : "members"} no row produced: ` +
+            `${missing.join(", ")} (produced: ${[...ids].sort().join(", ") || "none"})`
+        );
       }
 
       // Two-way, like the snapshot recipe's: a component the sheet produces
@@ -436,6 +503,11 @@ type StaticFileSpec = {
   // Stated per file because it is a property of where the file came from, which
   // nothing in the rows themselves reveals.
   origin?: "default";
+  // Under the sheet's `split:`, this source holds ONLY members of the list —
+  // so a row that is not one is noise, and dropped. Off by default, because a
+  // sheet's other sources routinely hold rows that are not members and must
+  // survive (the environment file feeding a member's field).
+  members_only?: boolean;
 };
 
 function staticFileSpecs(v: JsonValue | undefined): StaticFileSpec[] {
@@ -448,6 +520,7 @@ function staticFileSpecs(v: JsonValue | undefined): StaticFileSpec[] {
     const include = Array.isArray(o.include) ? (o.include as string[]) : undefined;
     const exclude = Array.isArray(o.exclude) ? (o.exclude as string[]) : undefined;
     const component = typeof o.component === "string" ? o.component : undefined;
+    const membersOnly = o.members_only === true ? true : undefined;
     const origin = o.origin === "default" ? ("default" as const) : undefined;
     // A substitution merges this file's rows INTO a base-layer variable, whose
     // value our deliverable does set — so "the product's own default, set
@@ -456,7 +529,7 @@ function staticFileSpecs(v: JsonValue | undefined): StaticFileSpec[] {
     if (origin === "default" && substitution !== undefined) {
       throw new Error(`layered recipe: static_files[].origin "default" cannot be combined with "substitution" (${asString(o.path, "static_files[].path")})`);
     }
-    return { path: asString(o.path, "static_files[].path"), format, key, include, exclude, substitution, component, origin };
+    return { path: asString(o.path, "static_files[].path"), format, key, include, exclude, substitution, component, origin, members_only: membersOnly };
   });
 }
 
@@ -654,12 +727,74 @@ export const layeredRecipe: SheetRecipe = {
     // Built before any source is read: every extraction path notes its entries
     // into it as they survive selection, and `finish()` runs the two-way name
     // check once the whole sheet has been seen.
-    const componentDeriver = makeComponentDeriver(io, name, warn);
+    // `split:` is one sentence — "this source holds a list of things addressed
+    // by an identity field" — standing in for the pair of transforms every such
+    // sheet otherwise writes by hand, over the tool's own address grammar. It
+    // sets the component side, and prefixes every source's key transform, so
+    // the two can never disagree about which list they are talking about.
+    const split = sheetSpec.split === undefined ? undefined : (asObject(sheetSpec.split) as unknown as StructuralSplit);
+    const declaredComponent = io.component as ComponentSpec | undefined;
+    // A `component:` transform alongside a split is COMPOSED, not refused: the
+    // split answers "which member is this row of", and a sheet can have rows
+    // that are not members of the list at all yet still belong to one — the
+    // environment variable feeding a member's field is the case. The split's
+    // own step runs first; the declared steps decide what is left.
+    const componentSpec: ComponentSpec | undefined = split
+      ? {
+          ...(declaredComponent ?? {}),
+          from: "path",
+          steps: [...splitComponentSteps(split, (declaredComponent?.steps ?? []).length > 0), ...(declaredComponent?.steps ?? [])],
+        }
+      : declaredComponent;
+    const componentDeriver = makeComponentDeriver(componentSpec, name, warn, split?.only);
+    // A split names the identity field, so it also ANSWERS the extractor's
+    // question of which field identifies a list item — declaring `id_fields`
+    // again, spec-wide and far away, would be the same fact written twice, and
+    // forgetting it makes the split match nothing (the paths come out `[0]`).
+    const extractOptions = split
+      ? { ...io.extractOptions, idFields: [...(io.extractOptions?.idFields ?? []), split.by] }
+      : io.extractOptions;
+    // A data map's children are DATA, so a dotted key under one is not
+    // structure: `attributes.saml.client.signature` is one key, not three
+    // levels. Appended last, after the split and after a source's own steps,
+    // because it is about how the finished key is SPELLED. Idempotent by
+    // construction — the pattern refuses a key that is already bracketed — so
+    // a source that somehow ran it twice comes out the same.
+    const dataMapSteps: KeyTransformStep[] = (io.dataMaps ?? []).map((path) => ({
+      pattern: `^${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.([^"\\[]+)$`,
+      replace: `${path}["$1"]`,
+    }));
+    // Prefixed, not replaced: what a split leaves is still a structural path,
+    // and a source's own steps are the judgement calls on top of it (which
+    // sub-objects are review material and which are the product's bookkeeping).
+    const withSplit = <T extends { key?: KeyTransform }>(spec: T): T => {
+      if (!split) return spec;
+      if (spec.key?.from === "key") {
+        throw new Error(
+          `layered recipe: sheet "${name}": a source under "split" cannot key "from: key" — ` +
+            `a split addresses rows by their structural path`
+        );
+      }
+      const membersOnly = (spec as { members_only?: boolean }).members_only === true;
+      return { ...spec, key: { from: "path", steps: [...splitKeySteps(split, membersOnly), ...(spec.key?.steps ?? [])] } };
+    };
+    // `defaultFrom` is the source's own untransformed key space, which differs
+    // by source: defaults/overlays key by the extracted leaf name, a static
+    // file by its structural path (see buildEmbeddedFromStaticFiles). Injecting
+    // a transform must not silently move a source into the other one.
+    const withKeyShape =
+      (defaultFrom: KeyTransform["from"]) =>
+      <T extends { key?: KeyTransform }>(spec: T): T => {
+        const withSplitApplied = withSplit(spec);
+        if (dataMapSteps.length === 0) return withSplitApplied;
+        const key = withSplitApplied.key;
+        return { ...withSplitApplied, key: { from: key?.from ?? defaultFrom, steps: [...(key?.steps ?? []), ...dataMapSteps] } };
+      };
 
-    const defaultsSpecs = asSourceSpecs(sheetSpec.defaults);
+    const defaultsSpecs = asSourceSpecs(sheetSpec.defaults).map(withKeyShape("key"));
     const baseMap =
       defaultsSpecs.length > 0
-        ? buildMapFromSources(io, defaultsSpecs, `sheet "${name}": defaults`, selector, io.extractOptions, warn, componentDeriver)
+        ? buildMapFromSources(io, defaultsSpecs, `sheet "${name}": defaults`, selector, extractOptions, warn, componentDeriver)
         : new Map();
     // Display fallback: the first defaults source, when there is one. Recorded
     // as `source_file`, NOT `file_path` — it is a file in this repository, and
@@ -678,10 +813,10 @@ export const layeredRecipe: SheetRecipe = {
         instance,
         entries: buildMapFromSources(
           io,
-          asSourceSpecs(spec as JsonValue),
+          asSourceSpecs(spec as JsonValue).map(withKeyShape("key")),
           `sheet "${name}": overlay "${instance}"`,
           selector,
-          io.extractOptions,
+          extractOptions,
           warn,
           componentDeriver
         ),
@@ -690,9 +825,9 @@ export const layeredRecipe: SheetRecipe = {
 
     const staticFilesResult = buildEmbeddedFromStaticFiles(
       io,
-      staticFileSpecs(sheetSpec.static_files),
+      staticFileSpecs(sheetSpec.static_files).map(withKeyShape("path")),
       selector,
-      io.extractOptions,
+      extractOptions,
       baseMap,
       overlayLayers,
       warn,
@@ -705,14 +840,18 @@ export const layeredRecipe: SheetRecipe = {
     if (unmatchedSelector.length > 0) {
       warn(`sheet "${name}": include/exclude pattern matched nothing: ${unmatchedSelector.join(", ")}`);
     }
-    for (const w of warnings) console.warn(`layered recipe: ${w}`);
-
     // A DERIVED component (see RecipeIO.component): the sheet's rows carry the
     // component's identity in their own keys, and the transform lifts it out.
     // `clients[clientId=poc-oidc].protocol` is a row of the poc-oidc client, and
     // saying so moves the client out of the key and into a scope — the same
     // move the AWS sheet made with its Terraform module.
     const components = componentDeriver.finish();
+    // Printed AFTER finish(), not before: the component deriver only knows
+    // which of its patterns, names and assignments matched nothing once every
+    // row has been through it, so a print above this line silently dropped
+    // every warning it raises — the "component transform pattern matched
+    // nothing" one had never reached a terminal.
+    for (const w of warnings) console.warn(`layered recipe: ${w}`);
     // A literal per-file `component:` produces no derived map of its own — the
     // component travels on each embedded entry. The exception is a row the
     // substitution merged away, whose identity is now a base-layer key; those
