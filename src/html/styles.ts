@@ -2682,13 +2682,13 @@ tr.rs-jump-flash th {
   font-size: 0.72rem;
   line-height: 1.6;
   white-space: nowrap;
-  color: var(--rs-muted);
+  color: var(--rs-text-muted);
   background: var(--rs-subtle);
   border: 1px solid var(--rs-border);
   border-radius: 999px;
   cursor: pointer;
 }
-.rs-palette-scope:hover { color: var(--rs-fg); }
+.rs-palette-scope:hover { color: var(--rs-text); }
 .rs-palette-scope-all {
   color: var(--rs-accent);
   border-color: var(--rs-accent);
@@ -3218,7 +3218,7 @@ tr.rs-jump-flash th {
   min-height: 9rem;
   box-sizing: border-box;
   padding: 0.6rem 0.7rem;
-  font-family: var(--rs-font-mono);
+  font-family: var(--rs-mono);
   font-size: 0.72rem;
   line-height: 1.5;
   color: var(--rs-text);
@@ -3247,5 +3247,191 @@ tr.rs-jump-flash th {
 .rs-btn-primary:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* ---- Artifact preview panel -------------------------------------------
+   The deployed file, beside the sheet. A pinned right-hand panel and not a
+   modal on purpose: the request was to review a setting WHILE seeing its
+   surrounding context, and a full-screen overlay shows the context INSTEAD of
+   the row, which is the problem it was meant to solve. */
+/* The class is on .rs-app (App's own root), not .rs-root — an earlier
+   selector named the wrong one, so none of this matched and the fixed panel
+   simply covered the sheet. Padding on the app rather than a margin on the
+   main region, so the sticky tab bar is inset too instead of running under
+   the panel. */
+.rs-app.rs-with-artifact {
+  padding-right: var(--rs-artifact-w, 34rem);
+}
+
+.rs-artifact-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--rs-artifact-w, 34rem);
+  max-width: 92vw;
+  display: flex;
+  flex-direction: column;
+  background: var(--rs-surface);
+  border-left: 1px solid var(--rs-border);
+  box-shadow: -2px 0 12px rgba(0, 0, 0, 0.06);
+  z-index: 150;
+}
+
+.rs-artifact-head {
+  position: relative;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--rs-border);
+  background: var(--rs-subtle);
+}
+
+.rs-artifact-title {
+  /* Room for the close button, which is pinned to the corner (see app.ts). */
+  padding-right: 1.75rem;
+}
+
+.rs-artifact-close {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.5rem;
+}
+
+.rs-artifact-path {
+  font-family: var(--rs-mono);
+  font-size: 0.9rem;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.rs-artifact-meta {
+  margin-top: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--rs-text-muted);
+  line-height: 1.5;
+}
+
+.rs-artifact-meta code {
+  font-size: 0.72rem;
+}
+
+.rs-artifact-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.4rem;
+}
+
+.rs-artifact-tab {
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.12rem 0.5rem;
+  border: 1px solid var(--rs-border);
+  border-radius: 999px;
+  background: var(--rs-surface);
+  color: var(--rs-text-muted);
+  cursor: pointer;
+}
+
+.rs-artifact-tab.rs-on {
+  background: var(--rs-primary);
+  border-color: var(--rs-primary);
+  color: var(--rs-surface);
+}
+
+.rs-artifact-body {
+  flex: 1;
+  overflow: auto;
+  padding: 0.5rem 0 1.5rem;
+}
+
+.rs-artifact-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0 0.9rem;
+  font-family: var(--rs-mono);
+  font-size: 0.76rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.rs-artifact-no {
+  flex: 0 0 2.4rem;
+  text-align: right;
+  color: var(--rs-text-muted);
+  opacity: 0.6;
+  user-select: none;
+}
+
+.rs-artifact-text {
+  flex: 1;
+}
+
+/* A line that IS a row: clickable, and it says so only on hover so the file
+   still reads as a file. */
+.rs-artifact-line.rs-has-row {
+  cursor: pointer;
+}
+
+.rs-artifact-line.rs-has-row:hover {
+  background: var(--rs-subtle);
+}
+
+.rs-artifact-line.rs-here {
+  background: var(--rs-primary-light);
+  box-shadow: inset 3px 0 0 var(--rs-primary);
+}
+
+/* A line this instance does not render. Kept and greyed rather than removed:
+   "this line exists only in local" is review information. */
+.rs-artifact-line.rs-kind-absent .rs-artifact-text {
+  opacity: 0.42;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+/* A line the tool could not compute. Marked, never guessed at. */
+.rs-artifact-line.rs-kind-unrendered .rs-artifact-text {
+  background: var(--rs-accent-light);
+  border-bottom: 1px dashed var(--rs-accent-border);
+}
+
+.rs-artifact-warn {
+  color: var(--rs-accent-border);
+}
+
+/* The affordance on a row: a chip in the key cell. */
+.rs-artifact-chip {
+  font: inherit;
+  font-size: 0.68rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--rs-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rs-text-muted);
+  cursor: pointer;
+}
+
+.rs-artifact-chip:hover {
+  border-color: var(--rs-primary);
+  color: var(--rs-primary);
+}
+
+@media (max-width: 60rem) {
+  .rs-app.rs-with-artifact {
+    padding-right: 0;
+  }
+}
+
+/* Print is the sheet, full stop. */
+@media print {
+  .rs-artifact-panel,
+  .rs-artifact-chip {
+    display: none !important;
+  }
+  .rs-app.rs-with-artifact {
+    padding-right: 0;
+  }
 }
 `;

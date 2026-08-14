@@ -40,6 +40,11 @@ function asLangText(v: LangText | string): LangText {
 
 export type SpecAssembleOpts = {
   readFile: (path: string) => string | null; // sync, like every other injected I/O here
+  // Directory enumeration for a recipe whose subject is a directory rather
+  // than a named file (see RecipeIO.listDir) — optional for the same reason
+  // `hooks` is: most callers (a project with no such sheet, most tests) never
+  // need it, so nothing has to hand-build a no-op just to keep compiling.
+  listDir?: (path: string) => string[] | null;
   specDir: string; // directory the spec's relative paths resolve against (specDirOf())
   // How a spec-relative path is recorded in the model. Defaults to an absolute
   // path; the CLI passes a CWD-relative one so a committed input.json does not
@@ -89,6 +94,7 @@ export function assembleFromSpecWithReport(
 
   const baseIo = {
     readFile: opts.readFile,
+    listDir: opts.listDir,
     specDir: opts.specDir,
     resolve: resolvePathOpt,
     extractOptions,

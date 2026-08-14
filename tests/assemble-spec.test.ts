@@ -5,6 +5,8 @@
 // cover, without leaving the spec.
 
 import { describe, it, expect, beforeEach } from "bun:test";
+import { readdirSync } from "fs";
+import { join } from "path";
 import { stubNonBuiltInProviders } from "./only-builtin-providers.js";
 import { assembleFromSpec, buildFromSpecFile } from "../src/assemble-spec";
 import { loadBuildSpec } from "../src/spec";
@@ -375,5 +377,93 @@ sheets:
     const map: Record<string, string> = { [SPEC_PATH_4]: specYaml };
     const readFile = (p: string): string | null => map[p] ?? null;
     expect(() => loadBuildSpec(SPEC_PATH_4, { readFile })).toThrow(/local/);
+  });
+});
+
+// A recipe standing in for one whose SUBJECT is a directory (a Terraform
+// module's *.tf, an Ansible role's tasks/) rather than one named file — the
+// case RecipeIO.listDir exists for. Reports what it saw as embedded params so
+// the test can assert on the assembled model, the same style every other
+// fixture recipe in this file uses.
+const listDirFixtureRecipe: SheetRecipe = {
+  name: "listdir-fixture",
+  schema: { type: "object", required: ["dir"], properties: { dir: { type: "string" } } },
+  load(sheetSpec, io: RecipeIO): SheetInputs {
+    const dir = io.resolve(String(sheetSpec.dir));
+    const entries = io.listDir?.(dir) ?? null;
+    const missing = io.listDir?.(`${dir}-does-not-exist`) ?? null;
+    return {
+      name: String(sheetSpec.name),
+      instances: io.instances,
+      layers: [{ kind: "base", entries: new Map() }],
+      embedded: [
+        { key: "entries", value: JSON.stringify(entries === null ? null : [...entries].sort()), source: { file: dir, line: 1 } },
+        { key: "missing", value: JSON.stringify(missing), source: { file: dir, line: 2 } },
+      ],
+    };
+  },
+};
+registerRecipe(listDirFixtureRecipe);
+
+describe("RecipeIO.listDir — a recipe whose subject is a directory", () => {
+  // specDir points at a REAL, already-committed fixture directory (not the
+  // in-memory readFile map every other test in this file uses) precisely so
+  // io.listDir hits actual readdirSync — this is meant to catch a wiring bug
+  // an in-memory stand-in couldn't.
+  const FIXTURE_DIR = join(import.meta.dir, "fixtures", "artifact-rows");
+  const SPEC_PATH = "/listdir/build.yml";
+  const PROJECT_PATH = "/listdir/sheet.yml";
+
+  const specYaml = [
+    "version: 1",
+    "instances: [prod]",
+    "enrich:",
+    "  project: sheet.yml",
+    "sheets:",
+    "  - name: dir-sheet",
+    "    recipe: listdir-fixture",
+    '    dir: "."',
+  ].join("\n");
+  const projectYaml = [
+    "params:",
+    "  entries:",
+    "    category: Files",
+    "    description: directory entries seen by the recipe",
+    "  missing:",
+    "    category: Files",
+    "    description: probe of a directory that does not exist",
+  ].join("\n");
+  const map: Record<string, string> = { [SPEC_PATH]: specYaml, [PROJECT_PATH]: projectYaml };
+  const readFile = (p: string): string | null => map[p] ?? null;
+  // The real implementation (mirrors what src/cli.ts wires up): readdirSync
+  // throws on both a missing path and a non-directory one, so one catch
+  // covers both "not there" cases the contract asks for.
+  const listDir = (path: string): string[] | null => {
+    try {
+      return readdirSync(path);
+    } catch {
+      return null;
+    }
+  };
+
+  it("sees a real fixture directory's entries; a missing directory yields null", () => {
+    const spec = loadBuildSpec(SPEC_PATH, { readFile });
+    const input = assembleFromSpec(spec, { readFile, listDir, specDir: FIXTURE_DIR });
+
+    const all = params(input);
+    const entries = all.find((p) => p.key === "entries") as SimpleParameter;
+    expect(JSON.parse(String(entries.value))).toEqual(["app.conf.j2", "defaults.yml", "rendered.conf"]);
+    const missing = all.find((p) => p.key === "missing") as SimpleParameter;
+    expect(JSON.parse(String(missing.value))).toBeNull();
+  });
+
+  it("a caller that hands in no listDir at all leaves io.listDir undefined, not throwing", () => {
+    const spec = loadBuildSpec(SPEC_PATH, { readFile });
+    // No `listDir` in opts — the field is optional (RecipeIO.listDir?), so a
+    // caller that never constructs one (an out-of-tree recipe user, most
+    // existing tests) keeps compiling and behaves as "directory unavailable".
+    const input = assembleFromSpec(spec, { readFile, specDir: FIXTURE_DIR });
+    const all = params(input);
+    expect(JSON.parse(String(all.find((p) => p.key === "entries")?.value))).toBeNull();
   });
 });

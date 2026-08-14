@@ -70,7 +70,8 @@ import {
   type StructuralSplit,
 } from "../keytransform.js";
 import { compileSubstitution, bindReferences, type ReferenceSite } from "../substitution.js";
-import type { LangText } from "../types.js";
+import { previewFile, previewId, addLineKey, type LineKeys } from "../preview.js";
+import type { ArtifactPreview, LangText } from "../types.js";
 
 export type SourceSpec = { path: string; format?: Format; key?: KeyTransform };
 
@@ -553,9 +554,28 @@ function buildEmbeddedFromStaticFiles(
   baseMap: ExtractedMap,
   overlayLayers: Extract<ValueLayer, { kind: "overlay" }>[],
   warn: (message: string) => void,
+  sheetName: string,
   component?: ComponentDeriver
-): { embedded: EmbeddedEntry[]; keyMap: KeyMapEntry[]; referenceSites: ReferenceSite[]; componentOf: Map<string, string> } {
+): {
+  embedded: EmbeddedEntry[];
+  keyMap: KeyMapEntry[];
+  referenceSites: ReferenceSite[];
+  componentOf: Map<string, string>;
+  artifacts: ArtifactPreview[];
+} {
   const embedded: EmbeddedEntry[] = [];
+  // A static file needs no rendering: it is committed, and what it says IS what
+  // the sheet reviews. So its preview is the file, verbatim, with the rows it
+  // produced marked on their own lines — the same panel the ansible recipe
+  // fills by rendering a template, filled here by reading.
+  //
+  // Only `static_files`, deliberately. A `defaults`/`overlays` file is SHARED
+  // (an Ansible group_vars file holds every role's variables, which is why
+  // `include:`/`exclude:` exists at all), so putting one whole into a document
+  // that gets circulated would hand on rows the sheet deliberately filtered
+  // out. A static file is the sheet's own subject; there is nothing else in it.
+  const artifacts: ArtifactPreview[] = [];
+
   const keyMap: KeyMapEntry[] = [];
   // Variable -> the component of the file whose row it was merged into. A
   // whole-value merge does not keep the static file's entry: the BASE-layer row
@@ -660,6 +680,28 @@ function buildEmbeddedFromStaticFiles(
       }
     }
 
+    // The file itself, for the context panel. `previewFile` (src/preview.ts)
+    // owns the size gate and the verbatim-line mechanics; refusal is loud
+    // (`warn`) rather than a silent truncation — losing something quietly is
+    // the one thing this project does not do.
+    //
+    // BEFORE the substitution branch below, and from `fileEntries` rather than
+    // whatever that branch produces. Sitting after it, this ran only for a file
+    // that declared `substitution:` — every other static file was silently
+    // previewless, which is three of a real project's six such sheets. And
+    // `fileEntries` is the right source either way: a substitution merge
+    // RENAMES a row onto the variable that composes it, and the line the reader
+    // wants is still the one this file writes.
+    const keys: LineKeys = new Map();
+    for (const e of fileEntries) addLineKey(keys, e.source.line, e.key);
+    const preview = previewFile(
+      { id: previewId(sheetName, sf.component), sheet: sheetName, ...(sf.component !== undefined ? { component: sf.component } : {}), source_file: file },
+      content,
+      keys,
+      warn
+    );
+    if (preview) artifacts.push(preview);
+
     if (!sf.substitution) {
       embedded.push(...fileEntries);
       continue;
@@ -698,6 +740,7 @@ function buildEmbeddedFromStaticFiles(
     mergedTotal += result.tally.merged;
     composedTotal += result.tally.composed;
     danglingTotal += result.tally.dangling + result.tally.danglingComposed;
+
   }
 
   // One summary line for the whole sheet, not one per file — a reader wants
@@ -709,7 +752,7 @@ function buildEmbeddedFromStaticFiles(
   }
 
   const referenceSites: ReferenceSite[] = [...referenceSitesByVariable].map(([variable, sites]) => ({ variable, sites }));
-  return { embedded, keyMap, referenceSites, componentOf };
+  return { embedded, keyMap, referenceSites, componentOf, artifacts };
 }
 
 export const layeredRecipe: SheetRecipe = {
@@ -831,6 +874,7 @@ export const layeredRecipe: SheetRecipe = {
       baseMap,
       overlayLayers,
       warn,
+      name,
       componentDeriver
     );
 
@@ -879,6 +923,7 @@ export const layeredRecipe: SheetRecipe = {
       })(),
       ...(staticFilesResult.keyMap.length > 0 ? { keyMap: staticFilesResult.keyMap } : {}),
       ...(staticFilesResult.referenceSites.length > 0 ? { referenceSites: staticFilesResult.referenceSites } : {}),
+      ...(staticFilesResult.artifacts.length > 0 ? { artifacts: staticFilesResult.artifacts } : {}),
     };
   },
 };

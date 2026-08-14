@@ -47,12 +47,31 @@ const PURE_FILTERS: Record<string, (s: string) => string> = {
   trim: (s) => s.trim(),
 };
 
+// A quoted STRING LITERAL as the whole expression: `{{ 'text' }}`. Jinja emits
+// the string, so rendering it is exact rather than a guess — the same standard
+// the pure filters meet. Anchored on the quotes, not on the braces, because the
+// literal a template most often writes is a doubled brace it wants to show
+// LITERALLY (`{{ '{{ var }}' }}` in a comment explaining the templating), and a
+// brace-anchored pattern stops at the inner `}}`.
+const STRING_LITERAL = /\{\{-?\s*'((?:[^'\\]|\\.)*)'\s*-?\}\}|\{\{-?\s*"((?:[^"\\]|\\.)*)"\s*-?\}\}/g;
+
 export function substituteJinja(
   text: string,
   lookup: (name: string) => string | undefined
 ): { text: string; unresolved: string[] } {
   const unresolved: string[] = [];
-  const out = text.replace(/\{\{-?\s*([A-Za-z_][\w.]*)((?:\s*\|\s*[a-z_]+)*)\s*-?\}\}/g, (whole, name: string, filters: string) => {
+  // Literals are held as placeholders until the very end. Their OUTPUT can
+  // contain braces — that is the whole point of writing one — and the sweep
+  // below would then report the braces this function legitimately produced,
+  // bouncing a line that rendered perfectly into "could not compute".
+  const literals: string[] = [];
+  const withLiterals = text.replace(STRING_LITERAL, (_m, single: string | undefined, double: string | undefined) => {
+    literals.push(single ?? double ?? "");
+    return `\u0000RsJlit${literals.length - 1}\u0000`;
+  });
+  const restoreLiterals = (v: string): string =>
+    literals.length === 0 ? v : v.replace(/\u0000RsJlit(\d+)\u0000/g, (_m, i: string) => literals[Number(i)]);
+  const out = withLiterals.replace(/\{\{-?\s*([A-Za-z_][\w.]*)((?:\s*\|\s*[a-z_]+)*)\s*-?\}\}/g, (whole, name: string, filters: string) => {
     const value = lookup(name);
     if (value === undefined) {
       unresolved.push(whole);
@@ -72,7 +91,7 @@ export function substituteJinja(
   // Anything still in braces was never even a plain variable reference — an
   // expression, a concatenation, a conditional. Reported the same way.
   for (const m of out.match(/\{\{[\s\S]*?\}\}/g) ?? []) if (!unresolved.includes(m)) unresolved.push(m);
-  return { text: out, unresolved };
+  return { text: restoreLiterals(out), unresolved: unresolved.map(restoreLiterals) };
 }
 
 // Mask Jinja2 syntax so a brace-structured base format (nginx/httpd/haproxy) does

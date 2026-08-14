@@ -1,0 +1,29 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "module.alb.aws_lb.this",
+      "change": {
+        "after": {
+          "name": "keycloak-alb",
+          "load_balancer_type": "application",
+          "idle_timeout": 60
+        }
+      }
+    },
+    {
+      "address": "module.alb.aws_lb_target_group.keycloak",
+      "change": {
+        "after": {
+          "name": "keycloak-tg",
+          "port": 8080,
+          "health_check": [
+            {
+              "path": "/health"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

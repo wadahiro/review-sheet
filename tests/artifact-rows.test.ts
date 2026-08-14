@@ -279,8 +279,9 @@ describe("rows: artifact renders a conditional line for the instances that have 
     expect(row.instances?.map((i) => i.name)).toEqual(["local"]);
     // Not the defaults file: the value being shown is the one local sets, and
     // that is what apply and verify have to resolve against.
-    expect(row.instances?.[0].source.file).toContain("local.yml");
-    expect(row.instances?.[0].source.substituted).toBe(true);
+    const source = row.instances![0].source!;
+    expect(source.file).toContain("local.yml");
+    expect(source.substituted).toBe(true);
   });
 
   it("leaves an unconditional row single-valued when no instance differs", () => {

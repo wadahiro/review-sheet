@@ -57,6 +57,7 @@ import type {
   SheetMetadata,
   Capabilities,
   LangText,
+  ArtifactPreview,
 } from "./types.js";
 
 // `origin: "embedded"` marks a base-layer entry whose position relative to its
@@ -142,6 +143,11 @@ export type SheetInputs = {
   instances: string[]; // ordered; value-column order
   layers: ValueLayer[]; // exactly one base; error otherwise
   embedded: EmbeddedEntry[]; // already keyed (product-side)
+  // Whole deployed files, as this sheet says they will be, for the reviewer to
+  // read a value in its place (types.ts's ArtifactPreview). Passed straight
+  // through to the model — the assembler neither reads nor merges them; the
+  // recipe that owns the template is the only thing that can render one.
+  artifacts?: ArtifactPreview[];
   // How a row of THIS sheet relates to a product dictionary's keys, when the
   // recipe knows — a Terraform plan row is `<module>.<type>.<name>.<arg>` and
   // the provider documents `<type>.<arg>`, which follows from the plan's shape
@@ -1534,6 +1540,7 @@ export function assembleSheetsWithReport(
   const assembledKeysBySheet = new Map<string, Set<string>>();
   const underKeyColumns = new Map<string, ColumnDefinition>();
   const sheets: Sheet[] = [];
+  const artifacts: ArtifactPreview[] = [];
   const materializeReports: MaterializeReport[] = [];
   const uiReports: UiReport[] = [];
   const deadComponents: string[] = [];
@@ -1794,6 +1801,7 @@ export function assembleSheetsWithReport(
       ...(si.sourceFile ? { source_file: si.sourceFile } : {}),
       categories,
     });
+    if (si.artifacts) artifacts.push(...si.artifacts);
 
     if (underKey && !underKeyColumns.has(underKey.id)) {
       underKeyColumns.set(underKey.id, {
@@ -1922,6 +1930,7 @@ export function assembleSheetsWithReport(
     ...(underKeyColumns.size > 0 ? { columns: [...underKeyColumns.values()] } : {}),
     ...(opts.capabilities ? { capabilities: opts.capabilities } : {}),
     sheets,
+    ...(artifacts.length > 0 ? { artifacts } : {}),
   };
 
   const input = opts.hooks?.finalize ? opts.hooks.finalize(assembled) : assembled;

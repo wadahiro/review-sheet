@@ -1,4 +1,6 @@
 # Rotation policy for the app's own logs.
+# Ansible managed
+# deployed from {{ template_host }}
 /var/log/app/*.log {
     daily
     rotate 30
