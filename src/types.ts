@@ -282,14 +282,31 @@ export type OutOfScope = {
 // file we author** — no `source` at all, or a `source` whose `generated` is
 // true, checked in validate.ts (findDefaultOriginErrors).
 //
+// `baseline` IS a fifth value, where the generated-artifact case above
+// deliberately was not, and the difference is what earns it the slot: a
+// generated-artifact `default` row has the SAME decider as every other
+// `default` (the product) and differs from the documented case only in which
+// evidence channel observed it — restating that in a second Origin would say
+// nothing `source.generated` does not already say. `baseline` has a DIFFERENT
+// decider (the distribution's packager, not the product) and a different
+// meaning for the row: the value is not merely undeclared by us, it is not in
+// effect ANYWHERE — no line of the deployed artifact holds it. See the
+// ansible recipe's `baseline:` (rows: artifact only) and `ParameterBase.
+// baseline` below. Like `default`, a `baseline` row never carries a `source`
+// — nothing in our files holds it, checked in validate.ts
+// (findBaselineOriginErrors) — but unlike `default` it has no evidence-channel
+// exception: a baseline row's absence from our files is the whole fact, not
+// one of two ways of expressing it.
+//
 // Optional in the model — when absent it is derived (see `effectiveOrigin` in
-// prompt.ts): `instances` present -> "overlay", else "common". `embedded` and
-// `default` must always be set explicitly; neither is ever inferred.
+// prompt.ts): `instances` present -> "overlay", else "common". `embedded`,
+// `default` and `baseline` must always be set explicitly; none of the three is
+// ever inferred.
 //
 // Origin says where a value comes from, never whether it is in review scope:
 // a `default` row is in scope like any other (that is the point of writing it
 // down), until `out_of_scope` says otherwise.
-export type Origin = "overlay" | "common" | "embedded" | "default";
+export type Origin = "overlay" | "common" | "embedded" | "default" | "baseline";
 
 export type Category = {
   // IDENTITY, not display text. It is what `sheet::category::param` is keyed by
@@ -332,6 +349,18 @@ export type ParameterBase = {
   label?: LangText;
   description?: LangText;
   default?: string;
+  // What the vendor's SHIPPED file gives this key — not `default` (what the
+  // PRODUCT documents) and genuinely not the same value: measured, a
+  // dictionary built from httpd's own branch documentation says `ServerRoot`
+  // defaults to `/usr/local/apache`, while the RHEL package compiles in
+  // `/etc/httpd`. `default` answers "what does the product say"; `baseline`
+  // answers "what did THIS DISTRIBUTION actually ship" — see the ansible
+  // recipe's `baseline:` (rows: artifact only, module doc) for how this gets
+  // filled in, and `Origin`'s comment for the `"baseline"` origin value a row
+  // gets when the vendor shipped the key and this deliverable does not have it
+  // at all (as opposed to a row we DO have, where `baseline` sits beside a
+  // real `value` for comparison).
+  baseline?: string;
   remarks?: LangText;
   // Mark a single parameter as not in review scope (same effect as the category
   // flag, at parameter granularity).

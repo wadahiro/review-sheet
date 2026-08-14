@@ -53,6 +53,12 @@ type ValueEntry = {
   outOfScopeReason?: string;
   // `origin: "default"` — the product's own default, set nowhere in our files.
   isDefault?: boolean;
+  // `origin: "baseline"` — the vendor shipped this key and this deliverable
+  // does not have it anywhere. Always skipped the same way a source-less
+  // `default` row is (see the check below), but with its own message: unlike
+  // `default`, a `baseline` row never has a `source.generated` exception, so
+  // there is nothing conditional about the skip.
+  isBaseline?: boolean;
 };
 
 // Collect every concrete value (simple value + each Pattern B instance) with
@@ -106,6 +112,7 @@ function collectValues(data: SheetData): ValueEntry[] {
               outOfScope: pOOS !== undefined,
               outOfScopeReason: pOOS?.reason,
               isDefault: p.origin === "default",
+              isBaseline: p.origin === "baseline",
             });
           }
           pushAdditional(undefined);
@@ -118,6 +125,7 @@ function collectValues(data: SheetData): ValueEntry[] {
             outOfScope: pOOS !== undefined,
             outOfScopeReason: pOOS?.reason,
             isDefault: p.origin === "default",
+            isBaseline: p.origin === "baseline",
           });
           // The same value defined in extra files (additional_sources): each
           // non-ref entry is verified against the same expected value; a ref
@@ -162,6 +170,21 @@ export function verifySources(data: SheetData, readFile: ReadFile, opts?: Extrac
     // circuits here.
     if (entry.isDefault && !entry.source) {
       checks.push({ target: entry.target, status: "default", message: "product default — nothing set, no source expected" });
+      continue;
+    }
+    // `baseline` rows never carry a source at all (checked in validate.ts's
+    // findBaselineOriginErrors) — the vendor shipped this key and this
+    // deliverable does not have it anywhere, so — unlike `default` — there is
+    // no evidence-channel exception to fall through for. Counted in the same
+    // "default" bucket `default` origin rows use (see VerifyOutcome.default):
+    // both mean "nothing to resolve, and that is expected", which is exactly
+    // what that bucket exists to say without inflating "unmapped".
+    if (entry.isBaseline) {
+      checks.push({
+        target: entry.target,
+        status: "default",
+        message: "vendor shipped this — not present in this deliverable, no source expected",
+      });
       continue;
     }
     const file = entry.source?.file ?? entry.fileFallback;

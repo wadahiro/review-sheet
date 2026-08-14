@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+# Derived from vendor.conf: ServerRoot kept as shipped, Listen changed to the
+# project's port, KeepAlive commented out (removed here), ExtraDirective is
+# new and the vendor never shipped it.
+ServerRoot "/etc/httpd"
+Listen {{ app_port }}
+ExtraDirective on

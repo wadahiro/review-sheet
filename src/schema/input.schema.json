@@ -128,9 +128,10 @@
         "key": { "type": "string" },
         "description": { "$ref": "#/$defs/langText" },
         "default": { "type": "string" },
+        "baseline": { "type": "string" },
         "remarks": { "$ref": "#/$defs/langText" },
         "out_of_scope": { "$ref": "#/$defs/outOfScope" },
-        "origin": { "type": "string", "enum": ["overlay", "common", "embedded", "default"] },
+        "origin": { "type": "string", "enum": ["overlay", "common", "embedded", "default", "baseline"] },
         "value": { "type": "string" },
         "source": { "$ref": "#/$defs/source" },
         "additional_sources": {

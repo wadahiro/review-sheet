@@ -14,6 +14,7 @@ import {
   HELD_REASON_GENERATED,
   HELD_REASON_SUBSTITUTED,
   HELD_REASON_DEFAULT,
+  HELD_REASON_BASELINE,
   HELD_REASON_SHARED_INSTANCE,
   type SheetData,
   type ReviewItem,
@@ -126,8 +127,17 @@ export function computeApply(
       // One environment, but the row stores a single shared value: refuse before
       // any parser is dispatched. `res.file` here is the SHARED definition (or
       // the sheet's display fallback), which must not be edited to satisfy one
-      // environment — reported as context, never opened.
-      if (r.target.instance && entry && entry.param.instances === undefined && entry.param.origin !== "default") {
+      // environment — reported as context, never opened. `default`/`baseline`
+      // rows are excluded here for the same reason: both fall through to the
+      // origin check below instead, which reports the more specific "there is
+      // no line at all" fact rather than the "wrong scope" one.
+      if (
+        r.target.instance &&
+        entry &&
+        entry.param.instances === undefined &&
+        entry.param.origin !== "default" &&
+        entry.param.origin !== "baseline"
+      ) {
         results.push({
           target: r.target,
           file: res.file,
@@ -145,12 +155,17 @@ export function computeApply(
       // must not tempt the editor into one — applying the change means adding
       // the setting, which is a judgement call left to the AI prompt. Checked
       // before the per-target loop for that reason.
-      if (entry?.param.origin === "default") {
+      //
+      // `origin: "baseline"` holds for the same reason (no line, anywhere, to
+      // rewrite) — the vendor shipped this key and this deliverable does not
+      // have it — with its own held reason so the AI prompt says which of the
+      // two facts it is.
+      if (entry?.param.origin === "default" || entry?.param.origin === "baseline") {
         results.push({
           target: r.target,
           file: entry.fileFallback,
           status: "held",
-          reason: HELD_REASON_DEFAULT,
+          reason: entry.param.origin === "baseline" ? HELD_REASON_BASELINE : HELD_REASON_DEFAULT,
           current,
           suggested: c.suggested,
         });
