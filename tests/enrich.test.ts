@@ -322,8 +322,8 @@ describe("enrich: EnrichOptions.variables (argument_specs.yml reachable after a 
   });
 });
 
-// T5: the missing-description strict failure is the SECOND round of the PoC's
-// discovered scaffold workflow (assemble.test.ts covers the first — no
+// T5: the missing-description strict failure is the SECOND round of a real
+// project's discovered scaffold workflow (assemble.test.ts covers the first — no
 // category). Unlike that one, a key here is already filed under a category,
 // so the scaffold only needs to add `description:`.
 describe("scaffold: missing-description strict failure", () => {

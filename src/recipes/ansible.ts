@@ -89,9 +89,9 @@
 // single `template:`) — see the "baseline" block below for why.
 
 import { extractFile } from "../extract.js";
-import { resolveParser } from "../parser.js";
+import { resolveParser, getParser, listParsers } from "../parser.js";
 import type { Entry } from "../parser.js";
-import { structuredFormat } from "../structural.js";
+import { structuredFormat, STRUCTURED_FORMATS } from "../structural.js";
 import {
   baseFileName,
   jinjaVariables,
@@ -140,6 +140,9 @@ const schema = {
     // belonged to would be a guess.
     template: { type: "string" },
     deployed_path: { type: "string" },
+    // The DEPLOYED artifact's format, when no name can say it — the singular
+    // form of `templates[].format` below. See formatOf.
+    format: { type: "string" },
     templates: {
       type: "array",
       minItems: 1,
@@ -153,6 +156,10 @@ const schema = {
           // (keycloak.conf.j2 -> keycloak.conf), which is what a reviewer calls
           // the artifact. Override when that is not the name they use.
           component: { type: "string" },
+          // Which parser reads the deployed artifact, when neither the
+          // template's name nor its deployed path can say. Same field and same
+          // meaning as `static_files[].format`. See formatOf.
+          format: { type: "string" },
         },
         additionalProperties: false,
       },
@@ -228,18 +235,42 @@ function productKeyOf(entry: Entry, structured: boolean): string {
 // because a sheet covering several artifacts must be able to say which row came
 // from which, and because two of them routinely share a row key (two systemd
 // units both have Unit.Description).
-type TemplateSpec = { path: string; deployedPath?: string; component?: string };
+type TemplateSpec = { path: string; deployedPath?: string; component?: string; format?: string };
 
 // A template's format is the DEPLOYED artifact's format. The template's own
 // name is normally a good proxy (`keycloak.conf.j2` -> `.conf`... which is
 // exactly where the proxy fails: a bare `.conf` is claimed by nothing, while
-// the path it lands at, `/etc/systemd/journald.conf.d/iam-platform.conf`, is
+// the path it lands at, `/etc/systemd/journald.conf.d/app.conf`, is
 // unambiguous). Consulted only when the template name yields nothing, so no
 // existing sheet changes parser.
-function formatOf(spec: TemplateSpec): string | undefined {
+function inferredFormat(spec: TemplateSpec): string | undefined {
   if (structuredFormat(baseFileName(spec.path)) !== null) return undefined;
   const deployed = spec.deployedPath === undefined ? null : structuredFormat(spec.deployedPath);
   return deployed === null ? undefined : deployed;
+}
+
+// …and when no name can say it, the spec does. `space` (sshd_config's
+// `Key value` grammar) is the case that forces this: it is deliberately
+// force-only — nothing about a file's name or content distinguishes it from
+// prose — so a template deploying one is read by the `generic` fallback, which
+// finds no `=` and yields NO ROWS. The variable behind a line is then rescued
+// as a plain variable row and a line with no variable in it disappears with
+// nothing said, which is the one outcome this tool exists to prevent.
+//
+// Same field, same meaning as `static_files[].format` — a template is not a
+// different kind of file for having `.j2` on the end.
+function formatOf(spec: TemplateSpec): string | undefined {
+  return spec.format ?? inferredFormat(spec);
+}
+
+// Whether rows from this template are addressed by a structural PATH. A
+// declared format answers for itself; it must NOT make a line-oriented format
+// (`space`, `properties`) claim a path it has no notion of, which is what
+// asking "did formatOf return anything" would have done.
+function isStructured(spec: TemplateSpec, templateFile: string): boolean {
+  if (structuredFormat(baseFileName(templateFile)) !== null) return true;
+  const f = formatOf(spec);
+  return f !== undefined && STRUCTURED_FORMATS.has(f);
 }
 
 function templateSpecs(sheetSpec: Record<string, JsonValue>, name: string): TemplateSpec[] {
@@ -259,10 +290,25 @@ function templateSpecs(sheetSpec: Record<string, JsonValue>, name: string): Temp
         ...(sheetSpec.deployed_path !== undefined
           ? { deployedPath: asString(sheetSpec.deployed_path, "deployed_path") }
           : {}),
+        ...(sheetSpec.format !== undefined ? { format: checkedFormat(sheetSpec.format, name, "format") } : {}),
       },
     ];
   }
-  if (many === undefined) return [];
+  if (many === undefined) {
+    if (sheetSpec.format !== undefined) {
+      throw new Error(
+        `ansible recipe: sheet "${name}" declares "format" with no "template" — a format says how to read a ` +
+          `template's deployed artifact, and this sheet has none. Did you mean static_files[].format?`
+      );
+    }
+    return [];
+  }
+  if (sheetSpec.format !== undefined) {
+    throw new Error(
+      `ansible recipe: sheet "${name}" declares a sheet-wide "format" alongside "templates" — each template ` +
+        `deploys a different artifact, so declare format inside each entry.`
+    );
+  }
   if (sheetSpec.deployed_path !== undefined) {
     throw new Error(
       `ansible recipe: sheet "${name}" declares a sheet-wide "deployed_path" alongside "templates" — ` +
@@ -278,8 +324,22 @@ function templateSpecs(sheetSpec: Record<string, JsonValue>, name: string): Temp
       // app.conf.j2 -> app.conf: the artifact's own name, which is what a
       // reviewer calls it.
       component: t.component !== undefined ? asString(t.component, "templates[].component") : baseFileName(path).split("/").pop()!,
+      ...(t.format !== undefined ? { format: checkedFormat(t.format, name, "templates[].format") } : {}),
     };
   });
+}
+
+// A format that names no parser is a typo, and a typo that fell through to
+// auto-detection would look like the feature simply not working — the format
+// was declared precisely because detection does not reach this file.
+function checkedFormat(raw: JsonValue, sheet: string, where: string): string {
+  const format = asString(raw, where);
+  if (getParser(format) !== undefined) return format;
+  const known = listParsers()
+    .map((p) => p.name)
+    .sort()
+    .join(", ");
+  throw new Error(`ansible recipe: sheet "${sheet}" ${where}: no parser named "${format}" — known formats: ${known}`);
 }
 
 function readRequired(io: RecipeIO, path: string, what: string): { file: string; content: string } {
@@ -441,9 +501,9 @@ export const ansibleRecipe: SheetRecipe = {
           spec,
           file: t.file,
           // Format from the DEPLOYED path when the template's own name cannot
-          // answer: `journald-iam-platform.conf.j2` is a bare `.conf`, which is
+          // answer: `journald-app.conf.j2` is a bare `.conf`, which is
           // far too common a suffix to claim, while the artifact it becomes —
-          // `/etc/systemd/journald.conf.d/iam-platform.conf` — says exactly
+          // `/etc/systemd/journald.conf.d/app.conf` — says exactly
           // what it is. The template name stays the SOURCE either way; only the
           // parser choice moves.
           content: t.content,
@@ -454,9 +514,34 @@ export const ansibleRecipe: SheetRecipe = {
           // A `.j2` resolves to its base format by name (realm-corp.json.j2 ->
           // .json), which is also what decides whether a row's identity is its
           // path or its leaf — see productKeyOf.
-          structured: structuredFormat(baseFileName(t.file)) !== null || formatOf(spec) !== undefined,
+          structured: isStructured(spec, t.file),
         };
       });
+
+      // A template that yielded NOTHING is reported, always. It is not a
+      // sheet-shaped statement — "this artifact has no settings" — it is the
+      // shape of a template no parser could read: the artifact falls to the
+      // `generic` fallback, which finds no `=`/`:`, and every literal line
+      // disappears while every variable-backed one comes back as a plain
+      // variable row. A sheet of nothing but such lines used to build clean and
+      // EMPTY, reporting `0 ok, 0 warn, 0 error` over a review document with no
+      // rows in it — the one outcome this tool exists to prevent, reached
+      // without a single message.
+      //
+      // A warning rather than an error: a template really can be all comments,
+      // or all `{% if %}` lines that render in no instance (each of which
+      // already says so on its own line). Naming the format that WAS used is
+      // what turns this from "odd" into a one-line fix, since the answer is
+      // almost always `format:`.
+      for (const r of read) {
+        if (r.entries.length > 0) continue;
+        const used = formatOf(r.spec) ?? resolveParser(baseFileName(r.file), r.content)?.name ?? "generic";
+        console.warn(
+          `ansible recipe: sheet "${name}": ${r.spec.path} produced no rows — it was read as "${used}". ` +
+            `If that is the wrong format for what it deploys, declare the right one ` +
+            `(templates[].format / format:); a force-only format like "space" is never detected.`
+        );
+      }
 
       if (specs.length === 1) {
         const only = read[0];

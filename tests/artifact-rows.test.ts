@@ -400,3 +400,136 @@ describe("rows: artifact refuses an ambiguous under_key across components", () =
     expect(byBound.get("Service.Environment[1]")).toBe("app_extra_env");
   });
 });
+
+// A template whose deployed artifact is in a FORCE-ONLY format.
+//
+// `space` (sshd_config's `Key value` grammar) is deliberately never
+// auto-detected — nothing about a file's name or content separates it from
+// prose — so a template deploying one fell through to the `generic` fallback,
+// which looks for `=`/`:`, finds none, and yields NO ROWS. The variable behind
+// a line was then rescued as a plain variable row, and a line with no variable
+// in it vanished with nothing said at all. Neither `templates:` nor `template:`
+// had any way to say which parser to use, though `static_files:` did.
+const SPACE_DIR = resolve(import.meta.dir, "fixtures/artifact-rows-space");
+const spaceIo: RecipeIO = { ...io, specDir: SPACE_DIR, resolve: (p) => resolve(SPACE_DIR, p.split("/").pop()!) };
+
+function spaceSheet(spec: Record<string, unknown>) {
+  const r = getRecipe("ansible");
+  if (!r) throw new Error("ansible recipe is not registered");
+  return r.load({ name: "os", recipe: "ansible", rows: "artifact", defaults: "defaults.yml", ...spec } as never, spaceIo);
+}
+
+describe("templates: format", () => {
+  it("yields no rows at all without it — the failure this closes", () => {
+    const si = spaceSheet({
+      templates: [{ path: "sshd_config.j2", component: "sshd_config", deployed_path: "/etc/ssh/sshd_config" }],
+    });
+    expect(si.embedded.map((e) => e.key)).toEqual([]);
+  });
+
+  it("reads the artifact with the declared parser", () => {
+    const si = spaceSheet({
+      templates: [
+        { path: "sshd_config.j2", component: "sshd_config", deployed_path: "/etc/ssh/sshd_config", format: "space" },
+      ],
+    });
+    expect(si.embedded.map((e) => `${e.key}=${e.value}`)).toEqual([
+      "PermitRootLogin=no",
+      // The line no variable renders — the one that used to disappear without
+      // a warning, which is the loss this whole axis exists to prevent.
+      "PasswordAuthentication=no",
+    ]);
+  });
+
+  it("keeps the variable behind the line", () => {
+    const si = spaceSheet({
+      templates: [
+        { path: "sshd_config.j2", component: "sshd_config", deployed_path: "/etc/ssh/sshd_config", format: "space" },
+      ],
+    });
+    expect(new Map((si.keyMap ?? []).map((m) => [m.boundKey, m.variable])).get("PermitRootLogin")).toBe(
+      "app_permit_root_login"
+    );
+  });
+
+  it("works on the singular template: too", () => {
+    const si = spaceSheet({ template: "sshd_config.j2", deployed_path: "/etc/ssh/sshd_config", format: "space" });
+    expect([...si.layers.find((l) => l.kind === "base")!.entries.keys()]).toContain("PermitRootLogin");
+  });
+
+  // A line-oriented format must not start claiming a structural path it has no
+  // notion of, which is what "did a format resolve at all" would have implied.
+  // Asserted on the LITERAL row, whose source is the template itself — the
+  // other row's source is the variable's definition site in a YAML file, which
+  // legitimately has a path of its own.
+  it("does not make a line format structural", () => {
+    const si = spaceSheet({
+      templates: [
+        { path: "sshd_config.j2", component: "sshd_config", deployed_path: "/etc/ssh/sshd_config", format: "space" },
+      ],
+    });
+    const literal = si.embedded.find((e) => e.key === "PasswordAuthentication")!;
+    expect(literal.source?.file).toContain("sshd_config.j2");
+    expect(literal.source?.path).toBeUndefined();
+    // …and it is still locatable, by the line + anchor a line format uses.
+    expect(literal.source?.anchor).toBe("PasswordAuthentication ");
+  });
+
+  it("rejects a format that names no parser, listing the ones that do", () => {
+    expect(() =>
+      spaceSheet({ templates: [{ path: "sshd_config.j2", component: "sshd_config", format: "spaces" }] })
+    ).toThrow(/no parser named "spaces".*space/s);
+  });
+
+  it("rejects a sheet-wide format beside templates:", () => {
+    expect(() => spaceSheet({ format: "space", templates: [{ path: "sshd_config.j2" }] })).toThrow(
+      /sheet-wide "format" alongside "templates"/
+    );
+  });
+
+  it("rejects a format with no template at all", () => {
+    expect(() => spaceSheet({ format: "space" })).toThrow(/declares "format" with no "template"/);
+  });
+});
+
+// A template that produced nothing is reported, whatever the reason.
+//
+// This is the guard the `format:` gap needed and did not have: a sheet whose
+// only artifact was unreadable built clean and EMPTY, `0 ok, 0 warn, 0 error`
+// over a document with no rows in it. Found by a user, not by the tool, which
+// is the wrong way round for the one failure this axis exists to prevent.
+describe("a template that yields no rows says so", () => {
+  it("warns, naming the file and the format it was read as", () => {
+    const warnings: string[] = [];
+    const real = console.warn;
+    console.warn = (...a: unknown[]) => void warnings.push(a.join(" "));
+    try {
+      spaceSheet({
+        templates: [{ path: "sshd_config.j2", component: "sshd_config", deployed_path: "/etc/ssh/sshd_config" }],
+      });
+    } finally {
+      console.warn = real;
+    }
+    const hit = warnings.find((w) => w.includes("produced no rows"));
+    expect(hit).toBeDefined();
+    expect(hit).toContain("sshd_config.j2");
+    expect(hit).toContain('read as "generic"');
+    expect(hit).toContain("format");
+  });
+
+  it("says nothing once the format is declared", () => {
+    const warnings: string[] = [];
+    const real = console.warn;
+    console.warn = (...a: unknown[]) => void warnings.push(a.join(" "));
+    try {
+      spaceSheet({
+        templates: [
+          { path: "sshd_config.j2", component: "sshd_config", deployed_path: "/etc/ssh/sshd_config", format: "space" },
+        ],
+      });
+    } finally {
+      console.warn = real;
+    }
+    expect(warnings.filter((w) => w.includes("produced no rows"))).toEqual([]);
+  });
+});

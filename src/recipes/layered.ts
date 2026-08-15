@@ -26,9 +26,9 @@
 // override is only across DECLARED sources — a collision produced by ONE
 // file's own extraction (two entries from the same extractFile() call
 // landing on the same key) is never intentional and is a hard error instead
-// (see buildMapFromSources's own doc comment below and the PoC's fedlens
-// spec, which hit exactly this with TOML's [[oidc]]/[[saml]] both having a
-// bare `base_url` leaf).
+// (see buildMapFromSources's own doc comment below and the `fedlens` spec,
+// which hit exactly this with TOML's [[oidc]]/[[saml]] both having a bare
+// `base_url` leaf).
 //
 // Each source may also declare a `key` transform (src/keytransform.ts): a
 // declarative rename/filter chain applied to every entry that file yields,

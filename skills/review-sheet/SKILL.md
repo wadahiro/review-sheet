@@ -531,9 +531,9 @@ boundary and changes how `apply` treats it (an embedded value has no
 
 **Fixing a `defaults`/`overlays` collision**: give that source a per-file
 `key` transform (`from: path`) that folds enough of the structural path into
-the key to keep the colliding entries apart. A real example — the PoC's
-`fedlens` spec, where TOML's `[[oidc]]` and `[[saml]]` both have a bare
-`base_url` leaf:
+the key to keep the colliding entries apart. A real example — the `fedlens`
+spec, where TOML's `[[oidc]]` and `[[saml]]` both have a bare `base_url`
+leaf:
 
 ```yaml
 defaults:
@@ -594,6 +594,30 @@ structural path (`IfModule.StartServers`, `ProxyPass[1]` — the way the FILE
 addresses it, which is also the only spelling that keeps two `<IfModule>` blocks
 apart), valued at the line's text with each `{{ var }}` resolved, and with the
 variable moved to the `under_key` column that already exists for it.
+
+**`format:` when no name can say what the artifact is.** A template's format is
+its DEPLOYED artifact's format, read from the template's own name and, failing
+that, from `deployed_path`. Some formats no name can reach: `space`
+(sshd_config's `Key value` grammar) is force-only by design, because nothing
+about a file's name or content separates it from prose. Declare it — the same
+field, spelled the same way, as `static_files[].format`:
+
+```yaml
+templates:
+  - path: ../../roles/sso/templates/sshd_config.j2
+    component: sshd_config
+    deployed_path: /etc/ssh/sshd_config
+    format: space
+```
+
+Without it the artifact falls to the `generic` parser, which looks for `=`/`:`,
+finds none, and yields NO ROWS — the variable behind a line is rescued as a
+plain variable row and a line with no variable in it disappears with nothing
+said. A sheet of nothing but such lines builds clean and empty:
+`verify: 0 ok, 0 warn, 0 error`. On the singular `template:`, declare `format:`
+beside `deployed_path:` at the sheet level; declaring it there alongside
+`templates:` is an error, since each entry deploys a different artifact. A
+format naming no parser fails the build, listing the ones that exist.
 
 **Only a plain `{{ var }}` and the pure filters (`lower`/`upper`/`trim`) are
 substituted.** This is deliberately not a Jinja2 implementation: an expression,

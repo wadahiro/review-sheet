@@ -283,7 +283,7 @@ function walkAttrs(content: string, visit: (segs: Seg[], attr: Attr) => void): v
 // INCLUDING the ones `hclIndex` drops because their value is an interpolation,
 // a reference or an expression rather than a literal.
 //
-// That exclusion is right for EXTRACTION: `"iam-platform-${var.environment}-"`
+// That exclusion is right for EXTRACTION: `"app-${var.environment}-"`
 // is not a value, and a sheet claiming it as one would be lying. It is wrong
 // for anything that needs to know WHERE an attribute is written — showing a
 // reviewer the line their row corresponds to needs no value at all. Measured on

@@ -242,8 +242,8 @@ function renderScaffoldParam(e: ScaffoldEntry, indent: string): string[] {
 // Render a paste-able sheet.yml fragment from a strict-failure's entries, in
 // the order the build encountered them (sheet order — see each throw site).
 // Every value is a placeholder ("TODO"): renderScaffold's job is to save the
-// "which exact keys, spelled how" transcription step the PoC workaround did
-// by hand, not to guess documentation on the author's behalf.
+// "which exact keys, spelled how" transcription step a real project's
+// workaround did by hand, not to guess documentation on the author's behalf.
 //
 // `shape` is decided by the caller (scaffoldShapeFor, at the throw site,
 // where the target file's own doc — or its absence — is in scope) and is NOT

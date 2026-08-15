@@ -12,8 +12,8 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 // -> paste -> rebuild loop stays honest, the same way bind-report-cli.test.ts
 // covers --bind-report end to end.
 //
-// tests/fixtures/scaffold-cli/ starts with an EMPTY params: (the PoC's own
-// starting point) and three base keys (ghost_one/two/three) with no dictionary
+// tests/fixtures/scaffold-cli/ starts with an EMPTY params: (a real project's
+// own starting point) and three base keys (ghost_one/two/three) with no dictionary
 // declared at all, so the very first `import --spec` run trips assemble.ts's
 // unconditional "no category" check.
 

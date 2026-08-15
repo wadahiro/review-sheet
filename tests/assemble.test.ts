@@ -530,7 +530,7 @@ describe("SheetInputs.authoredKeys: demoting layer-derived rows to origin: defau
 
 // The counterpart to the strict-metadata gate: that one catches a parameter with
 // no description, this one catches a description with no parameter. A recipe's
-// normalization filter that matches nothing (the PoC's case: filtering on
+// normalization filter that matches nothing (a real project's case: filtering on
 // `Entry.key`, the leaf name, when the address lives in `Entry.source.path`)
 // removes rows with no other symptom — the sheet is simply shorter.
 describe("assembleSheetsWithReport — project metadata that no sheet used", () => {
@@ -924,7 +924,7 @@ params: {}
     });
 
     // Three keys with no project category and no dictionary counterpart at
-    // all (no `dictionaries:` declared) — the exact shape of the PoC's T5
+    // all (no `dictionaries:` declared) — the exact shape of a real project's T5
     // static_files fallout (long structural-path keys nobody wrote down yet).
     const inputs: SheetInputs[] = [
       {
@@ -960,7 +960,7 @@ params: {}
     expect(Object.keys(parsed.params).sort()).toEqual(["kc_aws_endpoint_url", "kc_db_secret_name", "kc_db_secret_region"]);
 
     // Paste it in — replace the empty params: {} with the generated block,
-    // same as the PoC anecdote's starting point.
+    // same as the anecdote's starting point.
     scaffoldFiles["scaffold-project.yml"] = scaffold;
 
     // Rebuild: no further manual edits — the build now passes outright.

@@ -24,7 +24,7 @@
 //   - Bulk apply: once a category is picked for one entry, offer to apply it
 //     to every OTHER still-open entry that shares a structural identity
 //     prefix (see deriveBulkPattern below) — the 15-clients-in-a-row / 20-
-//     httpd-directives problem from the PoC. Always shown before it acts
+//     httpd-directives problem a real project hits. Always shown before it acts
 //     (pattern, count, sample keys), always defaults to "no". Description is
 //     NEVER bulk-applied — only category.
 //   - Incremental search: typed (non-numeric) text at the category prompt

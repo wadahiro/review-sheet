@@ -193,7 +193,7 @@ function buildFilePreview(
   // reference, which is right for a row and wrong for a position. Measured on
   // one project's five modules: 140 attributes assigned, 47 valued, so asking
   // the extractor for lines found under a third of the file and left a row
-  // like `name_prefix = "iam-platform-${var.environment}-node-"` with no
+  // like `name_prefix = "app-${var.environment}-node-"` with no
   // context at all. It is also exactly what makes this same walk usable as
   // the authorship discriminator (see `authoredKeys` above): a site is
   // reported for every ASSIGNMENT, not only ones with a literal value, so

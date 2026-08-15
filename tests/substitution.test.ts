@@ -6,7 +6,7 @@ import {
   type LayerEntry,
 } from "../src/substitution";
 
-// keycloak-config-cli's own syntax — the PoC's real-world example driving
+// keycloak-config-cli's own syntax — the real-world example driving
 // this design (see src/substitution.ts's own module doc).
 const PATTERN = String.raw`\$\(env:([A-Za-z_][A-Za-z0-9_]*)\)`;
 
@@ -259,7 +259,7 @@ describe("bindReferences", () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it("the PoC-shaped mix (whole-value + composed + literal + dangling) classifies every entry, dropping none", () => {
+  it("the real-world mix (whole-value + composed + literal + dangling) classifies every entry, dropping none", () => {
     const compiled = compileSubstitution(PATTERN);
     const wholeValue = entry("ssoSessionIdleTimeout", "$(env:SSO_SESSION_IDLE_TIMEOUT)");
     const composed = entry("redirectUris[0]", "https://$(env:SSO_SAML_HOST)/saml/acs");
