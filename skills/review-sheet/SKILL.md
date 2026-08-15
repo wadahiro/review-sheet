@@ -652,6 +652,38 @@ Opt in per sheet. Existing sheets keep the variable axis, and switching one
 re-keys the rows a variable used to stand for — a real change to that sheet's
 review targets, which is why it is never automatic.
 
+##### A directive with no argument is still a row
+
+In a whitespace-delimited file (`format: space`) a lone directive — chrony's
+`rtcsync`, sshd's bare keywords — IS a setting: the file says the thing by
+naming it and says nothing by leaving it out. Such a line becomes a row valued
+`true`.
+
+```
+rtcsync          ->  rtcsync = true
+port 0           ->  port    = 0
+```
+
+Only for whitespace formats. In `key=value` (properties/dotenv/sysctl/ini/
+generic) a line with no delimiter is prose or a typo, not a flag — and `generic`
+is the fallback that matches every file there is, so inventing rows from it
+would turn a README into a sheet.
+
+Two consequences follow from the value being nowhere in the file:
+
+- **verify** confirms the line IS that directive, exactly — `rtcsync` never
+  resolves against `rtcsyncfoo` or a line that merely mentions it.
+- **apply** HOLDS. Turning a flag off means DELETING its line and turning one on
+  means inventing a position for a line the file does not have; neither is the
+  literal replacement apply performs, so the change goes to the prompt for a
+  human, exactly as a `substituted` row does.
+
+**Declare the format.** `space` is force-only and never detected — a
+`chrony.conf.j2` is read as `sysctl` and produces nothing (the build says so).
+The declared format is recorded on each row's `source.baseFormat` so that
+verify and apply read the value back with the same parser that wrote it; without
+that a presence flag would be written by one parser and looked for by another.
+
 #### `group_by: file` — one page per file, as a paper sheet has it
 
 ```yaml

@@ -22,7 +22,7 @@ import {
   type ReviewChange,
   type SourceLocation,
 } from "./prompt.js";
-import { resolveParser, type ExtractOptions } from "./parser.js";
+import { parserForSource, type ExtractOptions } from "./parser.js";
 import "./parsers/index.js";
 
 export type ApplyStatus = "applied" | "skipped" | "held" | "out_of_scope";
@@ -225,13 +225,15 @@ export function computeApply(
         // Dispatch to the matching parser (structural + line/anchor fallback is
         // handled inside each parser's edit method).
         const text = lines.join("\n");
-        const parser = resolveParser(tgt.file, text);
-        if (!parser) {
+        // Same parser choice verify makes — a location written by a DECLARED
+        // format is edited by that format, not by whatever the extension picks.
+        const picked = parserForSource(tgt.file, text, tgt.source ?? {}, opts);
+        if (!picked.parser) {
           results.push({ ...base, status: "held", reason: "no parser found" });
           anyHeld = true;
           continue;
         }
-        const st = parser.edit(text, tgt.source ?? {}, current, c.suggested, opts);
+        const st = picked.parser.edit(text, tgt.source ?? {}, current, c.suggested, picked.opts);
         if (st.status === "applied") {
           working.set(tgt.file, st.content.split("\n"));
           touched.add(tgt.file);

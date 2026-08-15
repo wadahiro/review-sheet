@@ -5,7 +5,7 @@
 //
 // File I/O is injected so the core stays pure and unit-testable.
 
-import { resolveParser, type ExtractOptions } from "./parser.js";
+import { parserForSource, type ExtractOptions } from "./parser.js";
 import "./parsers/index.js";
 import type { SheetData, SourceLocation, ReviewTarget } from "./prompt.js";
 import { pickLang } from "./types.js";
@@ -204,12 +204,16 @@ export function verifySources(data: SheetData, readFile: ReadFile, opts?: Extrac
       }
       continue;
     }
-    const parser = resolveParser(file, raw);
+    // The DECLARED base format wins the parser choice where there is one — a
+    // location written by a format the file name cannot name must be read back
+    // by that same format. See parserForSource.
+    const picked = parserForSource(file, raw, entry.source ?? {}, opts);
+    const parser = picked.parser;
     if (parser) {
       // A ref site's `entry.value` is the reference text (see collectValues),
       // passed here as `expected` so a parser's line/anchor fallback confirms
       // the right line the same way it does for an ordinary value.
-      const loc = parser.locate(raw, entry.source ?? {}, entry.value, opts);
+      const loc = parser.locate(raw, entry.source ?? {}, entry.value, picked.opts);
       const isRef = entry.source?.ref !== undefined;
       if ("value" in loc) {
         // Equality is the whole-value special case of containment: a

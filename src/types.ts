@@ -425,6 +425,12 @@ export type SourceLocation = {
   // by verify/apply. `templateVar` is the variable behind a `{{ … }}` value (a
   // conversion script resolves it in the variable file); `conditional` flags a
   // line inside a `{% if %}`/`{% for %}` block (its rendered position may shift).
+  // The base format this location must be READ with, when the file name cannot
+  // say it. Extraction is told the format by the spec; verify/apply resolve
+  // their parser from the file, so a force-only format like `space` — never
+  // detected, by design — would be written by one parser and read by another.
+  // Set only where a format was DECLARED; detection covers everything else.
+  baseFormat?: string;
   templateVar?: string;
   conditional?: boolean;
   // True when this source location was produced by a code-generation step

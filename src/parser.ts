@@ -95,6 +95,13 @@ export interface ConfigParser {
   name: string;
   priority?: number;
   meta?: ParserMeta;
+  // This parser WRAPS another one and resolves the inner format itself from
+  // `ExtractOptions.baseFormat` (jinja2 is the only shipped example: a `.j2`
+  // is a template around a config, not a config). It changes one thing —
+  // `parserForSource` below hands such a parser the declared base format to
+  // delegate with, instead of using that format to replace it, which would
+  // read the raw template as if the `{{ }}` were not there.
+  wrapsBaseFormat?: boolean;
   detect(file: string, content: string): boolean;
   // `opts` is optional and last on all three methods, so an existing
   // implementation with fewer parameters (`extract(content, file) { ... }`,
@@ -135,4 +142,31 @@ export function parserNames(): string[] {
 export function resolveParser(file: string, content: string): ConfigParser | undefined {
   const sorted = [...registry].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
   return sorted.find((p) => p.detect(file, content));
+}
+
+// The parser to READ a recorded location back with, and the options to read it
+// under. Detection alone is not enough here: a format that had to be DECLARED
+// (`SourceLocation.baseFormat`) is one the file name cannot answer for, and
+// `space` is never detected at all — so a row written by the declared parser
+// would be read back by whichever one the extension happens to select, and
+// resolve differently or not at all.
+//
+// Two shapes, decided by `wrapsBaseFormat`:
+//   - a template parser stays, and is TOLD the base format to delegate to
+//     (replacing it would read the raw `{{ }}` template as a config);
+//   - anything else is replaced by the declared format outright.
+// With no declared format this is exactly `resolveParser` plus the caller's
+// own options, which is what every source recorded before this field had.
+export function parserForSource(
+  file: string,
+  content: string,
+  source: SourceLocation,
+  opts?: ExtractOptions
+): { parser: ConfigParser | undefined; opts: ExtractOptions | undefined } {
+  const detected = resolveParser(file, content);
+  const declared = source.baseFormat;
+  if (declared === undefined) return { parser: detected, opts };
+  const merged = { ...opts, baseFormat: declared };
+  if (detected?.wrapsBaseFormat) return { parser: detected, opts: merged };
+  return { parser: getParser(declared) ?? detected, opts: merged };
 }

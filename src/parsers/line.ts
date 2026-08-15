@@ -4,7 +4,7 @@
 // formats uses unchanged. Each format is registered as a ConfigParser with
 // detect-by-extension logic.
 
-import { extractLines, LINE_CONFIGS, lineLocate, lineEdit } from "../line-config.js";
+import { extractLines, LINE_CONFIGS, lineLocate, lineEdit, lineLocateFor, lineEditFor } from "../line-config.js";
 import { registerParser, type ConfigParser } from "../parser.js";
 
 // properties: .properties files
@@ -131,14 +131,19 @@ const spaceParser: ConfigParser = {
     notes: [
       "Not auto-detected; must be forced with --format space.",
       "First whitespace run splits key from value.",
-      "Useful for sshd_config, MaxClients-style files.",
+      "Useful for sshd_config, chrony.conf, MaxClients-style files.",
+      "A directive with NO argument is a row whose value is `true`: in a whitespace format the file says the thing by naming it (`rtcsync`) and says nothing by leaving it out, so presence IS the value. Delimited formats (properties/dotenv/sysctl/ini/generic) deliberately do not do this — there a line with no delimiter is prose or a typo, not a flag.",
+      "Such a row is verified by the line being EXACTLY that directive, not by finding its value on the line (the value is nowhere in the file). Apply HOLDS it: turning a flag off means deleting its line and turning one on means inventing a position for it, neither of which is the literal replacement apply performs.",
     ],
-    examples: ["MaxClients", "PermitRootLogin"],
+    examples: ["MaxClients", "PermitRootLogin", "rtcsync"],
   },
   detect: (_file, _content) => false,
   extract: (content) => extractLines(content, LINE_CONFIGS.space),
-  locate: lineLocate,
-  edit: lineEdit,
+  // Flag-aware (LineConfig.bareFlag): `space` is the one shipped format where a
+  // lone token is a setting, so its locate/edit must know that such a row's
+  // value is nowhere on its own line.
+  locate: lineLocateFor(LINE_CONFIGS.space),
+  edit: lineEditFor(LINE_CONFIGS.space),
 };
 registerParser(spaceParser);
 
