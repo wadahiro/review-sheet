@@ -14,6 +14,10 @@ export type SourceLocation = {
   end_line?: number;
   anchor?: string;
   path?: string;
+  // The base format this location must be READ with, when the file name cannot
+  // say it (types.ts carries the same field and the same reason). Load-bearing
+  // for verify/apply: parserForSource picks the parser from it.
+  baseFormat?: string;
   templateVar?: string;
   conditional?: boolean;
   // True when this source location was produced by a code-generation step

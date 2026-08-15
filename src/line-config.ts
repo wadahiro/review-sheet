@@ -17,7 +17,28 @@ import type { LocateResult, EditResult } from "./parser.js";
 
 export type Entry = { categoryPath: string[]; key: string; value: string; source: SourceLocation };
 
-export type LineConfig = { delims: string[]; comments: string[]; sections: boolean; space: boolean; exportPrefix: boolean };
+export type LineConfig = {
+  delims: string[];
+  comments: string[];
+  sections: boolean;
+  space: boolean;
+  exportPrefix: boolean;
+  // A directive with no argument IS a setting, and its value is its presence.
+  // `rtcsync` in chrony.conf, `noclientlog`, `dumponexit` — the file says the
+  // thing by naming it and says nothing by leaving it out.
+  //
+  // Off for every DELIMITED format, and that is not caution, it is meaning: in
+  // `key=value` a line with no delimiter is not a flag, it is prose, a typo, or
+  // a line this parser was never meant to read — `generic` is the lowest
+  // priority fallback and would turn a README into rows. In a whitespace
+  // format there is no delimiter to be missing, so a lone token is the only
+  // shape a flag can have.
+  //
+  // The value is the string below rather than a boolean because everything
+  // downstream — the sheet cell, a review's `current`, a dictionary's
+  // `default` — is text.
+  bareFlag?: string;
+};
 
 const DEFAULT_CATEGORY = "Parameters";
 
@@ -26,7 +47,7 @@ export const LINE_CONFIGS: Record<"properties" | "dotenv" | "sysctl" | "ini" | "
   dotenv: { delims: ["="], comments: ["#"], sections: false, space: false, exportPrefix: true },
   sysctl: { delims: ["="], comments: ["#", ";"], sections: false, space: false, exportPrefix: false },
   ini: { delims: ["=", ":"], comments: ["#", ";"], sections: true, space: false, exportPrefix: false },
-  space: { delims: [], comments: ["#"], sections: false, space: true, exportPrefix: false },
+  space: { delims: [], comments: ["#"], sections: false, space: true, exportPrefix: false, bareFlag: "true" },
   generic: { delims: ["=", ":"], comments: ["#", ";", "!"], sections: false, space: false, exportPrefix: false },
 };
 
@@ -62,6 +83,13 @@ export function extractLines(content: string, cfg: LineConfig): Entry[] {
         key = m[1];
         value = m[3];
         anchor = body.slice(0, m[1].length + m[2].length); // "key " incl. the gap
+      } else if (cfg.bareFlag !== undefined && /^\S+$/.test(body.trimEnd())) {
+        // A directive standing alone. Dropping it lost a real setting with no
+        // report — the row simply never existed, which is the one failure this
+        // project refuses to leave silent.
+        key = body.trimEnd();
+        value = cfg.bareFlag;
+        anchor = key;
       }
     } else {
       let idx = -1;
@@ -100,27 +128,37 @@ export function extractLines(content: string, cfg: LineConfig): Entry[] {
 // locate/edit shape. Reach for locateLine directly only when it needs to be
 // combined with something else first, the way parsers/yamljson.ts falls
 // back to it after a structural path lookup fails.
+// `bareFlag` (LineConfig.bareFlag) makes this resolve a row whose value is its
+// own PRESENCE. Such a row's value is nowhere on the line — the line is the
+// directive and nothing else — so the ordinary "the line still carries the
+// current value" test can never pass, and without this a flag row would come
+// back unresolved on every verify. The substitute test is exact rather than
+// substring: the whole line must BE the directive, so `rtcsync` never resolves
+// against `rtcsyncfoo` or against a line that merely mentions it.
 export function locateLine(
   lines: string[],
   loc: { line?: number; anchor?: string } | undefined,
-  current: string
+  current: string,
+  bareFlag?: string
 ): { idx: number } | { error: string } {
   const anchor = loc?.anchor;
+  const asFlag = bareFlag !== undefined && current === bareFlag && anchor !== undefined;
+  const holds = (ln: string): boolean => (asFlag ? ln.trim() === anchor : ln.includes(current));
   if (loc?.line !== undefined) {
     const i = loc.line - 1;
     if (i >= 0 && i < lines.length) {
       const ln = lines[i];
-      if ((!anchor || ln.includes(anchor)) && ln.includes(current)) return { idx: i };
+      if ((!anchor || ln.includes(anchor)) && holds(ln)) return { idx: i };
     }
   }
   if (anchor) {
     const matches: number[] = [];
     for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(anchor) && lines[i].includes(current)) matches.push(i);
+      if (lines[i].includes(anchor) && holds(lines[i])) matches.push(i);
     }
     if (matches.length === 1) return { idx: matches[0] };
     if (matches.length > 1) return { error: `anchor matches ${matches.length} lines; ambiguous` };
-    return { error: "anchor not found with the current value" };
+    return { error: asFlag ? "no line is exactly this directive" : "anchor not found with the current value" };
   }
   return { error: "no anchor to verify the location" };
 }
@@ -130,11 +168,25 @@ export function locateLine(
 // line has drifted. Assign directly — `locate: lineLocate` — no wrapping
 // needed; it already matches the ConfigParser method signature.
 export function lineLocate(content: string, source: SourceLocation, expected: string): LocateResult {
+  return locateWithFlag(content, source, expected, undefined);
+}
+
+// The same locate, told which value means "this row's value is its presence".
+// NOT an extra parameter on `lineLocate`: `ConfigParser.locate`'s fourth
+// argument is `ExtractOptions`, so widening that position would hand this an
+// options object at runtime while typechecking clean at the assignment. The
+// config is closed over instead, which is also what keeps the flag value a
+// property of the FORMAT rather than of each call.
+export function lineLocateFor(cfg: LineConfig): (content: string, source: SourceLocation, expected: string) => LocateResult {
+  return (content, source, expected) => locateWithFlag(content, source, expected, cfg.bareFlag);
+}
+
+function locateWithFlag(content: string, source: SourceLocation, expected: string, bareFlag: string | undefined): LocateResult {
   if (source.line === undefined && !source.anchor) {
     return { error: "no anchor to verify the location", status: "unmapped" };
   }
   const lines = content.split("\n");
-  const res = locateLine(lines, source, expected);
+  const res = locateLine(lines, source, expected, bareFlag);
   if ("idx" in res) return { value: expected };
   if (res.error.includes("ambiguous")) return { error: res.error, status: "warn" };
   return { error: res.error };
@@ -147,8 +199,42 @@ export function lineLocate(content: string, source: SourceLocation, expected: st
 // treated as an error) — including when locateLine itself cannot resolve the
 // line but the recorded source.line already holds the suggested value.
 export function lineEdit(content: string, source: SourceLocation, current: string, suggested: string): EditResult {
+  return editWithFlag(content, source, current, suggested, undefined);
+}
+
+// The edit half of `lineLocateFor`. A presence flag is deliberately NOT
+// editable: turning one off means DELETING its line, and turning one on means
+// inventing a position for a line the file does not have — neither is the
+// literal current->suggested replacement this function performs, and guessing
+// either would rewrite the artifact in a way nobody reviewed.
+//
+// Refusing here is not a dead end. `computeApply` turns an `error` from a
+// parser's edit into a HELD change with this reason attached, which is exactly
+// the path a `substituted` row already takes: the change survives into the AI
+// prompt for a human to make, instead of being silently dropped or silently
+// guessed at.
+export function lineEditFor(cfg: LineConfig): (content: string, source: SourceLocation, current: string, suggested: string) => EditResult {
+  return (content, source, current, suggested) => editWithFlag(content, source, current, suggested, cfg.bareFlag);
+}
+
+function editWithFlag(
+  content: string,
+  source: SourceLocation,
+  current: string,
+  suggested: string,
+  bareFlag: string | undefined
+): EditResult {
+  if (bareFlag !== undefined && current === bareFlag && source.anchor !== undefined) {
+    if (current === suggested) return { status: "skipped" };
+    return {
+      status: "error",
+      reason:
+        `"${source.anchor}" is a directive whose value IS its presence, so changing it means adding or ` +
+        `removing the line rather than editing it — held for a human to decide where the line goes`,
+    };
+  }
   const lines = content.split("\n");
-  const res = locateLine(lines, source, current);
+  const res = locateLine(lines, source, current, bareFlag);
   if ("idx" in res) {
     const before = lines[res.idx];
     if (before.includes(suggested) && !before.includes(current)) {

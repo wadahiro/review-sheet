@@ -507,7 +507,19 @@ export const ansibleRecipe: SheetRecipe = {
           // what it is. The template name stays the SOURCE either way; only the
           // parser choice moves.
           content: t.content,
-          entries: extractFile(t.content, t.file, undefined, { ...io.extractOptions, baseFormat: formatOf(spec) }),
+          // A DECLARED format is stamped onto every source this template
+          // produces. Extraction already knows it (baseFormat, below), but
+          // verify/apply resolve their parser from the FILE — and the reason a
+          // format had to be declared is that the file does not answer. A
+          // force-only format (`space`) is never detected, so without this the
+          // row is written by one parser and read back by another.
+          //
+          // Only `spec.format`, never the inferred one: where detection works
+          // this field would be a copy of what the filename already says, on
+          // every source of every project.
+          entries: extractFile(t.content, t.file, undefined, { ...io.extractOptions, baseFormat: formatOf(spec) }).map(
+            (e) => (spec.format === undefined ? e : { ...e, source: { ...e.source, baseFormat: spec.format } })
+          ),
           // What governs each line's PRESENCE, so a conditional line can be a
           // row for the instances that render it instead of no row at all.
           conditions: jinjaConditions(t.content),

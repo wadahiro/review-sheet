@@ -21,6 +21,10 @@ const jinja2Parser: ConfigParser = {
   // Win over the content-detectors (nginx/httpd/haproxy, 60) so a templated
   // config is recognised as a template first, then delegated to its base format.
   priority: 70,
+  // A `.j2` is a template AROUND a config: the base format is resolved here
+  // (from the name minus `.j2`, or ExtractOptions.baseFormat), never instead
+  // of this parser — see parserForSource.
+  wrapsBaseFormat: true,
   meta: {
     title: "Jinja2",
     summary: "Templates (.j2): base-format structure + the {{ variable }} behind each value (extraction aid).",
@@ -112,9 +116,17 @@ const jinja2Parser: ConfigParser = {
   // Falls back to line+anchor for a row with no path, which is every row that
   // predates this and every unstructured format.
   locate: (content, source: SourceLocation, expected: string, opts): LocateResult => {
+    // A DECLARED base format (ExtractOptions.baseFormat, which
+    // `parserForSource` fills from SourceLocation.baseFormat) beats detection
+    // here for the same reason it does in `extract` just above: the format was
+    // declared BECAUSE the name cannot answer, and `space` is never detected at
+    // all. Without this, a row extracted by one parser was read back by
+    // whichever the stripped name happened to select — which for a value that
+    // lives nowhere on its line (a presence flag) resolves to nothing.
+    const declared = opts?.baseFormat ? getParser(opts.baseFormat) : undefined;
     if (source.path !== undefined) {
       const { masked, restore, mask } = maskJinja(content);
-      const base = resolveParser(baseFileName(source.file ?? ""), masked);
+      const base = declared ?? resolveParser(baseFileName(source.file ?? ""), masked);
       // `resolveParser` never returns this parser for the stripped name (it no
       // longer ends in `.j2`), so there is no recursion to guard against —
       // except when the base IS unresolvable and the generic fallback answers,
@@ -130,12 +142,17 @@ const jinja2Parser: ConfigParser = {
         return hit;
       }
     }
-    const generic = getParser("generic");
-    return generic ? generic.locate(content, source, expected) : { error: "no base parser", status: "unmapped" };
+    // No path: line + anchor, against the raw template. The declared format's
+    // own line resolution when there is one (it knows things `generic` cannot,
+    // like which rows are presence flags), `generic` otherwise — unchanged for
+    // every sheet that declares no format.
+    const byLine = declared ?? getParser("generic");
+    return byLine ? byLine.locate(content, source, expected) : { error: "no base parser", status: "unmapped" };
   },
-  edit: (content, source: SourceLocation, current: string, suggested: string): EditResult => {
-    const generic = getParser("generic");
-    return generic ? generic.edit(content, source, current, suggested) : { status: "error", reason: "no base parser" };
+  edit: (content, source: SourceLocation, current: string, suggested: string, opts): EditResult => {
+    const declared = opts?.baseFormat ? getParser(opts.baseFormat) : undefined;
+    const byLine = declared ?? getParser("generic");
+    return byLine ? byLine.edit(content, source, current, suggested) : { status: "error", reason: "no base parser" };
   },
 };
 registerParser(jinja2Parser);

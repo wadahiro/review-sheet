@@ -184,6 +184,7 @@
         "end_line": { "type": "integer", "minimum": 1 },
         "anchor": { "type": "string" },
         "path": { "type": "string" },
+        "baseFormat": { "type": "string" },
         "templateVar": { "type": "string" },
         "conditional": { "type": "boolean" },
         "generated": { "type": "boolean" },
