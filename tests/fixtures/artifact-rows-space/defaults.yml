@@ -1,1 +1,3 @@
 app_permit_root_login: "no"
+app_db_host: dbhost
+app_db_name: dbname

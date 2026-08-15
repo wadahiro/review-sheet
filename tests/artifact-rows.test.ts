@@ -533,3 +533,56 @@ describe("a template that yields no rows says so", () => {
     expect(warnings.filter((w) => w.includes("produced no rows"))).toEqual([]);
   });
 });
+
+// A line interpolating MORE THAN ONE variable.
+//
+// Its row's value is the RENDERED line, and it used to point at the template,
+// which holds `{{ … }}` — so verify searched the rendered text in an unrendered
+// file and every such row failed, by construction. An Ansible template writing
+// `db-url=jdbc:postgresql://{{ host }}:5432/{{ name }}` could not be put on a
+// sheet at all, and the only way round it was to pre-join the variables in
+// defaults/ — changing the template to suit the tool.
+//
+// `substituted` asks something weaker than "which variable is this row named
+// after" and answerable for every one of them: the value at this site is PART
+// of this line. Point at one, and verify has a real check.
+describe("rows: artifact on a line with several variables", () => {
+  const sheet = () => {
+    const r = getRecipe("ansible")!;
+    return r.load(
+      {
+        name: "os",
+        recipe: "ansible",
+        rows: "artifact",
+        defaults: "defaults.yml",
+        template: "multivar.conf.j2",
+        deployed_path: "/etc/app/db.conf",
+        format: "space",
+      } as never,
+      spaceIo
+    );
+  };
+
+  it("renders every variable in the line", () => {
+    const base = sheet().layers.find((l) => l.kind === "base")!;
+    expect(base.entries.get("db-url")!.value).toBe("jdbc:postgresql://dbhost:5432/dbname?connectTimeout=30");
+  });
+
+  it("points at a variable's own definition site, marked substituted", () => {
+    const src = sheet().layers.find((l) => l.kind === "base")!.entries.get("db-url")!.source;
+    // NOT the template: that file holds `{{ … }}`, so the rendered value can
+    // never be found in it and verify fails on every row of this shape.
+    expect(src.file).toContain("defaults.yml");
+    expect(src.substituted).toBe(true);
+    // …and the site it picked really is part of the line, which is what
+    // `substituted` claims and what verify checks.
+    const site = src.path!;
+    expect(["app_db_host", "app_db_name"]).toContain(site);
+  });
+
+  // The under_key column is a different question and still has no answer here:
+  // a row named after one of several variables misrepresents the others.
+  it("still names no variable under the row", () => {
+    expect(new Map((sheet().keyMap ?? []).map((m) => [m.boundKey, m.variable])).has("db-url")).toBe(false);
+  });
+});

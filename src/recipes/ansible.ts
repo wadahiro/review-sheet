@@ -745,11 +745,25 @@ export const ansibleRecipe: SheetRecipe = {
             // whose only variable spells its KEY (a logrotate block's
             // `{{ keycloak_home }}`) — see the comment above.
             const onlyVar = valueVars.length === 1 ? valueVars[0] : undefined;
-            // Its own definition site, so `apply` still has something it can
-            // edit — the rendered file does not exist in the repository. A
-            // variable only an overlay sets has no base definition site, so
-            // this stays undefined and the row points at the template.
-            const only = onlyVar !== undefined ? defaultsMap.get(onlyVar) : undefined;
+            // The site the row POINTS AT. Not `onlyVar`: that one answers "which
+            // variable may be shown under this row", which a line mixing several
+            // cannot answer honestly — but `substituted` asks something weaker
+            // and answerable, "the value at this site is PART of this line"
+            // (types.ts's SourceLocation.substituted), and that holds for every
+            // variable the line interpolates.
+            //
+            // It has to point at one of them. Pointing at the TEMPLATE instead
+            // is what a multi-variable line used to do, and that claim is false
+            // by construction: the row's value is the RENDERED line and the
+            // template holds `{{ … }}`, so verify searched the rendered text in
+            // an unrendered file and every such row failed —
+            // `db-url=jdbc:postgresql://{{ a }}:5432/{{ b }}` could not be put
+            // on a sheet at all. The first value variable that has a definition
+            // site is deterministic and gives verify a real check; apply holds
+            // on `substituted` either way, which is also right, since which
+            // part of a composed line a reviewer meant is not knowable.
+            const siteVar = valueVars.find((v) => defaultsMap.get(v) !== undefined);
+            const only = siteVar !== undefined ? defaultsMap.get(siteVar) : undefined;
             for (const v of vars) consumedVars.add(v);
             const source = only ? { ...only.source, substituted: true } : { ...entry.source, file };
             if (scoped) {
@@ -765,7 +779,15 @@ export const ansibleRecipe: SheetRecipe = {
               // question — what does THIS instance's file say — so both are
               // answered the same way, by rendering the line once per instance.
               const perInstance = (onlyIn ?? io.instances).map((instance) => {
-                const site = valueVars.length === 1 ? overlayEntryFor(instance, valueVars[0]) : undefined;
+                // Same rule per instance, and asked per instance: which
+                // variable an overlay overrides is what makes this row differ
+                // between environments, so the site is the first one THIS
+                // instance actually defines rather than a choice made once for
+                // all of them.
+                const site = valueVars.reduce<ReturnType<typeof overlayEntryFor>>(
+                  (found, v) => found ?? overlayEntryFor(instance, v),
+                  undefined
+                );
                 return {
                   name: instance,
                   value: substituteJinja(entry.value, (n) => valueIn(instance, n)).text,

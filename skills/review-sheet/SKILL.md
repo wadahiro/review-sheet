@@ -619,6 +619,15 @@ beside `deployed_path:` at the sheet level; declaring it there alongside
 `templates:` is an error, since each entry deploys a different artifact. A
 format naming no parser fails the build, listing the ones that exist.
 
+**A line may interpolate several variables.** `db-url=jdbc:postgresql://{{ host
+}}:5432/{{ name }}` is one row whose value is the rendered line. It points at
+one of those variables' definition sites, marked `substituted` — which claims
+only that the site's value is PART of the line, and that is true of every
+variable in it. verify checks exactly that; apply holds, because which part of
+a composed line a reviewer meant to change is not knowable. The `under_key`
+column stays empty for such a row: naming it after one of several variables
+would misrepresent the others.
+
 **Only a plain `{{ var }}` and the pure filters (`lower`/`upper`/`trim`) are
 substituted.** This is deliberately not a Jinja2 implementation: an expression,
 an unknown filter or a name nothing defines is left exactly as written and
