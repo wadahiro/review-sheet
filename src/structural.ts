@@ -37,6 +37,15 @@ export function structuredFormat(file: string): Format | "xml" | "toml" | "syste
   return null;
 }
 
+// The parser names `structuredFormat` can return — the formats whose values are
+// addressed by a structural PATH rather than by a line. Kept beside the
+// function that produces them so the two cannot drift: a caller handed a format
+// NAME rather than a file name (a spec declaring `format:` outright) has to
+// answer the same question, and answering it from a second list elsewhere is
+// how the two would disagree. tests/structural.test.ts checks every member
+// against the parser registry.
+export const STRUCTURED_FORMATS: ReadonlySet<string> = new Set(["yaml", "json", "xml", "toml", "systemd"]);
+
 // A path step. Maps are addressed by key (position-independent), sequences by an
 // identity predicate `[field=value]` (robust to reordering) or, as a fallback,
 // a positional index `[i]`.

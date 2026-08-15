@@ -1,5 +1,7 @@
 import { describe, it, expect } from "bun:test";
-import { parseSteps, inferFormat, structuralEdit, structuralLocate } from "../src/structural";
+import { parseSteps, inferFormat, structuralEdit, structuralLocate, structuredFormat, STRUCTURED_FORMATS } from "../src/structural";
+import { listParsers } from "../src/parser";
+import "../src/parsers/index.js";
 import { computeApply } from "../src/apply";
 import { verifySources } from "../src/verify";
 import type { SheetData, ReviewItem } from "../src/prompt";
@@ -201,5 +203,26 @@ describe("apply/verify structural fallback", () => {
     const out = verifySources(data, read);
     expect(out.ok).toBe(1);
     expect(out.error).toBe(0);
+  });
+});
+
+// STRUCTURED_FORMATS is a hand-written list of what `structuredFormat` can
+// return, kept so a caller holding a format NAME rather than a file name can
+// ask the same question. A hand-written list drifts; this is what notices.
+describe("STRUCTURED_FORMATS", () => {
+  it("names only registered parsers", () => {
+    const known = new Set(listParsers().map((p) => p.name));
+    for (const f of STRUCTURED_FORMATS) expect(known.has(f), `${f} names no parser`).toBe(true);
+  });
+
+  it("covers every format structuredFormat can return", () => {
+    // One witness file per branch of structuredFormat, so a branch added there
+    // without a member here fails rather than silently answering "not
+    // structured" for a format that is.
+    for (const file of ["a.yml", "a.yaml", "a.json", "a.xml", "a.toml", "a.service", "x.conf.d/a.conf"]) {
+      const f = structuredFormat(file);
+      expect(f, `${file} resolved no structured format`).not.toBeNull();
+      expect(STRUCTURED_FORMATS.has(f!), `${file} -> ${f} is missing from STRUCTURED_FORMATS`).toBe(true);
+    }
   });
 });
