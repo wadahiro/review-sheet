@@ -52,7 +52,7 @@ parameters:
       en: Enables file delivery via the sendfile() system call, improving static-file serving performance.
       ja: sendfile() システムコールによるファイル配信を有効にし、静的ファイル配信の性能を向上させる。
     default: "off"
-    type: bool
+    type: boolean
     scope: http, server, location
     docs_url: https://nginx.org/en/docs/http/ngx_http_core_module.html#sendfile
   access_log:
@@ -91,7 +91,7 @@ parameters:
       en: Whether the nginx version is emitted in error pages and the Server response header.
       ja: エラーページおよび Server レスポンスヘッダーに nginx のバージョンを出力するかどうか。
     default: "on"
-    type: bool
+    type: boolean
     scope: http, server, location
     docs_url: https://nginx.org/en/docs/http/ngx_http_core_module.html#server_tokens
   add_header:
@@ -162,6 +162,6 @@ parameters:
       en: Enables or disables gzip compression of responses.
       ja: レスポンスの gzip 圧縮を有効/無効にする。
     default: "off"
-    type: bool
+    type: boolean
     scope: http
     docs_url: https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip
