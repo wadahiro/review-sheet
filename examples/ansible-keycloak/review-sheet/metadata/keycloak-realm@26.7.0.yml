@@ -382,14 +382,10 @@ parameters:
     group: Sessions
     docs_url: https://www.keycloak.org/docs-api/latest/rest-api/index.html#RealmRepresentation
   clientPolicies:
-    default:
-      policies: []
     type: JsonNode
     kind: container
     docs_url: https://www.keycloak.org/docs-api/latest/rest-api/index.html#RealmRepresentation
   clientProfiles:
-    default:
-      profiles: []
     type: JsonNode
     kind: container
     docs_url: https://www.keycloak.org/docs-api/latest/rest-api/index.html#RealmRepresentation

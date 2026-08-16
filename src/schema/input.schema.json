@@ -126,6 +126,7 @@
       "required": ["key"],
       "properties": {
         "key": { "type": "string" },
+        "label": { "$ref": "#/$defs/langText" },
         "description": { "$ref": "#/$defs/langText" },
         "default": { "type": "string" },
         "baseline": { "type": "string" },

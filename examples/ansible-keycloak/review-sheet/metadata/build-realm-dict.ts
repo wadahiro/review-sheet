@@ -100,7 +100,15 @@ for (const raw of Object.values(doc.parameters)) {
   const text = raw.description ?? raw.label;
   if (text && (text.en || text.ja)) entry.description = text;
 
-  if (raw.default !== undefined && !Array.isArray(raw.default)) entry.default = raw.default as string | number | boolean;
+  // Decided before the default is read, because it DECIDES whether there is one
+  // to read: a container holds other objects and has no value of its own, so
+  // `{"policies": []}` is the empty shape of what it holds, not its default.
+  // Carrying it put an object where the field may only be a scalar, and the
+  // resolver String()s a default it hands out.
+  const container = isContainer(raw.type) || raw.keys_expanded === true;
+  if (!container && raw.default !== undefined && !Array.isArray(raw.default)) {
+    entry.default = raw.default as string | number | boolean;
+  }
   entry.type = TYPE_LABEL[raw.type] ?? raw.type;
   // English, like every other dictionary here: `group` is a plain string (the
   // sheet's tab name), not a LangText the viewer can switch, so a Japanese
@@ -111,7 +119,7 @@ for (const raw of Object.values(doc.parameters)) {
   // with keys_expanded, having checked it rather than left it to convention) is
   // a container in the same sense: browserSecurityHeaders is not a setting, its
   // seven keys are.
-  if (isContainer(raw.type) || raw.keys_expanded === true) {
+  if (container) {
     entry.kind = "container";
     containers++;
   }
