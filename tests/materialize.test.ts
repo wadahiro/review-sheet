@@ -76,7 +76,7 @@ parameters:
     default: ""
     group: Connections
   container_setting:
-    description: { en: A syntax container, not a setting }
+    description: { en: "A syntax container, not a setting" }
     group: Connections
     kind: container
 `;
@@ -963,7 +963,7 @@ parameters:
     group: Connections
     ui: absent
   revoked_at:
-    description: { en: Displayed, never chosen }
+    description: { en: "Displayed, never chosen" }
     default: "0"
     group: Connections
     ui: readonly

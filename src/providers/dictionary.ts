@@ -6,6 +6,9 @@
 // entirely by bind.ts before this provider ever runs.
 
 import { parse, stringify } from "yaml";
+import Ajv from "ajv";
+import dictionarySchema from "../schema/dictionary.schema.json";
+import { suggestNearest, formatAjvErrors } from "../schema-errors.js";
 import {
   registerMetadataProvider,
   collapseProvenance,
@@ -50,8 +53,6 @@ export type DictionaryParam = {
   // a hierarchy and is one flat name: nothing folds or sorts by "Tokens",
   // because no such category exists. A bare string is the one-segment case.
   group?: string | string[];
-  since?: string;
-  until?: string;
   docs_url?: string;
   // Which sub-product of this dictionary the option belongs to, when the
   // dictionary covers more than one. A Terraform provider is the case: one
@@ -118,6 +119,35 @@ export type DictionaryParam = {
   ui?: "editable" | "readonly" | "absent";
 };
 
+// The field names dictionary.schema.json declares, kept beside the types they
+// describe so the two cannot drift apart unnoticed. The `Exclude` assertions
+// below fail to COMPILE if a field is added to a type and not to this list;
+// tests/dictionary-schema.test.ts fails if it is in this list and not in the
+// schema. Between them, adding a field to one place and forgetting the other
+// two is a build failure rather than a field that silently does nothing —
+// which is the exact failure this whole schema exists to remove.
+export const DICTIONARY_PARAM_FIELDS = [
+  "label",
+  "description",
+  "default",
+  "type",
+  "scope",
+  "group",
+  "unit",
+  "kind",
+  "ui",
+  "docs_url",
+  "provenance",
+] as const;
+
+export const DICTIONARY_DOC_FIELDS = ["product", "version", "provenance", "coverage", "generated_by", "docs_url", "parameters"] as const;
+
+type Empty<T extends never> = T;
+type _ParamFieldsCoverType = Empty<Exclude<keyof DictionaryParam, (typeof DICTIONARY_PARAM_FIELDS)[number]>>;
+type _ParamFieldsAreReal = Empty<Exclude<(typeof DICTIONARY_PARAM_FIELDS)[number], keyof DictionaryParam>>;
+type _DocFieldsCoverType = Empty<Exclude<keyof DictionaryDoc, (typeof DICTIONARY_DOC_FIELDS)[number]>>;
+type _DocFieldsAreReal = Empty<Exclude<(typeof DICTIONARY_DOC_FIELDS)[number], keyof DictionaryDoc>>;
+
 export type DictionaryDoc = {
   product: string;
   version: string;
@@ -156,16 +186,32 @@ export function dictionaryCoverage(doc: DictionaryDoc): "full" | "partial" {
   return doc.coverage ?? "partial";
 }
 
+// `verbose: true` for the same reason spec.ts wants it: an
+// additionalProperties error only carries the schema that rejected the field —
+// and so the list of names it DOES accept — when verbose is on, which is what
+// turns "unknown field" into "did you mean".
+// `allowUnionTypes` for `default` alone: a documented default is genuinely a
+// scalar of whichever kind the setting takes (a port is a number, a toggle a
+// boolean), and spelling that as three branches of anyOf would say the same
+// thing less clearly.
+const dictAjv = new Ajv({ allErrors: true, verbose: true, allowUnionTypes: true });
+const validateDictionary = dictAjv.compile(dictionarySchema);
+
+// Validated against the schema, not spot-checked. Until this existed the check
+// was three `typeof`s and a cast, so a dictionary could misspell any field and
+// the value simply never arrived — no error, no warning, the row just showing
+// nothing where its default or its group should be. Every other input this
+// tool reads (build.yml, an overlay, the model itself) is schema-checked; this
+// was the one that was not, and it is the input a project is most likely to
+// hand-edit or receive from elsewhere.
+//
+// A hard error, deliberately, matching build.yml and the overlay: there is no
+// warning channel here, and a rejected field is loud and immediately fixable.
 function parseDictionary(path: string, content: string): DictionaryDoc {
   const raw = parse(content) as Record<string, unknown> | null | undefined;
-  if (
-    !raw ||
-    typeof raw.product !== "string" ||
-    typeof raw.version !== "string" ||
-    typeof raw.parameters !== "object" ||
-    raw.parameters === null
-  ) {
-    throw new Error("malformed dictionary: " + path);
+  if (!raw || typeof raw !== "object") throw new Error("malformed dictionary: " + path);
+  if (!validateDictionary(raw)) {
+    throw new Error(`dictionary validation error in ${path}:\n${formatAjvErrors(validateDictionary.errors)}`);
   }
   return raw as unknown as DictionaryDoc;
 }
@@ -272,38 +318,6 @@ export type DictionaryOverlayDoc = {
 const OVERLAY_DOC_FIELDS = ["product", "version", "provenance", "parameters"];
 const OVERLAY_PARAM_FIELDS = ["description", "docs_url", "provenance"];
 
-// Iterative Levenshtein distance + a "did you mean" hint, duplicated (not
-// imported) from assemble.ts's own copy: assemble.ts imports findDictionary
-// from THIS module, so importing suggestNearest back from assemble.ts would
-// be a module cycle for the sake of ~15 lines. Same heuristic, same tight
-// threshold (a wrong suggestion is worse than none).
-function levenshtein(a: string, b: string): number {
-  const dp: number[] = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    let prev = dp[0];
-    dp[0] = i;
-    for (let j = 1; j <= b.length; j++) {
-      const tmp = dp[j];
-      dp[j] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, dp[j], dp[j - 1]);
-      prev = tmp;
-    }
-  }
-  return dp[b.length];
-}
-
-function suggestNearest(key: string, candidates: Iterable<string>): string | undefined {
-  const threshold = Math.max(2, Math.floor(key.length / 4));
-  let best: string | undefined;
-  let bestDist = Infinity;
-  for (const c of candidates) {
-    const d = levenshtein(key, c);
-    if (d < bestDist) {
-      bestDist = d;
-      best = c;
-    }
-  }
-  return best !== undefined && bestDist <= threshold ? best : undefined;
-}
 
 // Strict overlay parsing: unlike parseDictionary's lax four-field check (base
 // dictionaries stay unvalidated deliberately — see the module-level design
@@ -331,6 +345,26 @@ export function parseOverlay(path: string, content: string): DictionaryOverlayDo
   for (const [key, entry] of Object.entries(raw.parameters as Record<string, unknown>)) {
     if (typeof entry !== "object" || entry === null) {
       throw new Error(`${path}: parameter "${key}" must be a map`);
+    }
+    // The SHAPE of a LangText, not just which fields exist: `description:
+    // { enn: "..." }` used to pass every check here and then fill neither
+    // language — mergeOverlays reads `en`/`ja` off it and finds both
+    // undefined, so the entry contributed nothing, with no error and no
+    // warning. That is the silent no-op this file exists to prevent
+    // everywhere else. The base dictionary gets the same guarantee from the
+    // schema's `langText` definition; an overlay is hand-written, so it is
+    // the one that most needed it.
+    const desc = (entry as Record<string, unknown>).description;
+    if (desc !== undefined && typeof desc === "object" && desc !== null) {
+      for (const lang of Object.keys(desc as Record<string, unknown>)) {
+        if (lang !== "en" && lang !== "ja") {
+          const hint = suggestNearest(lang, ["en", "ja"]);
+          throw new Error(
+            `${path}: parameter "${key}" description has unknown language "${lang}" — only en/ja exist` +
+              (hint ? ` (did you mean "${hint}"?)` : "")
+          );
+        }
+      }
     }
     for (const field of Object.keys(entry as Record<string, unknown>)) {
       if (!OVERLAY_PARAM_FIELDS.includes(field)) {

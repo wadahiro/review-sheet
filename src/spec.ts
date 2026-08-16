@@ -8,12 +8,13 @@
 // paths; recipe-specific path fields are opaque to this loader — each recipe
 // resolves its own via the `RecipeIO.resolve` it is handed.
 
-import Ajv, { type ErrorObject } from "ajv";
+import Ajv from "ajv";
 import { keyTransformSchema } from "./keytransform.js";
 import { parse } from "yaml";
 import { dirname, resolve as resolvePath } from "node:path";
 import { getRecipe, listRecipes, type JsonValue } from "./recipe.js";
-import { suggestNearest, type SheetDictionaryBinding } from "./assemble.js";
+import type { SheetDictionaryBinding } from "./assemble.js";
+import { formatAjvErrors } from "./schema-errors.js";
 
 export type BuildSpec = {
   version: 1;
@@ -94,7 +95,7 @@ export type BuildSpec = {
   >;
 };
 
-// `verbose: true` so an `additionalProperties` error's ErrorObject carries
+// `verbose: true` so an `additionalProperties` error carries `parentSchema`;
 // `parentSchema` — formatAjvErrors uses it to list the schema's OWN declared
 // property names as "did you mean" candidates (suggestNearest), without a
 // second, hand-maintained list of "what fields does this object accept" per
@@ -259,19 +260,6 @@ const specSchema = {
 
 const validateSpecSchema = ajv.compile(specSchema);
 
-function formatAjvErrors(errors: ErrorObject[] | null | undefined): string {
-  return (errors ?? [])
-    .map((e) => {
-      if (e.keyword === "additionalProperties") {
-        const bad = (e.params as { additionalProperty: string }).additionalProperty;
-        const candidates = Object.keys((e.parentSchema as { properties?: Record<string, unknown> } | undefined)?.properties ?? {});
-        const hint = suggestNearest(bad, candidates);
-        return `${e.instancePath || "/"}: must NOT have additional property "${bad}"` + (hint ? ` — did you mean "${hint}"?` : "");
-      }
-      return `${e.instancePath || "/"}: ${e.message}`;
-    })
-    .join("\n");
-}
 
 // Directory a spec's own relative paths resolve against (exported so a caller
 // building a RecipeIO — e.g. the CLI — computes the identical directory).

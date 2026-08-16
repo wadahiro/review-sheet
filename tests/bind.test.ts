@@ -272,7 +272,7 @@ parameters:
   it("returns one BindSource per declared dictionary, preserving order", () => {
     const files2: Record<string, string> = {
       "dir1/nginx@1.26.yml": NGINX_DICT,
-      "dir1/httpd@2.4.yml": `product: httpd\nversion: "2.4"\nparameters: {}\n`,
+      "dir1/httpd@2.4.yml": `product: httpd\nversion: "2.4"\nparameters:\n  ServerRoot:\n    default: /etc/httpd\n`,
     };
     const sources = loadBindSources(
       [
