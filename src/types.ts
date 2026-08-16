@@ -385,6 +385,18 @@ export type ParameterBase = {
   // so a label routed through it could never follow the viewer's language
   // toggle the way description and remarks do.
   options?: ParamOption[];
+  // This value is a credential. Set by whoever knows: a product that declares
+  // it (a Keycloak component's ProviderConfigProperty says `secret`), or the
+  // project, for the far more common case where the product says nothing —
+  // measured, Keycloak's SERVER option registry has no such notion at all, so
+  // `https-key-store-password` is indistinguishable from `http-port` to it.
+  //
+  // NOT a display flag. The viewer does not mask it, deliberately: the value
+  // is in the generated HTML either way, and hiding it on screen would sell a
+  // safety the file does not have. What it drives is a check at generate time
+  // — see `findBakedSecrets` (secrets.ts) — that a sheet about to be handed
+  // around does not carry a literal where it should carry a reference.
+  secret?: boolean;
   // What the vendor's SHIPPED file gives this key — not `default` (what the
   // PRODUCT documents) and genuinely not the same value: measured, a
   // dictionary built from httpd's own branch documentation says `ServerRoot`

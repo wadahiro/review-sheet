@@ -1,6 +1,7 @@
 export { generateHtml } from "./html/generate.js";
 export { validateInput, validateReview, validateVersionedInput, isVersionedInput } from "./validate.js";
 export { verifySources } from "./verify.js";
+export { findBakedSecrets, formatBakedSecrets, type BakedSecret } from "./secrets.js";
 export { computeApply } from "./apply.js";
 export { buildPromptText } from "./prompt.js";
 export { diffSheets } from "./diff.js";

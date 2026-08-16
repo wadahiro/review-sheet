@@ -395,6 +395,12 @@ function enrichParam(
       param.options = resolved.options;
       wrote = true;
     }
+    // A boolean, and a fact a CHECK reads rather than a reader — so not an
+    // `extra` (those are display strings baked at generate time).
+    if (resolved.secret !== undefined && param.secret === undefined) {
+      param.secret = resolved.secret;
+      wrote = true;
+    }
     if (fillExtra(param, "docs_url", resolved.docs_url)) wrote = true;
     if (fillExtra(param, "type", resolved.type)) wrote = true;
     if (fillExtra(param, "scope", resolved.scope)) wrote = true;
