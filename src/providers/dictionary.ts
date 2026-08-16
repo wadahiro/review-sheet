@@ -302,7 +302,7 @@ export function findDictionary(
 // not from anyone's discipline about which file they edit.
 //
 // Fields an overlay entry may set are documentation prose ONLY.
-// default/type/scope/group/kind/ui/since/until are product facts the extraction
+// label/default/type/scope/group/kind/ui/options are product facts the extraction
 // owns; letting an overlay set them would let a community claim reshape
 // materialize's inventory ledger (see the design doc's "Unsure" section for
 // the one tempting exception, `default`).
@@ -378,7 +378,7 @@ export function parseOverlay(path: string, content: string): DictionaryOverlayDo
         const hint = suggestNearest(field, OVERLAY_PARAM_FIELDS);
         throw new Error(
           `${path}: parameter "${key}" has unknown field "${field}" — an overlay entry may set only ` +
-            `${OVERLAY_PARAM_FIELDS.join("/")} (default/type/scope/group/kind/ui/since/until are product facts ` +
+            `${OVERLAY_PARAM_FIELDS.join("/")} (label/default/type/scope/group/kind/ui/options are product facts ` +
             `the extraction owns, not the overlay's to set)` +
             (hint ? ` (did you mean "${hint}"?)` : "")
         );
