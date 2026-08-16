@@ -770,8 +770,8 @@ Terraform's address grammar in three hand-written patterns:
   recipe: terraform-plan
   instances: [staging, production]
   snapshots:
-    staging: ../../platforms/aws-ec2/terraform/plan.staging.json
-    production: ../../platforms/aws-ec2/terraform/plan.production.json
+    staging: ../../infra/terraform/plan.staging.json
+    production: ../../infra/terraform/plan.production.json
   empty_means_unset: true
   exclude: ["**.tags_all.**", "**.tags.**", "**.timeouts"]
 ```
