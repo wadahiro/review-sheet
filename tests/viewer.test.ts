@@ -1849,3 +1849,46 @@ describe("viewer: versions as columns", () => {
     expect(workers?.className).not.toContain("rs-pivot-differs");
   });
 });
+
+// A sheet that exists only to compare has no stacked reading to return to, so
+// it opens side by side and offers no way out. The togglable form is unchanged.
+describe("viewer: a sheet that is always side by side", () => {
+  const doc = (mode: boolean | "always") => ({
+    metadata: { title: "t" },
+    versions: [
+      {
+        version: "current",
+        sheets: [
+          {
+            name: "s",
+            compare_components: mode,
+            categories: [
+              { name: "a", categories: [{ name: "Settings", params: [{ key: "k", value: "1", description: "d" }] }] },
+              { name: "b", categories: [{ name: "Settings", params: [{ key: "k", value: "2", description: "d" }] }] },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  function mountMode(mode: boolean | "always"): HTMLElement {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: doc(mode) as never, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    return host;
+  }
+
+  it("opens pivoted, with no toggle to leave by", () => {
+    const host = mountMode("always");
+    expect(host.querySelector(".rs-pivot")).toBeTruthy();
+    expect(host.querySelector(".rs-compare-toggle")).toBeNull();
+  });
+
+  it("still opens stacked, with a toggle, for the plain declaration", () => {
+    const host = mountMode(true);
+    expect(host.querySelector(".rs-pivot")).toBeNull();
+    expect(host.querySelector(".rs-compare-toggle")).toBeTruthy();
+  });
+});

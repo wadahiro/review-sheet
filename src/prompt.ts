@@ -99,7 +99,9 @@ export type SheetData = {
     name: string;
     label?: LangText;
     group?: string;
-    compare_components?: boolean;
+    // See types.ts: `"always"` opens side by side with no way back, for a sheet
+    // whose whole purpose is the comparison.
+    compare_components?: boolean | "always";
     // Filled by the viewer's localizeSheets, never present in a built model.
     display?: string;
     role?: string;

@@ -2880,7 +2880,13 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
   const [hiddenInstances, setHiddenInstances] = useState<Set<string>>(() => new Set());
   // Sheets currently read side by side, by name — a per-sheet choice, since
   // only a sheet whose components are siblings has anything to compare.
-  const [pivoted, setPivoted] = useState<Set<string>>(() => new Set());
+  // A sheet declaring `compare_components: "always"` starts pivoted and never
+  // leaves: it exists to compare, so the stacked reading is not a state it has.
+  const alwaysPivoted = useMemo(
+    () => new Set(data.sheets.filter((s) => s.compare_components === "always").map((s) => s.name)),
+    [data.sheets]
+  );
+  const [pivoted, setPivoted] = useState<Set<string>>(() => new Set(alwaysPivoted));
   const [modalTarget, setModalTarget] = useState<{ target: ReviewItem["target"]; field: string; currentValue: string; sharedRow?: boolean } | null>(null);
   const [applyPanelOpen, setApplyPanelOpen] = useState(false);
   const [promptModalText, setPromptModalText] = useState<string | null>(null);
@@ -3525,10 +3531,10 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
               ${pivoted.has(sheet.name)
                 ? html`<${PivotView} sheet=${sheet} sheetIndex=${idx} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
                                      reviews=${reviews} reviewEnabled=${effReviewEnabled} onOpenReview=${openReview}
-                                     onLeave=${() => setPivoted((prev) => { const next = new Set(prev); next.delete(sheet.name); return next; })} t=${t} />`
+                                     onLeave=${alwaysPivoted.has(sheet.name) ? undefined : () => setPivoted((prev) => { const next = new Set(prev); next.delete(sheet.name); return next; })} t=${t} />`
                 : sheet.categories.map((cat) => html`
                 <${CategorySection} key=${cat.name} category=${cat} sheetName=${sheet.name} sheetInstances=${sheet.instances} sheetIndex=${idx} hiddenInstances=${hiddenInstances}
-                                    headingExtra=${sheet.compare_components
+                                    headingExtra=${sheet.compare_components && sheet.compare_components !== "always"
                                       ? html`<${CompareToggle} on=${false} t=${t}
                                                                onToggle=${() => setPivoted((prev) => new Set(prev).add(sheet.name))} />` as VNode
                                       : null}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { loadProjectMeta, paramsForSheet, checkProjectMetaSheets } from "../src/providers/project";
+import { loadProjectMeta, paramsForSheet, checkProjectMetaSheets, compareComponentsForSheet } from "../src/providers/project";
 import { getMetadataProvider, type MetadataContext } from "../src/metadata";
 import "../src/providers/project";
 
@@ -203,5 +203,23 @@ describe("project metadata provider: sheet-scoped resolution (P4)", () => {
     expect(provider.resolve({ key: "only_in_b", sheet: "sheet b" }, c)).toBeDefined();
     expect(provider.resolve({ key: "only_in_b", sheet: "sheet a" }, c)).toBeUndefined();
     expect(provider.resolve({ key: "only_in_b" }, c)).toBeUndefined(); // no sheet at all
+  });
+});
+
+// sheet.yml -> Sheet.compare_components. A comparison sheet declares that it
+// opens side by side and stays there; the plain boolean keeps its toggle.
+describe("compare_components: always", () => {
+  const load = (mode: string) =>
+    loadProjectMeta("sheet.yml", () => `sheets:\n  s:\n    compare_components: ${mode}\n    params: {}\n`);
+
+  it("carries the string through, distinct from true", () => {
+    expect(compareComponentsForSheet(load("always"), "s")).toBe("always");
+    expect(compareComponentsForSheet(load("true"), "s")).toBe(true);
+  });
+
+  it("is false when the sheet says nothing, so nothing opens pivoted by accident", () => {
+    const doc = loadProjectMeta("sheet.yml", () => "sheets:\n  s:\n    params: {}\n");
+    expect(compareComponentsForSheet(doc, "s")).toBe(false);
+    expect(compareComponentsForSheet(doc, "no-such-sheet")).toBe(false);
   });
 });
