@@ -47,6 +47,10 @@ export type ParamData = {
   label?: LangText | string;
   description?: LangText;
   default?: string;
+  // The values this setting may take, with the product's own name for each —
+  // labels are LangText in a built model and resolved to strings by the
+  // viewer's localizeParam, so the language toggle switches them live.
+  options?: { value: string; label?: LangText | string }[];
   // The vendor's shipped value — see types.ts's `ParameterBase.baseline`.
   baseline?: string;
   remarks?: LangText;

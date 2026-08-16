@@ -5,12 +5,12 @@
 // resolve time, self-registering providers).
 
 import type { KeyTransformStep } from "./keytransform.js";
-import { pickLang, type LangText } from "./types.js";
+import { pickLang, type LangText, type ParamOption } from "./types.js";
 import { sharedRegistry } from "./registry.js";
 import type { Binding } from "./bind.js";
 
 export { pickLang };
-export type { LangText };
+export type { LangText, ParamOption };
 
 export type Provenance = "official" | "community" | "machine" | "extracted" | "project";
 
@@ -124,6 +124,12 @@ export type MetadataResult = {
   docs_url?: string;
   type?: string;
   scope?: string;
+  // The values this setting may take, with the product's own name for each.
+  // Merged plainly (first provider with any wins the whole list) rather than
+  // per-language like description: an option LIST is one statement about the
+  // setting, and interleaving two providers' lists would produce a set of
+  // choices neither of them describes.
+  options?: ParamOption[];
   out_of_scope?: { reason: LangText; owner?: string };
   provenance: LangProvenance;
 };
@@ -192,6 +198,7 @@ export type ResolvedMetadata = {
   docs_url?: string;
   type?: string;
   scope?: string;
+  options?: ParamOption[];
   out_of_scope?: { reason: LangText; owner?: string };
   provenance?: LangProvenance;
   contributions: Record<string, number>;
@@ -200,7 +207,7 @@ export type ResolvedMetadata = {
 // Fields merged whole, field-level first-wins: the first (highest-priority)
 // provider to supply a defined value for the field claims it outright, same
 // as before this module gained per-language merging.
-const PLAIN_MERGE_FIELDS = ["default", "docs_url", "type", "scope", "out_of_scope"] as const;
+const PLAIN_MERGE_FIELDS = ["default", "docs_url", "type", "scope", "options", "out_of_scope"] as const;
 
 // LangText fields merged per language KEY rather than as a whole (see below)
 // — the reason this module exists: a project's own metadata file may now

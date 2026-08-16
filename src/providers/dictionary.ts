@@ -19,6 +19,7 @@ import {
   type LangText,
   type Provenance,
   type LangProvenance,
+  type ParamOption,
 } from "../metadata.js";
 
 export type DictionaryParam = {
@@ -38,6 +39,11 @@ export type DictionaryParam = {
   // Where/when the setting applies, in the product's own terms (Keycloak's
   // build-time vs runtime, an nginx directive's valid context). Documentation.
   scope?: string;
+  // The values this setting may take, with the product's own name for each —
+  // see types.ts's ParamOption. Extraction-owned like every other product
+  // fact: an overlay may not set it, because a community guess at which
+  // values are legal would be indistinguishable from the product's own list.
+  options?: ParamOption[];
   // The product's OWN grouping of its parameters (PostgreSQL's pg_settings
   // category, "Write-Ahead Log / Archive Recovery"). Structure, not
   // documentation: it is NOT returned by resolve() — enrich never writes it
@@ -136,6 +142,7 @@ export const DICTIONARY_PARAM_FIELDS = [
   "unit",
   "kind",
   "ui",
+  "options",
   "docs_url",
   "provenance",
 ] as const;
@@ -582,6 +589,7 @@ const dictionaryProvider: MetadataProvider = {
       default: entry.default !== undefined ? String(entry.default) : undefined,
       type: entry.type,
       scope: entry.scope,
+      options: entry.options,
       docs_url: entry.docs_url,
       // provenanceFor always resolves to a defined Provenance per language
       // (its own last tier is the "community" default, replacing the old

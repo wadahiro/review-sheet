@@ -1165,6 +1165,17 @@ code {
   accent-color: var(--rs-primary);
 }
 
+/* What the product's own UI calls this value, beside the value and never in
+   it. Muted and parenthesised so it reads as an annotation: the value is the
+   reviewable fact, this is the vocabulary a reviewer met in the console. */
+.rs-option-label {
+  color: var(--rs-text-muted);
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+.rs-option-label::before { content: "("; }
+.rs-option-label::after { content: ")"; }
+
 .rs-unset-label {
   display: inline-block;
   font-size: 0.7rem;
