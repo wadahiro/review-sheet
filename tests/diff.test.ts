@@ -280,3 +280,60 @@ describe("diffSheets — diff-demo fixture (all patterns)", () => {
     expect(byInst).toEqual({ web: "changed", api: "unchanged", db: "added", cache: "removed" });
   });
 });
+
+// What KIND of thing changed, which is the whole difference between an upgrade
+// review that can be signed and one that cannot.
+//
+// The motivating measurement, from a real Keycloak 19.0.2 -> 26.7.0 comparison
+// of one unchanged LDAP configuration: 6 rows came out "changed", 4 of them
+// because the newer dictionary carries a Japanese translation the older one
+// lacks. The one that mattered — `useTruststoreSpi`, whose product default
+// moved from `ldapsOnly` to `always` under a value nobody touched — sat in the
+// same undifferentiated count as the four.
+describe("diffSheets — what kind of change", () => {
+  const doc = (d: string) => ({ key: "k", value: "1", description: { en: d } });
+
+  it("separates a value change from prose", () => {
+    const from = sheets([{ key: "k", value: "1", description: { en: "old words" } }]);
+    const to = sheets([{ key: "k", value: "2", description: { en: "new words" } }]);
+    const p = diffSheets(from, to).sheets[0].categories[0].params[0];
+    expect(p.status).toBe("changed");
+    expect(p.changed).toEqual(["value", "doc"]);
+  });
+
+  it("calls a prose-only difference doc-only, and counts it as such", () => {
+    const r = diffSheets(sheets([doc("was")]), sheets([doc("is")]));
+    const p = r.sheets[0].categories[0].params[0];
+    expect(p.changed).toEqual(["doc"]);
+    // Still "changed" — the field really did change, and hiding that would be
+    // the opposite failure. It is the SHARE that has to be visible.
+    expect(p.status).toBe("changed");
+    expect(r.summary).toMatchObject({ changed: 1, docOnly: 1 });
+  });
+
+  it("treats a moved product default as a finding, not as prose", () => {
+    // The real case: the configuration is identical and the ground moved.
+    const from = sheets([{ key: "k", value: "1", default: "ldapsOnly" }]);
+    const to = sheets([{ key: "k", value: "1", default: "always" }]);
+    const r = diffSheets(from, to);
+    const p = r.sheets[0].categories[0].params[0];
+    expect(p.changed).toEqual(["default"]);
+    // Not doc-only: a reviewer must not be able to filter this away with the
+    // translation churn.
+    expect(r.summary.docOnly).toBe(0);
+  });
+
+  it("gives a row present on one side no kind at all", () => {
+    const r = diffSheets(sheets([]), sheets([doc("new row")]));
+    const p = r.sheets[0].categories[0].params[0];
+    expect(p.status).toBe("added");
+    expect(p.changed).toEqual([]);
+    expect(r.summary.docOnly).toBe(0);
+  });
+
+  it("leaves an unchanged row with no kinds and no doc-only count", () => {
+    const r = diffSheets(sheets([doc("same")]), sheets([doc("same")]));
+    expect(r.sheets[0].categories[0].params[0].changed).toEqual([]);
+    expect(r.summary).toMatchObject({ changed: 0, docOnly: 0, unchanged: 1 });
+  });
+});

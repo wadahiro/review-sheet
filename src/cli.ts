@@ -1129,7 +1129,7 @@ program
         const collect = (cat: CategoryDiff, sheetName: string): void => {
           for (const p of cat.params) {
             if (p.status === "unchanged" && !opts.all) continue;
-            rows.push({ sheet: sheetName, category: cat.path, key: p.key, status: p.status, cells: p.cells, fields: p.fields });
+            rows.push({ sheet: sheetName, category: cat.path, key: p.key, status: p.status, changed: p.changed, cells: p.cells, fields: p.fields });
           }
           for (const sub of cat.categories) collect(sub, sheetName);
         };
@@ -1151,7 +1151,12 @@ program
               return c.status === "changed" ? `${label}${c.from} -> ${c.to}` : `${label}${c.to ?? c.from ?? ""}`;
             })
             .join(", ");
-          console.log(`${mark[p.status]} ${sheetName} > ${cat.path} > ${p.key}${cells ? `: ${cells}` : ""}`);
+          // A row whose only difference is prose says so on its own line. Left
+          // unmarked it reads exactly like a value change, which across two
+          // dictionary versions is most of the output.
+          const docOnlyRow = p.changed.length > 0 && p.changed.every((k) => k === "doc");
+          const kinds = docOnlyRow ? " (description/remarks only)" : "";
+          console.log(`${mark[p.status]} ${sheetName} > ${cat.path} > ${p.key}${cells ? `: ${cells}` : ""}${kinds}`);
         }
         for (const sub of cat.categories) printCat(sub, sheetName);
       };
@@ -1166,8 +1171,15 @@ program
         console.log(`o ${s.name}: sheet only in the ${side} input (${s.paramCount} params, excluded from removed/added counts)`);
       }
 
-      const { changed, added, removed, unchanged } = result.summary;
-      let summaryLine = `diff: ${changed} changed, ${added} added, ${removed} removed, ${unchanged} unchanged`;
+      const { changed, docOnly, added, removed, unchanged } = result.summary;
+      // The doc-only share is called out rather than folded in. Comparing one
+      // configuration across two product dictionaries, prose churn dominates —
+      // measured at 67-74% of shared keys on a real upgrade, most of it a
+      // translation the newer dictionary has and the older lacks — so a bare
+      // "115 changed" reads as a system that moved when nothing did. Named, the
+      // reader subtracts it and signs off on what is left.
+      const changedPart = docOnly > 0 ? `${changed} changed (${docOnly} description/remarks only)` : `${changed} changed`;
+      let summaryLine = `diff: ${changedPart}, ${added} added, ${removed} removed, ${unchanged} unchanged`;
       if (excludeDefaultOrigin) summaryLine += ` (excluded ${result.excluded.defaultOrigin} materialize default-origin rows)`;
       if (sheetPresence) summaryLine += ` (${result.sheetsOnlyOnOneSide.length} sheet(s) present on only one side, see stdout)`;
       console.error(summaryLine);

@@ -60,7 +60,9 @@ describe("diff --format json", () => {
     const run = runDiff(base, current);
     expect(run.code).toBe(0);
     expect(run.stdout).toContain("~ ");
-    expect(run.stderr).toContain("changed,");
+    // The changed count now names its doc-only share when there is one, so the
+    // assertion anchors on the prefix rather than on the punctuation after it.
+    expect(run.stderr).toContain("diff: 5 changed");
   });
 });
 
