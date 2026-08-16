@@ -210,7 +210,13 @@ export function alignValues(
   };
 }
 
-function diffParam(from: ParamData | undefined, to: ParamData | undefined): ParamDiff {
+// Exported so `diffview.ts` classifies a row through THIS function rather than
+// a second copy of the rule. `alignValues` was already shared for exactly that
+// reason — "the CLI and the Compare overlay can never disagree" — but the
+// STATUS was not, so a kind split landing here reached `review-sheet diff` and
+// left the viewer showing a moved product default and a reworded description
+// as the same undifferentiated "changed".
+export function diffParam(from: ParamData | undefined, to: ParamData | undefined): ParamDiff {
   const key = (to ?? from)!.key;
 
   const cells: CellDiff[] = alignValues(from, to).cells.map((c) => ({

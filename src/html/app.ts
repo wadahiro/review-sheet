@@ -3510,7 +3510,7 @@ function VersionBar({ versions, activeId, compare, fromId, toId, onSelect, onTog
   onToggleCompare: () => void;
   onFrom: (id: string) => void;
   onTo: (id: string) => void;
-  diffSummary?: { changed: number; added: number; removed: number };
+  diffSummary?: { changed: number; docOnly: number; added: number; removed: number; unchanged: number };
   changedOnly?: boolean;
   onChangedOnly?: (v: boolean) => void;
   t: Messages;
@@ -3537,7 +3537,7 @@ function VersionBar({ versions, activeId, compare, fromId, toId, onSelect, onTog
           </label>
           <button type="button" class="rs-version-btn" onClick=${onToggleCompare}>${t.exitCompare}</button>
           ${diffSummary && html`
-            <span class="rs-diff-summary">${t.diffSummary(diffSummary.changed, diffSummary.added, diffSummary.removed)}</span>
+            <span class="rs-diff-summary">${t.diffSummary(diffSummary.changed, diffSummary.docOnly, diffSummary.added, diffSummary.removed, diffSummary.unchanged)}</span>
             <label class="rs-diff-changed-only">
               <input type="checkbox" checked=${changedOnly} onChange=${(e: Event) => onChangedOnly?.((e.target as HTMLInputElement).checked)} />
               <span>${t.diffChangedOnly}</span>
