@@ -2378,6 +2378,58 @@ function pivotSheet(sheet: SheetData["sheets"][number]): { components: CategoryD
   return { components, rows: [...rows.values()] };
 }
 
+// The same shape, with VERSIONS as the columns instead of components.
+//
+// A comparison across two product releases cannot use the component axis: on
+// three of the four sheets an upgrade review needs, that axis is already spent
+// on the data's own identity — the LDAP providers, the clients, the files of
+// keycloak.conf — and taking it for versions would give up the very breakdown
+// those sheets exist for. Versions are the axis that is free, and (crucially)
+// it crosses the component axis rather than competing with it: a component
+// stays a category, and `corp-ldap` on one side lines up with `corp-ldap` on
+// the other by name, exactly as `buildDiffModel` already merges them.
+//
+// Emitting `{ components, rows }` rather than a new shape is the whole point —
+// PivotView renders this unchanged, so there is one columnar table in the
+// product and not two that can drift apart.
+//
+// Rows are keyed by SHEET + path + key, because this pivots a whole document
+// rather than one sheet: `enabled` under `keycloak realm` and `enabled` under
+// `keycloak oidc clients` are different rows and must not collapse into one.
+function pivotVersions(
+  fromSheets: SheetData["sheets"],
+  toSheets: SheetData["sheets"],
+  fromLabel: string,
+  toLabel: string
+): { components: CategoryData[]; rows: PivotRow[] } {
+  const rows = new Map<string, PivotRow>();
+  const side = (sheets: SheetData["sheets"], label: string): void => {
+    for (const sheet of sheets) {
+      const walk = (cats: CategoryData[] | undefined, path: string[]): void => {
+        for (const c of cats ?? []) {
+          const here = [...path, c.name];
+          for (const p of c.params ?? []) {
+            const id = `${sheet.name}::${here.join("/")}::${p.key}`;
+            const row = rows.get(id) ?? { key: p.key, path: [sheet.name, ...here], byComponent: new Map() };
+            row.byComponent.set(label, p);
+            rows.set(id, row);
+          }
+          walk(c.categories, here);
+        }
+      };
+      walk(sheet.categories, []);
+    }
+  };
+  // `from` first so a row present only in the baseline still appears, in the
+  // order the baseline had it — a removed setting is a finding, not an absence.
+  side(fromSheets, fromLabel);
+  side(toSheets, toLabel);
+  return {
+    components: [{ name: fromLabel, params: [], categories: [] }, { name: toLabel, params: [], categories: [] }],
+    rows: [...rows.values()],
+  };
+}
+
 
 
 // A pivot table with its column header split out, the same shape the stacked
@@ -2442,8 +2494,12 @@ function pivotTree(rows: PivotRow[]): PivotNode {
   return root;
 }
 
-function PivotView({ sheet, sheetIndex, hiddenInstances, showDefaults, reviews, reviewEnabled, onOpenReview, onLeave, t }: {
+function PivotView({ sheet, pivot, sheetIndex, hiddenInstances, showDefaults, reviews, reviewEnabled, onOpenReview, onLeave, t }: {
   sheet: SheetData["sheets"][number];
+  // Supplied when the columns are not this sheet.s components — a version
+  // comparison pivots a whole document, so its columns and rows are built
+  // elsewhere (pivotVersions) and handed in ready.
+  pivot?: { components: CategoryData[]; rows: PivotRow[] };
   sheetIndex: number;
   onLeave?: () => void;
   hiddenInstances: Set<string>;
@@ -2453,7 +2509,7 @@ function PivotView({ sheet, sheetIndex, hiddenInstances, showDefaults, reviews, 
   onOpenReview: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
   t: Messages;
 }) {
-  const { components, rows } = pivotSheet(sheet);
+  const { components, rows } = pivot ?? pivotSheet(sheet);
   // The heading's own text, and the path its anchor is keyed by — the outline
   // has to name the same string to point at it.
   const subjects = components.map((c) => c.display ?? c.name).join(" / ");
@@ -2479,6 +2535,25 @@ function PivotView({ sheet, sheetIndex, hiddenInstances, showDefaults, reviews, 
   };
   // The environments this sheet is read along, minus the ones switched off.
   const envNames = (sheet.instances ?? []).filter((n) => !hiddenInstances.has(n));
+  // The product's default, under the value, in the same cell — because in this
+  // table a large share of the rows have no value at all and the default is the
+  // only thing they say. Measured on one project: 672 of 1016 rows are unset
+  // (`origin: default` or `baseline`), all of them with `value: undefined`, so
+  // a columnar view that showed values alone would put two blank columns beside
+  // each other and call it "no difference" — over exactly the rows where a
+  // version comparison finds things (see diff.ts's `effective`).
+  //
+  // Shown ALWAYS on an unset row, where it is the value in force and there is
+  // nothing else to print. On a row the project sets, shown only when the
+  // columns disagree: the configured value is the subject there, and repeating
+  // an identical default down every row would bury the handful that moved.
+  const defaultLine = (p: ParamData | undefined, columnsDiffer: boolean): string | undefined => {
+    const d = p?.default;
+    if (d === undefined || d === "") return undefined;
+    const unset = p !== undefined && (effectiveOrigin(p) === "default" || effectiveOrigin(p) === "baseline");
+    return unset || columnsDiffer ? `${t.defaultValue}: ${d}` : undefined;
+  };
+
   const cellValue = (p: ParamData | undefined, stacked: boolean): { text: string; sub?: string[] } => {
     if (!p) return { text: "" };
     const envs = envValues(p);
@@ -2517,7 +2592,12 @@ function PivotView({ sheet, sheetIndex, hiddenInstances, showDefaults, reviews, 
             const present = components.map((c) => row.byComponent.get(c.name)).filter((p): p is ParamData => p !== undefined);
             const stacked = present.some(varies);
             const texts = new Set(present.map((p) => cellValue(p, stacked).text + (cellValue(p, stacked).sub ?? []).join("|")));
-            const agree = present.length === components.length && texts.size === 1;
+            // Defaults are compared in their own right: two columns can hold the
+            // same value (or no value at all) while the product default beneath
+            // them moved, which is the finding an upgrade review is looking for.
+            const defaults = new Set(present.map((p) => p.default ?? ""));
+            const defaultsDiffer = present.length === components.length && defaults.size > 1;
+            const agree = present.length === components.length && texts.size === 1 && !defaultsDiffer;
             return html`
               <tr key=${row.key} class=${`rs-param-row ${agree ? "" : "rs-pivot-differs"}`}>
                 <td class="rs-col-key"><code>${row.key}</code></td>
@@ -2530,6 +2610,7 @@ function PivotView({ sheet, sheetIndex, hiddenInstances, showDefaults, reviews, 
                     return html`<td key=${c.name} class="rs-col-value rs-pivot-absent" title=${t.pivotAbsent}>—</td>`;
                   }
                   const { text, sub } = cellValue(p, stacked);
+                  const dflt = defaultLine(p, defaultsDiffer);
                   const tag = originTag(p, t);
                   return html`<${ReviewableCell} key=${c.name}
                     value=${text}
@@ -2538,6 +2619,7 @@ function PivotView({ sheet, sheetIndex, hiddenInstances, showDefaults, reviews, 
                     className="rs-col-value" isCode=${true} copyable=${text.length > 0}
                     subline=${[
                       ...(sub ?? []).map((line) => html`<span class="rs-key-subline"><code>${line}</code></span>` as VNode),
+                      ...(dflt ? [html`<span class=${`rs-key-subline rs-pivot-default ${defaultsDiffer ? "rs-pivot-default-differs" : ""}`}><code>${dflt}</code></span>` as VNode] : []),
                       ...(tag ? [html`<span class="rs-key-subline"><span class="rs-origin-tag" title=${tag.title}>${tag.label}</span></span>` as VNode] : []),
                     ]}
                     t=${t} />`;

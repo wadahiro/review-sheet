@@ -1297,6 +1297,24 @@ code {
   text-align: center;
 }
 
+/* The product default, printed under the value in the same column. Muted by
+   default because on an unset row it appears on EVERY row and is reference
+   material, not a finding. */
+.rs-pivot-default {
+  color: var(--rs-text-muted);
+}
+
+/* Unless the columns disagree about it, which is the one thing this table is
+   read to find: the value held still and the ground under it moved. Marked on
+   the default line itself rather than on the row, so it cannot be mistaken for
+   a value that changed. */
+.rs-pivot-default-differs {
+  color: var(--rs-text);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--rs-warning, #f59e0b);
+  padding-left: 4px;
+}
+
 /* Block, not inline. These stack under a value — a row's provenance line, an
    origin marker, or one line per environment in the side-by-side view — and as
    spans they ran together on one line the moment a cell had more than one.
