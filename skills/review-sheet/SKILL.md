@@ -2111,6 +2111,8 @@ generated_by: "manual transcription of httpd.apache.org/docs/2.4"
 docs_url: https://httpd.apache.org/docs/2.4/
 parameters:               # required
   TimeOut:               # the product's OWN spelling, verbatim
+    label:                # what the product CALLS it where a human meets it
+      en: Timeout
     description:          # string, or a { en, ja } block map
       en: Seconds the server waits before failing a request.
       ja: リクエスト失敗と判断するまでの待機秒数。
@@ -2119,8 +2121,8 @@ parameters:               # required
     scope: server config, virtual host   # WHERE/WHEN the setting applies
     group: General                       # the PRODUCT's own grouping
     ui: editable                         # how the product's own admin UI exposes it
-    since: "2.4"                         # product versions this parameter exists in
-    until: "2.6"
+    options:                             # the values it may take, if enumerated
+      - { value: "60", label: { en: One minute } }
     docs_url: https://httpd.apache.org/docs/2.4/mod/core.html#timeout
     provenance: community                # per-entry override — see below
 ```
@@ -2128,8 +2130,27 @@ parameters:               # required
 Everything except `product`, `version` and `parameters` is optional, and a
 parameter whose description is all you have is a perfectly good entry.
 
+**The file is schema-validated** (`src/schema/dictionary.schema.json`) when it
+is loaded, so the fields above are the whole vocabulary: an unknown one is a
+hard error naming it, with a "did you mean" hint. That is deliberate — the
+check used to be three `typeof`s and a cast, which made a misspelled field a
+silent no-op: the value never arrived, the row rendered without its default or
+its group, and the strict-metadata gate blamed the project for a description
+the dictionary was in fact supplying under a typo. `description`/`label` and
+every per-language `provenance` accept only `en`/`ja`, for the same reason.
+`kind: container` may not carry a `default` — a container has no value of its
+own, so what looks like its default is the empty shape of what it holds, and
+that is an object where only a scalar belongs.
+
 #### `DictionaryParam` fields
 
+- `label` — what the PRODUCT calls this setting where a human meets it: an
+  admin console's field label, a directive's own display name (`LangText`, so
+  a console that ships translations carries both). Display only, and never
+  identity — the key is what verify/apply resolve by, two settings may
+  legitimately share a label, and a product's UI wording changes while its
+  key does not. Useful exactly where the key is not something a reviewer has
+  ever seen: `attributes["saml.signature.algorithm"]` versus 「署名アルゴリズム」.
 - `description` — the product's own words for what the setting does (`LangText`:
   a string, or a `{ en, ja }` block map — see "Multilingual prose" above).
   Enriched onto the parameter and displayed as-is.
@@ -2166,10 +2187,31 @@ parameter whose description is all you have is a perfectly good entry.
   binding at all (a hard error without one). This is the field easiest to
   confuse with `scope` — the test is "does this describe the setting, or
   does it file the setting": the former is `scope`.
-- `since` / `until` — the product version range the parameter exists in.
-  Informational only (not machine-checked against the dictionary's own
-  `version`); useful when a dictionary is kept current across product
-  upgrades instead of being re-cut per version.
+- `options` — the values the setting may take, as a list of
+  `{ value, label? }`. `value` is the **stored** form, verbatim — what a config
+  file holds — and `label` (`LangText`) is what the product's own UI calls it.
+  This exists because the two are not always the same string: Keycloak's LDAP
+  search scope is written `1` or `2` through the API and shown as "One Level" /
+  "Subtree" in the admin console, so a reviewer who only ever configured it
+  through that console meets a bare `1` on the sheet and cannot judge it. The
+  viewer shows the label BESIDE the value (and beside the default, since an
+  unset row is judged by what applies to it) and never folds it in: that same
+  string is what a review opens with, what the copy button yields and what
+  `apply` writes back, so `1 (One Level)` reaching it would put that text into
+  a deployed file. A value no option lists gets no annotation rather than a
+  guess — a dictionary is pinned to one product version and a deployment may
+  run another.
+
+  `label` is optional, which is how the same field carries the other half of
+  what an enumerated setting knows: its **legal values**, for a product that
+  lists them without naming them (PostgreSQL's `pg_settings.enumvals`, a
+  Keycloak provider's `ProviderConfigProperty.options`). Two dictionaries had
+  been folding those into the end of the product's own description as prose —
+  an edit to the product's words that this field exists to stop.
+
+  Extraction-owned like every other product fact: an overlay is refused it,
+  because a community guess at which values are legal is indistinguishable
+  from the product's own list.
 - `docs_url` — a deep link to that **specific** setting's own doc anchor, not
   just the product's docs root; that is what makes "read more" useful from the
   sheet.
@@ -2510,8 +2552,8 @@ re-runs the extraction after a product upgrade.
 base on any of the sheet's `metadata_dirs` — and more than one is legal, on
 purpose: a project-local metadata dir can overlay a shared team dictionary
 without forking it. An overlay entry may set only `description`, `docs_url`,
-and `provenance` — documentation prose. `default`/`type`/`scope`/`group`/
-`kind`/`since`/`until` are refused outright (an "unknown field" error naming
+and `provenance` — documentation prose. `label`/`default`/`type`/`scope`/
+`group`/`kind`/`ui`/`options` are refused outright (an "unknown field" error naming
 it, with a "did you mean" hint for a close typo): those are product facts
 the extraction owns, and letting an overlay set them would let a community
 claim reshape `materialize`'s inventory ledger. A key the base doesn't have
