@@ -60,7 +60,9 @@ export type ProjectMetaSheetDoc = {
   // the same file for the same reason.
   group?: string;
   // This sheet's components are comparable side by side (Sheet.compare_components).
-  compare_components?: boolean;
+  // `"always"` additionally means the sheet opens that way and offers no toggle:
+  // a sheet that exists only to compare has no stacked reading to go back to.
+  compare_components?: boolean | "always";
   // Group rows the project does not categorise by the file they are written
   // in — see groupByForSheet.
   group_by?: "file";
@@ -166,7 +168,7 @@ export function loadProjectMeta(path: string, readFile: (path: string) => string
         ...(s?.under_key ? { under_key: s.under_key } : {}),
         ...(s?.label ? { label: s.label } : {}),
         ...(s?.group ? { group: s.group } : {}),
-        ...(s?.compare_components ? { compare_components: true } : {}),
+        ...(s?.compare_components ? { compare_components: s.compare_components === "always" ? ("always" as const) : true } : {}),
         ...(s?.group_by ? { group_by: s.group_by } : {}),
         ...(s?.components ? { components: s.components } : {}),
       };
@@ -266,7 +268,7 @@ export function categoriesForSheet(doc: ProjectMetaDoc, sheet: string | undefine
 }
 
 // Whether this sheet declares its components comparable (Sheet.compare_components).
-export function compareComponentsForSheet(doc: ProjectMetaDoc, sheet: string | undefined): boolean {
+export function compareComponentsForSheet(doc: ProjectMetaDoc, sheet: string | undefined): boolean | "always" {
   return (doc.sheets && sheet !== undefined ? doc.sheets[sheet]?.compare_components : undefined) ?? false;
 }
 

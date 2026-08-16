@@ -1187,6 +1187,26 @@ value held still. In that same comparison it was one row —
 untouched value — which is exactly the row an upgrade review exists to find, and
 exactly the row that four translation diffs would have buried.
 
+##### A sheet that exists only to compare
+
+```yaml
+"realm upgrade":
+  compare_components: always
+```
+
+`true` opens the sheet stacked and offers a toggle to the side-by-side
+reading. `always` opens side by side and offers no toggle: a sheet built to
+compare has no stacked reading to go back to.
+
+Both are DECLARED, never inferred, for the reason `compare_components` was
+declared in the first place — several components do not make a sheet
+comparable, and the person who wrote it already knows which it is.
+
+Comparing two RELEASES needs neither: that axis is the versioned document
+(`generate -i old.json new.json`), whose Compare offers its own side-by-side
+switch. Use `compare_components` when the things being compared coexist in one
+build — two realms, two clients, two LDAP providers.
+
 ##### `effective` — the default moved and nothing was holding it back
 
 A moved default means two different things, and only one of them changes what
@@ -1698,7 +1718,7 @@ fails when one of them is missing from this section):
 | sheet | `categories:` | top-level tab order, and the ghost-tab guard |
 | sheet | `group_by: file` | file a row the project does not categorise by the artifact it is written in |
 | sheet | `under_key:` | the provenance sub-line column — `id` + bilingual label |
-| sheet | `compare_components:` | this sheet's components are comparable side by side |
+| sheet | `compare_components:` | this sheet's components are comparable side by side — `true` for a toggle, `always` to open that way with no toggle |
 | sheet | `components:` | per-COMPONENT `params:`, for a sheet whose rows are named by the product's own field |
 | sheet | `params:` | the rows themselves |
 | param | `category:` | this row's category — a string, a LIST (a path), or `null` for none |

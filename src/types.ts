@@ -230,7 +230,11 @@ export type Sheet = {
   // artifacts of one product are all components, and none of them line up. A
   // count of shared rows can only guess at where the line is, and the person
   // who wrote the sheet already knows.
-  compare_components?: boolean;
+  // `true` opens stacked with a toggle to the side-by-side reading; `"always"`
+  // opens side by side and offers no toggle, for a sheet that exists only to
+  // compare — there is nothing to go back TO. Declared either way, for the
+  // reason above: the sheet is written by someone who already knows.
+  compare_components?: boolean | "always";
   role?: string;
   // The review axis this sheet is organised along (environments, regions …),
   // ordered, as DECLARED by the build (never derived from which rows happen to
