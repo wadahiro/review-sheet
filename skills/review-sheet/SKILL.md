@@ -1170,7 +1170,7 @@ diff: 6 changed (4 description/remarks only), 26 added, 26 removed, 984 unchange
 ```
 
 `--format json` carries the same thing per row as `changed: ["value"]`,
-`["default"]`, `["doc"]`, or a combination.
+`["effective"]`, `["default"]`, `["doc"]`, or a combination.
 
 This exists because **comparing one configuration across two product versions is
 dominated by prose churn**. Measured on a real Keycloak 19.0.2 → 26.7.0
@@ -1186,6 +1186,30 @@ value held still. In that same comparison it was one row —
 `useTruststoreSpi`, whose default went from `ldapsOnly` to `always` under an
 untouched value — which is exactly the row an upgrade review exists to find, and
 exactly the row that four translation diffs would have buried.
+
+##### `effective` — the default moved and nothing was holding it back
+
+A moved default means two different things, and only one of them changes what
+the system does:
+
+```
+~ … > config.useTruststoreSpi[0]
+      the project sets this row, so its own value still wins — recorded
+
+~ … > AcceptPathInfo  (effective: the product default moved under an unset value)
+      nobody sets this row, so the default IS the value in force — it moved
+```
+
+A materialized row carries **no value at all** (measured: all 668 `origin:
+default` rows in one project have `value: undefined`, the product's default
+beside them), so when its default moves nothing else about the row changes.
+Without the split it reads exactly like the harmless case above it — which is
+the wrong way round, because this is the one line in a version comparison that
+can mean *the system behaves differently and no one edited anything*.
+
+`origin: baseline` counts as unset too: such a row says the vendor's shipped
+file had this directive and yours does not, so what governs is the product's
+built-in default — those rows are **more** exposed to it moving, not less.
 
 #### When the generated files are not committed
 

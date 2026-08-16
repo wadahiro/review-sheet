@@ -5,7 +5,7 @@
 //
 // Used by the browser viewer and (potentially) a CLI `diff`. No DOM/Node deps.
 
-import type { SheetData, CategoryData, ParamData } from "./prompt.js";
+import { effectiveOrigin, type SheetData, type CategoryData, type ParamData } from "./prompt.js";
 import { pickLang } from "./types.js";
 
 export type DiffStatus = "added" | "removed" | "changed" | "unchanged";
@@ -33,15 +33,29 @@ export type FieldDiff = { field: "description" | "default" | "remarks"; from?: s
 // the true finding is "nothing you set has moved" — a sign-off number that is
 // wrong in the direction that matters. So:
 //
-//   value    a configured value differs. The finding.
-//   default  the PRODUCT's documented default differs — also a finding, and a
-//            sharper one: the ground under an unchanged value moved. Rare in
-//            practice (2 of 171 realm keys, 1 of 30 LDAP, 0 of 117 client),
-//            which is exactly why it must not be buried under prose.
-//   doc      description/remarks differ. Between two dictionary versions this
-//            is dominated by extraction and translation coverage, not by the
-//            product, so it earns a quiet indicator rather than a tint.
-export type ParamChangeKind = "value" | "default" | "doc";
+//   value      a configured value differs. The finding.
+//   effective  the PRODUCT's default differs on a row NOBODY SETS — so the
+//              default IS the value in force, and it moved without anyone
+//              editing anything. The loudest thing a version comparison can
+//              say, and the reason to run one at all.
+//   default    the product's default differs on a row the project DOES set.
+//              Worth recording (an explicit value may now agree, or newly
+//              disagree, with the product) but the deployment behaves the same.
+//   doc        description/remarks differ. Between two dictionary versions this
+//              is dominated by extraction and translation coverage, not by the
+//              product, so it earns a quiet indicator rather than a tint.
+//
+// The effective/default split is not cosmetic. A materialized row carries NO
+// value (measured: all 668 `origin: default` rows in one project have
+// `value: undefined`, with the product's default beside them), so when its
+// default moves nothing else about the row changes — without this split it
+// reports exactly like the harmless case above it.
+//
+// `baseline` counts as unset alongside `default`, and this was got wrong once:
+// such a row says "the vendor's shipped file had this directive and ours does
+// not". Having removed the line, what governs is the product's built-in
+// default — so those rows are MORE exposed to a default moving, not less.
+export type ParamChangeKind = "value" | "effective" | "default" | "doc";
 
 export type ParamDiff = {
   key: string;
@@ -219,9 +233,15 @@ function diffParam(from: ParamData | undefined, to: ParamData | undefined): Para
   // `default` is deliberately NOT prose: it is what the product says the value
   // would be if nobody set it, so it moving is a statement about the deployment
   // even when every configured value held still.
+  // Nobody set it: the product's default is what is in force. `baseline` joins
+  // `default` here — see ParamChangeKind — and an absent side counts as unset
+  // because there is no project value on it to be in force instead.
+  const unset = (p: ParamData | undefined): boolean =>
+    p === undefined || effectiveOrigin(p) === "default" || effectiveOrigin(p) === "baseline";
+
   const changed: ParamChangeKind[] = [];
   if (cells.some((c) => c.status !== "unchanged")) changed.push("value");
-  if (fields.some((f) => f.field === "default")) changed.push("default");
+  if (fields.some((f) => f.field === "default")) changed.push(unset(from) && unset(to) ? "effective" : "default");
   if (fields.some((f) => f.field !== "default")) changed.push("doc");
 
   let status: DiffStatus;
