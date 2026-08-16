@@ -1695,3 +1695,82 @@ describe("viewer: the as-installed column", () => {
     expect(cellText(host, "Removed", "rs-col-default")).toBe("None");
   });
 });
+
+// The side-by-side table used to print values only. On a real project 672 of
+// 1016 rows are unset and carry no value at all, so two blank columns sat
+// beside each other over exactly the rows a version comparison finds things in
+// — the product default moving under a value nobody set.
+describe("viewer: the default under the value", () => {
+  const anchor = { key: "anchor", value: "1", origin: "embedded", description: "x" };
+  const doc = (params: unknown[]) => ({
+    metadata: { title: "t" },
+    versions: [
+      {
+        version: "current",
+        sheets: [
+          {
+            name: "s",
+            compare_components: true,
+            categories: [
+              // A set row on each side as well: a sheet whose every row is
+              // unset renders empty until the filter is lifted, and the filter
+              // menu itself only appears once the document HAS such rows.
+              { name: "old", categories: [{ name: "Settings", params: [params[0], anchor] }] },
+              { name: "new", categories: [{ name: "Settings", params: [params[1], anchor] }] },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  async function mount(params: unknown[]): Promise<HTMLElement> {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: doc(params) as never, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    // An unset row is hidden by default, and the cases below that use one are
+    // exactly the cases about what such a row says when it has no value.
+    if ((params[0] as { origin?: string }).origin === "default") await showUnsetRows(host);
+    (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
+    await Promise.resolve();
+    return host;
+  }
+
+  it("prints the default on an unset row, where it IS the value in force", async () => {
+    const unset = (d: string) => ({ key: "k", origin: "default", default: d, description: "x" });
+    const host = await mount([unset("ldapsOnly"), unset("always")]);
+    const text = host.querySelector(".rs-pivot")?.textContent ?? "";
+    expect(text).toContain("ldapsOnly");
+    expect(text).toContain("always");
+  });
+
+  it("marks the default line when the columns disagree about it", async () => {
+    const unset = (d: string) => ({ key: "k", origin: "default", default: d, description: "x" });
+    const host = await mount([unset("ldapsOnly"), unset("always")]);
+    expect(host.querySelectorAll(".rs-pivot-default-differs").length).toBe(2);
+    // And the row is flagged, though neither column has a value at all.
+    expect(host.querySelectorAll(".rs-pivot-differs").length).toBe(1);
+  });
+
+  it("stays quiet when the default is the same on both sides", async () => {
+    const unset = () => ({ key: "k", origin: "default", default: "same", description: "x" });
+    const host = await mount([unset(), unset()]);
+    expect(host.querySelectorAll(".rs-pivot-default-differs").length).toBe(0);
+    expect(host.querySelectorAll(".rs-pivot-differs").length).toBe(0);
+  });
+
+  it("does not repeat an identical default on rows the project sets", async () => {
+    const set = () => ({ key: "k", value: "on", origin: "embedded", default: "off", description: "x" });
+    const host = await mount([set(), set()]);
+    // The configured value is the subject on such a row; printing the same
+    // default down every one of them would bury the handful that moved.
+    expect(host.querySelector(".rs-pivot")?.textContent).not.toContain("off");
+  });
+
+  it("shows it on a set row once the columns disagree", async () => {
+    const set = (d: string) => ({ key: "k", value: "on", origin: "embedded", default: d, description: "x" });
+    const host = await mount([set("off"), set("on")]);
+    expect(host.querySelectorAll(".rs-pivot-default-differs").length).toBe(2);
+  });
+});
