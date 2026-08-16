@@ -47,7 +47,11 @@ type Messages = {
   exitCompare: string;
   diffChangedOnly: string;
   diffNoChanges: string;
-  diffSummary: (changed: number, added: number, removed: number) => string;
+  // `unchanged` is the sentence an upgrade sign-off is actually made of ("3
+  // moved, 1013 did not"), and `docOnly` is the share of `changed` that is
+  // nothing but reworded prose — across two product versions that is most of
+  // it, so leaving it folded in makes the headline read as a system that moved.
+  diffSummary: (changed: number, docOnly: number, added: number, removed: number, unchanged: number) => string;
   diffFrom: string;
   diffTo: string;
   // Field labels (review modal)
@@ -223,7 +227,8 @@ const ja: Messages = {
   exitCompare: "比較を終了",
   diffChangedOnly: "変更のみ",
   diffNoChanges: "差分はありません",
-  diffSummary: (changed, added, removed) => `${changed} 変更 · ${added} 追加 · ${removed} 削除`,
+  diffSummary: (changed, docOnly, added, removed, unchanged) =>
+    `${changed} 変更${docOnly > 0 ? `（うち ${docOnly} は説明文のみ）` : ""} · ${added} 追加 · ${removed} 削除 · ${unchanged} 変更なし`,
   diffFrom: "比較元",
   diffTo: "比較先",
   fieldKey: "設定項目",
@@ -361,7 +366,8 @@ const en: Messages = {
   exitCompare: "Exit compare",
   diffChangedOnly: "Changed only",
   diffNoChanges: "No differences",
-  diffSummary: (changed, added, removed) => `${changed} changed · ${added} added · ${removed} removed`,
+  diffSummary: (changed, docOnly, added, removed, unchanged) =>
+    `${changed} changed${docOnly > 0 ? ` (${docOnly} description only)` : ""} · ${added} added · ${removed} removed · ${unchanged} unchanged`,
   diffFrom: "From",
   diffTo: "To",
   fieldKey: "Parameter",

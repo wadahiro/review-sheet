@@ -11,7 +11,7 @@
 
 import type { SheetData, CategoryData, ParamData, ReviewItem } from "./prompt.js";
 import { pickLang } from "./types.js";
-import { alignValues, type DiffStatus } from "./diff.js";
+import { alignValues, diffParam, type DiffStatus, type ParamChangeKind } from "./diff.js";
 
 export type DiffStatusMap = Map<string, DiffStatus>;
 
@@ -19,7 +19,12 @@ export type DiffModel = {
   sheets: SheetData["sheets"];
   reviews: ReviewItem[];
   status: DiffStatusMap;
-  summary: { changed: number; added: number; removed: number; unchanged: number };
+  // Which KINDS changed, per row, keyed like `status`. The overlay tints on
+  // `status` as before; this is what lets it tell "the product default moved
+  // under a value nobody sets" from "the dictionary reworded a sentence",
+  // which across two product versions is most of what it is showing.
+  kinds: Map<string, ParamChangeKind[]>;
+  summary: { changed: number; docOnly: number; added: number; removed: number; unchanged: number };
 };
 
 export const sheetKey = (sheet: string): string => `sheet:${sheet}`;
@@ -56,7 +61,8 @@ export function buildDiffModel(
 ): DiffModel {
   const status: DiffStatusMap = new Map();
   const reviews: ReviewItem[] = [];
-  const summary = { changed: 0, added: 0, removed: 0, unchanged: 0 };
+  const kinds = new Map<string, ParamChangeKind[]>();
+  const summary = { changed: 0, docOnly: 0, added: 0, removed: 0, unchanged: 0 };
 
   const FIELDS = ["description", "default", "remarks"] as const;
 
@@ -68,19 +74,18 @@ export function buildDiffModel(
     // added rows show the new value; removed rows show the old value.
     const param: ParamData = { ...(to ?? from)! };
 
-    // Shared with the CLI/summary diff so the overlay and `review-sheet diff`
-    // can never disagree — in particular on a row that is Pattern A on one side
-    // and Pattern B on the other, where the single value is expanded across the
-    // other side's instances rather than compared against a cell that is simply
-    // absent (see alignValues).
+    // Classified by diff.ts, not here. `alignValues` was already shared so the
+    // CLI and this overlay could never disagree about which cells pair up; the
+    // STATUS was not, and the second copy of the rule is what left the viewer
+    // unable to tell a moved product default from a reworded description.
+    const classified = diffParam(from, to);
     const { perInstance, cells } = alignValues(from, to);
 
-    let cellChanged = false;
     if (perInstance) {
       param.instances = cells.map((c) => {
         const name = c.instance!;
         const cs = status4(c.from, c.to);
-        if (cs !== "unchanged") { status.set(instKey(sheet, path, key, name), cs); cellChanged = true; }
+        if (cs !== "unchanged") status.set(instKey(sheet, path, key, name), cs);
         if (cs === "changed") {
           reviews.push({ id: `diff:${path}:${key}:${name}`, status: "pending", target: { sheet, category: path, param: key, instance: name, field: "value" }, changes: [{ field: "value", current: c.from, suggested: c.to! }] });
           return { name, value: c.from! }; // show old; the review supplies new
@@ -90,22 +95,14 @@ export function buildDiffModel(
       // A side that was Pattern A is now rendered per instance; leaving its
       // single `value` set would make the row claim to be both shapes at once.
       param.value = undefined;
-    } else {
-      cellChanged = cells.some((c) => c.from !== c.to);
     }
 
-    let st: DiffStatus;
-    if (!from) st = "added";
-    else if (!to) st = "removed";
-    else {
-      const fieldChanged = FIELDS.some((f) => from[f] !== to[f]);
-      st = cellChanged || fieldChanged ? "changed" : "unchanged";
-    }
+    const st = classified.status;
 
     // For rows present in both, replace each changed value/field with its old
     // value and emit a synthetic review carrying the new one.
     if (from && to) {
-      if (!perInstance && cellChanged) {
+      if (!perInstance && classified.changed.includes("value")) {
         param.value = from.value;
         reviews.push({ id: `diff:${path}:${key}:value`, status: "pending", target: { sheet, category: path, param: key, field: "value" }, changes: [{ field: "value", current: from.value, suggested: to.value! }] });
       }
@@ -122,6 +119,10 @@ export function buildDiffModel(
     }
 
     status.set(rowKey(sheet, path, key), st);
+    if (classified.changed.length > 0) {
+      kinds.set(rowKey(sheet, path, key), classified.changed);
+      if (classified.changed.every((k) => k === "doc")) summary.docOnly++;
+    }
     summary[st]++;
     return { param, st };
   };
@@ -177,5 +178,5 @@ export function buildDiffModel(
     sheets.push({ name, role: (pair.to ?? pair.from)!.role, file_path: (pair.to ?? pair.from)!.file_path, categories });
   }
 
-  return { sheets, reviews, status, summary };
+  return { sheets, reviews, status, kinds, summary };
 }
