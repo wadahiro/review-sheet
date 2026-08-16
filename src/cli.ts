@@ -6,6 +6,7 @@ import { resolve, relative, join } from "path";
 import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { validateInput, validateReview, validateVersionedInput, isVersionedInput } from "./validate.js";
+import { findBakedSecrets, formatBakedSecrets } from "./secrets.js";
 import type { ParameterSheetInput, VersionedSheetInput } from "./types.js";
 import { computeApply } from "./apply.js";
 import { verifySources } from "./verify.js";
@@ -273,6 +274,13 @@ program
         }
         input = validateVersionedInput(assembleVersions(inputs));
       }
+
+      // Before packaging, not after: this is the moment the model stops being a
+      // working file and becomes one self-contained document that carries every
+      // value it shows. Always printed, never hidden behind a flag — a list
+      // nobody sees is the same as no check.
+      const baked = findBakedSecrets(input);
+      if (baked.length > 0) console.error(formatBakedSecrets(baked));
 
       const lang = opts.lang === "en" ? "en" : "ja";
       const html = await generateHtml(input, {

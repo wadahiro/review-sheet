@@ -44,6 +44,12 @@ export type DictionaryParam = {
   // fact: an overlay may not set it, because a community guess at which
   // values are legal would be indistinguishable from the product's own list.
   options?: ParamOption[];
+  // The product declares this value a credential. Only some registries have
+  // the notion — a Keycloak component's ProviderConfigProperty does, its
+  // SERVER option registry does not — so its absence is not a claim that a
+  // value is safe. A project says so itself in sheet.yml where the product
+  // will not.
+  secret?: boolean;
   // The product's OWN grouping of its parameters (PostgreSQL's pg_settings
   // category, "Write-Ahead Log / Archive Recovery"). Structure, not
   // documentation: it is NOT returned by resolve() — enrich never writes it
@@ -143,6 +149,7 @@ export const DICTIONARY_PARAM_FIELDS = [
   "kind",
   "ui",
   "options",
+  "secret",
   "docs_url",
   "provenance",
 ] as const;
@@ -590,6 +597,7 @@ const dictionaryProvider: MetadataProvider = {
       type: entry.type,
       scope: entry.scope,
       options: entry.options,
+      secret: entry.secret,
       docs_url: entry.docs_url,
       // provenanceFor always resolves to a defined Provenance per language
       // (its own last tier is the "community" default, replacing the old

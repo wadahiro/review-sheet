@@ -1726,6 +1726,7 @@ fails when one of them is missing from this section):
 | param | `description:` | the row's description, when no dictionary supplies one |
 | param | `remarks:` | a project note shown beside the row — not the description |
 | param | `out_of_scope:` | excluded from THIS review, with a reason and an owner |
+| param | `secret:` | this value is a credential — checked at generate time, see below |
 
 For a **single-sheet** spec (and for `import -f --project`, which has no
 concept of a spec at all), it is flat — `categories:`/`under_key:` at the top
@@ -1743,7 +1744,28 @@ params:
         en: Held in the secrets pipeline — not reviewed as plaintext.
         ja: シークレットパイプラインで管理。平文でのレビュー対象外。
       owner: DBA/Secrets
+  smtpServer.password:
+    category: Email
+    secret: true                     # a credential — see below
 ```
+
+**`secret:`** says a value is a credential. Usually only the project can: a
+product's option registry rarely marks its own secrets, and the one measured
+here — Keycloak's server options — has no such notion at all, so
+`https-key-store-password` is indistinguishable from `http-port` to it. Where a
+product DOES declare it (a Keycloak component's `ProviderConfigProperty`), the
+dictionary carries it and this is not needed.
+
+It is not a display flag and the viewer does not mask anything: a generated
+sheet is ONE self-contained file that carries every value it shows, so hiding a
+value on screen would sell a safety the file does not have. What it drives is a
+check at `generate` time — every `secret:` row whose value is a literal rather
+than a reference (`${...}`, `{{ ... }}`) is named on stderr, with its
+environment when only one environment has one. Reported, never fatal: a project
+may hold a placeholder it has decided is safe, and failing the build over one
+would be answered by deleting the declaration, which leaves it less protected
+than before. A row nobody set is skipped — the product's documented default is
+published, and reporting it would train a reader to ignore the list.
 
 For a **multi-sheet** spec, use `sheets:` instead — `params:`/`categories:`/
 `under_key:` namespaced per sheet, keyed by the exact sheet name (`build.yml`'s

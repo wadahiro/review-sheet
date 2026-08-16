@@ -39,6 +39,11 @@ export type ProjectMetaParam = {
   description?: LangText;
   remarks?: LangText;
   out_of_scope?: { reason: LangText; owner?: string };
+  // This value is a credential (see types.ts's ParameterBase.secret). The
+  // project is usually the only one that can say so: a product's option
+  // registry rarely marks its own secrets, and the one measured here does not
+  // mark any.
+  secret?: boolean;
 };
 
 // A row named by a product key via `keyMap` (assemble.ts) surfaces its
@@ -352,6 +357,7 @@ const projectProvider: MetadataProvider = {
       description: p.description,
       remarks: p.remarks,
       out_of_scope: p.out_of_scope,
+      secret: p.secret,
       provenance: "project",
     };
   },
