@@ -2805,8 +2805,14 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, t }: {
   `;
 }
 
-function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverride, server, applyEnabled }: {
+function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverride, versionPivot, server, applyEnabled }: {
   data: SheetData;
+  // A whole-document columnar comparison: rows keyed by sheet + path + key,
+  // one column per VERSION. Supplied only while comparing, and rendered
+  // INSTEAD of the sheets — it is one table across every sheet, because the
+  // question it answers ("what moved between these two releases") is not a
+  // per-sheet question.
+  versionPivot?: { components: CategoryData[]; rows: PivotRow[] };
   // The deployed files this document's rows describe (ArtifactPanel). Per
   // version, like `columns` — a template that changed between two revisions
   // must not be redrawn under the older document.
@@ -3312,7 +3318,14 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
         <${SheetTabs} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet}
                       hasMetadata=${hasMetadata} onSelect=${setActiveSheet} t=${t} />
         <div class="rs-tabs-right">
-          ${effReviewEnabled && html`
+          ${
+            // Filters stay while comparing. They were gated on review being on,
+            // which diff mode switches off — taking with it the only control
+            // that reveals unset rows, and a version comparison finds most of
+            // what it finds among exactly those (the product default moved
+            // under a value nobody set). Reviewing is what diff mode disables;
+            // deciding which rows are on screen is not reviewing.
+            (effReviewEnabled || diffMode) && html`
             <${ToolbarMenu} label=${activeFilters > 0 ? t.filterMenuCount(activeFilters) : t.filterMenu}
                             active=${activeFilters > 0}
                             icon=${html`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>` as VNode}>
@@ -3464,7 +3477,17 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
           </section>
         `}
 
-        ${data.sheets.map((sheet, idx) => {
+        ${versionPivot && html`
+          <section class="rs-sheet">
+            <div class="rs-sheet-header"><h1>${versionPivot.components.map((c) => c.name).join("  ↔  ")}</h1></div>
+            <${PivotView} sheet=${{ name: "", categories: [] }} pivot=${versionPivot} sheetIndex=${0}
+                          hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
+                          reviews=${[]} reviewEnabled=${false}
+                          onOpenReview=${() => {}} t=${t} />
+          </section>
+        `}
+
+        ${!versionPivot && data.sheets.map((sheet, idx) => {
           if (idx !== activeSheet) return null;
           const sheetTarget = { sheet: sheet.name };
           const sheetReviewCount = reviews.filter((r) => targetKey(r.target) === targetKey(sheetTarget)).length;
@@ -3582,7 +3605,7 @@ const versionLabel = (v: SheetVersion): string => `${v.version}${v.date ? ` (${v
 // comparing — so the diff's own output (the summary) and its one filter belong
 // here, next to the selectors that produced them, rather than in the tab bar
 // across the screen.
-function VersionBar({ versions, activeId, compare, fromId, toId, onSelect, onToggleCompare, onFrom, onTo, diffSummary, changedOnly, onChangedOnly, t }: {
+function VersionBar({ versions, activeId, compare, fromId, toId, onSelect, onToggleCompare, onFrom, onTo, diffSummary, changedOnly, onChangedOnly, columnar, onColumnar, t }: {
   versions: SheetVersion[];
   activeId: string;
   compare: boolean;
@@ -3594,6 +3617,11 @@ function VersionBar({ versions, activeId, compare, fromId, toId, onSelect, onTog
   onTo: (id: string) => void;
   diffSummary?: { changed: number; docOnly: number; added: number; removed: number; unchanged: number };
   changedOnly?: boolean;
+  // Side by side rather than inline. Not a display preference so much as a
+  // different question: inline asks "what changed in this sheet", columnar asks
+  // "what do these two releases say about the same key".
+  columnar?: boolean;
+  onColumnar?: (v: boolean) => void;
   onChangedOnly?: (v: boolean) => void;
   t: Messages;
 }) {
@@ -3623,6 +3651,10 @@ function VersionBar({ versions, activeId, compare, fromId, toId, onSelect, onTog
             <label class="rs-diff-changed-only">
               <input type="checkbox" checked=${changedOnly} onChange=${(e: Event) => onChangedOnly?.((e.target as HTMLInputElement).checked)} />
               <span>${t.diffChangedOnly}</span>
+            </label>
+            <label class="rs-diff-changed-only">
+              <input type="checkbox" checked=${columnar} onChange=${(e: Event) => onColumnar?.((e.target as HTMLInputElement).checked)} />
+              <span>${t.compareComponents}</span>
             </label>
           `}
         `}
@@ -3658,6 +3690,12 @@ function Root({ payload, reviewEnabled, initialLang, server }: { payload: Payloa
   const [fromId, setFromId] = useState(() => versionId(versions[Math.max(0, versions.length - 2)]));
   const [toId, setToId] = useState(() => versionId(latest));
   const [changedOnly, setChangedOnly] = useState(true);
+  // Inline (old value struck through, new beside it) or columnar (one column
+  // per version). Both read the same diff; they differ in what a glance costs.
+  // Inline keeps the sheet's own shape and every column it has; columnar puts
+  // the two releases beside each other, which is what an upgrade review asks
+  // for and what no view offered.
+  const [columnar, setColumnar] = useState(false);
 
   const byId = useMemo(() => new Map(versions.map((v) => [versionId(v), v])), [versions]);
   const active = byId.get(activeId) ?? latest;
@@ -3680,6 +3718,13 @@ function Root({ payload, reviewEnabled, initialLang, server }: { payload: Payloa
     [compare, fromSheets, toSheets, changedOnly]
   );
 
+  // Built from the localized sheets, so the columns hold whatever language the
+  // viewer is showing — the same input the inline overlay reads.
+  const versionPivot = useMemo(
+    () => (compare && columnar ? pivotVersions(fromSheets, toSheets, versionLabel(fromV), versionLabel(toV)) : undefined),
+    [compare, columnar, fromSheets, toSheets, fromV, toV]
+  );
+
   const shown = compare ? toV : active;
   const data = useMemo<SheetData>(() => ({
     metadata: { ...payload.metadata, version: shown.version, generated_at: shown.date },
@@ -3693,9 +3738,10 @@ function Root({ payload, reviewEnabled, initialLang, server }: { payload: Payloa
       ${versions.length > 1 && html`<${VersionBar} versions=${versions} activeId=${activeId} compare=${compare}
         fromId=${fromId} toId=${toId} onSelect=${setActiveId} onToggleCompare=${() => setCompare((c) => !c)}
         onFrom=${setFromId} onTo=${setToId} diffSummary=${diffModel?.summary}
-        changedOnly=${changedOnly} onChangedOnly=${setChangedOnly} t=${t} />`}
+        changedOnly=${changedOnly} onChangedOnly=${setChangedOnly}
+        columnar=${columnar} onColumnar=${setColumnar} t=${t} />`}
       <${App} data=${data} artifacts=${shown.artifacts} reviewEnabled=${reviewEnabled} lang=${lang} setLang=${setLang}
-        diff=${diffModel?.status} reviewsOverride=${diffModel?.reviews}
+        diff=${diffModel?.status} reviewsOverride=${diffModel?.reviews} versionPivot=${versionPivot}
         server=${server} applyEnabled=${applyEnabled} />
     </div>
   `;

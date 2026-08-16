@@ -1774,3 +1774,78 @@ describe("viewer: the default under the value", () => {
     expect(host.querySelectorAll(".rs-pivot-default-differs").length).toBe(2);
   });
 });
+
+// Two releases beside each other, one column each. The inline overlay answers
+// "what changed in this sheet"; this answers "what do these two releases say
+// about the same key", which is the question an upgrade review actually asks
+// and which no view offered.
+describe("viewer: versions as columns", () => {
+  const at = (label: string, workers: string, dflt: string) => ({
+    version: label,
+    sheets: [
+      {
+        name: "app",
+        categories: [
+          {
+            name: "Tuning",
+            params: [
+              { key: "workers", value: workers, origin: "embedded", description: "d" },
+              { key: "unset", origin: "default", default: dflt, description: "d" },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  async function mountColumnar(): Promise<HTMLElement> {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(
+      h(Root, {
+        payload: { metadata: { title: "t" }, versions: [at("19.0.2", "4", "ldapsOnly"), at("26.7.0", "4", "always")] },
+        reviewEnabled: true,
+        initialLang: "ja",
+        server: false,
+      } as never),
+      host
+    );
+    const bar = host.querySelector(".rs-version-bar") as HTMLElement;
+    [...bar.querySelectorAll("button")].find((b) => b.textContent?.includes("比較"))!.click();
+    await Promise.resolve();
+    // Unset rows are hidden document-wide until asked for, and here they are
+    // the point: a version comparison finds most of its rows among them. Asked
+    // for BEFORE switching to columns — the filter menu lives on the sheet
+    // chrome, which the columnar view replaces.
+    // Unset rows are hidden document-wide until asked for, and a version
+    // comparison finds most of its rows among them.
+    await showUnsetRows(host);
+    const boxes = [...host.querySelectorAll(".rs-version-bar input[type=checkbox]")] as HTMLInputElement[];
+    boxes[boxes.length - 1].click(); // the side-by-side toggle
+    await Promise.resolve();
+    return host;
+  }
+
+  it("gives each version a column of its own", async () => {
+    const host = await mountColumnar();
+    const heads = [...host.querySelectorAll(".rs-pivot th")].map((e) => (e.textContent ?? "").trim());
+    expect(heads).toEqual(["設定項目", "19.0.2", "26.7.0"]);
+  });
+
+  it("finds the row whose product default moved under no value at all", async () => {
+    const host = await mountColumnar();
+    const text = host.querySelector(".rs-pivot")?.textContent ?? "";
+    expect(text).toContain("ldapsOnly");
+    expect(text).toContain("always");
+    // Neither column has a value here; the row is a finding all the same.
+    expect(host.querySelectorAll(".rs-pivot-default-differs").length).toBe(2);
+  });
+
+  it("leaves the row whose value held still unmarked", async () => {
+    const host = await mountColumnar();
+    const rows = [...host.querySelectorAll(".rs-param-row")];
+    const workers = rows.find((r) => (r.textContent ?? "").includes("workers"));
+    expect(workers?.className).not.toContain("rs-pivot-differs");
+  });
+});
