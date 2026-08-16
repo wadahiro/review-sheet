@@ -129,6 +129,15 @@
         "label": { "$ref": "#/$defs/langText" },
         "description": { "$ref": "#/$defs/langText" },
         "default": { "type": "string" },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["value"],
+            "properties": { "value": { "type": "string" }, "label": { "$ref": "#/$defs/langText" } }
+          }
+        },
         "baseline": { "type": "string" },
         "remarks": { "$ref": "#/$defs/langText" },
         "out_of_scope": { "$ref": "#/$defs/outOfScope" },

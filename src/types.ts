@@ -8,6 +8,31 @@
 // the viewer can switch languages at display time (pickLang resolves it).
 export type LangText = string | { en?: string; ja?: string };
 
+// One value a setting may take, and what the PRODUCT'S OWN UI calls it.
+//
+// This exists because a stored value and a displayed value are not always the
+// same string: Keycloak's LDAP search scope is written `1` or `2` through the
+// API and shown as "One Level" / "Subtree" in the admin console, so a reviewer
+// who only ever configured it through the console meets a bare `1` in the
+// sheet and cannot judge it. The label is the console's, so it is localized by
+// the product and carried as LangText — and often only in English, because a
+// product translates its field labels long before it translates its option
+// lists (measured on one release: the option strings existed in `en` and not
+// in `ja`). pickLang's cross-language fallback is exactly right for that.
+//
+// `value` is the STORED form, verbatim — it is what a config file holds and
+// what a row is compared against, never a display form. A label is display
+// only: it is never concatenated into a value, because the value a cell shows
+// is the same string a review's "current value" and `apply`'s write both use,
+// and "1 (One Level)" written back into a config file would be a defect.
+//
+// `label` is optional so the same field can carry the other half of what an
+// enumerated setting knows — its LEGAL VALUES, for a product that lists them
+// without naming them (PostgreSQL's pg_settings.enumvals). Those are worth
+// having for the same reason: a reviewer cannot tell a typo from a valid
+// value without them.
+export type ParamOption = { value: string; label?: LangText };
+
 // Resolve a LangText for a target language: the exact language if present, else
 // English, else Japanese, else undefined. A plain string passes through.
 export function pickLang(t: LangText | undefined, lang: "en" | "ja"): string | undefined {
@@ -353,6 +378,13 @@ export type ParameterBase = {
   label?: LangText;
   description?: LangText;
   default?: string;
+  // The values this setting may take, with the product's own name for each —
+  // see ParamOption. Filled by enrich from the bound dictionary, and a
+  // FIRST-CLASS field rather than an `extra` entry precisely because the label
+  // is LangText: `extra` is a Record<string, string> baked at generate time,
+  // so a label routed through it could never follow the viewer's language
+  // toggle the way description and remarks do.
+  options?: ParamOption[];
   // What the vendor's SHIPPED file gives this key — not `default` (what the
   // PRODUCT documents) and genuinely not the same value: measured, a
   // dictionary built from httpd's own branch documentation says `ServerRoot`

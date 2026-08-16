@@ -38,6 +38,12 @@ parameters:
   worker_connections:
     description: Max connections per worker
     default: 512
+  ssl_protocols:
+    description: Which TLS versions to accept
+    default: TLSv1.2
+    options:
+      - { value: "TLSv1.2", label: { en: "TLS 1.2" } }
+      - { value: "TLSv1.3", label: { en: "TLS 1.3", ja: "TLS 1.3 のみ" } }
 `;
 
 const PG_DICT_YAML = `
@@ -473,5 +479,29 @@ parameters:
     // "community" gap-fill — exactly the split provenance the design exists
     // to make representable, reaching the sheet with no enrich.ts change.
     expect(row.extra?.provenance).toBe("en: extracted / ja: community");
+  });
+});
+
+describe("options", () => {
+  it("carries the product's value names onto the row as a first-class field", () => {
+    // First-class, NOT an `extra` entry: extra is a Record<string, string>
+    // baked at generate time, so a LangText label routed through it could
+    // never follow the viewer's language toggle the way description does.
+    const input: ParameterSheetInput = {
+      sheets: [
+        {
+          name: "web",
+          categories: [{ name: "TLS", params: [{ key: "nginx_ssl_protocols", value: "TLSv1.3" }] }],
+        },
+      ],
+    };
+    const { input: out } = enrich(input, opts({ project: undefined, argumentSpecs: [], strict: false }));
+    const param = out.sheets[0].categories[0].params![0];
+    expect(param.options).toEqual([
+      { value: "TLSv1.2", label: { en: "TLS 1.2" } },
+      { value: "TLSv1.3", label: { en: "TLS 1.3", ja: "TLS 1.3 のみ" } },
+    ]);
+    // The label must not have been flattened into a string on the way.
+    expect(param.extra?.options).toBeUndefined();
   });
 });

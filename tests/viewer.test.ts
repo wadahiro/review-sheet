@@ -1892,3 +1892,100 @@ describe("viewer: a sheet that is always side by side", () => {
     expect(host.querySelector(".rs-compare-toggle")).toBeTruthy();
   });
 });
+
+// A stored value and a displayed value are not always the same string: an LDAP
+// search scope is written `1` through the API and shown as "One Level" in the
+// product's own console, so a reviewer who only ever used the console meets a
+// bare `1` and cannot judge it. The dictionary carries the mapping; these tests
+// pin what the viewer is allowed to do with it — which is to ANNOTATE, never to
+// change the value, because that same string is what a review opens with and
+// what `apply` writes back into the config file.
+describe("option labels", () => {
+  const OPTIONED: ParameterSheetInput = {
+    metadata: { title: "t" },
+    sheets: [
+      {
+        name: "ldap",
+        instances: ["production"],
+        categories: [
+          {
+            name: "Searching",
+            params: [
+              {
+                key: "searchScope",
+                value: "1",
+                default: "2",
+                description: "Search scope",
+                // English only, exactly as the product ships it: Keycloak
+                // translates its field labels long before its option lists.
+                options: [
+                  { value: "1", label: { en: "One Level" } },
+                  { value: "2", label: { en: "Subtree", ja: "サブツリー" } },
+                ],
+              },
+              // A value the bound dictionary version does not list — a newer
+              // server, or a placeholder. Annotating it would be a guess.
+              {
+                key: "editMode",
+                value: "UNSYNCED",
+                description: "Edit mode",
+                options: [{ value: "READ_ONLY", label: { en: "Read only" } }],
+              },
+              // No options at all: the overwhelming majority of rows.
+              { key: "connectionUrl", value: "ldaps://d", description: "Connection URL" },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const PAYLOAD_O = { metadata: OPTIONED.metadata, versions: [{ version: "current", sheets: OPTIONED.sheets }] };
+
+  function mountOptioned(lang: "ja" | "en" = "en"): HTMLElement {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: PAYLOAD_O, reviewEnabled: true, initialLang: lang, server: false }), host);
+    return host;
+  }
+
+  const labels = (host: HTMLElement): string[] => [...host.querySelectorAll(".rs-option-label")].map((e) => e.textContent ?? "");
+
+  it("names the value the product's own UI names", () => {
+    const host = mountOptioned();
+    expect(labels(host)).toContain("One Level");
+  });
+
+  it("names the DEFAULT too — an unset row is judged by what applies to it", () => {
+    const host = mountOptioned();
+    expect(labels(host)).toContain("Subtree");
+  });
+
+  it("never folds the label into the value", () => {
+    // The load-bearing one. `value` is what a review's current value, the copy
+    // button and `apply`'s write all use, so "1 (One Level)" reaching it would
+    // put that text into a deployed configuration file.
+    const host = mountOptioned();
+    const codes = [...host.querySelectorAll("code")].map((e) => e.textContent ?? "");
+    expect(codes).toContain("1");
+    expect(codes.some((c) => c.includes("One Level"))).toBe(false);
+  });
+
+  it("says nothing about a value its options do not list", () => {
+    const host = mountOptioned();
+    expect(labels(host).some((l) => l.includes("READ_ONLY") || l.includes("Read only"))).toBe(false);
+  });
+
+  it("follows the language toggle, and falls back to English where the product has no translation", async () => {
+    const host = mountOptioned("ja");
+    // `2` is translated, `1` is not — and showing the English name beats
+    // showing nothing, which is what a bare code already was.
+    expect(labels(host)).toContain("サブツリー");
+    expect(labels(host)).toContain("One Level");
+    const toggle = [...host.querySelectorAll("button")].find((b) => /^(EN|JA)$/.test((b.textContent ?? "").trim()));
+    if (!toggle) throw new Error("language toggle not found");
+    (toggle as HTMLElement).click();
+    await Promise.resolve();
+    expect(labels(host)).toContain("Subtree");
+  });
+});

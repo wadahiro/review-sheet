@@ -62,14 +62,40 @@ function localizeOutOfScope(oos: OutOfScope | undefined, lang: Lang): OutOfScope
   return oos === undefined ? undefined : { ...oos, reason: pickLang(oos.reason, lang) ?? "" };
 }
 function localizeParam(p: ParamData, lang: Lang): ParamData {
-  if (p.label === undefined && p.description === undefined && p.remarks === undefined && p.out_of_scope === undefined) return p;
+  if (
+    p.label === undefined &&
+    p.description === undefined &&
+    p.remarks === undefined &&
+    p.out_of_scope === undefined &&
+    p.options === undefined
+  )
+    return p;
   return {
     ...p,
     label: pickLang(p.label, lang),
     description: pickLang(p.description, lang),
     remarks: pickLang(p.remarks, lang),
     out_of_scope: localizeOutOfScope(p.out_of_scope, lang),
+    // `value` is identity and is never touched; only the option's LABEL is
+    // resolved, and pickLang's cross-language fallback matters here more than
+    // anywhere else — a product translates its field labels long before its
+    // option lists, so a Japanese reader routinely sees an English option name
+    // beside a Japanese description. Showing the English one beats showing
+    // nothing, which is what a bare code already was.
+    options: p.options?.map((o) => ({ value: o.value, label: pickLang(o.label, lang) })),
   };
+}
+
+// What the product's own UI calls this value, if the dictionary says. Returns
+// undefined for a value no option covers — a deployed value the bound
+// dictionary version does not list, or one carrying a placeholder — and that
+// silence is deliberate: the cell falls back to showing the raw value alone,
+// which is what it always showed.
+function optionLabel(param: ParamData, value: string): string | undefined {
+  if (!param.options || value === "") return undefined;
+  const hit = param.options.find((o) => o.value === value);
+  const label = hit?.label;
+  return typeof label === "string" && label.length > 0 && label !== value ? label : undefined;
 }
 function localizeCategory(c: CategoryData, lang: Lang): CategoryData {
   return {
@@ -785,7 +811,7 @@ function MenuItem({ label, onClick, danger }: { label: string; onClick: () => vo
 // Reviewable cell component
 // ============================================================
 
-function ReviewableCell({ value, target, field, reviews, reviewEnabled, onOpenReview, className, isCode, badge, subline, unsetLabel, sharedRow }: {
+function ReviewableCell({ value, target, field, reviews, reviewEnabled, onOpenReview, className, isCode, badge, subline, unsetLabel, valueLabel, sharedRow }: {
   value: string;
   target: ReviewItem["target"];
   field: string;
@@ -803,6 +829,9 @@ function ReviewableCell({ value, target, field, reviews, reviewEnabled, onOpenRe
   // default applies. A label, not a value — so it is rendered as a tag rather
   // than as code, and a suggestion replaces it rather than being appended to it.
   unsetLabel?: string;
+  // What the product's own UI calls this value, shown BESIDE it and never
+  // folded into it — see the render below.
+  valueLabel?: string;
   // Passed straight through to the review modal (see CellToolCtx.sharedRow).
   sharedRow?: boolean;
 }) {
@@ -841,11 +870,21 @@ function ReviewableCell({ value, target, field, reviews, reviewEnabled, onOpenRe
         ? html`<span class="rs-strikethrough">${value}</span>`
         : value;
 
+  // The product's own name for this value, as an annotation NEXT TO it — never
+  // part of it. `value` is the same string the review dialog opens with, the
+  // copy button yields and `apply` writes back to the config file, so folding
+  // "One Level" into a `1` would put that text into a deployed file. It is
+  // dropped entirely once a suggestion is on screen: the label describes the
+  // CURRENT value, and leaving it beside a struck-through old value and a new
+  // one would read as if it belonged to the suggestion.
+  const withOptionLabel = (v: unknown): unknown =>
+    valueLabel === undefined || hasSuggestion ? v : html`${v} <span class="rs-option-label">${valueLabel}</span>`;
+
   const displayValue = hasSuggestion
     ? (isCode
       ? html`${current} <code class="rs-suggested">${suggestedVal || "∅"}</code>`
       : html`${current} <span class="rs-suggested">${suggestedVal || "∅"}</span>`)
-    : current;
+    : withOptionLabel(current);
 
   // Copy is offered on any non-empty cell (every value is worth copying); the
   // suggest action only when review is enabled.
@@ -1252,7 +1291,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   // the parameter as the other axis. "values" expands to one column per instance
   // (Pattern B) or a single "value" column (Pattern A).
   type CellSpec =
-    | { kind: "review"; value: string; target: ReviewItem["target"]; field: string; className: string; isCode: boolean; copyable: boolean; unsetLabel?: string; sharedRow?: boolean }
+    | { kind: "review"; value: string; target: ReviewItem["target"]; field: string; className: string; isCode: boolean; copyable: boolean; unsetLabel?: string; valueLabel?: string; sharedRow?: boolean }
     | { kind: "plain"; content: string | VNode; className: string; style: string };
 
   type TableLine = {
@@ -1296,7 +1335,10 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     // that needs the product's own merge semantics, which this tool does not
     // model. The row exists so a reviewer asks the question, not so the sheet
     // answers it wrongly.
-    cell: (param) => ({ kind: "review", value: param.baseline ?? param.default ?? "-", target: baseTarget(param), field: "default", className: "rs-col-default", isCode: true, copyable: false }),
+    cell: (param) => {
+      const shown = param.baseline ?? param.default ?? "-";
+      return { kind: "review", value: shown, target: baseTarget(param), field: "default", className: "rs-col-default", isCode: true, copyable: false, valueLabel: optionLabel(param, shown) };
+    },
   });
 
   // Value lines: one per instance (Pattern B) or a single value column (Pattern A).
@@ -1326,7 +1368,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
             // Equals the default AND empty → the environment leaves it at the
             // (empty) default: render as unset "—" rather than a blank cell.
             const cls = isSameAsDefault ? (value === "" ? "rs-cell-unset" : "rs-same-as-default") : "rs-changed";
-            return { kind: "review", value, target: { ...baseTarget(param), instance: name }, field: "value", className: `rs-col-value ${cls} ${diffCls}`, isCode: true, copyable: value.length > 0, unsetLabel: t.usesDefault };
+            return { kind: "review", value, target: { ...baseTarget(param), instance: name }, field: "value", className: `rs-col-value ${cls} ${diffCls}`, isCode: true, copyable: value.length > 0, unsetLabel: t.usesDefault, valueLabel: optionLabel(param, value) };
           }
           // Pattern A: one stored value, shown in every environment column. The
           // cell still targets ITS environment, because a review here is a
@@ -1337,7 +1379,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
           const common = param.value ?? "";
           if (rowOutOfScope(param)) {
             // e.g. a secret — shown read-only; the out-of-scope row styling wins.
-            return { kind: "review", value: common, target: { ...baseTarget(param), instance: name }, field: "value", className: "rs-col-value rs-same-as-default", isCode: true, copyable: false, sharedRow: true };
+            return { kind: "review", value: common, target: { ...baseTarget(param), instance: name }, field: "value", className: "rs-col-value rs-same-as-default", isCode: true, copyable: false, sharedRow: true, valueLabel: optionLabel(param, common) };
           }
           // "Nothing is set here" and "what is set equals the default" are two
           // different facts, and only the first one is `usesDefault`. This used
@@ -1364,6 +1406,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
             isCode: true,
             copyable: !isUnset,
             unsetLabel: baselineAbsent ? t.originBaselineDisabled : t.usesDefault,
+            valueLabel: isUnset ? undefined : optionLabel(param, common),
             sharedRow: true,
           };
         },
@@ -1386,6 +1429,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
             isCode: true,
             copyable: !baselineAbsent,
             unsetLabel: baselineAbsent ? t.originBaselineDisabled : undefined,
+            valueLabel: optionLabel(param, value),
           };
         },
       }];
@@ -1423,7 +1467,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
       ? html`<${ReviewableCell} key=${cellKey} value=${spec.value} target=${spec.target} field=${spec.field}
           reviews=${reviews} reviewEnabled=${reviewEnabled} onOpenReview=${onOpenReview}
           className=${spec.className} isCode=${spec.isCode} copyable=${spec.copyable}
-          unsetLabel=${spec.unsetLabel} sharedRow=${spec.sharedRow} t=${t} />`
+          unsetLabel=${spec.unsetLabel} valueLabel=${spec.valueLabel} sharedRow=${spec.sharedRow} t=${t} />`
       : html`<td key=${cellKey} class=${spec.className} style=${spec.style}>${spec.content}</td>`;
 
   // Freeze boundary (normal view): pin icons in the leading-column headers.

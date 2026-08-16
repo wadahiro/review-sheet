@@ -387,6 +387,14 @@ function enrichParam(
       param.remarks = resolved.remarks;
       wrote = true;
     }
+    // A first-class field, NOT an extra: `fillExtra` takes a string, and an
+    // option's label is LangText the viewer resolves per the active language
+    // (extra values are baked at generate time — see formatProvenance below
+    // for the same distinction).
+    if (resolved.options !== undefined && param.options === undefined) {
+      param.options = resolved.options;
+      wrote = true;
+    }
     if (fillExtra(param, "docs_url", resolved.docs_url)) wrote = true;
     if (fillExtra(param, "type", resolved.type)) wrote = true;
     if (fillExtra(param, "scope", resolved.scope)) wrote = true;
