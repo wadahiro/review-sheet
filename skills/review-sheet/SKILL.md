@@ -2183,10 +2183,15 @@ that is an object where only a scalar belongs.
   an entry by default (see the no-default gate discussed above, with
   `materialize:`), so a documented default here is what actually gets that
   directive into the ledger, not just a description.
-- `type` — a free-text hint of the value's shape (`string`, `int`, `boolean`
-  are what the shipped dictionaries use). There is no fixed enum; pick
-  whatever the source data gives you and stay consistent within one
-  dictionary rather than inventing a taxonomy.
+- `type` — a hint of the value's shape. Free text on purpose: a product may
+  name a type this tool has never heard of, and refusing it would mean
+  dropping what the product said. What is NOT free is spelling the same
+  concept two ways — write **`int`** (not `integer`), **`boolean`** (not
+  `bool`), **`number`** (not `real`). `int`/`long`/`number`, `string`,
+  `boolean`, `duration`, `path`, `url`, `map`, and `list of <T>` are what the
+  shipped dictionaries use; `tests/dictionary-vocabulary.test.ts` fails on a
+  known alias. Do not write `enum`: the type is what the value IS, and which
+  values are legal is what `options` says.
 - `scope` — **where/when** the setting applies, in the product's own terms
   (Keycloak's build-time vs runtime, an httpd directive's valid contexts, a
   PostgreSQL parameter's `context` — superuser/sighup/postmaster). Documentation:
