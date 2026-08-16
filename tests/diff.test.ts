@@ -337,3 +337,45 @@ describe("diffSheets — what kind of change", () => {
     expect(r.summary).toMatchObject({ changed: 0, docOnly: 0, unchanged: 1 });
   });
 });
+
+// The distinction the `default` kind alone could not make. Both rows below have
+// an identical product-default move and nothing else; only one of them changes
+// what the deployment does.
+describe("diffSheets — a moved default with and without a value under it", () => {
+  const moved = (extra: Record<string, unknown>) => [
+    sheets([{ key: "k", default: "ldapsOnly", ...extra }]),
+    sheets([{ key: "k", default: "always", ...extra }]),
+  ];
+  const kindsOf = (from: Sheets, to: Sheets) => diffSheets(from, to).sheets[0].categories[0].params[0].changed;
+
+  it("is a record when the project sets the value — its own value still wins", () => {
+    const [f, t] = moved({ value: "always", origin: "embedded" });
+    expect(kindsOf(f, t)).toEqual(["default"]);
+  });
+
+  it("is EFFECTIVE when nobody sets it — the default is the value in force", () => {
+    // A materialized row carries no value at all, so without this the move
+    // reports exactly like the case above.
+    const [f, t] = moved({ origin: "default" });
+    expect(kindsOf(f, t)).toEqual(["effective"]);
+  });
+
+  it("counts a baseline row as unset — the vendor had the line, this file does not", () => {
+    // Having removed the directive, what governs is the product's built-in
+    // default, so such a row is more exposed to it moving, not less.
+    const [f, t] = moved({ value: "", origin: "baseline", baseline: "None" });
+    expect(kindsOf(f, t)).toEqual(["effective"]);
+  });
+
+  it("still reports a value change beside it", () => {
+    const from = sheets([{ key: "k", value: "a", origin: "common", default: "x" }]);
+    const to = sheets([{ key: "k", value: "b", origin: "common", default: "y" }]);
+    expect(kindsOf(from, to)).toEqual(["value", "default"]);
+  });
+
+  it("does not call a prose-only row effective", () => {
+    const from = sheets([{ key: "k", origin: "default", default: "x", description: { en: "was" } }]);
+    const to = sheets([{ key: "k", origin: "default", default: "x", description: { en: "is" } }]);
+    expect(kindsOf(from, to)).toEqual(["doc"]);
+  });
+});

@@ -1155,7 +1155,15 @@ program
           // unmarked it reads exactly like a value change, which across two
           // dictionary versions is most of the output.
           const docOnlyRow = p.changed.length > 0 && p.changed.every((k) => k === "doc");
-          const kinds = docOnlyRow ? " (description/remarks only)" : "";
+          // The one line in this output that can mean "the system behaves
+          // differently and no one edited anything", so it says so rather than
+          // leaving a reader to notice that a default moved on a row with no
+          // value. Named even when other kinds changed too.
+          const kinds = p.changed.includes("effective")
+            ? " (effective: the product default moved under an unset value)"
+            : docOnlyRow
+              ? " (description/remarks only)"
+              : "";
           console.log(`${mark[p.status]} ${sheetName} > ${cat.path} > ${p.key}${cells ? `: ${cells}` : ""}${kinds}`);
         }
         for (const sub of cat.categories) printCat(sub, sheetName);
