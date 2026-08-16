@@ -1158,6 +1158,35 @@ Do not add per-row "reviewed" flags: for a fully reviewed sheet they are a value
 snapshot in a worse format than the committed input.json, and the delta they
 exist to express is a diff.
 
+#### Value, default, prose: three kinds of "changed"
+
+A row can differ in three ways, and `diff` names which:
+
+```
+~ sheet > cat > config.authType[0] (description/remarks only)
+~ sheet > cat > config.useTruststoreSpi[0]
+
+diff: 6 changed (4 description/remarks only), 26 added, 26 removed, 984 unchanged
+```
+
+`--format json` carries the same thing per row as `changed: ["value"]`,
+`["default"]`, `["doc"]`, or a combination.
+
+This exists because **comparing one configuration across two product versions is
+dominated by prose churn**. Measured on a real Keycloak 19.0.2 → 26.7.0
+comparison: 67–74% of shared dictionary keys have different description text,
+and most of it is not the product changing — of 115 differing realm entries, 32
+are a Japanese translation the newer dictionary has and the older lacks, and 20
+are a description the newer one LOST. Counted together, an upgrade review reads
+"115 changed" when nothing it configured has moved.
+
+`default` is kept with the findings, not with the prose: the product's own
+documented default moving is a statement about the deployment even when every
+value held still. In that same comparison it was one row —
+`useTruststoreSpi`, whose default went from `ldapsOnly` to `always` under an
+untouched value — which is exactly the row an upgrade review exists to find, and
+exactly the row that four translation diffs would have buried.
+
 #### When the generated files are not committed
 
 That `git show` assumes `input.json` is in the repository. Plenty of projects

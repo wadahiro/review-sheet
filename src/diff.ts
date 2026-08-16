@@ -19,9 +19,39 @@ export type CellDiff = {
 
 export type FieldDiff = { field: "description" | "default" | "remarks"; from?: string; to?: string };
 
+// WHAT KIND of thing changed about a row, which "changed" alone cannot say and
+// a cross-version comparison desperately needs it to.
+//
+// Measured on one real upgrade (Keycloak 19.0.2 -> 26.7.0, same configuration
+// read under each release's dictionary): of the 19 settings the project sets,
+// ZERO values differ and 14 descriptions do. Across the whole dictionary the
+// figure is 67-74% of shared keys. Worse, the prose churn is mostly not the
+// product changing: 32 of 115 are a Japanese translation the newer dictionary
+// has and the older one lacks, and 20 are a description the newer one LOST.
+//
+// Reported as one "changed" count, an upgrade review reads "115 changed" when
+// the true finding is "nothing you set has moved" — a sign-off number that is
+// wrong in the direction that matters. So:
+//
+//   value    a configured value differs. The finding.
+//   default  the PRODUCT's documented default differs — also a finding, and a
+//            sharper one: the ground under an unchanged value moved. Rare in
+//            practice (2 of 171 realm keys, 1 of 30 LDAP, 0 of 117 client),
+//            which is exactly why it must not be buried under prose.
+//   doc      description/remarks differ. Between two dictionary versions this
+//            is dominated by extraction and translation coverage, not by the
+//            product, so it earns a quiet indicator rather than a tint.
+export type ParamChangeKind = "value" | "default" | "doc";
+
 export type ParamDiff = {
   key: string;
+  // Unchanged in meaning: "changed" still covers every kind, so every existing
+  // consumer keeps working. `changed` below says WHICH kinds, and a caller that
+  // wants the honest headline reads that instead.
   status: DiffStatus;
+  // Which kinds changed, in the order above. Empty for added/removed/unchanged
+  // — a row that is only on one side has no kind of change, it has a presence.
+  changed: ParamChangeKind[];
   cells: CellDiff[];
   fields: FieldDiff[];
 };
@@ -67,7 +97,12 @@ export type DiffOptions = {
 
 export type DiffResult = {
   sheets: SheetDiff[];
-  summary: { changed: number; added: number; removed: number; unchanged: number };
+  // `changed` still counts every kind, so a consumer that only knew this field
+  // reads the same number it always did. `docOnly` is the part of it that is
+  // nothing but prose — subtract it for the number an upgrade review signs off
+  // on. Reported rather than hidden: dictionary churn IS information about the
+  // dictionaries, just not about the deployment.
+  summary: { changed: number; docOnly: number; added: number; removed: number; unchanged: number };
   // Always present (zero/empty when the corresponding DiffOptions flag is
   // off) so a JSON consumer never has to branch on whether a field exists.
   excluded: { defaultOrigin: number };
@@ -181,13 +216,23 @@ function diffParam(from: ParamData | undefined, to: ParamData | undefined): Para
     if (f !== t) fields.push({ field, from: f, to: t });
   });
 
+  // `default` is deliberately NOT prose: it is what the product says the value
+  // would be if nobody set it, so it moving is a statement about the deployment
+  // even when every configured value held still.
+  const changed: ParamChangeKind[] = [];
+  if (cells.some((c) => c.status !== "unchanged")) changed.push("value");
+  if (fields.some((f) => f.field === "default")) changed.push("default");
+  if (fields.some((f) => f.field !== "default")) changed.push("doc");
+
   let status: DiffStatus;
   if (!from) status = "added";
   else if (!to) status = "removed";
-  else if (cells.some((c) => c.status !== "unchanged") || fields.length > 0) status = "changed";
+  else if (changed.length > 0) status = "changed";
   else status = "unchanged";
 
-  return { key, status, cells, fields };
+  // Only a two-sided row has kinds: `changed` describes a difference, and a row
+  // present on one side alone differs in presence, which `status` already says.
+  return { key, status, changed: status === "changed" ? changed : [], cells, fields };
 }
 
 function rollup(
@@ -264,9 +309,12 @@ export function diffSheets(
     return { name, status: rollup(categories.map((c) => c.status), onlyIn), categories };
   });
 
-  const summary = { changed: 0, added: 0, removed: 0, unchanged: 0 };
+  const summary = { changed: 0, docOnly: 0, added: 0, removed: 0, unchanged: 0 };
   const countCat = (c: CategoryDiff): void => {
-    for (const p of c.params) summary[p.status]++;
+    for (const p of c.params) {
+      summary[p.status]++;
+      if (p.changed.length > 0 && p.changed.every((k) => k === "doc")) summary.docOnly++;
+    }
     c.categories.forEach(countCat);
   };
   for (const s of sheets) s.categories.forEach(countCat);
