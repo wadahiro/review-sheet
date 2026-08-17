@@ -489,10 +489,13 @@ function withNestPrefix(
 // LAST-resort category (assemble.ts): a project `category:` and a bound
 // dictionary's own `group` both still win, which is right — this says where
 // the row SITS in the file, not what it is about.
-function nestedCategory(split: StructuralSplit | undefined, path: string | undefined): { categoryPath: string[] } | undefined {
+function nestedCategory(split: StructuralSplit | undefined, path: string | undefined): { categoryPath: string[]; categoryPathWins: true } | undefined {
   if (!split?.nest) return undefined;
   const id = nestedMemberId(split, path);
-  return id === undefined ? undefined : { categoryPath: [split.nest.under, id] };
+  // Outranks the dictionary's own group: every member of a nest has the same
+  // keys, so grouping by anything but which member they are merges the rows a
+  // reader is there to compare.
+  return id === undefined ? undefined : { categoryPath: [split.nest.under, id], categoryPathWins: true };
 }
 
 export function buildMapFromSources(

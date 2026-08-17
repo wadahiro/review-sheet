@@ -120,6 +120,10 @@ export type EmbeddedEntry = {
   component?: string;
   origin?: "embedded" | "default" | "baseline";
   categoryPath?: string[];
+  // The categoryPath outranks a bound dictionary's own `group` — see
+  // bindingOrFallback. Set by a recipe that knows the row came out of a
+  // repetition axis.
+  categoryPathWins?: boolean;
   // Per-instance values, when the row differs between environments — or is
   // there for some and not others, which an instance list expresses by simply
   // omitting the ones it is absent from. Set INSTEAD of `value`, which is then
@@ -509,7 +513,7 @@ const EMPTY_PROJECT_META: ProjectMetaDoc = { params: {} };
 // materializing a large dictionary (httpd@2.4's 100+ modules) doesn't flatten
 // into 100+ top-level tabs alongside the project's own, hand-declared,
 // actually-reviewable categories.
-type Draft = { key: string; param: Parameter; variable?: string; fallbackCategoryPath?: string[]; component?: string };
+type Draft = { key: string; param: Parameter; variable?: string; fallbackCategoryPath?: string[]; categoryPathWins?: boolean; component?: string };
 
 // Category of last resort for a materialized row whose dictionary carries no
 // `group`. Model-level (like extract.ts's DEFAULT_CATEGORY), not a UI string.
@@ -534,7 +538,24 @@ function groupPath(group: string | string[] | undefined): string[] {
 // UNCATEGORIZED does. Binding still outranks the fallback whenever it has an
 // answer; this only stops "bound, to an entry that groups nothing" from
 // counting as one.
-function bindingOrFallback(binding: Binding | undefined, fallback: string[] | undefined): string[] | undefined {
+function bindingOrFallback(
+  binding: Binding | undefined,
+  fallback: string[] | undefined,
+  // The fallback OUTRANKS the dictionary's own grouping. True for a row that
+  // came out of a repetition axis (layered.ts's `split.nest` — a Keycloak LDAP
+  // store's mappers): every member of such an axis has the SAME keys by
+  // definition, so grouping them by anything except which member they are
+  // merges exactly the rows a reader is there to compare. Six mappers all have
+  // an `ldap.attribute`, and the interesting fact is that one reads
+  // sAMAccountName and another reads mail.
+  //
+  // This is not a judgement about the dictionary's group being wrong. It
+  // describes ONE mapper, correctly; it simply does not organize a sheet
+  // holding six of them side by side, and only the recipe knows it is holding
+  // six.
+  fallbackWins = false
+): string[] | undefined {
+  if (fallbackWins && fallback !== undefined) return fallback;
   if (binding && binding.entry.group !== undefined) return groupPath(binding.entry.group);
   return fallback ?? (binding ? [UNCATEGORIZED] : undefined);
 }
@@ -681,7 +702,8 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
     variable?: string,
     extractedKey?: string,
     entryComponent?: string,
-    fallbackCategoryPath?: string[]
+    fallbackCategoryPath?: string[],
+    categoryPathWins?: boolean
   ): void {
     const ctx: ParamContext = { sheet: si.name, key, variable };
     // Looked up by the EXTRACTED key — the one the RECIPE saw and computed
@@ -697,7 +719,7 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
     }
     const mapped = hooks?.mapParam ? hooks.mapParam(param, ctx) : param;
     if (mapped === null) return;
-    drafts.push({ key: mapped.key, param: mapped, variable, component, fallbackCategoryPath });
+    drafts.push({ key: mapped.key, param: mapped, variable, component, fallbackCategoryPath, categoryPathWins });
   }
 
   // 1) Base-layer keys, in insertion order.
@@ -797,7 +819,7 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
             ? { key: e.key, value: e.value, default: e.value, origin: "default" }
             : { key: e.key, value: e.value, source: e.source, origin: "embedded" }
     ) as Parameter;
-    pushDraft(e.key, withUnderKey(param, variable), variable, undefined, e.component, e.categoryPath);
+    pushDraft(e.key, withUnderKey(param, variable), variable, undefined, e.component, e.categoryPath, e.categoryPathWins);
   }
 
   return drafts;
@@ -1283,8 +1305,8 @@ function fileDrafts(
           ? [meta.category]
           : meta.category
         : groupByFile
-          ? (derivedFile ?? bindingOrFallback(binding, d.fallbackCategoryPath))
-          : bindingOrFallback(binding, d.fallbackCategoryPath);
+          ? (derivedFile ?? bindingOrFallback(binding, d.fallbackCategoryPath, d.categoryPathWins))
+          : bindingOrFallback(binding, d.fallbackCategoryPath, d.categoryPathWins);
     // The component level appears only when the sheet HAS more than one. A
     // sheet covering a single component is that component — naming it again
     // above every category would add a level that says nothing, and would make
