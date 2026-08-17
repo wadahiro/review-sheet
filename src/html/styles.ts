@@ -3453,6 +3453,179 @@ tr.rs-jump-flash th {
   }
 }
 
+
+/* A document sheet: prose, not a table.
+ *
+ * Deliberately narrow. The parameter views are as wide as the screen because a
+ * row has to be read across; a paragraph read across 200 characters is a
+ * paragraph nobody reads, and this is the part of the file someone is meant to
+ * read rather than scan.
+ *
+ * It borrows the sheet's OWN type scale and heading device rather than a
+ * document one. The two sit a tab apart and are read in one sitting, so a
+ * document set in the proportions a document would normally use — a 1.5rem h1
+ * over a 0.9rem table, an h1 larger than the sheet title above it — reads as a
+ * page from a different tool. A heading here plays the part a category heading
+ * plays there, so it is given that part's size and that part's tinted panel:
+ * h1/h2/h3 answer to .rs-sheet-header h2 / .rs-category-header h3 / h4.
+ *
+ * Everything is scoped under .rs-doc. The markdown was written by a project,
+ * not by this tool, and an unscoped h2/table/code rule would reach the sheets
+ * as well — the one way a document could change how the parameters look.
+ */
+.rs-doc {
+  max-width: 48rem;
+  padding: 0.75rem 0 3rem;
+  color: var(--rs-text);
+  /* The table's size, because the table is the text this file is mostly made
+     of and the document has to look like it belongs beside one. */
+  font-size: 0.9rem;
+  /* Looser than the app's 1.6 — that is set for cells, and this is prose — but
+     nowhere near a document default. */
+  line-height: 1.75;
+}
+.rs-doc > *:first-child { margin-top: 0; }
+.rs-doc h1, .rs-doc h2, .rs-doc h3, .rs-doc h4, .rs-doc h5, .rs-doc h6 {
+  font-weight: 600;
+  line-height: 1.5;
+  /* The jump flash paints an ::after with inset: 0, which resolves against
+     the nearest POSITIONED ancestor. Without this a heading landed on from the
+     outline lit the whole sheet panel instead of the heading — the flash exists
+     to say "here", and one covering everything says nothing. */
+  position: relative;
+  /* Cleared by the sticky tab bar: a heading jumped to from the outline would
+     otherwise land underneath it, which reads as the jump having missed. */
+  scroll-margin-top: calc(var(--rs-tabbar-h) + 1rem);
+}
+.rs-doc h1 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 1.75rem 0 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 2px solid var(--rs-border);
+}
+.rs-doc h2 {
+  font-size: 0.95rem;
+  margin: 1.75rem 0 0.5rem;
+  padding: 0.5rem 0.875rem;
+  background: #f1f5f9;
+  color: #1e293b;
+  border-left: 4px solid var(--rs-primary);
+  border-radius: 0 var(--rs-radius) var(--rs-radius) 0;
+}
+.rs-doc h3 {
+  font-size: 0.9rem;
+  margin: 1.25rem 0 0.4rem;
+  padding: 0.375rem 0.75rem;
+  background: #f1f5f9;
+  color: #334155;
+  border-left: 3px solid var(--rs-primary);
+  border-radius: 0 var(--rs-radius) var(--rs-radius) 0;
+}
+.rs-doc h4, .rs-doc h5, .rs-doc h6 {
+  font-size: 0.825rem;
+  margin: 1rem 0 0.3rem;
+  padding: 0.3rem 0.625rem;
+  color: var(--rs-text-secondary);
+  border-left: 2px solid var(--rs-border);
+}
+.rs-doc p { margin: 0.6rem 0; }
+.rs-doc ul, .rs-doc ol { margin: 0.6rem 0; padding-left: 1.4rem; }
+.rs-doc li { margin: 0.2rem 0; }
+.rs-doc li > input[type="checkbox"] { margin-right: 0.4rem; }
+.rs-doc a { color: var(--rs-primary); }
+.rs-doc code {
+  font-family: var(--rs-mono);
+  font-size: 0.875em;
+  background: var(--rs-subtle);
+  border: 1px solid var(--rs-border-light);
+  border-radius: 3px;
+  padding: 0.05em 0.3em;
+}
+.rs-doc pre {
+  background: var(--rs-subtle);
+  border: 1px solid var(--rs-border-light);
+  border-radius: var(--rs-radius);
+  padding: 0.7rem 0.9rem;
+  /* Its own scroller: a wide code block must not widen the page. A directory
+     tree is the common case and is wider than the measure by design. */
+  overflow-x: auto;
+}
+.rs-doc pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+.rs-doc blockquote {
+  margin: 0.8rem 0;
+  padding: 0.1rem 0.9rem;
+  border-left: 3px solid var(--rs-border);
+  color: var(--rs-text-secondary);
+}
+.rs-doc hr { border: 0; border-top: 1px solid var(--rs-border-light); margin: 1.75rem 0; }
+/* The parameter table's proportions, for the same reason the body text has
+   them: a table here and a table one tab over should not be two designs. */
+.rs-doc table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0.8rem 0;
+  font-size: 0.85rem;
+}
+.rs-doc th, .rs-doc td {
+  border: 1px solid var(--rs-border-light);
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+.rs-doc th {
+  background: var(--rs-subtle);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--rs-text-secondary);
+}
+/* Embedded at build time, so this only has to keep one from overflowing. */
+.rs-doc img { max-width: 100%; height: auto; }
+.rs-doc details {
+  margin: 0.6rem 0;
+  padding: 0.45rem 0.7rem;
+  background: var(--rs-subtle);
+  border: 1px solid var(--rs-border-light);
+  border-radius: var(--rs-radius);
+}
+.rs-doc summary { cursor: pointer; font-weight: 600; }
+.rs-doc kbd {
+  font-family: var(--rs-mono);
+  font-size: 0.85em;
+  border: 1px solid var(--rs-border);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 0.05em 0.35em;
+}
+
+/* The two headings above name their colours literally, as .rs-category-header
+   does, so the dark theme has to answer them the same way it answers those. */
+[data-theme="dark"] .rs-doc h2,
+[data-theme="dark"] .rs-doc h3 {
+  background: var(--rs-subtle);
+  color: var(--rs-text);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .rs-doc h2,
+  :root:not([data-theme="light"]) .rs-doc h3 {
+    background: var(--rs-subtle);
+    color: var(--rs-text);
+  }
+}
+
+@media (max-width: 60rem) {
+  .rs-doc { padding: 0.5rem 0 2.5rem; }
+}
+
 /* Print is the sheet, full stop. */
 @media print {
   .rs-artifact-panel,

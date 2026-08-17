@@ -1,7 +1,7 @@
 // Framework-free model + AI-prompt builder, shared by the browser app and the
 // CLI. No DOM or Node dependencies so it can run in either environment.
 
-import { pickLang, type LangText, type Origin } from "./types.js";
+import { pickLang, type LangText, type Origin, type SheetDocument } from "./types.js";
 
 // ============================================================
 // Shared data model (the embedded sheet-data / review shape)
@@ -113,6 +113,11 @@ export type SheetData = {
     file_path?: string;
     source_file?: string;
     categories: CategoryData[];
+    // See types.ts's Sheet.document — prose instead of rows. Carried into the
+    // viewer's own shape so a document sheet is a sheet everywhere (tab, group,
+    // outline) and a special case only where it has to be: it has no rows, so
+    // nothing that walks rows finds any.
+    document?: SheetDocument;
   }[];
 };
 

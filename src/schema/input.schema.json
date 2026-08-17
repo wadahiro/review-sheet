@@ -1,31 +1,56 @@
 {
   "title": "Parameter Sheet Input",
   "type": "object",
-  "required": ["sheets"],
+  "required": [
+    "sheets"
+  ],
   "properties": {
     "metadata": {
       "type": "object",
       "properties": {
-        "title": { "type": "string" },
-        "project": { "type": "string" },
-        "version": { "type": "string" },
-        "generated_at": { "type": "string" },
+        "title": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "generated_at": {
+          "type": "string"
+        },
         "changelog": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["version", "date", "author", "description"],
+            "required": [
+              "version",
+              "date",
+              "author",
+              "description"
+            ],
             "properties": {
-              "version": { "type": "string" },
-              "date": { "type": "string" },
-              "author": { "type": "string" },
-              "description": { "type": "string" }
+              "version": {
+                "type": "string"
+              },
+              "date": {
+                "type": "string"
+              },
+              "author": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
             }
           }
         },
         "extra": {
           "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       }
     },
@@ -33,38 +58,80 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["field", "header"],
+        "required": [
+          "field",
+          "header"
+        ],
         "properties": {
-          "field": { "type": "string" },
-          "header": { "type": "string" },
-          "width": { "type": "string" },
-          "align": { "type": "string", "enum": ["left", "center", "right"] },
-          "className": { "type": "string" },
-          "render": { "type": "string", "enum": ["text", "status"] },
-          "place": { "type": "string", "enum": ["trailing", "under_key"] }
+          "field": {
+            "type": "string"
+          },
+          "header": {
+            "type": "string"
+          },
+          "width": {
+            "type": "string"
+          },
+          "align": {
+            "type": "string",
+            "enum": [
+              "left",
+              "center",
+              "right"
+            ]
+          },
+          "className": {
+            "type": "string"
+          },
+          "render": {
+            "type": "string",
+            "enum": [
+              "text",
+              "status"
+            ]
+          },
+          "place": {
+            "type": "string",
+            "enum": [
+              "trailing",
+              "under_key"
+            ]
+          }
         }
       }
     },
     "sheets": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/sheet" }
+      "items": {
+        "$ref": "#/$defs/sheet"
+      }
     },
-    "capabilities": { "$ref": "#/$defs/capabilities" },
+    "capabilities": {
+      "$ref": "#/$defs/capabilities"
+    },
     "artifacts": {
       "type": "array",
-      "items": { "$ref": "#/$defs/artifactPreview" }
+      "items": {
+        "$ref": "#/$defs/artifactPreview"
+      }
     }
   },
   "$defs": {
     "langText": {
       "oneOf": [
-        { "type": "string" },
+        {
+          "type": "string"
+        },
         {
           "type": "object",
           "properties": {
-            "en": { "type": "string" },
-            "ja": { "type": "string" }
+            "en": {
+              "type": "string"
+            },
+            "ja": {
+              "type": "string"
+            }
           },
           "additionalProperties": false
         }
@@ -72,114 +139,287 @@
     },
     "outOfScope": {
       "type": "object",
-      "required": ["reason"],
+      "required": [
+        "reason"
+      ],
       "properties": {
-        "reason": { "$ref": "#/$defs/langText" },
-        "owner": { "type": "string" }
+        "reason": {
+          "$ref": "#/$defs/langText"
+        },
+        "owner": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     },
     "capabilities": {
       "type": "object",
       "properties": {
-        "apply": { "type": "boolean" }
+        "apply": {
+          "type": "boolean"
+        }
       },
       "additionalProperties": false
     },
     "sheet": {
       "type": "object",
-      "required": ["name", "categories"],
+      "required": [
+        "name",
+        "categories"
+      ],
       "properties": {
-        "name": { "type": "string" },
-        "role": { "type": "string" },
-        "instances": { "type": "array", "items": { "type": "string" } },
-        "file_path": { "type": "string" },
-        "source_file": { "type": "string" },
+        "name": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "instances": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "file_path": {
+          "type": "string"
+        },
+        "source_file": {
+          "type": "string"
+        },
         "categories": {
           "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/category" }
+          "items": {
+            "$ref": "#/$defs/category"
+          }
+        },
+        "document": {
+          "type": "object",
+          "required": [
+            "html"
+          ],
+          "properties": {
+            "html": {
+              "type": "string"
+            },
+            "headings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "level",
+                  "text",
+                  "id"
+                ],
+                "properties": {
+                  "level": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 6
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "if": {
+        "not": {
+          "required": [
+            "document"
+          ]
+        }
+      },
+      "then": {
+        "properties": {
+          "categories": {
+            "type": "array",
+            "minItems": 1
+          }
         }
       }
     },
     "category": {
       "type": "object",
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "properties": {
-        "name": { "type": "string" },
-        "tag": { "type": "string" },
-        "file_path": { "type": "string" },
-        "source_file": { "type": "string" },
-        "out_of_scope": { "$ref": "#/$defs/outOfScope" },
+        "name": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "file_path": {
+          "type": "string"
+        },
+        "source_file": {
+          "type": "string"
+        },
+        "out_of_scope": {
+          "$ref": "#/$defs/outOfScope"
+        },
         "params": {
           "type": "array",
-          "items": { "$ref": "#/$defs/parameter" }
+          "items": {
+            "$ref": "#/$defs/parameter"
+          }
         },
         "categories": {
           "type": "array",
-          "items": { "$ref": "#/$defs/category" }
+          "items": {
+            "$ref": "#/$defs/category"
+          }
         }
       }
     },
     "parameter": {
       "type": "object",
-      "required": ["key"],
+      "required": [
+        "key"
+      ],
       "properties": {
-        "key": { "type": "string" },
-        "label": { "$ref": "#/$defs/langText" },
-        "description": { "$ref": "#/$defs/langText" },
-        "default": { "type": "string" },
-        "secret": { "type": "boolean" },
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "$ref": "#/$defs/langText"
+        },
+        "description": {
+          "$ref": "#/$defs/langText"
+        },
+        "default": {
+          "type": "string"
+        },
+        "secret": {
+          "type": "boolean"
+        },
         "options": {
           "type": "array",
           "minItems": 1,
           "items": {
             "type": "object",
-            "required": ["value"],
-            "properties": { "value": { "type": "string" }, "label": { "$ref": "#/$defs/langText" } }
+            "required": [
+              "value"
+            ],
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "label": {
+                "$ref": "#/$defs/langText"
+              }
+            }
           }
         },
-        "baseline": { "type": "string" },
-        "remarks": { "$ref": "#/$defs/langText" },
-        "out_of_scope": { "$ref": "#/$defs/outOfScope" },
-        "origin": { "type": "string", "enum": ["overlay", "common", "embedded", "default", "baseline"] },
-        "value": { "type": "string" },
-        "source": { "$ref": "#/$defs/source" },
+        "baseline": {
+          "type": "string"
+        },
+        "remarks": {
+          "$ref": "#/$defs/langText"
+        },
+        "out_of_scope": {
+          "$ref": "#/$defs/outOfScope"
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "overlay",
+            "common",
+            "embedded",
+            "default",
+            "baseline"
+          ]
+        },
+        "value": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
         "additional_sources": {
           "type": "array",
-          "items": { "$ref": "#/$defs/source" }
+          "items": {
+            "$ref": "#/$defs/source"
+          }
         },
         "instances": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["name", "value"],
+            "required": [
+              "name",
+              "value"
+            ],
             "properties": {
-              "name": { "type": "string" },
-              "value": { "type": "string" },
-              "source": { "$ref": "#/$defs/source" }
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/$defs/source"
+              }
             }
           }
         },
         "extra": {
           "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "allOf": [
         {
           "oneOf": [
-            { "required": ["value"], "not": { "required": ["instances"] } },
-            { "required": ["instances"], "not": { "required": ["value"] } }
+            {
+              "required": [
+                "value"
+              ],
+              "not": {
+                "required": [
+                  "instances"
+                ]
+              }
+            },
+            {
+              "required": [
+                "instances"
+              ],
+              "not": {
+                "required": [
+                  "value"
+                ]
+              }
+            }
           ]
         },
         {
-          "if": { "not": { "required": ["value"] } },
+          "if": {
+            "not": {
+              "required": [
+                "value"
+              ]
+            }
+          },
           "then": {
             "properties": {
               "additional_sources": {
                 "type": "array",
-                "items": { "type": "object", "required": ["ref"] }
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "ref"
+                  ]
+                }
               }
             }
           }
@@ -189,48 +429,121 @@
     "source": {
       "type": "object",
       "properties": {
-        "file": { "type": "string" },
-        "line": { "type": "integer", "minimum": 1 },
-        "column": { "type": "integer", "minimum": 1 },
-        "end_line": { "type": "integer", "minimum": 1 },
-        "anchor": { "type": "string" },
-        "path": { "type": "string" },
-        "baseFormat": { "type": "string" },
-        "templateVar": { "type": "string" },
-        "conditional": { "type": "boolean" },
-        "generated": { "type": "boolean" },
-        "ref": { "type": "string" }
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "end_line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "anchor": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "baseFormat": {
+          "type": "string"
+        },
+        "templateVar": {
+          "type": "string"
+        },
+        "conditional": {
+          "type": "boolean"
+        },
+        "generated": {
+          "type": "boolean"
+        },
+        "ref": {
+          "type": "string"
+        }
       }
     },
     "artifactPreview": {
       "type": "object",
-      "required": ["id", "sheet", "source_file", "lines"],
+      "required": [
+        "id",
+        "sheet",
+        "source_file",
+        "lines"
+      ],
       "properties": {
-        "id": { "type": "string" },
-        "sheet": { "type": "string" },
-        "component": { "type": "string" },
-        "deployed_path": { "type": "string" },
-        "source_file": { "type": "string" },
+        "id": {
+          "type": "string"
+        },
+        "sheet": {
+          "type": "string"
+        },
+        "component": {
+          "type": "string"
+        },
+        "deployed_path": {
+          "type": "string"
+        },
+        "source_file": {
+          "type": "string"
+        },
         "instances": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
-        "nature": { "type": "string", "enum": ["artifact", "source"] },
+        "nature": {
+          "type": "string",
+          "enum": [
+            "artifact",
+            "source"
+          ]
+        },
         "lines": {
           "type": "array",
-          "items": { "$ref": "#/$defs/artifactLine" }
+          "items": {
+            "$ref": "#/$defs/artifactLine"
+          }
         }
       }
     },
     "artifactLine": {
       "type": "object",
-      "required": ["text", "kind"],
+      "required": [
+        "text",
+        "kind"
+      ],
       "properties": {
-        "text": { "type": "string" },
-        "kind": { "type": "string", "enum": ["verbatim", "substituted", "absent", "unrendered"] },
-        "key": { "type": "string" },
-        "reason": { "type": "string" },
-        "cause": { "type": "string", "enum": ["engine", "deploy-time"] }
+        "text": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "verbatim",
+            "substituted",
+            "absent",
+            "unrendered"
+          ]
+        },
+        "key": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "cause": {
+          "type": "string",
+          "enum": [
+            "engine",
+            "deploy-time"
+          ]
+        }
       }
     }
   }

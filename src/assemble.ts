@@ -63,6 +63,7 @@ import type {
   Capabilities,
   LangText,
   ArtifactPreview,
+  SheetDocument,
 } from "./types.js";
 
 // `origin: "embedded"` marks a base-layer entry whose position relative to its
@@ -171,6 +172,10 @@ export type SheetInputs = {
   // through to the model — the assembler neither reads nor merges them; the
   // recipe that owns the template is the only thing that can render one.
   artifacts?: ArtifactPreview[];
+  // This sheet is prose, not rows (types.ts's Sheet.document). Passed straight
+  // through for the reason `artifacts` above is: the assembler has nothing to
+  // merge, and only the recipe that owns the source can produce it.
+  document?: SheetDocument;
   // How a row of THIS sheet relates to a product dictionary's keys, when the
   // recipe knows — a Terraform plan row is `<module>.<type>.<name>.<arg>` and
   // the provider documents `<type>.<arg>`, which follows from the plan's shape
@@ -1737,6 +1742,26 @@ export function assembleSheetsWithReport(
     const sheetLabel = labelForSheet(projectMeta, si.name);
     const sheetGroup = groupForSheet(projectMeta, si.name);
     const compareComponents = compareComponentsForSheet(projectMeta, si.name);
+    // A document has no rows, so none of what follows applies to it: no drafts
+    // to build, no keys to bind, no categories to file under, no components to
+    // compare. It takes the sheet-level facts that ARE about how it is READ —
+    // its label, its group, its order among the sheets — and stops there.
+    //
+    // Handled here rather than by giving it an empty layer: every check below
+    // is worth keeping for a sheet that MEANT to have rows, and an empty base
+    // walked through them would come out the far end as a silently blank sheet,
+    // which is the one outcome this file is written to prevent.
+    if (si.document) {
+      sheets.push({
+        name: si.name,
+        ...(sheetLabel ? { label: sheetLabel } : {}),
+        ...(sheetGroup ? { group: sheetGroup } : {}),
+        categories: [],
+        document: si.document,
+      });
+      assembledKeysBySheet.set(si.name, new Set());
+      continue;
+    }
     if ((si.keyMap?.length ?? 0) > 0 && !underKey) {
       throw new Error(
         `assemble: sheet "${si.name}" has parameter(s) named by a product key (via keyMap) and must declare an ` +

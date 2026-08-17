@@ -275,6 +275,32 @@ export type Sheet = {
   // falls back to `file_path` (backward compatible).
   source_file?: string;
   categories: Category[];
+  // This sheet is a DOCUMENT, not a table: prose that belongs beside the
+  // parameters — a migration policy, an acceptance procedure, the diagram the
+  // rows are read against. `categories` is empty for one, and only for one.
+  //
+  // Already HTML, and already carrying its images as data URIs, because the
+  // model is the point at which this tool stops depending on the files around
+  // it (see cli.ts's `findBakedSecrets` comment). A path here would mean
+  // `generate` had to read the filesystem and that a model was only as good as
+  // the checkout it came from.
+  document?: SheetDocument;
+};
+
+export type SheetDocument = {
+  html: string;
+  // The headings the outline lists — already filtered by the build's declared
+  // depth, so the model states what the navigation IS rather than restating a
+  // rule the viewer would apply again and could apply differently.
+  headings?: DocumentHeading[];
+};
+
+export type DocumentHeading = {
+  level: number;
+  text: string;
+  // Baked into the HTML above; resolved with getElementById, like a category
+  // anchor.
+  id: string;
 };
 
 // Presence marks the node excluded from review scope; `reason` is mandatory

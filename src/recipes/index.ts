@@ -5,3 +5,4 @@ import "./layered.js";
 import "./ansible.js";
 import "./snapshot.js";
 import "./terraform-plan.js";
+import "./document.js";
