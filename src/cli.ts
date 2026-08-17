@@ -373,6 +373,15 @@ async function runSpecImport(opts: {
       return null;
     }
   };
+  // Same contract as readFile, without the utf-8 decode: an image a document
+  // embeds is bytes, and reading it as text would corrupt it silently.
+  const readBinary = (path: string): Uint8Array | null => {
+    try {
+      return new Uint8Array(readFileSync(path));
+    } catch {
+      return null;
+    }
+  };
 
   const specPath = resolve(opts.spec);
   const spec = loadBuildSpec(specPath, { readFile });
@@ -396,6 +405,7 @@ async function runSpecImport(opts: {
     const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings } = assembleFromSpecWithReport(spec, {
       readFile,
       listDir,
+      readBinary,
       specDir,
       resolve: (p: string) => relative(process.cwd(), resolve(specDir, p)),
       marker: opts.annotationMarker,

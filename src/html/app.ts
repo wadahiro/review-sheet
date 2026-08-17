@@ -1959,6 +1959,25 @@ function paramAnchorId(sheetIndex: number, path: string, key: string): string {
 function collectNav(data: SheetData, showDefaults: boolean, pivoted: Set<string>): NavEntry[] {
   const out: NavEntry[] = [];
   data.sheets.forEach((sheet, sheetIndex) => {
+    // A document's headings ARE its outline. They carry the ids the renderer
+    // baked into the HTML, so the jump machinery needs nothing new: the entry
+    // is resolved with getElementById exactly like a category anchor.
+    //
+    // Which headings appear was decided at build time (`nav_depth`) and is
+    // stated in the model. Re-deciding it here would give the same document two
+    // answers depending on which side of the pipeline you asked.
+    if (sheet.document) {
+      for (const h of sheet.document.headings ?? []) {
+        out.push({
+          kind: "category", sheetIndex, sheetName: sheet.name, path: h.text, name: h.text,
+          depth: h.level,
+          id: h.id,
+          search: `${sheet.display ?? ""} ${sheet.name} ${h.text}`.toLowerCase(),
+          text: `${sheet.display ?? sheet.name} / ${h.text}`,
+        });
+      }
+      return;
+    }
     // A sheet being read side by side has no component headings — the
     // components are columns — so its outline has to mirror THAT shape or every
     // entry points at an anchor the page no longer has, and the panel silently
@@ -3175,7 +3194,22 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
   useEffect(() => {
     const compute = (): void => {
       if (Date.now() < spySuppressUntil.current) return;
-      const cats = Array.from(document.querySelectorAll<HTMLElement>(".rs-category[id]"));
+      // A document sheet has no categories; its outline is its headings, so
+      // those are what the spy has to follow. Taken from the MODEL rather than
+      // from a selector, so the elements tracked are exactly the entries the
+      // outline lists — a heading below `nav_depth` is on the page but in no
+      // entry, and scrolling past one would otherwise clear the highlight to
+      // point at nothing.
+      //
+      // Without this the spy found zero elements here and set the current entry
+      // to null on every scroll, which also wiped the highlight jumpToNav had
+      // just set — the outline looked broken in a document and only there.
+      const activeDoc = activeSheet >= 0 ? data.sheets[activeSheet]?.document : undefined;
+      const cats = activeDoc
+        ? (activeDoc.headings ?? [])
+            .map((h) => document.getElementById(h.id))
+            .filter((el): el is HTMLElement => el !== null)
+        : Array.from(document.querySelectorAll<HTMLElement>(".rs-category[id]"));
       if (cats.length === 0) { setCurrentNavId(null); return; }
       const scroller = document.scrollingElement ?? document.documentElement;
       const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2;
@@ -3583,7 +3617,9 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
                 </p>
               `}
 
-              ${pivoted.has(sheet.name)
+              ${sheet.document
+                ? html`<div class="rs-doc" dangerouslySetInnerHTML=${{ __html: sheet.document.html }}></div>`
+                : pivoted.has(sheet.name)
                 ? html`<${PivotView} sheet=${sheet} sheetIndex=${idx} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
                                      reviews=${reviews} reviewEnabled=${effReviewEnabled} onOpenReview=${openReview}
                                      onLeave=${alwaysPivoted.has(sheet.name) ? undefined : () => setPivoted((prev) => { const next = new Set(prev); next.delete(sheet.name); return next; })} t=${t} />`

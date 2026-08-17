@@ -460,6 +460,10 @@ turns YAML into a sheet. Check the built-ins before writing anything:
   sheet still works, it just reads oddly. Accepts `defaults` / `overlays` /
   `static_files` / `include` / `exclude` / a per-source `key` transform, same
   as `ansible`'s own base+overlay half.
+- `document` — a sheet that is **prose, not rows**: a markdown file rendered
+  into the same HTML, taking a tab and a place in a group like any other sheet.
+  For what the parameters are read AGAINST — a migration policy, an acceptance
+  procedure, the topology diagram. See "A sheet that is a document" below.
 
 #### How a template row gets its name
 
@@ -758,6 +762,41 @@ so known keys would come out bracketed and unknown ones dotted.
 
 Only the spelling changes: `attributes["x"]` and `attributes.x` parse to the
 same steps, so `source.path` is untouched and verify/apply resolve either way.
+
+#### `recipe: document`
+
+A sheet whose content is a markdown file. It has no rows, no review targets and
+no source maps — it is what the rows are read against, carried in the same file
+so it cannot arrive as a second attachment nobody opens.
+
+```yaml
+sheets:
+  - name: migration policy
+    recipe: document
+    file: docs/migration-policy.md
+    nav_depth: 3          # heading levels listed in the outline (default 2, 0 = none)
+```
+
+- **Images are embedded, not linked.** Paths inside the markdown resolve against
+  the markdown's own directory (`docs/img/x.png` for `img/x.png` in
+  `docs/policy.md`) and are inlined as data URIs at `import` time — so the model
+  stays self-contained and `generate` still reads nothing but JSON. An image
+  that cannot be read, or a remote URL (which would make the delivered file
+  fetch over the network when opened), **fails the build**, naming every bad
+  reference at once.
+- **Raw HTML is filtered to a display-only allowlist** (`br`, `img`, `sub`,
+  `sup`, `kbd`, `abbr`, `mark`, `small`, `s`, `u`, `del`, `ins`, `details`,
+  `summary`); anything else is escaped and shown as text. `id`, `class`, `style`
+  and every `on*` handler are dropped from the tags that are kept. `<br>` in a
+  table cell — which GFM has no other way to write — is the reason this is not
+  simply escaped wholesale.
+- **GFM is on**: tables, task lists, fenced code, strikethrough.
+- The sheet's display name and group come from the project metadata
+  (`sheet.yml`'s `label:` / `group:`), exactly as for a parameter sheet.
+
+Every heading gets an anchor; `nav_depth` decides only which of them the outline
+LISTS, and that decision is made at build time and recorded in the model — the
+viewer never re-derives it.
 
 #### `recipe: terraform-plan`
 

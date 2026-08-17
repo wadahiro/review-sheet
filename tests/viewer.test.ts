@@ -2108,3 +2108,96 @@ describe("viewer: a row with no category survives the side-by-side view", () => 
     expect(heads).toEqual(["poc-oidc / account", "Settings"]);
   });
 });
+
+// A document sheet: prose where the rows would be. It is a SHEET — it takes a
+// tab, it takes its place in the order, and its headings are its outline —
+// which is the whole reason it is not a panel bolted onto the overview page.
+describe("viewer: a document sheet", () => {
+  const payload = {
+    metadata: { title: "t" },
+    versions: [
+      {
+        version: "current",
+        sheets: [
+          {
+            name: "policy",
+            label: { ja: "移行方針", en: "Migration policy" },
+            categories: [],
+            document: {
+              html: '<h1 id="rs-doc-移行方針">移行方針</h1>\n<p>本文</p>\n<h2 id="rs-doc-前提">前提</h2>\n<p><img src="data:image/png;base64,AAAA" alt="図" /></p>\n',
+              headings: [
+                { level: 1, text: "移行方針", id: "rs-doc-移行方針" },
+                { level: 2, text: "前提", id: "rs-doc-前提" },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  function mountDoc(): HTMLElement {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    return host;
+  }
+
+  it("renders the document, images and all", () => {
+    const host = mountDoc();
+    const doc = host.querySelector(".rs-doc");
+    expect(doc).not.toBeNull();
+    expect(doc?.querySelector("h1")?.textContent).toBe("移行方針");
+    expect(doc?.querySelector("img")?.getAttribute("src")).toStartWith("data:image/png;base64,");
+  });
+
+  it("shows no parameter table at all", () => {
+    // It has no rows. Anything row-shaped here would be the viewer inventing
+    // one.
+    const host = mountDoc();
+    expect(host.querySelectorAll(".rs-param-table")).toHaveLength(0);
+  });
+
+  it("is named by its label in the tab bar, like any other sheet", () => {
+    const host = mountDoc();
+    const tabs = [...host.querySelectorAll(".rs-tab, .rs-subtab")].map((e) => (e.textContent ?? "").trim());
+    expect(tabs.some((tx) => tx.includes("移行方針"))).toBe(true);
+  });
+
+  it("lists its headings in the outline", async () => {
+    const host = mountDoc();
+    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
+    (btn as HTMLElement).click();
+    await Promise.resolve();
+    const items = [...host.querySelectorAll(".rs-outline-item")].map((e) => (e.textContent ?? "").trim());
+    expect(items).toContain("移行方針");
+    expect(items).toContain("前提");
+  });
+
+  it("follows its headings in the outline instead of clearing the highlight", async () => {
+    // The scroll-spy used to look only for .rs-category[id]. A document has
+    // none, so it found zero elements and set the current entry to null on
+    // every scroll — which also wiped the highlight a click had just set. The
+    // outline looked broken in a document and only there.
+    const host = mountDoc();
+    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
+    (btn as HTMLElement).click();
+    await Promise.resolve();
+    window.dispatchEvent(new Event("scroll"));
+    await Promise.resolve();
+    expect(host.querySelectorAll(".rs-outline-current").length).toBeGreaterThan(0);
+  });
+
+  it("points each outline entry at an anchor that is really on the page", async () => {
+    // The failure this replaces is silent: an entry whose id is not in the DOM
+    // simply does nothing when clicked.
+    const host = mountDoc();
+    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
+    (btn as HTMLElement).click();
+    await Promise.resolve();
+    for (const id of ["rs-doc-移行方針", "rs-doc-前提"]) {
+      expect(host.querySelector(`[id="${id}"]`)).not.toBeNull();
+    }
+  });
+});

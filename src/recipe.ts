@@ -28,6 +28,11 @@ export type RecipeIO = {
   // already uses. Optional: an out-of-tree recipe, and the many tests that
   // hand-build a RecipeIO without ever touching a directory, keep compiling.
   listDir?: (path: string) => string[] | null;
+  // Bytes, for a recipe whose subject is not text: an image a document embeds.
+  // Injected and optional for exactly the reasons `listDir` is — no recipe
+  // imports `fs`, and a recipe (or a test) that never needs bytes keeps
+  // compiling without supplying it.
+  readBinary?: (path: string) => Uint8Array | null;
   specDir: string; // absolute directory of the build.yml this sheet came from
   resolve: (p: string) => string; // specDir-relative path -> absolute
   instances: string[]; // this SHEET's instances (ordered) — already resolved from the

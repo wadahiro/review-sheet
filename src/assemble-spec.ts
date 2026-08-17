@@ -45,6 +45,8 @@ export type SpecAssembleOpts = {
   // `hooks` is: most callers (a project with no such sheet, most tests) never
   // need it, so nothing has to hand-build a no-op just to keep compiling.
   listDir?: (path: string) => string[] | null;
+  // See RecipeIO.readBinary — bytes for a recipe that embeds a binary asset.
+  readBinary?: (path: string) => Uint8Array | null;
   specDir: string; // directory the spec's relative paths resolve against (specDirOf())
   // How a spec-relative path is recorded in the model. Defaults to an absolute
   // path; the CLI passes a CWD-relative one so a committed input.json does not
@@ -95,6 +97,7 @@ export function assembleFromSpecWithReport(
   const baseIo = {
     readFile: opts.readFile,
     listDir: opts.listDir,
+    readBinary: opts.readBinary,
     specDir: opts.specDir,
     resolve: resolvePathOpt,
     extractOptions,

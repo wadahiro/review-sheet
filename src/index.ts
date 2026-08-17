@@ -84,6 +84,12 @@ export type { JsonValue, RecipeIO, SheetRecipe } from "./recipe.js";
 // Artifact preview engine: renders/reads the whole deployed file a sheet's
 // rows come from, for the viewer's ArtifactPanel. A recipe's own job (which
 // file, which rendering) stays with the recipe; this is the shared mechanics.
+// Markdown -> the HTML a document sheet carries (recipes/document.ts), with its
+// I/O injected like every other core here: it resolves no path and reads no
+// file, it only says which images it needs.
+export { renderMarkdown, imageRefs } from "./markdown.js";
+export type { RenderedDocument, DocHeading, ImageResolver, MarkdownOptions } from "./markdown.js";
+
 export { MAX_PREVIEW_BYTES, addLineKey, previewId, previewFile, previewRendered } from "./preview.js";
 export type { LineKeys, PreviewSource } from "./preview.js";
 // BuildSpec loader: turns a declarative `build.yml` into a validated BuildSpec
@@ -95,6 +101,8 @@ export type {
   SheetMetadata,
   ChangeLogEntry,
   Sheet,
+  SheetDocument,
+  DocumentHeading,
   Category,
   Parameter,
   SimpleParameter,
