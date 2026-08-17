@@ -3474,7 +3474,6 @@ tr.rs-jump-flash th {
  * as well — the one way a document could change how the parameters look.
  */
 .rs-doc {
-  max-width: 48rem;
   padding: 0.75rem 0 3rem;
   color: var(--rs-text);
   /* The table's size, because the table is the text this file is mostly made
@@ -3485,6 +3484,21 @@ tr.rs-jump-flash th {
   line-height: 1.75;
 }
 .rs-doc > *:first-child { margin-top: 0; }
+/* No measure. The column is as wide as every other sheet's.
+ *
+ * A narrow one was tried, on the usual typographic ground that a paragraph read
+ * across 200 characters is a paragraph nobody reads. Two things decided against
+ * it. A heading here carries a rule (border-bottom), and a capped heading stops
+ * its rule partway across the column, which reads as broken rather than as
+ * restrained. And the author controls where a line ends already: a blank line
+ * starts a new paragraph, which is the markdown way of saying "break here" and
+ * is a decision the document makes rather than one the stylesheet imposes.
+ *
+ * So the document sheet is as wide as the parameter sheets beside it, which is
+ * also the thing a reader switching tabs expects. Wide content — a table, a
+ * fenced directory tree, a diagram — keeps its own scroller past the column, so
+ * the page never gains one.
+ */
 .rs-doc h1, .rs-doc h2, .rs-doc h3, .rs-doc h4, .rs-doc h5, .rs-doc h6 {
   font-weight: 600;
   line-height: 1.5;
@@ -3567,6 +3581,8 @@ tr.rs-jump-flash th {
 .rs-doc hr { border: 0; border-top: 1px solid var(--rs-border-light); margin: 1.75rem 0; }
 /* The parameter table's proportions, for the same reason the body text has
    them: a table here and a table one tab over should not be two designs. */
+/* Wide by nature: as wide as its content needs, up to the column, and its own
+   scroller past that — never the page's. */
 .rs-doc table {
   display: block;
   width: max-content;
