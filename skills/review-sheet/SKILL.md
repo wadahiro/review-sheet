@@ -1079,6 +1079,35 @@ sheets:
         materialize: true           # expand every uncovered key
 ```
 
+##### `per_component` — the sheet's components ARE the versions
+
+A sheet comparing two releases of one product would otherwise name each release
+three times per side: on the source (`component:`), then again as both
+`version:` and `component:` of its dictionary.
+
+```yaml
+    dictionaries:
+      - product: keycloak-client
+        per_component: true
+```
+
+is the whole binding for a sheet whose components are `19.0.2` and `26.7.0`. It
+expands to one stated pair per component, each bound to the dictionary of its
+own name; `version:` and `component:` are refused alongside it, since not
+writing either twice is the point.
+
+The long form's two halves are **never checked against each other**: swap them
+and the old release's dictionary describes the new release's column, while
+every gate still passes (the product@version exists, and the component exists).
+On a migration sheet — where a moved product default is the finding being
+looked for — that is the worst thing this spec can say silently.
+
+Declared rather than inferred, because a component is not always a version: in
+the same build a component is elsewhere an artifact, a systemd unit, an LDAP
+provider. Every way of getting it wrong is a named failure — an id that is not
+a version fails as `dictionary not found: <product>@<id>`, and a sheet with no
+components fails outright.
+
 `materialize` lives ON the binding, not beside it — the dictionary a sheet
 expands is exactly the one it is already bound to, so there is nothing to name
 a second time (an earlier version of this had a spec-wide `materialize:`
@@ -1241,10 +1270,20 @@ Both are DECLARED, never inferred, for the reason `compare_components` was
 declared in the first place — several components do not make a sheet
 comparable, and the person who wrote it already knows which it is.
 
-Comparing two RELEASES needs neither: that axis is the versioned document
-(`generate -i old.json new.json`), whose Compare offers its own side-by-side
-switch. Use `compare_components` when the things being compared coexist in one
-build — two realms, two clients, two LDAP providers.
+Two RELEASES can be compared either way, and which one is right depends on
+what moved:
+
+- **The versioned document** (`generate -i old.json new.json`, whose Compare
+  offers its own side-by-side switch) when the whole deployment moved between
+  revisions and the old state no longer exists in the repository.
+- **A component per release** when both releases' configuration coexists in the
+  repository and the diff has to sit beside the ordinary sheets in one HTML —
+  an upgrade being planned, where the old server is still running. Then each
+  release is a component, `per_component:` binds its dictionary, and
+  `categories_from:` says whose grouping governs (below).
+
+`compare_components` also covers things that are not releases at all and simply
+coexist in one build — two realms, two clients, two LDAP providers.
 
 ##### `categories_from` — which component decides where a row is filed
 

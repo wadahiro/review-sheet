@@ -370,7 +370,7 @@ export type DictionaryMaterialize =
 // which dictionary it expands, and declaring them separately (as build.yml
 // used to, with a spec-wide `dictionaries:`/`materialize:` restating the same
 // product+version twice) let the two silently drift apart.
-export type SheetDictionaryBinding = DictionaryBinding & {
+export type ResolvedDictionaryBinding = DictionaryBinding & {
   materialize?: DictionaryMaterialize;
   // Which of the sheet's components this dictionary describes. Absent = the
   // whole sheet, which is what a single-component sheet always means.
@@ -390,6 +390,61 @@ export type SheetDictionaryBinding = DictionaryBinding & {
   // different, harder-to-explain one.
   component?: string;
 };
+
+// A dictionary this sheet binds: either the stated pair above, or the
+// per-component shorthand below.
+export type SheetDictionaryBinding = ResolvedDictionaryBinding | PerComponentDictionaryBinding;
+
+// "Every component of this sheet IS a version of this product."
+//
+// A sheet comparing releases names each release three times per side: once on
+// the source (`component:`), then again as `version:` AND `component:` of its
+// dictionary. Those last two are never checked against each other, so swapping
+// them binds the old release's dictionary to the new release's column while
+// every existing gate passes — the product@version exists, and the component
+// exists. On a migration sheet, where a moved product default is the finding
+// being looked for, that is the worst thing this spec can say silently.
+//
+// Stated rather than inferred: a component is not always a version. In the
+// same build a component is elsewhere an artifact, a systemd unit, an LDAP
+// provider — measured on a real spec, 9 of 17 component-scoped bindings have a
+// component that is not a version at all. So this declares which kind THIS
+// sheet's components are, and every way of getting it wrong is a named
+// failure: an id that is not a version fails as "dictionary not found:
+// product@<id>", a sheet with no components fails in expandPerComponent.
+export type PerComponentDictionaryBinding = Omit<DictionaryBinding, "version"> & {
+  per_component: true;
+  materialize?: DictionaryMaterialize;
+};
+
+export const isPerComponent = (b: SheetDictionaryBinding): b is PerComponentDictionaryBinding =>
+  "per_component" in b && b.per_component === true;
+
+// One stated binding per component, each bound to the dictionary of its own
+// name. Everything downstream — bind, materialize, the component scope check —
+// then sees ordinary pairs and knows nothing about the shorthand.
+export function expandPerComponent(
+  sheet: string,
+  declared: SheetDictionaryBinding[],
+  components: Set<string>
+): ResolvedDictionaryBinding[] {
+  const out: ResolvedDictionaryBinding[] = [];
+  for (const b of declared) {
+    if (!isPerComponent(b)) {
+      out.push(b);
+      continue;
+    }
+    if (components.size === 0) {
+      throw new Error(
+        `assemble: sheet "${sheet}" binds ${b.product} with per_component, but this sheet has no components — ` +
+          `there is nothing for the per-component versions to be. Name a version instead.`
+      );
+    }
+    const { per_component: _perComponent, ...rest } = b;
+    for (const component of components) out.push({ ...rest, version: component, component });
+  }
+  return out;
+}
 
 // What materializeDrafts() did with one bound dictionary, so a caller can
 // print it — "skipped N" must never be silent (see materializeDrafts below).
@@ -948,7 +1003,7 @@ function materializeDrafts(
   // No `drafts` parameter: what this project already covers is read from
   // `draftBindings` (the single bind pass), not re-derived from the drafts here.
   draftBindings: SheetBindings,
-  binding: SheetDictionaryBinding,
+  binding: ResolvedDictionaryBinding,
   opts: AssembleOpts,
   // The component this expansion is FOR, and the draft keys belonging to it.
   // Materialize answers "what does this project not set", and that question has
@@ -1880,7 +1935,9 @@ export function assembleSheetsWithReport(
     // This SHEET's own declared dictionaries only — never another sheet's
     // (see AssembleOpts.dictionaries): binding is resolved per sheet so a key
     // can only ever match what ITS OWN sheet declared.
-    const sheetDictionaries = opts.dictionaries?.[si.name] ?? [];
+    // Expanded here, where the component set is already in hand (above) and
+    // before anything reads a binding.
+    const sheetDictionaries = expandPerComponent(si.name, opts.dictionaries?.[si.name] ?? [], components);
     const bindSources: ScopedBindSource[] = loadBindSources(sheetDictionaries, opts.metadataDirs ?? [], opts.readFile).map(
       (source, i) => ({ source, component: sheetDictionaries[i]!.component })
     );
