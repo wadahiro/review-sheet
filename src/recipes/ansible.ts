@@ -188,6 +188,10 @@ const schema = {
     },
     overlays: { type: "object", additionalProperties: sourceOrListSchema },
     include: { type: "array", items: { type: "string" } },
+    // Same field, same meaning as layered's: the reading order for components,
+    // when the sheet's own sources cannot say it — one side a template, the
+    // other a file.
+    component_order: { type: "array", items: { type: "string" }, minItems: 1 },
     exclude: { type: "array", items: { type: "string" } },
     // under_key (the backing-variable column) lives in the project metadata
     // (sheet.yml's under_key:, P7): a display fact, not a data-source one.
@@ -1180,6 +1184,9 @@ export const ansibleRecipe: SheetRecipe = {
           `there is no rendered file to deploy`
       );
     }
+    const statedOrder = Array.isArray(sheetSpec.component_order)
+      ? (sheetSpec.component_order as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
 
     return {
       name,
@@ -1192,8 +1199,11 @@ export const ansibleRecipe: SheetRecipe = {
       ...(componentOf.size > 0 ? { componentOf } : {}),
       ...(componentLabels.size > 0 ? { componentLabels } : {}),
       ...(componentFiles.size > 0 ? { componentFiles } : {}),
-      ...(specs.length > 1
-        ? { componentOrder: specs.map((t) => t.component).filter((c): c is string => c !== undefined) }
+      // The author's own reading order wins over the one the templates imply:
+      // a comparison sheet takes one side from a template and the other from a
+      // file, and neither list can state where the other belongs.
+      ...(statedOrder.length > 0 || specs.length > 1
+        ? { componentOrder: statedOrder.length > 0 ? statedOrder : specs.map((t) => t.component).filter((c): c is string => c !== undefined) }
         : {}),
       ...(artifacts.length > 0 ? { artifacts } : {}),
     };

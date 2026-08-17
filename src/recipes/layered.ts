@@ -118,6 +118,11 @@ const staticFilesSchema = {
       format: { type: "string" },
       key: keyTransformSchema,
       include: { type: "array", items: { type: "string" } },
+    // Reading order for the components, when the sheet's own sources cannot
+    // say it: a comparison sheet takes one side from a template and the other
+    // from a file, and which of those is "first" is a statement about the
+    // subject, not about the spec. Derived from the sources when omitted.
+    component_order: { type: "array", items: { type: "string" }, minItems: 1 },
       exclude: { type: "array", items: { type: "string" } },
       substitution: substitutionSchema,
       component: { type: "string" },
@@ -160,10 +165,19 @@ const schema = {
     overlays: { type: "object", additionalProperties: sourceOrListSchema },
     static_files: staticFilesSchema,
     include: { type: "array", items: { type: "string" } },
+    // Reading order for the components, when the sheet's own sources cannot
+    // say it: a comparison sheet takes one side from a template and the other
+    // from a file, and which of those is "first" is a statement about the
+    // subject, not about the spec. Derived from the sources when omitted.
+    component_order: { type: "array", items: { type: "string" }, minItems: 1 },
     exclude: { type: "array", items: { type: "string" } },
   },
   additionalProperties: false,
 };
+
+function asStringList(v: JsonValue | undefined): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
 
 function asString(v: JsonValue | undefined, field: string): string {
   if (typeof v !== "string") throw new Error(`layered recipe: "${field}" must be a string`);
@@ -1041,6 +1055,8 @@ export const layeredRecipe: SheetRecipe = {
       // chose; without it the sheet opens on whichever component's rows the
       // assembler happened to see first.
       ...(() => {
+        const stated = asStringList(sheetSpec.component_order);
+        if (stated.length > 0) return { componentOrder: stated };
         const declared = staticFileSpecs(sheetSpec.static_files).map((f) => f.component).filter((c): c is string => c !== undefined);
         return declared.length > 0 ? { componentOrder: declared } : {};
       })(),
