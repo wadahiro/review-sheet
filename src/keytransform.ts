@@ -62,6 +62,35 @@ export type StructuralSplit = {
   // that no element has is an error, like every other declaration here that
   // matches nothing.
   only?: string[];
+  // A list nested INSIDE each member — a Keycloak LDAP store's mappers being
+  // the case this exists for. Two things make it more than another split:
+  //
+  //   - the component becomes `<member> / <nested member>`, because a mapper
+  //     belongs to the store it was created with and is meaningless beside
+  //     another store's;
+  //   - `key_from` names a SIBLING field of the nested member whose VALUE
+  //     prefixes every one of its keys. That is what makes the rows bindable
+  //     at all: a mapper's meaning comes from its TYPE (`providerId`), 16
+  //     property names are declared by more than one type and 8 of those
+  //     differ between them, and the type appears nowhere in the address.
+  //
+  // Reading a sibling field is not a new channel — `by:` already reads one to
+  // identify the member. This reads a second field of the same object.
+  nest?: NestedSplit;
+};
+
+export type NestedSplit = {
+  at: string;
+  by: string;
+  // The sibling field whose value prefixes the nested member's keys.
+  key_from: string;
+  // The category the nested members are filed UNDER, inside their member's own
+  // component. A mapper is part of the store, not a sibling of it: a reviewer
+  // asking what corp-ldap does means the connection AND what it makes of a
+  // directory entry, so the outline reads `corp-ldap > Mappers > username`
+  // rather than seventeen components in a row.
+  under: string;
+  only?: string[];
 };
 
 export type KeyTransform = {
@@ -116,23 +145,61 @@ export function splitKeySteps(split: StructuralSplit, membersOnly = false): KeyT
     { pattern: `${member}${values}\\1\\]\\.(.+)$`, replace: "$2", on_no_match: membersOnly ? "drop" : "keep" },
   ];
   if (split.only) steps.push({ drop: `${member}` });
+  if (split.nest) {
+    const n = split.nest;
+    const nestedValues = n.only ? `(?:${n.only.map(esc).join("|")})` : `(?:.+?)`;
+    // Runs on what the outer step left. "keep" because a member has rows of
+    // its own as well as nested ones, and those must survive untouched.
+    steps.push({
+      pattern: `^${esc(n.at)}\\[${esc(n.by)}=("?)${nestedValues}\\1\\]\\.(.+)$`,
+      replace: "$2",
+      on_no_match: "keep",
+    });
+  }
   return steps;
+}
+
+// The path of the nested member an entry belongs to, or undefined. Used to look
+// up the `key_from` value that prefixes its keys — a lookup, not a rewrite,
+// because a string transform cannot read another entry's value.
+// The nested member's own id — `username` for a mapper — which is what the
+// category under `nest.under` is named after.
+export function nestedMemberId(split: StructuralSplit, path: string | undefined): string | undefined {
+  if (!split.nest || path === undefined) return undefined;
+  const n = split.nest;
+  const m = new RegExp(`${esc(n.at)}\\[${esc(n.by)}=("?)(.+?)\\1\\]\\.`).exec(path);
+  return m?.[2];
+}
+
+export function nestedMemberPath(split: StructuralSplit, path: string | undefined): string | undefined {
+  if (!split.nest || path === undefined) return undefined;
+  const n = split.nest;
+  const m = new RegExp(`^(.*${esc(n.at)}\\[${esc(n.by)}=("?).+?\\2\\])\\.`).exec(path);
+  return m?.[1];
 }
 
 // The identity itself, for the component side of the same declaration.
 export function splitComponentSteps(split: StructuralSplit, more = false): KeyTransformStep[] {
   const values = split.only ? `(?:${split.only.map(esc).join("|")})` : `(?:.+?)`;
-  return [
-    {
-      pattern: `^${esc(split.at)}\\[${esc(split.by)}=("?)(${values})\\1\\]\\..+$`,
-      replace: "$2",
-      // A row that is not a member belongs to no component — unless the sheet
-      // has further rules for it, in which case it has to survive to reach
-      // them. (A sheet reading the list AND the env variables that feed it
-      // files those variables under the member they belong to.)
-      on_no_match: more ? "keep" : "drop",
-    },
-  ];
+  const steps: KeyTransformStep[] = [];
+  steps.push({
+    pattern: `^${esc(split.at)}\\[${esc(split.by)}=("?)(${values})\\1\\]\\..+$`,
+    replace: "$2",
+    // A row that is not a member belongs to no component — unless the sheet
+    // has further rules for it, in which case it has to survive to reach
+    // them. (A sheet reading the list AND the env variables that feed it
+    // files those variables under the member they belong to.)
+    //
+    // With a nest, this must KEEP instead: the step before it has already
+    // turned a nested row into `<member> / <nested>`, and dropping whatever
+    // this one fails to match would throw that away. Steps run in sequence,
+    // so the second one sees the first one's output.
+    on_no_match: more ? "keep" : "drop",
+  });
+  // What neither pattern claimed is still a structural path, and a path is not
+  // a component id. Only with a nest, where the step above had to stop
+  // dropping: without one the behaviour is exactly what it was.
+  return steps;
 }
 
 export function makeKeyTransformer(transform: KeyTransform): KeyTransformer {
