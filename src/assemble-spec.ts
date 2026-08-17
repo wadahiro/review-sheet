@@ -157,7 +157,24 @@ export function assembleFromSpecWithReport(
     // A DERIVED declaration (`from`/`steps`) is the recipe's to resolve, since
     // only it knows the artifact — if the recipe already produced componentOf,
     // that is what happened, and this leaves it alone.
-    if (si.componentOf === undefined) {
+    // ...and "says otherwise" is not only `componentOf`. A recipe can answer the
+    // question per ENTRY instead (`templates[].component` becomes
+    // EmbeddedEntry.component), and then it has said which component every row
+    // it produced belongs to without building a map at all — `componentOf` is
+    // for the rows it CANNOT tag that way, and a sheet where no such row exists
+    // legitimately produces none.
+    //
+    // Reading `componentOf === undefined` as "this sheet has no components"
+    // therefore fired on a sheet that has several: every key got the sheet's
+    // own name as a second component beside the real ones, which for a variable
+    // no template interpolates — the only rows without an entry-level component
+    // — came out as a category level named after the sheet, above its own.
+    // Measured on a sheet whose templates interpolate nothing at all, where
+    // `componentOf` is empty for that reason and for no other.
+    const entriesCarryComponents =
+      si.embedded.some((e) => e.component !== undefined) ||
+      si.layers.some((l) => [...l.entries.values()].some((e) => e.component !== undefined));
+    if (si.componentOf === undefined && !entriesCarryComponents) {
       const id = component?.id ?? sheetSpec.name;
       const keys = new Set<string>();
       for (const layer of si.layers) for (const k of layer.entries.keys()) keys.add(k);
