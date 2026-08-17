@@ -34,7 +34,7 @@
 // replacement instead of being discarded. See tests/keytransform.test.ts for
 // a worked example of both.
 export type KeyTransformStep =
-  | { pattern: string; replace: string; flags?: string; on_no_match?: "drop" | "keep" }
+  | { pattern: string; replace: string; flags?: string; on_no_match?: "drop" | "keep"; must_match?: boolean }
   // Drop the entry when the pattern DOES match — the mirror of
   // `on_no_match: "drop"`, which drops when it does not. Needed to express
   // selection ("this sheet reviews these two of the list, not the other two")
@@ -62,6 +62,35 @@ export type StructuralSplit = {
   // that no element has is an error, like every other declaration here that
   // matches nothing.
   only?: string[];
+  // The members this sheet reviews, NAMED — the ordered form of `only:`, for a
+  // list whose elements cannot be selected by their literal id.
+  //
+  // A SAML client's id is its entity id, which is the SP's own URL: the old
+  // server's file spells a literal production host and the new one an
+  // environment reference, so no literal selects both, and a comparison keyed
+  // on the raw id shows one client as two one-sided rows. `match` recognises
+  // the element; `id` is what it is called on the sheet, on both sides.
+  //
+  // Ordered, first match wins: `https://*/reporting/saml/metadata` has to be
+  // tried before `https://*/saml/metadata`, which would otherwise claim it. A
+  // member that matches nothing is an error, so a misordering fails loudly
+  // rather than quietly reviewing one client twice.
+  //
+  // Mutually exclusive with `only:` — both are the same selection, and two
+  // selections would have to agree.
+  members?: SplitMember[];
+  // What the member identity BECOMES.
+  //
+  //   component  (default) the member is a component, as it always was.
+  //   prefix     the member id prefixes every one of its keys
+  //              (`poc-oidc.publicClient`) and the component slot is left to
+  //              the source's own `component:`. For a sheet whose component
+  //              axis is already spent — comparing two RELEASES of a product
+  //              whose file holds several clients — this is the only way the
+  //              members can be told apart at all.
+  //   none       the member identity is dropped: one member, and naming it
+  //              anywhere would add a level that says nothing.
+  as?: "component" | "prefix" | "none";
   // A list nested INSIDE each member — a Keycloak LDAP store's mappers being
   // the case this exists for. Two things make it more than another split:
   //
@@ -119,6 +148,18 @@ export function selectKeySource(from: KeyTransform["from"], key: string, path: s
   return from === "path" ? (path ?? key) : key;
 }
 
+// A member of a split list: what it is called here, and how to recognise it.
+export type SplitMember = {
+  id: string;
+  // A glob over the element's own id, where `*` matches any run of characters
+  // other than the address's closing bracket. Omitted = the `id` itself,
+  // matched literally, which is the ordinary case.
+  //
+  // Deliberately NOT keyglob's dialect (keyglob.ts), whose `*` does not cross
+  // `.` — every hostname has dots, so every match here would silently be none.
+  match?: string;
+};
+
 // Regex-escape a literal for embedding in a generated pattern.
 function esc(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -134,8 +175,63 @@ function esc(s: string): string {
 // (that is the `only:` selection). A row that is not a member of the list at
 // all — a plain variable from an env file on the same sheet — matches neither
 // and passes through untouched.
+// A member's `match` glob as a regex fragment: `*` crosses anything except the
+// bracket that ends the address.
+export function memberPattern(m: SplitMember): string {
+  return m.match === undefined ? esc(m.id) : esc(m.match).replace(/\\\*/g, "[^\\]]*");
+}
+
 export function splitKeySteps(split: StructuralSplit, membersOnly = false): KeyTransformStep[] {
   const member = `^${esc(split.at)}\\[${esc(split.by)}=("?)`;
+  // Named members, each rewritten to its own id. Kept (not dropped) per step,
+  // because a member the NEXT step claims has to survive this one; what no
+  // step claimed is dropped below, which is the selection `only:` also makes.
+  if (split.members) {
+    const each = (m: SplitMember): string => `${member}${memberPattern(m)}\\1\\]\\.(.+)$`;
+    if (split.as === "prefix") {
+      // One rewrite per member, because each puts a DIFFERENT id in front of
+      // the key. Kept (not dropped) per step, since a member the next step
+      // claims has to survive this one.
+      const steps: KeyTransformStep[] = split.members.map((m) => ({
+        pattern: each(m),
+        replace: `${m.id}.$2`,
+        on_no_match: "keep" as const,
+        // A named member that recognised no element is a selection reviewing
+        // less than it claims — the failure `only:` already reports.
+        must_match: true,
+      }));
+      // Still addressed as a member of the list = a member this sheet did not
+      // name, which is the same selection `only:` makes.
+      steps.push({ drop: member });
+      if (membersOnly) {
+        // The source IS the list, so anything that never became a member is
+        // another sheet's subject. Recognisable here precisely because each
+        // member now wears its own id.
+        const ids = split.members.map((m) => esc(m.id)).join("|");
+        steps.push({ pattern: `^((?:${ids})\\..+)$`, replace: "$1", on_no_match: "drop" });
+      }
+      return steps;
+    }
+    // `component` / `none`: the member id does not enter the key, so every
+    // member rewrites the same way and ONE step does it — which is also what
+    // keeps `members_only` expressible, since a row that reaches that step
+    // without matching is by definition not a member of the list.
+    //
+    // The probes above it exist only to record that each named member matched
+    // something. They rewrite the key to itself, so they change nothing.
+    const probes: KeyTransformStep[] = split.members.map((m) => ({
+      pattern: each(m),
+      replace: "$&",
+      on_no_match: "keep" as const,
+      must_match: true,
+    }));
+    const alternation = split.members.map((m) => `(?:${memberPattern(m)})`).join("|");
+    return [
+      ...probes,
+      { pattern: `${member}(?:${alternation})\\1\\]\\.(.+)$`, replace: "$2", on_no_match: membersOnly ? "drop" : "keep" },
+      { drop: member },
+    ];
+  }
   const values = split.only ? `(?:${split.only.map(esc).join("|")})` : `(?:.+?)`;
   const steps: KeyTransformStep[] = [
     // "keep" by default: a source can hold rows that are not members of the
@@ -180,6 +276,23 @@ export function nestedMemberPath(split: StructuralSplit, path: string | undefine
 
 // The identity itself, for the component side of the same declaration.
 export function splitComponentSteps(split: StructuralSplit, more = false): KeyTransformStep[] {
+  // Under `prefix` the member travels in the KEY and the component slot belongs
+  // to the source (its release); under `none` there is no member identity to
+  // record at all. Deriving a component here would overwrite the first and
+  // invent the second.
+  if (split.as === "prefix" || split.as === "none") return [];
+  if (split.members) {
+    // Each member named as itself, so an element whose id differs between two
+    // files still lands in one component.
+    const named: KeyTransformStep[] = split.members.map((m) => ({
+      pattern: `^${esc(split.at)}\\[${esc(split.by)}=("?)${memberPattern(m)}\\1\\]\\..+$`,
+      replace: m.id,
+      on_no_match: "keep" as const,
+      must_match: true,
+    }));
+    named.push({ drop: `^${esc(split.at)}\\[` });
+    return named;
+  }
   const values = split.only ? `(?:${split.only.map(esc).join("|")})` : `(?:.+?)`;
   const steps: KeyTransformStep[] = [];
   steps.push({
@@ -207,7 +320,10 @@ export function makeKeyTransformer(transform: KeyTransform): KeyTransformer {
     step,
     // Only a "drop" pattern step needs tracking; everything else starts
     // "used" so it never shows up in unmatchedDropPatterns().
-    used: !("pattern" in step) || step.on_no_match !== "drop",
+    // A "drop" step must match something, and so must one that says so —
+    // `must_match` is how a KEEP step (one whose non-matching rows are another
+    // step's business) still declares that it is meant to claim rows.
+    used: !("pattern" in step) || (step.on_no_match !== "drop" && step.must_match !== true),
   }));
 
   return {

@@ -882,6 +882,56 @@ the environment variable feeding a member's field is the case. The split's own
 step runs first, and when further steps follow, a non-member survives it to
 reach them instead of being filed under no component.
 
+##### `members:` — when the element's own id cannot select it
+
+`only:` matches ids literally, which is enough until the id is not this
+project's to choose. A SAML client's id is its entity id, which is the SP's own
+URL: the old server's file spells a literal production host and the new one an
+environment reference, so **no literal selects both**, and a comparison keyed on
+the raw id shows one client as two one-sided rows.
+
+```yaml
+  split:
+    at: clients
+    by: clientId
+    members:
+      - { id: saml-reporting, match: 'https://*/reporting/saml/metadata' }
+      - { id: saml-sp,        match: 'https://*/saml/metadata' }
+      - { id: poc-oidc }        # no match: — the id, literally
+```
+
+`match` is a glob over the element's own id where `*` crosses anything except
+the bracket ending the address. It is **not** `include:`/`exclude:`'s dialect
+(whose `*` does not cross `.`) — every hostname has dots, and every match here
+would silently be none.
+
+**Ordered, first match wins**, so `.../reporting/saml/metadata` has to be listed
+before `.../saml/metadata`. Getting that wrong does not quietly review one
+client twice: both would map to one name, and mapping two structural locations
+to one key is already a hard error naming both addresses. A member that
+recognises no element is reported, exactly as an `only:` entry is.
+
+`members:` and `only:` are the same selection written two ways and cannot both
+be given.
+
+##### `as:` — what the member identity BECOMES
+
+```yaml
+  split: { at: clients, by: clientId, as: prefix, members: [...] }
+```
+
+| `as:` | the member is | use it when |
+|---|---|---|
+| `component` (default) | a component | the ordinary case |
+| `prefix` | the front of every one of its keys (`poc-oidc.publicClient`), and the component slot is left to the source's own `component:` | **the component axis is already spent** — comparing two releases of a product whose file holds several clients |
+| `none` | dropped; keys stay the member's own fields | there is one member, and naming it would add a level holding exactly one child |
+
+`prefix` is what makes a release comparison possible at all on a file holding
+several members: the releases are the columns, so the members have nowhere else
+to go. Both need `members:` (or `only:`) — without names, `prefix` would put a
+raw element id, a SAML client's entity URL, in front of every key, which is the
+spelling all of this exists to avoid.
+
 #### A static file that records the PRODUCT's defaults (`origin: default`)
 
 Not every file a spec reads is part of what the project ships. A snapshot
