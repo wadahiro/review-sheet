@@ -61,3 +61,18 @@ describe("findBakedSecrets", () => {
     expect(findBakedSecrets(sheet([{ key: "a", value: "", secret: true }]))).toEqual([]);
   });
 });
+
+// The interaction that made this feature dead on arrival: a project marks its
+// credentials `out_of_scope` — every one of the real project's was — and
+// enrich skips an excluded row entirely, so the declaration never reached the
+// row and the check found nothing.
+describe("out_of_scope rows still resolve `secret`", () => {
+  it("reports an excluded row whose value is a literal", () => {
+    // out_of_scope says the row is not being REVIEWED here. It says nothing
+    // about whether its value is in the file that gets handed around.
+    const found = findBakedSecrets(
+      sheet([{ key: "smtpServer.password", value: "hunter2", secret: true, out_of_scope: { reason: "pipeline" } }])
+    );
+    expect(found).toHaveLength(1);
+  });
+});
