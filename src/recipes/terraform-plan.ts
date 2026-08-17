@@ -52,9 +52,17 @@ const COMPONENT_STEPS: KeyTransformStep[] = [
 // argument of a resource TYPE. Supplied by the recipe because it follows from
 // the plan's shape, not from anything this project chose; a binding that
 // declares its own `key_steps` still wins.
+// The SAME strip normalizeTfKey applies, and for the same reason: the provider
+// documents a nested block's argument once (`aws_lb.access_logs.enabled`),
+// while a plan addresses each repetition — by index, or by the identifying
+// field its elements carry. Both are addressing; the dictionary has neither.
+// Only the index was stripped here, so a repeated block whose elements have a
+// `name` bound to nothing and arrived with no description at all.
+const REPETITION = `\\[(?:[0-9]+|[A-Za-z_][A-Za-z0-9_.-]*=[^\\]]*)\\]`;
+
 const DICT_KEY_STEPS: KeyTransformStep[] = [
   { pattern: `^[^.]+\\.([a-z][a-z0-9_]*)\\.[^.]+\\.(.+)$`, replace: "$1.$2", on_no_match: "drop" },
-  { pattern: `\\[[0-9]+\\]`, replace: "", flags: "g" },
+  { pattern: REPETITION, replace: "", flags: "g" },
 ];
 
 const schema = {
@@ -388,13 +396,27 @@ export function tfSourceKey(component: string, hclPath: string): string | undefi
   return [component, type, name, ...rest].join(".");
 }
 
-// Strips every `[<digits>]` from a key. The SAME normalization this file's
-// own `DICT_KEY_STEPS` (above) already applies when relating a plan row to
-// the provider's dictionary — needed here for the identical reason: the plan JSON
-// renders a nested block as an array (`health_check[0].path`) even though the
-// module's own `.tf` source never wrote an index (`health_check.path`), so
-// the two sides only line up once that plan-only artifact is stripped from
-// both.
+// Strips the ADDRESSING a repeated block is reached by, from either side.
+//
+// The same normalization this file's own `DICT_KEY_STEPS` (above) applies when
+// relating a plan row to the provider's dictionary, and needed here for the
+// same reason: a nested block is addressed differently in the two documents
+// that have to line up.
+//
+//   .tf source   parameter[0].value              — the parser indexes repeats
+//   plan JSON    parameter[name=max_connections].value
+//
+// Both are ways of saying WHICH repetition, and neither side can produce the
+// other's: the plan's list elements carry an identifying field, so the
+// extractor addresses them by it (`name`/`id`/`key` are identity fields
+// whether or not a spec declares any), while the HCL source has only their
+// order. Stripping the index alone left every such row unmatched, so a value
+// the module plainly writes was published as one nobody sets — the worst way
+// to be wrong, since an unset row is hidden by default.
+//
+// A quoted map key (`tags["Name"]`) is NOT addressing and is left alone: it is
+// content both documents can state, and collapsing it would merge two settings
+// into one.
 export function normalizeTfKey(key: string): string {
-  return key.replace(/\[[0-9]+\]/g, "");
+  return key.replace(new RegExp(REPETITION, "g"), "");
 }

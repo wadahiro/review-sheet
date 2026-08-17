@@ -11,6 +11,7 @@ import "../src/recipes/index.js";
 import type { RecipeIO } from "../src/recipe";
 import type { ArtifactLine, InstanceParameter } from "../src/types";
 import { assembleSheets, type AssembleOpts } from "../src/assemble";
+import { makeKeyTransformer } from "../src/keytransform";
 import { stubNonBuiltInProviders } from "./only-builtin-providers.js";
 
 describe("tfSourceKey", () => {
@@ -265,5 +266,142 @@ params:
     }
     const unverified = warnings2.find((w) => w.includes('component "alb" has no sources: entry'));
     expect(unverified).toBeDefined();
+  });
+});
+
+// A repeated block is addressed differently in the two documents that have to
+// line up: the .tf parser indexes repeats, while the plan's list elements carry
+// an identifying field and the extractor addresses them by it — `name`, `id`
+// and `key` are identity fields whether or not a spec declares any. Stripping
+// only the index left every such row unmatched, so a value the module plainly
+// writes was published as one nobody sets, which the sheet hides by default.
+describe("terraform-plan recipe: a repeated block addressed by name", () => {
+  beforeEach(stubNonBuiltInProviders);
+
+  const TF = `resource "aws_db_parameter_group" "this" {
+  name = "pg"
+  parameter {
+    name  = "max_connections"
+    value = "200"
+  }
+  parameter {
+    name  = "work_mem"
+    value = "4096"
+  }
+}
+`;
+  const PLAN = JSON.stringify({
+    resource_changes: [
+      {
+        address: "module.db.aws_db_parameter_group.this",
+        change: {
+          after: {
+            name: "pg",
+            parameter: [
+              { name: "max_connections", value: "200" },
+              { name: "work_mem", value: "4096" },
+            ],
+          },
+        },
+      },
+    ],
+  });
+
+  const files: Record<string, string> = { "/f/plan.json": PLAN, "/f/module/main.tf": TF };
+  const memIo = (): RecipeIO => ({
+    readFile: (p) => files[p] ?? null,
+    listDir: (p) => (p === "/f/module" ? ["main.tf"] : null),
+    specDir: "/f",
+    resolve: (p) => `/f/${p}`,
+    instances: ["staging"],
+  });
+
+  const load = () => {
+    const r = getRecipe("terraform-plan");
+    if (!r) throw new Error("terraform-plan recipe is not registered");
+    return r.load(
+      { name: "aws", recipe: "terraform-plan", snapshots: { staging: "plan.json" }, sources: { db: "module" } },
+      memIo()
+    );
+  };
+
+  it("counts the module's own values as authored, not as provider defaults", () => {
+    const authored = load().authoredKeys ?? new Set<string>();
+    expect([...authored].filter((k) => k.includes(".parameter[")).sort()).toEqual([
+      "db.aws_db_parameter_group.this.parameter[name=max_connections].value",
+      "db.aws_db_parameter_group.this.parameter[name=work_mem].value",
+    ]);
+  });
+
+  it("leaves the rows set, rather than demoting them to origin: default", () => {
+    // The visible symptom: an unset row is hidden until "show defaults" is on,
+    // so a value the module writes disappears from the sheet.
+    const project =
+      "params:\n" +
+      "  db.aws_db_parameter_group.this.name: { category: DB }\n" +
+      "  'db.aws_db_parameter_group.this.parameter[name=max_connections].value': { category: DB }\n" +
+      "  'db.aws_db_parameter_group.this.parameter[name=work_mem].value': { category: DB }\n";
+    const input = assembleSheets([load()], {
+      projectPath: "p.yml",
+      readFile: (p: string) => (p === "p.yml" ? project : null),
+      strictMetadata: false,
+    } as AssembleOpts);
+    const rows: { key: string; origin?: string }[] = [];
+    const walk = (cats: { params?: { key: string; origin?: string }[]; categories?: unknown }[]): void => {
+      for (const c of cats) {
+        for (const p of c.params ?? []) rows.push(p);
+        walk((c.categories ?? []) as never[]);
+      }
+    };
+    walk(input.sheets[0].categories as never[]);
+    const params = rows.filter((r) => r.key.includes(".parameter["));
+    expect(params.length).toBe(2);
+    expect(params.every((r) => r.origin !== "default")).toBe(true);
+  });
+});
+
+// The dictionary side of the same mismatch. A provider documents a nested
+// block's argument once (`aws_lb.access_logs.enabled`); a plan addresses each
+// repetition, by index or by the identifying field its elements carry. Both
+// are addressing and the dictionary has neither, so both have to go — stripping
+// only the index left a repeated block whose elements have a `name` bound to
+// nothing, and it arrived with no description at all.
+describe("terraform-plan recipe: dictKeySteps and a repeated block", () => {
+  const steps = () => {
+    const r = getRecipe("terraform-plan");
+    if (!r) throw new Error("terraform-plan recipe is not registered");
+    const files: Record<string, string> = {
+      "/f/plan.json": JSON.stringify({
+        resource_changes: [
+          { address: "module.db.aws_db_parameter_group.this", change: { after: { name: "pg" } } },
+        ],
+      }),
+    };
+    return r.load(
+      { name: "aws", recipe: "terraform-plan", snapshots: { staging: "plan.json" } },
+      {
+        readFile: (p) => files[p] ?? null,
+        specDir: "/f",
+        resolve: (p) => `/f/${p}`,
+        instances: ["staging"],
+      }
+    ).dictKeySteps!;
+  };
+
+  const apply = (key: string): string | undefined =>
+    makeKeyTransformer({ from: "key", steps: steps() }).apply(key);
+
+  it("reduces an indexed block to the argument the provider documents", () => {
+    expect(apply("alb.aws_lb.this.access_logs[0].enabled")).toBe("aws_lb.access_logs.enabled");
+  });
+
+  it("reduces a name-addressed block to the same thing", () => {
+    expect(apply("db.aws_db_parameter_group.this.parameter[name=max_connections].value")).toBe(
+      "aws_db_parameter_group.parameter.value"
+    );
+  });
+
+  it("leaves a quoted map key alone — that is content, not addressing", () => {
+    expect(apply('alb.aws_lb.this.tags["Name"]')).toBe('aws_lb.tags["Name"]');
   });
 });
