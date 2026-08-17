@@ -483,6 +483,9 @@ export const ansibleRecipe: SheetRecipe = {
 
     const embedded: EmbeddedEntry[] = [...core.embedded]; // static_files' embedded entries
     const keyMap: KeyMapEntry[] = [];
+    // Every variable the template(s) interpolate, filled by pass 1 — see the
+    // return, and SheetInputs.templateVariables.
+    const templateVariables: string[] = [];
     // Candidate row-key -> variable pairs, resolved into `keyMap` once every
     // template has been read. Collected rather than pushed directly because a
     // SCOPED sheet can produce the same row key twice — `Unit.Description`
@@ -623,20 +626,44 @@ export const ansibleRecipe: SheetRecipe = {
         addLineKey(perFile, line, key);
         keyAtLine.set(templatePath, perFile);
       };
+      // Filled by pass 1 below and handed to the model — see the return.
       const entryKeysByVariable = new Map<string, string[]>();
+      // The mirror of it. A directive can be driven by SEVERAL variables —
+      // `db-url=jdbc:postgresql://{{ db_host }}:5432/{{ db_name }}` — and then
+      // no one of them can be named after it either: the row would carry the
+      // directive's name and one variable's value, saying `db-url = db.internal`.
+      // That is the same misrepresentation the many-directives case is refused
+      // for, seen from the other side, and it was the one direction nothing
+      // checked.
+      const variablesByEntryKey = new Map<string, Set<string>>();
       for (const { entries, structured, conditions } of read) {
         for (const entry of entries) {
           // Same rule as pass 2: under the artifact axis a conditional line
           // counts when some instance renders it; under the variable axis it
           // never counts, as before.
           if (entry.source.conditional && !(rowsArtifact && rendersSomewhere(entry, conditions))) continue;
-          const variable = entry.source.templateVar;
-          if (variable === undefined || !defaultsMap.has(variable)) continue;
-          const keys = entryKeysByVariable.get(variable);
-          if (keys) keys.push(productKeyOf(entry, structured));
-          else entryKeysByVariable.set(variable, [productKeyOf(entry, structured)]);
+          // EVERY variable the line's value interpolates, not just
+          // `source.templateVar`. That field is the parser's answer to "which
+          // variable IS this value" and it takes the FIRST one, which is a
+          // claim a mixed line cannot keep: on
+          // `db-url=jdbc:…{{ db_host }}:5432/{{ db_name }}` it names db_host
+          // and says nothing at all about db_name. Counting from it made a
+          // two-variable line look like a 1:1 line whose second variable the
+          // template never mentions.
+          const lineVars = [...new Set(jinjaVariables(entry.value))].filter((v) => defaultsMap.has(v));
+          if (lineVars.length === 0) continue;
+          const productKey = productKeyOf(entry, structured);
+          for (const variable of lineVars) {
+            const keys = entryKeysByVariable.get(variable);
+            if (keys) keys.push(productKey);
+            else entryKeysByVariable.set(variable, [productKey]);
+          }
+          const vars = variablesByEntryKey.get(productKey) ?? new Set<string>();
+          for (const variable of lineVars) vars.add(variable);
+          variablesByEntryKey.set(productKey, vars);
         }
       }
+      templateVariables.push(...entryKeysByVariable.keys());
       for (const [variable, keys] of entryKeysByVariable) {
         // Not a problem under the artifact axis, and saying so would be
         // misleading: a variable driving four directives yields four rows
@@ -647,6 +674,16 @@ export const ansibleRecipe: SheetRecipe = {
         if (unique.length > 1) {
           console.warn(
             `keyed by variable (not 1:1): {{ ${variable} }} used by ${unique.join(", ")} -> filed as "${variable}"`
+          );
+        }
+      }
+      // ...and the same, said from the directive's side, so a line mixing
+      // variables is reported once rather than once per variable.
+      if (!rowsArtifact) {
+        for (const [entryKey, backers] of variablesByEntryKey) {
+          if (backers.size < 2) continue;
+          console.warn(
+            `keyed by variable (not 1:1): ${entryKey} is built from ${[...backers].join(", ")} -> each filed under its own name`
           );
         }
       }
@@ -864,7 +901,13 @@ export const ansibleRecipe: SheetRecipe = {
               templateOfVariable.set(variable, seenIn === undefined ? spec.component : seenIn === spec.component ? seenIn : null);
             }
             const unique = new Set(entryKeysByVariable.get(variable) ?? []);
-            if (unique.size === 1) {
+            // 1:1 in BOTH directions, or the row's name is a claim it cannot
+            // keep. One variable driving four directives has no single key to
+            // take; one directive driven by two variables has no single
+            // variable to give its key to, and handing it to either produces a
+            // row named `db-url` whose value is a hostname.
+            const backers = variablesByEntryKey.get(productKeyOf(entry, structured));
+            if (unique.size === 1 && (backers?.size ?? 1) === 1) {
               keyMap.push({ boundKey: productKeyOf(entry, structured), variable });
             }
             // The VARIABLE axis has a place in the file too, and its row wants
@@ -1196,6 +1239,14 @@ export const ansibleRecipe: SheetRecipe = {
       layers,
       embedded,
       ...(keyMap.length > 0 ? { keyMap } : {}),
+      // Which variables the template(s) actually interpolate — every one of
+      // them, including the second and later variables of a mixed line. Not
+      // derivable from `keyMap` downstream: that table answers "which variable
+      // may be SHOWN under this row" and is deliberately empty wherever the
+      // relationship is not 1:1, so reading it as "is this row's value part of
+      // the artifact" made exactly the mixed lines fall out of the artifact
+      // they are lines of.
+      ...(templateVariables.length > 0 ? { templateVariables } : {}),
       ...(componentOf.size > 0 ? { componentOf } : {}),
       ...(componentLabels.size > 0 ? { componentLabels } : {}),
       ...(componentFiles.size > 0 ? { componentFiles } : {}),

@@ -24,6 +24,7 @@ import { loadBuildSpec } from "../src/spec";
 import "../src/recipes/index";
 import { getRecipe, type RecipeIO } from "../src/recipe";
 import { assembleFromSpecWithReport } from "../src/assemble-spec";
+import { assembleSheets } from "../src/assemble";
 import type { Parameter } from "../src/types";
 import type { ValueLayer } from "../src/assemble";
 
@@ -627,5 +628,99 @@ describe("ansible recipe: several templates on one sheet", () => {
     expect(si.componentOf).toBeUndefined();
     expect(si.componentLabels).toBeUndefined();
     expect(si.filePath).toBe("/etc/systemd/system/keycloak.service");
+  });
+});
+
+// A template line built from SEVERAL variables.
+//
+// `source.templateVar` is the parser's answer to "which variable IS this
+// value", and it takes the first one — a claim a mixed line cannot keep. On
+// `db-url=jdbc:…{{ db_host }}:5432/{{ db_name }}` it named db_host and said
+// nothing about db_name, so the recipe saw a 1:1 line whose second variable the
+// template never mentions. Two things followed: db_host was renamed after the
+// directive, giving a row that reads `db-url = db.internal`, and db_name was
+// rescued as an unreferenced default and filed under the variable FILE.
+describe("ansible recipe: a line built from several variables", () => {
+  const files: Record<string, string> = {
+    "/r/defaults.yml": "app_port: 8080\ndb_host: db.internal\ndb_name: appdb\n",
+    "/r/app.conf.j2": "port={{ app_port }}\ndb-url=jdbc:postgresql://{{ db_host }}:5432/{{ db_name }}\n",
+  };
+  const io: RecipeIO = {
+    readFile: (p: string) => files[p] ?? null,
+    specDir: "/r",
+    resolve: (p: string) => `/r/${p.split("/").pop()}`,
+    instances: [],
+  };
+  const load = () => {
+    const recipe = getRecipe("ansible");
+    if (!recipe) throw new Error("ansible recipe is not registered");
+    return recipe.load(
+      { name: "app", recipe: "ansible", defaults: "defaults.yml", template: "app.conf.j2", deployed_path: "/etc/app/app.conf" },
+      io
+    );
+  };
+
+  it("names no variable after the directive they jointly build", () => {
+    // Either choice would produce a row carrying the directive's name and one
+    // variable's value — the same misrepresentation the mirror case (one
+    // variable driving several directives) is already refused for.
+    const si = load();
+    expect(si.keyMap?.map((k) => k.boundKey)).not.toContain("db-url");
+  });
+
+  it("still names the 1:1 line's variable after its directive", () => {
+    const si = load();
+    expect(si.keyMap).toContainEqual({ boundKey: "port", variable: "app_port" });
+  });
+
+  it("reports every variable the artifact interpolates, not just the first", () => {
+    // What `group_by: file` needs in order to know these rows are lines of the
+    // artifact. Taken from keyMap it could not know: that table is empty
+    // exactly where the relationship is not 1:1.
+    const si = load();
+    expect([...(si.templateVariables ?? [])].sort()).toEqual(["app_port", "db_host", "db_name"]);
+  });
+});
+
+// The other half, at the assembler: where those rows are FILED under
+// `group_by: file`. A row whose value came from a variable the artifact
+// interpolates is a line of that artifact — the variable is provenance, shown
+// in the under_key column, and filing by it splits one file's settings across
+// two headings for a reason about how the file is built.
+describe("group_by: file with a multi-variable line", () => {
+  it("files every variable of the line under the artifact, not the variable file", () => {
+    const recipe = getRecipe("ansible")!;
+    const files: Record<string, string> = {
+      "/r/defaults.yml": "app_port: 8080\ndb_host: db.internal\ndb_name: appdb\n",
+      "/r/app.conf.j2": "port={{ app_port }}\ndb-url=jdbc:postgresql://{{ db_host }}:5432/{{ db_name }}\n",
+      "project.yml":
+        "sheets:\n  app:\n    group_by: file\n    under_key: { id: variable, label: { en: V } }\n" +
+        "    params:\n      port: { description: { en: p } }\n      db_host: { description: { en: h } }\n" +
+        "      db_name: { description: { en: n } }\n",
+    };
+    const si = recipe.load(
+      { name: "app", recipe: "ansible", defaults: "defaults.yml", template: "app.conf.j2", deployed_path: "/etc/app/app.conf" },
+      {
+        readFile: (p: string) => files[p] ?? null,
+        specDir: "/r",
+        resolve: (p: string) => `/r/${p.split("/").pop()}`,
+        instances: [],
+      }
+    );
+    const input = assembleSheets([si], {
+      projectPath: "project.yml",
+      readFile: (p: string) => files[p] ?? null,
+      strictMetadata: false,
+    });
+    const cats = input.sheets[0].categories.map((c) => c.name);
+    // One heading, the artifact's. `defaults.yml` appearing beside it — holding
+    // exactly the one variable the first-variable rule could not see — is the
+    // bug this is here for.
+    expect(cats).toEqual(["app.conf"]);
+    expect((input.sheets[0].categories[0].params ?? []).map((p) => p.key).sort()).toEqual([
+      "db_host",
+      "db_name",
+      "port",
+    ]);
   });
 });
