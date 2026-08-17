@@ -489,6 +489,16 @@ function withNestPrefix(
 // LAST-resort category (assemble.ts): a project `category:` and a bound
 // dictionary's own `group` both still win, which is right — this says where
 // the row SITS in the file, not what it is about.
+// The MEMBER a nested member sits in — the component its rows are filed under.
+function componentOfPath(split: StructuralSplit, path: string): string | undefined {
+  const m = new RegExp(`^${escRe(split.at)}\\[${escRe(split.by)}=("?)(.+?)\\1\\]\\.`).exec(path);
+  return m?.[2];
+}
+
+function escRe(v: string): string {
+  return v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function nestedCategory(split: StructuralSplit | undefined, path: string | undefined): { categoryPath: string[]; categoryPathWins: true } | undefined {
   if (!split?.nest) return undefined;
   const id = nestedMemberId(split, path);
@@ -638,6 +648,7 @@ function buildEmbeddedFromStaticFiles(
   component?: ComponentDeriver,
   split?: StructuralSplit
 ): {
+  nestedMembers: Map<string, { under: string; members: { id: string; unit: string }[] }>;
   embedded: EmbeddedEntry[];
   keyMap: KeyMapEntry[];
   referenceSites: ReferenceSite[];
@@ -645,6 +656,7 @@ function buildEmbeddedFromStaticFiles(
   artifacts: ArtifactPreview[];
 } {
   const embedded: EmbeddedEntry[] = [];
+  const nestedMembers = new Map<string, { under: string; members: { id: string; unit: string }[] }>();
   // A static file needs no rendering: it is committed, and what it says IS what
   // the sheet reviews. So its preview is the file, verbatim, with the rows it
   // produced marked on their own lines — the same panel the ansible recipe
@@ -705,6 +717,19 @@ function buildEmbeddedFromStaticFiles(
     // See buildMapFromSources: the prefix is another entry of this same file.
     const rawEntries = [...extractFile(content, file, sf.format, extractOptions)];
     const prefixes = nestPrefixes(split, rawEntries);
+    // The axis itself, for materialize: which members this component holds and
+    // what each of them IS. Collected here because this is where both facts are
+    // in hand — the member's id from its address, its unit from `key_from`.
+    if (split?.nest) {
+      for (const [memberPath, unit] of prefixes ?? []) {
+        const id = nestedMemberId(split, `${memberPath}.`);
+        const owner = componentOfPath(split, memberPath);
+        if (id === undefined || owner === undefined) continue;
+        const bucket = nestedMembers.get(owner) ?? { under: split.nest.under, members: [] };
+        if (!bucket.members.some((m) => m.id === id)) bucket.members.push({ id, unit });
+        nestedMembers.set(owner, bucket);
+      }
+    }
     for (const e of rawEntries) {
       const derived = transformer ? transformer.apply(selectKeySource(sf.key!.from, e.key, e.source.path)) : (e.source.path ?? e.key);
       const key = withNestPrefix(derived, e.source.path, split, prefixes);
@@ -841,7 +866,7 @@ function buildEmbeddedFromStaticFiles(
   }
 
   const referenceSites: ReferenceSite[] = [...referenceSitesByVariable].map(([variable, sites]) => ({ variable, sites }));
-  return { embedded, keyMap, referenceSites, componentOf, artifacts };
+  return { embedded, keyMap, referenceSites, componentOf, artifacts, nestedMembers };
 }
 
 export const layeredRecipe: SheetRecipe = {
@@ -1009,6 +1034,7 @@ export const layeredRecipe: SheetRecipe = {
       instances: io.instances,
       layers: [{ kind: "base", entries: baseMap }, ...overlayLayers],
       embedded: staticFilesResult.embedded,
+      ...(staticFilesResult.nestedMembers.size > 0 ? { nestedMembers: staticFilesResult.nestedMembers } : {}),
       ...(components?.componentLabels ? { componentLabels: components.componentLabels } : {}),
       ...(componentOf ? { componentOf } : {}),
       // The order the files are listed in IS the reading order the author
