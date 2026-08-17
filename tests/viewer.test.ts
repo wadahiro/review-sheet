@@ -2201,3 +2201,50 @@ describe("viewer: a document sheet", () => {
     }
   });
 });
+
+// Two document sheets whose markdown happens to share a heading. The outline
+// lists every sheet's entries at once and marks the current one by comparing
+// ids, so two entries carrying the SAME id are both "current" — a heading
+// clicked on one sheet lights up in the other's tree as well.
+describe("viewer: two documents with the same heading", () => {
+  const doc = (name: string, id: string) => ({
+    name,
+    categories: [],
+    document: {
+      html: `<h2 id="${id}">ツリー</h2>\n<p>x</p>\n`,
+      headings: [{ level: 2, text: "ツリー", id }],
+    },
+  });
+
+  function mountWith(idA: string, idB: string): HTMLElement {
+    const payload = {
+      metadata: { title: "t" },
+      versions: [{ version: "current", sheets: [doc("a", idA), doc("b", idB)] }],
+    };
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    return host;
+  }
+
+  async function currentCount(host: HTMLElement): Promise<number> {
+    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
+    (btn as HTMLElement).click();
+    await Promise.resolve();
+    window.dispatchEvent(new Event("scroll"));
+    await Promise.resolve();
+    return host.querySelectorAll(".rs-outline-current").length;
+  }
+
+  it("marks one entry current when the ids differ", async () => {
+    expect(await currentCount(mountWith("rs-doc-a-ツリー", "rs-doc-b-ツリー"))).toBe(1);
+  });
+
+  it("would mark two if they collided, which is what the ids are namespaced to prevent", async () => {
+    // The failure itself, stated once: the outline compares ids, so one id
+    // shared by two sheets is two "current" entries. recipes/document.ts
+    // namespaces the ids by sheet so this input cannot be produced.
+    expect(await currentCount(mountWith("rs-doc-ツリー", "rs-doc-ツリー"))).toBe(2);
+  });
+});

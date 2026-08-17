@@ -119,3 +119,35 @@ describe("a document sheet reaching the model", () => {
     expect(input.sheets[1].categories.length).toBeGreaterThan(0);
   });
 });
+
+// Heading ids have to be unique across the whole document, and a heading text
+// is not: three sheets that each write "## ツリー" would otherwise carry one id
+// between them. Only the active sheet's body is in the DOM, so it is not the
+// body that breaks — the outline lists every sheet's entries at once and marks
+// the current one by comparing ids, so one id shared by three lights all three.
+describe("document recipe: heading ids across sheets", () => {
+  const md = "# A\n\n## ツリー\n";
+  const load = (name: string) =>
+    documentRecipe.load({ name, file: "m.md" }, io({ "m.md": md }));
+
+  it("namespaces them by sheet, so the same heading text does not collide", () => {
+    const a = load("os directory aws").document?.headings?.map((h) => h.id) ?? [];
+    const b = load("os directory db").document?.headings?.map((h) => h.id) ?? [];
+    expect(a.some((id) => b.includes(id))).toBe(false);
+    expect(a).toContain("rs-doc-os-directory-aws-ツリー");
+  });
+
+  it("puts the same ids in the HTML as in the headings it reports", () => {
+    // An outline entry pointing at an id the page does not carry goes nowhere.
+    const si = load("os directory aws");
+    for (const h of si.document?.headings ?? []) {
+      expect(si.document?.html).toContain(`id="${h.id}"`);
+    }
+  });
+
+  it("keys on the sheet's name, not its position", () => {
+    // A prefix keyed on declaration order would re-point every anchor the
+    // moment a sheet is inserted above this one.
+    expect(load("os directory db").document?.headings?.[0].id).toBe("rs-doc-os-directory-db-A");
+  });
+});

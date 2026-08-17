@@ -125,7 +125,19 @@ export const documentRecipe: SheetRecipe = {
       );
     }
 
-    const { html, headings } = renderMarkdown(source, load, { navDepth });
+    // Namespaced by the SHEET, because the ids have to be unique across the
+    // whole document and a heading text is not: three sheets that each write
+    // "## ツリー" would otherwise carry one id between them. Only the active
+    // sheet's body is ever in the DOM, so it is not the body that breaks — the
+    // outline lists every sheet's entries at once and marks the current one by
+    // comparing ids, so one id shared by three entries lights all three.
+    //
+    // From the sheet's NAME, not its position: the name is the sheet's identity
+    // (it is what a review target names), and a prefix keyed on the order
+    // sheets happen to be declared in would re-point every heading anchor the
+    // moment one is inserted above.
+    const idPrefix = `rs-doc-${name.replace(/[^A-Za-z0-9\u00A0-\uFFFF]+/g, "-").replace(/^-+|-+$/g, "") || "sheet"}-`;
+    const { html, headings } = renderMarkdown(source, load, { navDepth, idPrefix });
 
     return {
       name,

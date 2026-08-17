@@ -800,6 +800,13 @@ Every heading gets an anchor; `nav_depth` decides only which of them the outline
 LISTS, and that decision is made at build time and recorded in the model — the
 viewer never re-derives it.
 
+Anchors are namespaced by the SHEET (`rs-doc-<sheet>-<heading>`), because a
+heading text is not unique across a document set — three sheets that each write
+`## ツリー` would otherwise share one id. Only the active sheet's body is in the
+DOM, so it is not the body that breaks: the outline lists every sheet's entries
+at once and marks the current one by comparing ids, so one id shared by three
+entries highlights all three.
+
 #### `recipe: terraform-plan`
 
 A sheet whose subject is a rendered plan (`terraform show -json`). This is
