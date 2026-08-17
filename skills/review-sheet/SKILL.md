@@ -1246,6 +1246,35 @@ Comparing two RELEASES needs neither: that axis is the versioned document
 switch. Use `compare_components` when the things being compared coexist in one
 build — two realms, two clients, two LDAP providers.
 
+##### `categories_from` — which component decides where a row is filed
+
+A comparison sheet binds one dictionary per component. Two RELEASES of one
+product do not have to agree about where a field belongs — Keycloak 19's client
+dictionary files nearly everything under `Clients`, 26's mirrors the admin
+console's own tabs — and the side-by-side view groups rows by category path. So
+the same field lands under two paths and comes out as **two half-empty rows**,
+each filled in one column and blank in the other: the exact opposite of what
+the sheet is for.
+
+```yaml
+"client upgrade":
+  compare_components: always
+  categories_from: "26.7.0"
+```
+
+Every row is then filed where that component's dictionary files it, including
+rows that component does not have (they keep their own binding's group, since a
+row present on one release only still has to land somewhere).
+
+Declared, never resolved by a rule: which release's structure a reader should
+be using afterwards is a judgement about the migration. **Leaving it out is not
+the old behaviour** — a sheet whose components genuinely disagree now fails the
+build, naming each row and both places, because splitting the row and saying
+nothing is how this went unnoticed.
+
+A sheet whose components share one dictionary (two clients of one realm, two
+LDAP providers of one server) never disagrees and needs nothing.
+
 ##### `effective` — the default moved and nothing was holding it back
 
 A moved default means two different things, and only one of them changes what
@@ -1758,6 +1787,7 @@ fails when one of them is missing from this section):
 | sheet | `group_by: file` | file a row the project does not categorise by the artifact it is written in |
 | sheet | `under_key:` | the provenance sub-line column — `id` + bilingual label |
 | sheet | `compare_components:` | this sheet's components are comparable side by side — `true` for a toggle, `always` to open that way with no toggle |
+| sheet | `categories_from:` | which component's dictionary decides where every row is filed, when the components disagree (two releases of one product); required on such a sheet — see "A sheet that exists only to compare" |
 | sheet | `components:` | per-COMPONENT `params:`, for a sheet whose rows are named by the product's own field |
 | sheet | `params:` | the rows themselves |
 | param | `category:` | this row's category — a string, a LIST (a path), or `null` for none |

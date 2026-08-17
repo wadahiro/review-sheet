@@ -28,6 +28,7 @@ import {
   paramForRow,
   componentParamsForSheet,
   categoriesForSheet,
+  categoriesFromForSheet,
   underKeyForSheet,
   labelForSheet,
   groupForSheet,
@@ -1232,6 +1233,9 @@ function fileDrafts(
   // undeclared category actually used — accumulated across every sheet by
   // the caller and thrown once (see assembleSheetsWithReport).
   ghostCategories: string[],
+  // "one row, two places" messages — see the loop below. Accumulated across
+  // sheets by the caller and thrown once, exactly like ghostCategories.
+  categoryConflicts: string[],
   // Same shape, but for a category reached only through a dictionary's own
   // `group` fallback (no project `category:` written for that key) — see the
   // firstProjectCategoryExample/firstDictFallbackExample split below. Warned,
@@ -1288,6 +1292,12 @@ function fileDrafts(
   //     (categoryWarnings) — informational, does not fail the build.
   const firstProjectCategoryExample = new Map<string, string>();
   const firstDictFallbackExample = new Map<string, string>();
+  // Which component's dictionary decides where a row is filed (sheet.yml's
+  // categories_from), and — when nothing decides it — what each component
+  // independently said, so a disagreement can be reported instead of silently
+  // splitting the row in two.
+  const governingComponent = categoriesFromForSheet(projectMeta, sheetName);
+  const dictPathByKey = new Map<string, Map<string, string>>();
 
   for (const d of drafts) {
     // Component-first, then the sheet-wide table (providers/project.ts's
@@ -1295,6 +1305,14 @@ function fileDrafts(
     // a flat table would hand one component's remarks to the other.
     const meta = paramForRow(projectMeta, sheetName, d.component, d.key);
     const binding = bindingFor(draftBindings, d.component, d.key);
+    // The binding that decides the CATEGORY, which is not always the row's own.
+    // On a sheet comparing two releases of one product, a row is one row; two
+    // dictionaries filing it in two places is what turns it into two. The
+    // declared component governs — falling back to the row's own binding for a
+    // key that side does not have, since a row present on one release only
+    // still has to land somewhere.
+    const categoryBinding =
+      governingComponent === undefined ? binding : (bindingFor(draftBindings, governingComponent, d.key) ?? binding);
     // The project's own category always wins. Failing that, a row that BOUND
     // to a product dictionary entry (see bindDrafts) falls back to the
     // product's own grouping of that entry — the same fallback materialize's
@@ -1352,8 +1370,16 @@ function fileDrafts(
           ? [meta.category]
           : meta.category
         : groupByFile
-          ? (derivedFile ?? bindingOrFallback(binding, d.fallbackCategoryPath, d.categoryPathWins))
-          : bindingOrFallback(binding, d.fallbackCategoryPath, d.categoryPathWins);
+          ? (derivedFile ?? bindingOrFallback(categoryBinding, d.fallbackCategoryPath, d.categoryPathWins))
+          : bindingOrFallback(categoryBinding, d.fallbackCategoryPath, d.categoryPathWins);
+    // Recorded only where the DICTIONARY decided it: a project that writes a
+    // different `category:` per component meant to, and a `category: null` is
+    // the same statement on every one of them.
+    if (governingComponent === undefined && d.component !== undefined && meta?.category === undefined && !declaredNoCategory && inner !== undefined) {
+      const byComponent = dictPathByKey.get(d.key) ?? new Map<string, string>();
+      byComponent.set(d.component, inner.join(" > "));
+      dictPathByKey.set(d.key, byComponent);
+    }
     // The component level appears only when the sheet HAS more than one. A
     // sheet covering a single component is that component — naming it again
     // above every category would add a level that says nothing, and would make
@@ -1479,6 +1505,29 @@ function fileDrafts(
           `categories: to control where it lands`
       );
     }
+  }
+
+  // One row, filed in two places. A sheet whose components are the same thing
+  // seen twice (two releases of one product) binds a dictionary per component,
+  // and the two do not have to agree about where a field belongs — Keycloak
+  // 19's client dictionary puts nearly everything under "Clients", 26's
+  // mirrors the console's own tabs. The view groups by category path, so the
+  // row comes out twice, each copy filled on one side and blank on the other:
+  // the exact opposite of what a comparison sheet is for, and until this check
+  // it happened in silence.
+  //
+  // Not resolved by a rule here — which release's structure a reader should be
+  // using is a judgement about the migration, not something the file layout
+  // can answer. Reported, with the declaration that settles it.
+  for (const [key, byComponent] of dictPathByKey) {
+    const distinct = new Set(byComponent.values());
+    if (distinct.size < 2) continue;
+    categoryConflicts.push(
+      `${sheetName} > ${key}: the components file this row in different places — ` +
+        [...byComponent].map(([c, path]) => `${c}: ${path}`).join("; ") +
+        `. Declare categories_from: <component> on this sheet (sheet.yml) to say which one governs; ` +
+        `without it the row is split in two, each half blank in the other's column.`
+    );
   }
 
   // Prefer this sheet's own declared display order (its whole reason for
@@ -1727,6 +1776,7 @@ export function assembleSheetsWithReport(
   checkProjectMetaSheets(projectMeta, sheetNames);
 
   const ghostCategories: string[] = [];
+  const categoryConflicts: string[] = [];
   const categoryWarnings: string[] = [];
 
   for (const si of inputs) {
@@ -1805,6 +1855,23 @@ export function assembleSheetsWithReport(
       deadComponents.push(
         `${si.name}: metadata declares component "${declared}", which this sheet produces no rows for` +
           (hint ? ` — did you mean "${hint}"?` : ` (produced: ${[...components].sort().join(", ") || "none"})`)
+      );
+    }
+    // `categories_from` names the component whose dictionary decides where every
+    // row is filed. Checked here, beside the two-way checks above, because a
+    // name that matches nothing does not merely do nothing: fileDrafts records
+    // a category disagreement ONLY when no governing component is declared, so
+    // an unmatched name silently reverts the sheet to per-component filing AND
+    // disarms the error that exists to catch exactly that. A one-character typo
+    // would put back the 54 split rows the declaration was added to fix, and
+    // the build would still say ok.
+    const declaredCategoriesFrom = categoriesFromForSheet(projectMeta, si.name);
+    if (declaredCategoriesFrom !== undefined && !components.has(declaredCategoriesFrom)) {
+      const hint = suggestNearest(declaredCategoriesFrom, components);
+      throw new Error(
+        `assemble: sheet "${si.name}" declares categories_from: "${declaredCategoriesFrom}", which this sheet has ` +
+          `no component for` +
+          (hint ? ` — did you mean "${hint}"?` : ` (components: ${[...components].sort().join(", ") || "none"})`)
       );
     }
     const sheetVariables = new Map<string, string>();
@@ -1946,6 +2013,7 @@ export function assembleSheetsWithReport(
       missingCategory,
       missingCategoryEntries,
       ghostCategories,
+      categoryConflicts,
       categoryWarnings,
       si.componentLabels,
       si.componentFiles,
@@ -2009,6 +2077,12 @@ export function assembleSheetsWithReport(
   // declared tab list — collected across every sheet, same "name every
   // offender at once" discipline as missingCategory/bindErrors below, rather
   // than stopping at the first one found.
+  if (categoryConflicts.length > 0) {
+    throw new Error(
+      `assemble: ${categoryConflicts.length} row(s) that the sheet's own components file in different places:\n` +
+        categoryConflicts.map((m) => `  ${m}`).join("\n")
+    );
+  }
   if (ghostCategories.length > 0) {
     throw new Error(
       `assemble: ${ghostCategories.length} categor${ghostCategories.length === 1 ? "y" : "ies"} used that ` +

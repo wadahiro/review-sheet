@@ -71,6 +71,22 @@ export type ProjectMetaSheetDoc = {
   // Group rows the project does not categorise by the file they are written
   // in — see groupByForSheet.
   group_by?: "file";
+  // Which component's view of the product decides where a row is FILED, when
+  // the components do not agree.
+  //
+  // A comparison sheet binds one dictionary per component. Two releases of one
+  // product group the same field differently — Keycloak 19's client dictionary
+  // files nearly everything under "Clients", 26's mirrors the console's own
+  // tabs — so the same row lands under two paths, and a view that groups by
+  // path shows it as two half-empty rows instead of one comparison. That is
+  // the exact opposite of what the sheet is for.
+  //
+  // Naming the component that governs is a judgement — usually the release
+  // being migrated TO, because that is the structure the reader will be using
+  // afterwards — so it is declared rather than picked by a rule. Undeclared
+  // and disagreeing is an error (assemble.ts): the old behaviour was to split
+  // the rows and say nothing.
+  categories_from?: string;
   // The sheet's display text (Sheet.label). Here rather than in build.yml for
   // the same reason `categories`/`under_key` are: it is a fact about how the
   // sheet is READ, not about where its rows come from, and the reviewer-facing
@@ -175,6 +191,7 @@ export function loadProjectMeta(path: string, readFile: (path: string) => string
         ...(s?.group ? { group: s.group } : {}),
         ...(s?.compare_components ? { compare_components: s.compare_components === "always" ? ("always" as const) : true } : {}),
         ...(s?.group_by ? { group_by: s.group_by } : {}),
+        ...(s?.categories_from ? { categories_from: s.categories_from } : {}),
         ...(s?.components ? { components: s.components } : {}),
       };
     }
@@ -275,6 +292,12 @@ export function categoriesForSheet(doc: ProjectMetaDoc, sheet: string | undefine
 // Whether this sheet declares its components comparable (Sheet.compare_components).
 export function compareComponentsForSheet(doc: ProjectMetaDoc, sheet: string | undefined): boolean | "always" {
   return (doc.sheets && sheet !== undefined ? doc.sheets[sheet]?.compare_components : undefined) ?? false;
+}
+
+// The component whose dictionary decides every row's category on this sheet,
+// when one is declared — see ProjectMetaSheetDoc.categories_from.
+export function categoriesFromForSheet(doc: ProjectMetaDoc, sheet: string | undefined): string | undefined {
+  return doc.sheets && sheet !== undefined ? doc.sheets[sheet]?.categories_from : undefined;
 }
 
 // This sheet's own group id, if any (Sheet.group). A flat doc describes one
