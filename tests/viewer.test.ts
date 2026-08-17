@@ -1989,3 +1989,52 @@ describe("option labels", () => {
     expect(labels(host)).toContain("Subtree");
   });
 });
+
+// `compare_components: "always"` is what a sheet that exists only to compare
+// declares. It reached the viewer as a bare `true` for as long as it existed —
+// the declaration parsed, the assembler's own check ran, and the sheet still
+// opened stacked with a button offering the reading it does not have.
+describe("a sheet that is always pivoted", () => {
+  const ALWAYS: ParameterSheetInput = {
+    metadata: { title: "t" },
+    sheets: [
+      {
+        name: "upgrade",
+        instances: [],
+        compare_components: "always",
+        categories: [
+          {
+            name: "old",
+            categories: [{ name: "HTTP", params: [{ key: "proxy", value: "edge", description: "Proxy mode" }] }],
+          },
+          {
+            name: "new",
+            categories: [{ name: "HTTP", params: [{ key: "proxy", value: "none", description: "Proxy mode" }] }],
+          },
+        ],
+      },
+    ],
+  };
+
+  it("opens side by side, with no way back to the stacked reading", () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(
+      h(Root, {
+        payload: { metadata: ALWAYS.metadata, versions: [{ version: "current", sheets: ALWAYS.sheets }] },
+        reviewEnabled: true,
+        initialLang: "en",
+        server: false,
+      }),
+      host
+    );
+    // Both components' values on one row is the whole point.
+    const text = host.textContent ?? "";
+    expect(text).toContain("edge");
+    expect(text).toContain("none");
+    // …and no control offering to leave it.
+    const leave = [...host.querySelectorAll("button")].filter((b) => /stack|側|戻/i.test(b.textContent ?? ""));
+    expect(leave).toEqual([]);
+  });
+});

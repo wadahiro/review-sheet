@@ -1933,7 +1933,11 @@ export function assembleSheetsWithReport(
       // uses, and this is only what a reader sees (see Sheet.label).
       ...(sheetLabel ? { label: sheetLabel } : {}),
       ...(sheetGroup ? { group: sheetGroup } : {}),
-      ...(compareComponents ? { compare_components: true } : {}),
+      // The VALUE, not a boolean: `"always"` is what tells the viewer to open
+      // the sheet pivoted and give it no toggle back. Collapsed to `true` here,
+      // it never reached the viewer at all — the declaration parsed, the check
+      // above ran, and the sheet still opened stacked with a button on it.
+      ...(compareComponents ? { compare_components: compareComponents } : {}),
       // The declared axis travels with the sheet: the viewer must not have to
       // guess it from which rows happen to have per-environment values.
       ...(si.instances.length > 0 ? { instances: si.instances } : {}),
