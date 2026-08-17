@@ -404,3 +404,39 @@ describe("bindKey: derived tier", () => {
     expect(bindKey("aws_lb_listener.https.ssl_policy", undefined, [src])?.method).toBe("leaf");
   });
 });
+
+// `aka` — a second spelling THE PRODUCT accepts for one setting. Keycloak
+// defines `cache-embedded-realms-max-count` as a mapper whose target IS
+// `spi-cache-embedded--default--realms-max-count`: one option, two keys. The
+// dictionary carries one entry, because two would put it in a materialized
+// ledger twice; the alias is what keeps a config that wrote the other
+// spelling bound to it instead of unbound and undescribed.
+describe("bindKey: a product's own second spelling", () => {
+  const doc = {
+    product: "demo",
+    version: "1",
+    parameters: {
+      "cache-embedded-realms-max-count": {
+        description: { en: "d" },
+        aliases: ["spi-cache-embedded--default--realms-max-count"],
+      },
+      other: { description: { en: "d" } },
+    },
+  } as unknown as DictionaryDoc;
+  const sources = [{ doc, binding: { product: "demo", version: "1" } }];
+
+  it("binds the aliased spelling to the one entry", () => {
+    const b = bindKey("spi-cache-embedded--default--realms-max-count", undefined, sources) as Binding;
+    expect(b.dictKey).toBe("cache-embedded-realms-max-count");
+    expect(b.method).toBe("aka");
+  });
+
+  it("still binds the key itself as exact", () => {
+    const b = bindKey("cache-embedded-realms-max-count", undefined, sources) as Binding;
+    expect(b.method).toBe("exact");
+  });
+
+  it("does not bind a key nothing names", () => {
+    expect(bindKey("spi-cache-embedded--default--nope", undefined, sources)).toBeUndefined();
+  });
+});

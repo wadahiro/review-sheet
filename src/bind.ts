@@ -35,6 +35,16 @@ import { findDictionary, type DictionaryDoc, type DictionaryParam } from "./prov
 //   alias      - the project's own `dict_key` declaration, matched verbatim.
 //                A human said "these are the same thing" explicitly; nothing
 //                else should ever outrank that.
+//   aka        - the raw key is one of a dictionary entry's own `aliases`:
+//                a second spelling THE PRODUCT accepts for that same setting
+//                (Keycloak's `cache-embedded-realms-max-count` and
+//                `spi-cache-embedded--default--realms-max-count` are one
+//                option, the first being a mapper whose target is the
+//                second). Immediately after `exact` because it is the same
+//                kind of statement — a key named verbatim by the product —
+//                and above everything that RESHAPES the key, since a
+//                reshaping tier is this tool guessing and this is the
+//                product answering.
 //   exact      - the raw key IS a dictionary key, verbatim. The common case
 //                for a row named by a product key (see assemble.ts's
 //                keyMap), where the project's key space already IS the
@@ -74,7 +84,7 @@ import { findDictionary, type DictionaryDoc, type DictionaryParam } from "./prov
 //                `Timeout` and `TimeOut` (unlikely, but not this module's
 //                problem to prevent) still prefers whichever one actually
 //                matches exactly.
-export type BindMethod = "alias" | "exact" | "repeat" | "prefix" | "derived" | "leaf" | "normalized";
+export type BindMethod = "alias" | "exact" | "aka" | "repeat" | "prefix" | "derived" | "leaf" | "normalized";
 
 // A resolved binding. `entry` is the dictionary's own DictionaryParam,
 // unfiltered — including `kind: "container"` entries. A container (Apache's
@@ -159,7 +169,7 @@ export type ProjectDictKey = string | null | undefined;
 // and why this is the order. Exported so a caller building a per-method
 // tally (assemble.ts's BindingReport) enumerates every possible method
 // without re-deriving this list.
-export const BIND_METHODS: readonly BindMethod[] = ["alias", "exact", "repeat", "prefix", "derived", "leaf", "normalized"];
+export const BIND_METHODS: readonly BindMethod[] = ["alias", "exact", "aka", "repeat", "prefix", "derived", "leaf", "normalized"];
 const TIERS = BIND_METHODS;
 
 // The three delimiter conventions this project's key spaces actually use:
@@ -214,6 +224,10 @@ export function leafKey(key: string): string {
 // that tier does not apply to this key/binding at all (no dict_key declared,
 // key_prefix does not match, or the leaf is identical to the raw key).
 function candidateForMethod(
+  // "aka" is absent on purpose: it is a lookup INTO the dictionary (an entry
+  // claims the key), not a candidate derived FROM the key, so it has nothing
+  // to return here and nothing to contribute to the normalized tier either —
+  // a product's own second spelling is already exact.
   method: "alias" | "exact" | "repeat" | "prefix" | "derived" | "leaf",
   key: string,
   dictKey: ProjectDictKey,
@@ -266,6 +280,26 @@ function normalizedCandidates(key: string, dictKey: ProjectDictKey, source: Bind
 // More than one entry in a bucket is itself a same-tier collision (two real
 // dictionary entries that happen to normalize the same way) and is reported
 // as ambiguous exactly like a cross-binding collision — see bindKey().
+// alias -> every dictionary key that claims it. More than one is a document
+// contradicting itself and is reported as an ambiguity exactly like a
+// cross-binding collision — see bindKey().
+const akaIndexes = new WeakMap<DictionaryDoc, Map<string, string[]>>();
+
+function akaIndex(doc: DictionaryDoc): Map<string, string[]> {
+  const cached = akaIndexes.get(doc);
+  if (cached) return cached;
+  const index = new Map<string, string[]>();
+  for (const [dictKey, entry] of Object.entries(doc.parameters)) {
+    for (const alias of entry.aliases ?? []) {
+      const bucket = index.get(alias);
+      if (bucket) bucket.push(dictKey);
+      else index.set(alias, [dictKey]);
+    }
+  }
+  akaIndexes.set(doc, index);
+  return index;
+}
+
 function normalizedIndex(doc: DictionaryDoc): Map<string, string[]> {
   const index = new Map<string, string[]>();
   for (const dictKey of Object.keys(doc.parameters)) {
@@ -324,7 +358,11 @@ export function bindKey(key: string, dictKey: ProjectDictKey, sources: readonly 
     const hits: Hit[] = [];
 
     for (const source of sources) {
-      if (method === "normalized") {
+      if (method === "aka") {
+        for (const dictKeyHit of akaIndex(source.doc).get(key) ?? []) {
+          hits.push({ source, dictKeyHit });
+        }
+      } else if (method === "normalized") {
         const index = normalizedIndex(source.doc);
         for (const candidate of normalizedCandidates(key, dictKey, source)) {
           for (const dictKeyHit of index.get(candidate) ?? []) {
