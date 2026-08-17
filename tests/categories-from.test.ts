@@ -146,3 +146,54 @@ describe("categories_from names a component the sheet has", () => {
     expect(() => assembleSheets(inputs(), opts(project))).toThrow();
   });
 });
+
+// `per_component` — "every component of this sheet IS a version of this
+// product". The long form names each release three times per side and never
+// checks the last two against each other, so swapping `version:` and
+// `component:` binds the old release's dictionary to the new release's column
+// with every gate passing.
+describe("dictionaries: per_component", () => {
+  it("binds each component to the dictionary of its own name", () => {
+    const project = "sheets:\n  upgrade:\n    categories_from: \"2\"\n    params: {}\n";
+    const perComponent: AssembleOpts = {
+      ...opts(project),
+      dictionaries: { upgrade: [{ product: "demo", per_component: true }] },
+    };
+    const input = assembleSheets(inputs(), perComponent);
+    const paths: string[] = [];
+    const walk = (cats: { name: string; params?: { key: string }[]; categories?: unknown }[], path: string[]): void => {
+      for (const c of cats) {
+        for (const p of c.params ?? []) paths.push([...path, c.name, p.key].join(" > "));
+        walk((c.categories ?? []) as never[], [...path, c.name]);
+      }
+    };
+    walk(input.sheets[0].categories as never[], []);
+    // Same result as the four-line stated form it replaces.
+    expect(paths).toContain("1 > Settings > Capability config > publicClient");
+    expect(paths).toContain("2 > Settings > Capability config > publicClient");
+  });
+
+  it("fails when a component is not a version of that product", () => {
+    // The id `1` and `2` are versions here; a sheet whose components are files
+    // or units gets a named "dictionary not found", not a silent no-binding.
+    const si = inputs();
+    si[0].embedded = si[0].embedded.map((e) => ({ ...e, component: e.component === "1" ? "keycloak.service" : e.component }));
+    expect(() =>
+      assembleSheets(si, { ...opts(), dictionaries: { upgrade: [{ product: "demo", per_component: true }] } })
+    ).toThrow(/demo@keycloak\.service|not found/);
+  });
+
+  it("fails on a sheet with no components at all", () => {
+    const si: SheetInputs[] = [
+      {
+        name: "upgrade",
+        instances: ["production"],
+        layers: [{ kind: "base", entries: new Map([["publicClient", { value: "x", source: { file: "a", line: 1 } }]]) }],
+        embedded: [],
+      },
+    ];
+    expect(() =>
+      assembleSheets(si, { ...opts(), dictionaries: { upgrade: [{ product: "demo", per_component: true }] } })
+    ).toThrow(/no components/);
+  });
+});

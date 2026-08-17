@@ -111,9 +111,23 @@ const ajv = new Ajv({ allErrors: true, verbose: true });
 // which must still accept whatever fields the sheet's recipe defines) and
 // the strict second pass (recipe fields ONLY — see COMMON_SHEET_FIELDS
 // below) agree on exactly what "common" means.
-const dictionariesSchema = {
-  type: "array",
-  items: {
+const materializeSchema = {
+  // `true` (expand everything) or a narrowing object — see
+  // DictionaryMaterialize in assemble.ts.
+  oneOf: [
+    { const: true },
+    {
+      type: "object",
+      properties: {
+        groups: { type: "array", items: { type: "string" }, minItems: 1 },
+        includeNoDefault: { type: "boolean" },
+      },
+      additionalProperties: false,
+    },
+  ],
+};
+
+const statedDictionarySchema = {
     type: "object",
     required: ["product", "version"],
     properties: {
@@ -127,25 +141,38 @@ const dictionariesSchema = {
       // SheetDictionaryBinding.component in assemble.ts. Naming a component the
       // sheet has no rows for is an error, not a no-op.
       component: { type: "string" },
-      materialize: {
-        // `true` (expand everything) or a narrowing object — see
-        // DictionaryMaterialize in assemble.ts.
-        oneOf: [
-          { const: true },
-          {
-            type: "object",
-            properties: {
-              groups: { type: "array", items: { type: "string" }, minItems: 1 },
-              includeNoDefault: { type: "boolean" },
-            },
-            additionalProperties: false,
-          },
-        ],
-      },
+      materialize: materializeSchema,
     },
     additionalProperties: false,
+};
+
+const dictionariesSchema = {
+  type: "array",
+  items: {
+    // Two shapes, and never a mixture: a STATED pair (product + version,
+    // optionally scoped to one component), or `per_component: true` — "every
+    // component of this sheet is a version of this product" (see
+    // PerComponentDictionaryBinding in assemble.ts). `version`/`component` are
+    // forbidden alongside it, because the whole point is that neither is
+    // written twice and left unchecked against the other.
+    oneOf: [
+      {
+        type: "object",
+        required: ["product", "per_component"],
+        properties: {
+          product: { type: "string" },
+          per_component: { const: true },
+          key_prefix: { type: "string" },
+          key_steps: keyTransformSchema.properties.steps,
+          materialize: materializeSchema,
+        },
+        additionalProperties: false,
+      },
+      statedDictionarySchema,
+    ],
   },
 };
+
 
 // Every field name of a sheet entry that is NOT a recipe field — used to
 // strip a sheet down to its recipe-specific fields before validating those
