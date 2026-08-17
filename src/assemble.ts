@@ -264,6 +264,12 @@ export type SheetInputs = {
   //
   // Absent (the default for every existing recipe) changes nothing: this is
   // opt-in, and no recipe in this codebase sets it yet.
+  // The repetition axis a recipe built inside each component (layered.ts's
+  // `split.nest`): which members it holds and what each of them IS. Read by
+  // materialize, so an unset option of a repeated thing lands on every
+  // repetition rather than once under its type — the type is not something a
+  // reviewer can configure.
+  nestedMembers?: Map<string, { under: string; members: { id: string; unit: string }[] }>;
   authoredKeys?: ReadonlySet<string>;
 };
 
@@ -946,7 +952,14 @@ function materializeDrafts(
   // no report, which is the exact failure this whole file refuses elsewhere.
   // undefined = the sheet has no components; the whole sheet is the scope.
   component: string | undefined,
-  componentKeys: Set<string> | undefined
+  componentKeys: Set<string> | undefined,
+  // The repetition axis inside this component, if the recipe made one (see
+  // SheetInputs.nestedMembers). An unset option of a REPEATED thing belongs to
+  // each repetition, not to the type: six LDAP mappers of one store each have
+  // their own `is.binary.attribute`, and that is where a reviewer would set
+  // one — a single row filed under the mapper TYPE is a decision nobody can
+  // act on, because there is no such object to configure.
+  nested?: { under: string; members: { id: string; unit: string }[] }
 ): { drafts: Draft[]; report: MaterializeReport; bindings: Map<string, Binding> } {
   // binding.materialize is truthy whenever this is called (see the caller in
   // assembleSheetsWithReport) — `true` means "expand everything", an object
@@ -1086,11 +1099,40 @@ function materializeDrafts(
     }
     // The value in effect IS the product default; enrich fills `default` (and
     // the description) from the same dictionary entry right after.
-    const param = {
-      key,
-      value: entry.default !== undefined ? String(entry.default) : "",
-      origin: "default",
-    } as SimpleParameter;
+    const makeParam = (rowKey: string) =>
+      ({
+        key: rowKey,
+        value: entry.default !== undefined ? String(entry.default) : "",
+        origin: "default",
+      }) as SimpleParameter;
+
+    // One row per repetition, keyed the way the repetition's own rows are
+    // (`<member>.<dictionary key>`), so a member that DOES set the option and
+    // one that does not sit side by side under the same heading.
+    const repetitions = entry.unit === undefined ? [] : (nested?.members ?? []).filter((m) => m.unit === entry.unit);
+    if (repetitions.length > 0) {
+      for (const m of repetitions) {
+        const rowKey = `${m.id}.${key}`;
+        if (covered.has(rowKey)) continue;
+        out.push({
+          key: rowKey,
+          param: makeParam(rowKey),
+          fallbackCategoryPath: [nested!.under, m.id],
+          categoryPathWins: true,
+          component,
+        });
+        bindings.set(rowKey, {
+          product: binding.product,
+          version: binding.version,
+          entry,
+          dictKey: key,
+          method: "exact",
+          docProvenance: dict.provenance,
+        });
+      }
+      continue;
+    }
+    const param = makeParam(key);
     // Two levels: a single parent ("the project sets nothing here") holding a
     // subcategory per dictionary group — see fileDrafts and Draft's comment
     // for why this is a path rather than one name.
@@ -1818,7 +1860,7 @@ export function assembleSheetsWithReport(
       if (!dictBinding.materialize) continue;
       for (const [component, componentKeys] of expansions) {
         if (dictBinding.component !== undefined && dictBinding.component !== component) continue;
-        const materialized = materializeDrafts(si.name, draftBindings, dictBinding, opts, component, componentKeys);
+        const materialized = materializeDrafts(si.name, draftBindings, dictBinding, opts, component, componentKeys, component === undefined ? undefined : si.nestedMembers?.get(component));
         drafts.push(...materialized.drafts);
         materializeReports.push(materialized.report);
         for (const [k, v] of materialized.bindings) setBinding(sheetBindings, component, k, v);

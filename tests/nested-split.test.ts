@@ -61,3 +61,64 @@ describe("split with a nested list", () => {
     expect(apply(splitComponentSteps(plain), "realm.displayName")).toBeUndefined();
   });
 });
+
+// materialize's half of the same idea: an unset option of a REPEATED thing
+// belongs to each repetition. A single row filed under the type is a decision
+// nobody can act on, because there is no such object to configure — a reviewer
+// setting `is.binary.attribute` sets it on the username mapper or on the email
+// one, never on "user-attribute-ldap-mapper".
+import { assembleSheets } from "../src/assemble.js";
+
+describe("materialize across a repetition axis", () => {
+  const dict = `product: m
+version: "1"
+coverage: full
+parameters:
+  user-attribute-ldap-mapper.ldap.attribute:
+    unit: user-attribute-ldap-mapper
+    description: { en: Attribute }
+    default: "cn"
+  user-attribute-ldap-mapper.is.binary.attribute:
+    unit: user-attribute-ldap-mapper
+    description: { en: Binary }
+    default: "false"
+`;
+  const files: Record<string, string> = { "meta/m@1.yml": dict };
+
+  it("expands once per member, not once per unit", () => {
+    const input = assembleSheets(
+      [
+        {
+          name: "ldap",
+          instances: [],
+          layers: [{ kind: "base", entries: new Map() }],
+          embedded: [
+            { key: "username.user-attribute-ldap-mapper.ldap.attribute", value: "uid", source: { file: "r.yml", line: 1 }, component: "corp", categoryPath: ["Mappers", "username"], categoryPathWins: true },
+            { key: "email.user-attribute-ldap-mapper.ldap.attribute", value: "mail", source: { file: "r.yml", line: 2 }, component: "corp", categoryPath: ["Mappers", "email"], categoryPathWins: true },
+          ],
+          nestedMembers: new Map([["corp", { under: "Mappers", members: [{ id: "username", unit: "user-attribute-ldap-mapper" }, { id: "email", unit: "user-attribute-ldap-mapper" }] }]]),
+        },
+      ],
+      {
+        readFile: (p) => files[p] ?? null,
+        metadataDirs: ["meta"],
+        // The instance leads the key; the dictionary documents the type. One
+        // step, the same shape a project declares.
+        dictionaries: { ldap: [{ product: "m", version: "1", materialize: true, key_steps: [{ pattern: "^[^.]+\\.([a-z-]+-mapper\\..+)$", replace: "$1" }] }] },
+        strictMetadata: false,
+      }
+    );
+    const keys: string[] = [];
+    const walk = (cs: { params?: { key: string }[]; categories?: unknown[] }[]): void => {
+      for (const c of cs) {
+        for (const p of c.params ?? []) keys.push(p.key);
+        walk((c.categories ?? []) as typeof cs);
+      }
+    };
+    walk(input.sheets[0].categories as never);
+    expect(keys).toContain("username.user-attribute-ldap-mapper.is.binary.attribute");
+    expect(keys).toContain("email.user-attribute-ldap-mapper.is.binary.attribute");
+    // The type-level row is what this replaces, not something it keeps beside.
+    expect(keys).not.toContain("user-attribute-ldap-mapper.is.binary.attribute");
+  });
+});
