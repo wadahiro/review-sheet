@@ -8,7 +8,7 @@ import { describe, it, expect } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseDictionary } from "../src/providers/dictionary";
+import { parseDictionary, resolveVariantDefaults } from "../src/providers/dictionary";
 import { findDictionary, DICTIONARY_PARAM_FIELDS, DICTIONARY_DOC_FIELDS } from "../src/providers/dictionary.js";
 import schema from "../src/schema/dictionary.schema.json";
 
@@ -149,5 +149,53 @@ describe("dictionary aliases", () => {
     expect(() =>
       parseDictionary("d.yml", base + "  a:\n    aliases: [same]\n  b:\n    aliases: [same]\n")
     ).toThrow(/claimed by both/);
+  });
+});
+
+// A product does not always have ONE default: httpd's StartServers is 3 under
+// the event and worker MPMs and 5 under prefork, and all three ship in one
+// package. A shared dictionary that picked one would publish a deployment's
+// choice as the distribution's fact, so the entry states them all and the
+// project declares which applies.
+describe("per-variant defaults", () => {
+  const doc = {
+    product: "httpd",
+    version: "2.4",
+    parameters: {
+      StartServers: { default: { mpm_event: "3", mpm_worker: "3", mpm_prefork: "5" } },
+      Timeout: { default: "60" },
+    },
+  } as unknown as Parameters<typeof resolveVariantDefaults>[0];
+
+  it("resolves to the declared variant, leaving scalar defaults alone", () => {
+    const out = resolveVariantDefaults(doc, "mpm_prefork", "w");
+    expect(out.parameters.StartServers.default).toBe("5");
+    expect(out.parameters.Timeout.default).toBe("60");
+  });
+
+  it("refuses to pick one when the project declared nothing", () => {
+    // Choosing silently is the entire failure this shape exists to prevent.
+    expect(() => resolveVariantDefaults(doc, undefined, "w")).toThrow(/this project's to declare/);
+  });
+
+  it("names the variants it does have when the declared one is absent", () => {
+    let err: Error | undefined;
+    try {
+      resolveVariantDefaults(doc, "mpm_winnt", "w");
+    } catch (e) {
+      err = e as Error;
+    }
+    expect(err?.message).toContain("mpm_winnt");
+    expect(err?.message).toContain("mpm_event, mpm_prefork, mpm_worker");
+  });
+
+  it("reports a variant declared against a dictionary that has none", () => {
+    const flat = { product: "p", version: "1", parameters: { a: { default: "x" } } } as unknown as typeof doc;
+    expect(() => resolveVariantDefaults(flat, "mpm_event", "w")).toThrow(/selects nothing/);
+  });
+
+  it("leaves a dictionary with no per-variant default untouched", () => {
+    const flat = { product: "p", version: "1", parameters: { a: { default: "x" } } } as unknown as typeof doc;
+    expect(resolveVariantDefaults(flat, undefined, "w")).toBe(flat);
   });
 });

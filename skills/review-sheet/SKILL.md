@@ -2075,6 +2075,45 @@ and only add what the build tells you is missing:**
    skips the `alias` tier and proceeds through `exact`/`prefix`/`leaf`/`normalized`
    as usual.
 
+#### `variant:` — when the product has more than one default
+
+A product does not always have ONE default. httpd's `StartServers` is 3 under
+the event and worker MPMs, 5 under prefork, 2 under mpmt_os2 — and all of them
+ship in the same package, selected by a comment character in a config file. A
+shared dictionary that captured whichever one the extraction host happened to
+load would publish a deployment's choice as the distribution's fact, under a
+file name (`httpd@2.4.62.yml`) that says nothing about it.
+
+So the entry states every value the product has:
+
+```yaml
+  StartServers:
+    default:
+      event: "3"
+      worker: "3"
+      prefork: "5"
+      mpmt_os2: "2"
+```
+
+and the binding says which applies, because the project is what chooses:
+
+```yaml
+    dictionaries:
+      - product: httpd
+        version: "2.4.62"
+        variant: event
+```
+
+Resolved once, as the dictionary is read, so everything downstream —
+materialize, enrich, diff — sees the scalar it always saw. Every way of getting
+it wrong is a named failure and never a silent pick: no `variant:` against a
+dictionary that states several lists the ones on offer; a `variant:` no entry
+has names the ones that do; a `variant:` against a dictionary with no
+per-variant default at all is a declaration selecting nothing.
+
+An entry whose value is the same under every variant stays a plain scalar — a
+map whose values all agree states a choice that changes nothing.
+
 #### `aliases:` — the PRODUCT's own second spelling (dictionary side)
 
 Every tier above is about the PROJECT's key. `aliases:` is the other side: a

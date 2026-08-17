@@ -29,7 +29,7 @@
 import { parseSteps } from "./structural.js";
 import { makeKeyTransformer, type KeyTransformer } from "./keytransform.js";
 import type { DictionaryBinding, LangProvenance } from "./metadata.js";
-import { findDictionary, type DictionaryDoc, type DictionaryParam } from "./providers/dictionary.js";
+import { findDictionary, resolveVariantDefaults, type DictionaryDoc, type DictionaryParam } from "./providers/dictionary.js";
 
 // How a key ended up bound, in the order bindKey() tries them:
 //   alias      - the project's own `dict_key` declaration, matched verbatim.
@@ -412,7 +412,8 @@ export function loadBindSources(
   readFile: (path: string) => string | null
 ): BindSource[] {
   return dictionaries.map((binding) => {
-    const doc = findDictionary(binding.product, binding.version, [...metadataDirs], readFile);
+    const found = findDictionary(binding.product, binding.version, [...metadataDirs], readFile);
+    const doc = found && resolveVariantDefaults(found, binding.variant, `bind: ${binding.product}@${binding.version}`);
     if (!doc) {
       throw new Error(
         `bind: dictionary not found: ${binding.product}@${binding.version} ` +

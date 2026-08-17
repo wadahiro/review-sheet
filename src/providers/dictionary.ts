@@ -52,7 +52,17 @@ export type DictionaryParam = {
   // not.
   label?: LangText;
   description?: LangText;
-  default?: string | number | boolean;
+  // The product's own default. A map instead of a scalar when the product does
+  // not have ONE — httpd's `StartServers` is 3 under the event and worker MPMs
+  // and 5 under prefork, and all three ship in the same package, so a
+  // dictionary that picked one would be asserting a deployment's choice as the
+  // distribution's fact.
+  //
+  // Which one applies is the PROJECT's to declare (`variant:` on the binding),
+  // because the project is what makes the choice; a dictionary is shared and
+  // is built without knowing it. Resolved once, in loadBindSources, so
+  // everything downstream sees the scalar it always saw.
+  default?: string | number | boolean | Record<string, string | number | boolean>;
   type?: string;
   // Where/when the setting applies, in the product's own terms (Keycloak's
   // build-time vs runtime, an nginx directive's valid context). Documentation.
@@ -270,6 +280,55 @@ export function parseDictionary(path: string, content: string): DictionaryDoc {
     );
   }
   return doc;
+}
+
+const isVariantMap = (d: DictionaryParam["default"]): d is Record<string, string | number | boolean> =>
+  typeof d === "object" && d !== null;
+
+// One default per entry, chosen by the variant the PROJECT declared.
+//
+// A dictionary is shared and is built without knowing which variant a
+// deployment picks — httpd ships all three MPMs in one package, so a capture
+// that picked one would be publishing a deployment's choice as the
+// distribution's fact. The entry therefore states every value the product has,
+// and the binding says which applies.
+//
+// Resolved here, at both doors into a dictionary (loadBindSources and
+// materialize), so nothing downstream ever meets the map: every consumer keeps
+// reading the scalar it always read. Every way of getting it wrong is a named
+// error — silently picking one would be the whole point, missed.
+export function resolveVariantDefaults(doc: DictionaryDoc, variant: string | undefined, where: string): DictionaryDoc {
+  const conditional = Object.entries(doc.parameters).filter(([, e]) => isVariantMap(e.default));
+  if (conditional.length === 0) {
+    if (variant !== undefined) {
+      throw new Error(
+        `${where}: declares variant "${variant}", but no entry of ${doc.product}@${doc.version} has a per-variant ` +
+          `default — the declaration selects nothing`
+      );
+    }
+    return doc;
+  }
+  const variants = [...new Set(conditional.flatMap(([, e]) => Object.keys(e.default as object)))].sort();
+  if (variant === undefined) {
+    throw new Error(
+      `${where}: ${doc.product}@${doc.version} states a different default per variant for ${conditional.length} ` +
+        `entr${conditional.length === 1 ? "y" : "ies"} (e.g. ${conditional[0][0]}), so which one applies is this ` +
+        `project's to declare: add variant: <${variants.join(" | ")}> to the binding`
+    );
+  }
+  const missing = conditional.filter(([, e]) => (e.default as Record<string, unknown>)[variant] === undefined);
+  if (missing.length > 0) {
+    throw new Error(
+      `${where}: variant "${variant}" has no default for ${missing.length} entr${missing.length === 1 ? "y" : "ies"} ` +
+        `of ${doc.product}@${doc.version}: ${missing.map(([k]) => k).slice(0, 8).join(", ")} ` +
+        `(variants stated: ${variants.join(", ")})`
+    );
+  }
+  const parameters: Record<string, DictionaryParam> = { ...doc.parameters };
+  for (const [key, entry] of conditional) {
+    parameters[key] = { ...entry, default: (entry.default as Record<string, string | number | boolean>)[variant] };
+  }
+  return { ...doc, parameters };
 }
 
 // Find <product>@<version>.yml across dirs, first readable wins.

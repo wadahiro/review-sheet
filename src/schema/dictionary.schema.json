@@ -121,10 +121,28 @@
           "$ref": "#/definitions/langText"
         },
         "default": {
-          "type": [
-            "string",
-            "number",
-            "boolean"
+          "oneOf": [
+            {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            },
+            {
+              "type": "object",
+              "minProperties": 2,
+              "propertyNames": {
+                "minLength": 1
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              }
+            }
           ]
         },
         "type": {
