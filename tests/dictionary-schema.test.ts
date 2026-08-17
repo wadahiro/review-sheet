@@ -8,6 +8,7 @@ import { describe, it, expect } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parseDictionary } from "../src/providers/dictionary";
 import { findDictionary, DICTIONARY_PARAM_FIELDS, DICTIONARY_DOC_FIELDS } from "../src/providers/dictionary.js";
 import schema from "../src/schema/dictionary.schema.json";
 
@@ -121,5 +122,32 @@ describe("overlay language keys", () => {
       "demo@1.overlay.yml": `product: demo\nversion: "1"\nparameters:\n  timeout:\n    description: { ja: "待ち時間" }\n`,
     });
     expect((doc?.parameters.timeout?.description as { ja?: string })?.ja).toBe("待ち時間");
+  });
+});
+
+// An alias is a second spelling of ONE setting. A document that also gives it
+// a key, or that hands it to two entries, is saying the setting is two — and
+// the binder would have to pick, which is the one thing it never does quietly.
+describe("dictionary aliases", () => {
+  const base = "product: demo\nversion: \"1\"\nprovenance: official\ncoverage: partial\nparameters:\n";
+
+  it("accepts an alias no key of its own claims", () => {
+    const doc = parseDictionary(
+      "d.yml",
+      base + "  short:\n    description:\n      en: d\n    aliases: [long-form]\n"
+    );
+    expect(doc.parameters.short.aliases).toEqual(["long-form"]);
+  });
+
+  it("refuses an alias that is also a key", () => {
+    expect(() =>
+      parseDictionary("d.yml", base + "  short:\n    aliases: [other]\n  other:\n    description:\n      en: d\n")
+    ).toThrow(/alias of "short" and a key of its own/);
+  });
+
+  it("refuses one alias claimed by two entries", () => {
+    expect(() =>
+      parseDictionary("d.yml", base + "  a:\n    aliases: [same]\n  b:\n    aliases: [same]\n")
+    ).toThrow(/claimed by both/);
   });
 });

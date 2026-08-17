@@ -23,6 +23,24 @@ import {
 } from "../metadata.js";
 
 export type DictionaryParam = {
+  // Other keys THE PRODUCT ITSELF accepts for this same setting.
+  //
+  // Not a convenience for near-misses — that is what the `normalized` bind
+  // tier is for, and what a project's own `dict_key:` is for. This is the
+  // product documenting two spellings of one option: Keycloak defines
+  // `cache-embedded-realms-max-count` as a mapper whose target IS
+  // `spi-cache-embedded--default--realms-max-count`, so a config may write
+  // either and the server reads the same setting.
+  //
+  // One ENTRY, not two. Listing both as keys would put one setting in a
+  // materialized ledger twice and make a reviewer work out that the two rows
+  // are the same; dropping the second would leave a config that wrote it
+  // unbound and undescribed. An alias is the only shape that is neither.
+  //
+  // Checked: an alias that is also a key of the same dictionary is a
+  // contradiction (the document would say one setting is two), and is
+  // refused at parse time.
+  aliases?: string[];
   // What the PRODUCT calls this setting where a human meets it — Keycloak's
   // admin console label, an nginx directive's own display name. The key is the
   // setting's identity (`attributes["saml.signature.algorithm"]`, which
@@ -139,6 +157,7 @@ export type DictionaryParam = {
 // two is a build failure rather than a field that silently does nothing —
 // which is the exact failure this whole schema exists to remove.
 export const DICTIONARY_PARAM_FIELDS = [
+  "aliases",
   "label",
   "description",
   "default",
@@ -227,7 +246,30 @@ export function parseDictionary(path: string, content: string): DictionaryDoc {
   if (!validateDictionary(raw)) {
     throw new Error(`dictionary validation error in ${path}:\n${formatAjvErrors(validateDictionary.errors)}`);
   }
-  return raw as unknown as DictionaryDoc;
+  const doc = raw as unknown as DictionaryDoc;
+  // An alias is a second spelling of ONE setting. A document where an alias is
+  // also a key of its own, or where two entries claim the same alias, is
+  // saying that setting is two — and the binder would have to pick, which is
+  // the one thing it is built never to do silently.
+  const claimed = new Map<string, string>();
+  const contradictions: string[] = [];
+  for (const [key, entry] of Object.entries(doc.parameters)) {
+    for (const alias of entry.aliases ?? []) {
+      if (Object.hasOwn(doc.parameters, alias)) {
+        contradictions.push(`"${alias}" is an alias of "${key}" and a key of its own`);
+        continue;
+      }
+      const first = claimed.get(alias);
+      if (first !== undefined) contradictions.push(`"${alias}" is claimed by both "${first}" and "${key}"`);
+      else claimed.set(alias, key);
+    }
+  }
+  if (contradictions.length > 0) {
+    throw new Error(
+      `${path}: ${contradictions.length} contradictory alias(es):\n` + contradictions.map((c) => `  ${c}`).join("\n")
+    );
+  }
+  return doc;
 }
 
 // Find <product>@<version>.yml across dirs, first readable wins.

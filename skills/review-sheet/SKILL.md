@@ -2075,6 +2075,33 @@ and only add what the build tells you is missing:**
    skips the `alias` tier and proceeds through `exact`/`prefix`/`leaf`/`normalized`
    as usual.
 
+#### `aliases:` — the PRODUCT's own second spelling (dictionary side)
+
+Every tier above is about the PROJECT's key. `aliases:` is the other side: a
+dictionary entry naming other keys **the product itself accepts for the same
+setting**.
+
+```yaml
+parameters:
+  cache-embedded-realms-max-count:
+    description: { en: ... }
+    aliases: [spi-cache-embedded--default--realms-max-count]
+```
+
+Keycloak defines that short option as a mapper whose target IS the long one, so
+a config may write either and the server reads one setting. One ENTRY, not two:
+two keys would put it in a materialized ledger twice and leave a reviewer to
+work out that the rows are the same, and dropping the second would leave a
+config that wrote it unbound and undescribed. The `aka` tier binds it, ranked
+directly after `exact` — a key named verbatim by the product outranks every
+tier that reshapes the key, because reshaping is this tool guessing and this is
+the product answering.
+
+Belongs to an EXTRACTION, not to a hand-written line: it is a fact about the
+product, and a skill that reads the product's own registries can state it. An
+alias that is also a key of the same dictionary, or one two entries claim, is a
+document saying one setting is two, and is refused at parse time.
+
 The `normalized` tier exists because a delimiter or casing difference between
 two spellings is wiring, not information — and wiring should not need a line
 of YAML to state. The flip side is the organizing principle: **normalization
