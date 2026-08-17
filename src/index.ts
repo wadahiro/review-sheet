@@ -48,7 +48,7 @@ export type {
 // Product dictionaries: the typed shape a per-product normalizer emits (a
 // pg_settings dump, reflection over a container image, a docs scrape → one
 // `<product>@<version>.yml`), plus the renderer that writes it.
-export { renderDictionary } from "./providers/dictionary.js";
+export { renderDictionary, parseDictionary, parseOverlay } from "./providers/dictionary.js";
 export type { DictionaryDoc, DictionaryParam } from "./providers/dictionary.js";
 export { loadProjectMeta, paramsForSheet, categoriesForSheet, underKeyForSheet, checkProjectMetaSheets } from "./providers/project.js";
 export type { ProjectMetaDoc, ProjectMetaSheetDoc, ProjectMetaParam, UnderKeyMeta } from "./providers/project.js";
