@@ -353,6 +353,24 @@ export function formatProvenance(p: LangProvenance): string {
   return en ?? ja ?? "community";
 }
 
+// The one field an excluded row still resolves. Deliberately narrow: this is
+// not "enrich it a bit", it is one fact a check needs.
+function fillSecretOnly(
+  param: Parameter,
+  sheet: string,
+  categoryPath: string[],
+  ctx: MetadataContext,
+  providers: MetadataProvider[] | undefined,
+  resolveBinding: (sheet: string, key: string, categoryPath: string[]) => Binding | undefined,
+  resolveVariable: (sheet: string, key: string) => string | undefined
+): void {
+  if (param.secret !== undefined) return;
+  const binding = resolveBinding(sheet, param.key, categoryPath);
+  const variable = resolveVariable(sheet, param.key);
+  const resolved = resolveMetadata({ key: param.key, sheet, categoryPath, binding, variable }, ctx, providers);
+  if (resolved?.secret !== undefined) param.secret = resolved.secret;
+}
+
 function enrichParam(
   param: Parameter,
   sheet: string,
@@ -441,7 +459,17 @@ function walkCategories(
     const outOfScope = parentOutOfScope || category.out_of_scope !== undefined;
 
     for (const param of category.params ?? []) {
-      if (outOfScope || param.out_of_scope !== undefined) continue; // exempt from strict, no query
+      if (outOfScope || param.out_of_scope !== undefined) {
+        // Exempt from strict, and from enrichment generally — an excluded row
+        // needs no description. But `secret` is not documentation: it drives a
+        // check on what the GENERATED FILE carries, and out_of_scope says the
+        // row is not being reviewed here, not that its value is absent from
+        // the sheet. The rows a project marks out_of_scope are overwhelmingly
+        // the credentials — every one of this project's was — so skipping them
+        // left the check dead in exactly the case it exists for.
+        fillSecretOnly(param, sheetName, categoryPath, ctx, providers, resolveBinding, resolveVariable);
+        continue;
+      }
 
       const wrote = enrichParam(param, sheetName, categoryPath, ctx, providers, report.byProvider, resolveBinding, resolveVariable);
       if (wrote) report.filled++;
