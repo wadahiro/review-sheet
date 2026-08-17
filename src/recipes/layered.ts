@@ -140,6 +140,18 @@ export const splitSchema = {
     at: { type: "string" },
     by: { type: "string" },
     only: { type: "array", items: { type: "string" }, minItems: 1 },
+    // The ordered, NAMED form of `only:` — see StructuralSplit.members.
+    members: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "object",
+        required: ["id"],
+        properties: { id: { type: "string" }, match: { type: "string" } },
+        additionalProperties: false,
+      },
+    },
+    as: { enum: ["component", "prefix", "none"] },
     // A list nested inside each member — see StructuralSplit.nest.
     nest: {
       type: "object",
@@ -922,6 +934,22 @@ export const layeredRecipe: SheetRecipe = {
     // decide. Refused rather than silently applied to one level only.
     if (split?.nest && split.only) {
       throw new Error(`layered recipe: sheet "${name}": "split.only" and "split.nest" cannot be combined — the nested rows would be dropped with the members the list excludes`);
+    }
+    // Two spellings of one selection. Which one wins would be a coin toss, and
+    // a project that wrote both meant one of them.
+    if (split?.only && split.members) {
+      throw new Error(
+        `layered recipe: sheet "${name}": "split.only" and "split.members" are the same selection written two ways — keep one`
+      );
+    }
+    // `as:` decides where the member identity goes, and `members:` is what
+    // names it. Without names, `prefix` would prefix keys with a raw element id
+    // — a SAML client's entity URL — which is the spelling this exists to
+    // avoid, and `none` on an unnamed multi-member list would merge them.
+    if (split && split.as !== undefined && split.as !== "component" && !split.members && !split.only) {
+      throw new Error(
+        `layered recipe: sheet "${name}": "split.as: ${split.as}" needs the members named — add "members:" (or "only:") so the ids are this sheet's, not the file's`
+      );
     }
     const componentDeriver = makeComponentDeriver(componentSpec, name, warn, split?.only);
     // A split names the identity field, so it also ANSWERS the extractor's
