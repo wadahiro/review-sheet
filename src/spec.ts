@@ -133,6 +133,12 @@ const statedDictionarySchema = {
     properties: {
       product: { type: "string" },
       version: { type: "string" },
+      // Which of a per-variant default applies — see
+      // providers/dictionary.ts's resolveVariantDefaults. A dictionary states
+      // every value the product has when it has more than one (httpd's
+      // StartServers under each MPM); the project declares which, because the
+      // project is what chooses.
+      variant: { type: "string" },
       key_prefix: { type: "string" },
       // Only the `steps` half of a recipe's `key:` — there is no `from:` to
       // choose here, the input is always the row's own key.

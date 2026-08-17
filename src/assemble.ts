@@ -40,7 +40,7 @@ import {
   type ProjectMetaDoc,
   type UnderKeyMeta,
 } from "./providers/project.js";
-import { findDictionary, dictionaryCoverage } from "./providers/dictionary.js";
+import { findDictionary, dictionaryCoverage, resolveVariantDefaults } from "./providers/dictionary.js";
 import { baseFileName } from "./jinja2.js";
 import { bindKey, isBindError, loadBindSources, BIND_METHODS, type Binding, type BindSource, type BindMethod } from "./bind.js";
 import type { DictionaryBinding } from "./metadata.js";
@@ -1038,7 +1038,11 @@ function materializeDrafts(
   const opt = binding.materialize === true ? {} : binding.materialize!;
 
   const dirs = opts.metadataDirs ?? [];
-  const dict = findDictionary(binding.product, binding.version, dirs, opts.readFile);
+  const found = findDictionary(binding.product, binding.version, dirs, opts.readFile);
+  // The other door into a dictionary. materialize reads `default` to give a row
+  // its value, so an unresolved per-variant map would land in the sheet as
+  // "[object Object]" — resolved here for the same reason and by the same rule.
+  const dict = found && resolveVariantDefaults(found, binding.variant, `materialize: ${binding.product}@${binding.version}`);
   if (!dict) {
     throw new Error(
       `assemble: materialize: dictionary not found: ${binding.product}@${binding.version} ` +

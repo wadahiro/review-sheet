@@ -72,6 +72,11 @@ function provenanceForLang(p: LangProvenance | undefined, lang: LangKey): Proven
 export type DictionaryBinding = {
   product: string;
   version: string;
+  // Which of a per-variant default applies (providers/dictionary.ts's
+  // resolveVariantDefaults). Declared by the project because the project is
+  // what makes the choice — the dictionary is shared and is built without
+  // knowing it.
+  variant?: string;
   key_prefix?: string;
   // A declarative rewrite from the ROW key to the dictionary key, for the case
   // `key_prefix` cannot express: the row's identity legitimately carries more
