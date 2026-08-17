@@ -132,15 +132,15 @@ export function assembleFromSpecWithReport(
     const component = sheetSpec.component as ComponentDecl | undefined;
     const io: RecipeIO = { ...baseIo, instances, component, dataMaps: spec.data_maps };
     const si = recipe.load(sheetSpec, io);
-    // A recipe that knows the shape of its rows can say how a product
-    // dictionary's keys relate to them (SheetInputs.dictKeySteps). Applied only
-    // where the binding declares nothing: the project's own `key_steps` is a
-    // statement about ITS dictionary and always wins.
-    if (si.dictKeySteps) {
-      for (const d of (sheetSpec.dictionaries ?? []) as unknown as DictionaryBinding[]) {
-        if (d.key_steps === undefined) d.key_steps = si.dictKeySteps;
-      }
-    }
+    // `si.dictKeySteps` — the recipe's own account of how a product
+    // dictionary's keys relate to its rows — used to be written into every
+    // binding that declared none, right here. It is not, any more: the
+    // assignment made the recipe's default and the project's own declaration
+    // indistinguishable by the time bindKey saw them, so a hit through each
+    // landed in ONE tier and came out an ambiguity error. It also mutated the
+    // parsed spec in place. The steps now travel to loadBindSources as
+    // defaults (assemble.ts), which applies them only where nothing was
+    // declared — the same rule, kept somewhere it can still be told apart.
     // A LITERAL component declaration says the same thing about every row on
     // the sheet, so it is applied here rather than in each recipe: a recipe
     // that reads a flat config file has nothing to contribute to the answer.

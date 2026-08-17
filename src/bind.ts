@@ -27,7 +27,7 @@
 // possible and fall back to the explicit alias only when it must.
 
 import { parseSteps } from "./structural.js";
-import { makeKeyTransformer, type KeyTransformer } from "./keytransform.js";
+import { makeKeyTransformer, type KeyTransformer, type KeyTransformStep } from "./keytransform.js";
 import type { DictionaryBinding, LangProvenance } from "./metadata.js";
 import { findDictionary, resolveVariantDefaults, type DictionaryDoc, type DictionaryParam } from "./providers/dictionary.js";
 
@@ -65,6 +65,15 @@ import { findDictionary, resolveVariantDefaults, type DictionaryDoc, type Dictio
 //                the more powerful and so the less specific statement, and
 //                above `leaf` because a caller that went to the trouble of
 //                declaring the rewrite means it.
+//   derived-default
+//              - the same rewrite, but the RECIPE's, not the project's
+//                (SheetInputs.dictKeySteps, applied where a binding declared
+//                no key_steps). Ranked below `derived` because it is not the
+//                project saying anything: the tier order above is built on how
+//                much of a statement a match is — `alias` leads because a human
+//                wrote it — and a default nobody wrote is the least of them.
+//                Kept ABOVE `leaf` so an existing sheet's answers do not move:
+//                a recipe-derived hit already outranked a leaf one.
 //   repeat     - the key with a trailing repetition index dropped
 //                (`Service.Environment[1]` -> `Service.Environment`). A
 //                repeated directive is the same parameter written twice, and
@@ -84,7 +93,7 @@ import { findDictionary, resolveVariantDefaults, type DictionaryDoc, type Dictio
 //                `Timeout` and `TimeOut` (unlikely, but not this module's
 //                problem to prevent) still prefers whichever one actually
 //                matches exactly.
-export type BindMethod = "alias" | "exact" | "aka" | "repeat" | "prefix" | "derived" | "leaf" | "normalized";
+export type BindMethod = "alias" | "exact" | "aka" | "repeat" | "prefix" | "derived" | "derived-default" | "leaf" | "normalized";
 
 // A resolved binding. `entry` is the dictionary's own DictionaryParam,
 // unfiltered — including `kind: "container"` entries. A container (Apache's
@@ -142,14 +151,35 @@ export type BindSource = {
   // pure — it only calls apply(). Use makeBindSource() rather than building
   // this by hand.
   keyTransformer?: KeyTransformer;
+  // The RECIPE's own understanding of how its rows relate to a product
+  // dictionary (SheetInputs.dictKeySteps), compiled only for a binding that
+  // declared no `key_steps` of its own.
+  //
+  // Kept apart from `keyTransformer` rather than written into the binding,
+  // which is what used to happen: the project's steps and the recipe's default
+  // then became indistinguishable, so a hit through each landed in one tier and
+  // came out an ambiguity — the project's own statement outranked by nothing,
+  // beaten by nothing, simply tied with a default nobody wrote.
+  defaultKeyTransformer?: KeyTransformer;
 };
 
 // The one place a DictionaryBinding becomes a BindSource, so `key_steps` is
 // compiled identically for every caller (loadBindSources below, and tests).
-export function makeBindSource(binding: DictionaryBinding, doc: DictionaryDoc): BindSource {
-  return binding.key_steps
-    ? { binding, doc, keyTransformer: makeKeyTransformer({ steps: binding.key_steps }) }
-    : { binding, doc };
+//
+// `defaultSteps` is the recipe's, and applies ONLY where the binding declares
+// nothing — the per-binding half of "the project's own key_steps always wins",
+// enforced here by construction rather than by an assignment that erases which
+// was which.
+export function makeBindSource(
+  binding: DictionaryBinding,
+  doc: DictionaryDoc,
+  defaultSteps?: readonly KeyTransformStep[]
+): BindSource {
+  if (binding.key_steps) return { binding, doc, keyTransformer: makeKeyTransformer({ steps: [...binding.key_steps] }) };
+  if (defaultSteps && defaultSteps.length > 0) {
+    return { binding, doc, defaultKeyTransformer: makeKeyTransformer({ steps: [...defaultSteps] }) };
+  }
+  return { binding, doc };
 }
 
 // The project's own `dict_key` declaration for this parameter:
@@ -169,7 +199,7 @@ export type ProjectDictKey = string | null | undefined;
 // and why this is the order. Exported so a caller building a per-method
 // tally (assemble.ts's BindingReport) enumerates every possible method
 // without re-deriving this list.
-export const BIND_METHODS: readonly BindMethod[] = ["alias", "exact", "aka", "repeat", "prefix", "derived", "leaf", "normalized"];
+export const BIND_METHODS: readonly BindMethod[] = ["alias", "exact", "aka", "repeat", "prefix", "derived", "derived-default", "leaf", "normalized"];
 const TIERS = BIND_METHODS;
 
 // The three delimiter conventions this project's key spaces actually use:
@@ -228,7 +258,7 @@ function candidateForMethod(
   // claims the key), not a candidate derived FROM the key, so it has nothing
   // to return here and nothing to contribute to the normalized tier either —
   // a product's own second spelling is already exact.
-  method: "alias" | "exact" | "repeat" | "prefix" | "derived" | "leaf",
+  method: "alias" | "exact" | "repeat" | "prefix" | "derived" | "derived-default" | "leaf",
   key: string,
   dictKey: ProjectDictKey,
   source: BindSource
@@ -260,6 +290,10 @@ function candidateForMethod(
       const derived = source.keyTransformer?.apply(key);
       return derived !== undefined && derived !== key ? derived : undefined;
     }
+    case "derived-default": {
+      const derived = source.defaultKeyTransformer?.apply(key);
+      return derived !== undefined && derived !== key ? derived : undefined;
+    }
     case "leaf": {
       const leaf = leafKey(key);
       return leaf !== key ? leaf : undefined;
@@ -270,7 +304,10 @@ function candidateForMethod(
 // Every verbatim candidate (alias/exact/prefix/leaf), normalized and
 // deduplicated, for the normalized tier.
 function normalizedCandidates(key: string, dictKey: ProjectDictKey, source: BindSource): string[] {
-  const raw = (["alias", "exact", "prefix", "derived", "leaf"] as const)
+  // The recipe's default is in here too: without it, a rewrite the recipe
+  // supplied would silently lose the normalized fallback that the same rewrite
+  // had while it was being written into the binding.
+  const raw = (["alias", "exact", "prefix", "derived", "derived-default", "leaf"] as const)
     .map((m) => candidateForMethod(m, key, dictKey, source))
     .filter((v): v is string => v !== undefined);
   return [...new Set(raw.map(normalizeKey))];
@@ -409,7 +446,10 @@ export function bindKey(key: string, dictKey: ProjectDictKey, sources: readonly 
 export function loadBindSources(
   dictionaries: readonly DictionaryBinding[],
   metadataDirs: readonly string[],
-  readFile: (path: string) => string | null
+  readFile: (path: string) => string | null,
+  // The recipe's own dictKeySteps, applied to whichever bindings declared none
+  // — see makeBindSource.
+  defaultSteps?: readonly KeyTransformStep[]
 ): BindSource[] {
   return dictionaries.map((binding) => {
     const found = findDictionary(binding.product, binding.version, [...metadataDirs], readFile);
@@ -420,6 +460,6 @@ export function loadBindSources(
           `(searched: ${metadataDirs.length > 0 ? metadataDirs.join(", ") : "no metadata dirs configured"})`
       );
     }
-    return makeBindSource(binding, doc);
+    return makeBindSource(binding, doc, defaultSteps);
   });
 }

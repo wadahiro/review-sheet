@@ -440,3 +440,81 @@ describe("bindKey: a product's own second spelling", () => {
     expect(bindKey("spi-cache-embedded--default--nope", undefined, sources)).toBeUndefined();
   });
 });
+
+// A recipe can say how a product dictionary's keys relate to its rows
+// (SheetInputs.dictKeySteps), and that default used to be written into every
+// binding that declared none — after which it was indistinguishable from a
+// `key_steps` the project wrote. A hit through each then landed in ONE tier
+// and came out an ambiguity error, so a sheet could not bind a second, more
+// specific dictionary for rows the first only answers generically.
+describe("bindKey: the project's own key_steps outrank the recipe's default", () => {
+  const generic = {
+    product: "aws",
+    version: "1",
+    parameters: { "aws_rds_cluster_parameter_group.parameter.value": { description: { en: "The value of the DB parameter." } } },
+  } as unknown as DictionaryDoc;
+  const engine = {
+    product: "postgresql",
+    version: "14.5",
+    parameters: { max_connections: { description: { en: "Sets the maximum number of concurrent connections." }, default: "100" } },
+  } as unknown as DictionaryDoc;
+
+  // What terraform-plan supplies: a plan row reduced to the type + argument.
+  const RECIPE_STEPS = [
+    { pattern: "^[^.]+\\.([a-z][a-z0-9_]*)\\.[^.]+\\.(.+)$", replace: "$1.$2", on_no_match: "drop" as const },
+    { pattern: "\\[(?:[0-9]+|[A-Za-z_][A-Za-z0-9_.-]*=[^\\]]*)\\]", replace: "", flags: "g" },
+  ];
+  const PROJECT_STEPS = [
+    { pattern: "^.*\\.parameter\\[name=([a-z_]+)\\]\\.value$", replace: "$1", on_no_match: "drop" as const },
+  ];
+
+  const KEY = "aurora.aws_rds_cluster_parameter_group.this.parameter[name=max_connections].value";
+
+  const sources = () => [
+    makeBindSource({ product: "aws", version: "1" }, generic, RECIPE_STEPS),
+    makeBindSource({ product: "postgresql", version: "14.5", key_steps: PROJECT_STEPS }, engine, RECIPE_STEPS),
+  ];
+
+  it("binds the row the project wired, not the one the recipe defaulted into", () => {
+    const b = bindKey(KEY, undefined, sources()) as Binding;
+    expect(b.product).toBe("postgresql");
+    expect(b.dictKey).toBe("max_connections");
+    expect(b.method).toBe("derived");
+  });
+
+  it("reports the recipe's own default under its own method", () => {
+    // Everything the recipe reaches on its own still binds — under a name that
+    // says the project declared nothing, which is what makes the tally useful.
+    const b = bindKey("alb.aws_lb.this.access_logs[0].enabled", undefined, [
+      makeBindSource(
+        { product: "aws", version: "1" },
+        { product: "aws", version: "1", parameters: { "aws_lb.access_logs.enabled": {} } } as unknown as DictionaryDoc,
+        RECIPE_STEPS
+      ),
+    ]) as Binding;
+    expect(b.method).toBe("derived-default");
+  });
+
+  it("still refuses when both hits are the project's own", () => {
+    // Two declarations at one strength is the ambiguity this never resolves.
+    const other = { product: "other", version: "1", parameters: { max_connections: {} } } as unknown as DictionaryDoc;
+    const two = [
+      makeBindSource({ product: "postgresql", version: "14.5", key_steps: PROJECT_STEPS }, engine),
+      makeBindSource({ product: "other", version: "1", key_steps: PROJECT_STEPS }, other),
+    ];
+    expect(isBindError(bindKey(KEY, undefined, two))).toBe(true);
+  });
+
+  it("still refuses when both hits are the recipe's default", () => {
+    const twin = {
+      product: "twin",
+      version: "1",
+      parameters: { "aws_rds_cluster_parameter_group.parameter.value": {} },
+    } as unknown as DictionaryDoc;
+    const two = [
+      makeBindSource({ product: "aws", version: "1" }, generic, RECIPE_STEPS),
+      makeBindSource({ product: "twin", version: "1" }, twin, RECIPE_STEPS),
+    ];
+    expect(isBindError(bindKey(KEY, undefined, two))).toBe(true);
+  });
+});

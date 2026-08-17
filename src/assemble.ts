@@ -1962,7 +1962,7 @@ export function assembleSheetsWithReport(
     // Expanded here, where the component set is already in hand (above) and
     // before anything reads a binding.
     const sheetDictionaries = expandPerComponent(si.name, opts.dictionaries?.[si.name] ?? [], components);
-    const bindSources: ScopedBindSource[] = loadBindSources(sheetDictionaries, opts.metadataDirs ?? [], opts.readFile).map(
+    const bindSources: ScopedBindSource[] = loadBindSources(sheetDictionaries, opts.metadataDirs ?? [], opts.readFile, si.dictKeySteps).map(
       (source, i) => ({ source, component: sheetDictionaries[i]!.component })
     );
     // Bind every draft against this sheet's dictionaries BEFORE materialize

@@ -2148,6 +2148,37 @@ product, and a skill that reads the product's own registries can state it. An
 alias that is also a key of the same dictionary, or one two entries claim, is a
 document saying one setting is two, and is refused at parse time.
 
+#### Two dictionaries, one row
+
+A sheet can bind more than one product dictionary, and sometimes both answer for
+the same row — one generically, one specifically. A Terraform plan's
+`…aws_rds_cluster_parameter_group.this.parameter[name=max_connections].value` is
+an engine setting wrapped in a provider argument: the AWS provider documents the
+wrapper once ("The value of the DB parameter."), and the engine documents
+`max_connections` properly, with its own default.
+
+Bind both, and wire the specific one with `key_steps`:
+
+```yaml
+    dictionaries:
+      - { product: aws, version: "5.100.0", materialize: true }
+      - product: postgresql
+        version: "14.5"
+        key_steps:
+          - { pattern: '^.*\.aws_rds_cluster_parameter_group\.[^.]+\.parameter\[name=([a-z_]+)\]\.value$', replace: '$1', on_no_match: drop }
+```
+
+The project's `key_steps` outranks the recipe's own `dictKeySteps` — the
+`derived` tier against `derived-default`. Both are rewrites; only one was
+written by anybody. Two hits at the SAME strength are still an ambiguity error,
+whether both are the project's or both the recipe's: this ranks provenance, it
+does not resolve a genuine tie.
+
+**Anchor such a pattern on the resource type.** `^.*\.parameter\[name=…` also
+matches a MySQL parameter group's rows, which would then get the PostgreSQL
+dictionary's answer. The tier order will not catch that for you — the
+over-broad pattern is the project's to get right.
+
 The `normalized` tier exists because a delimiter or casing difference between
 two spellings is wiring, not information — and wiring should not need a line
 of YAML to state. The flip side is the organizing principle: **normalization
