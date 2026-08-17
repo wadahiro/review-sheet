@@ -419,8 +419,9 @@ stdout. `--title` overrides the document title.
 ### `validate` — schema check
 
 ```sh
-review-sheet validate -i input.json               # input model
-review-sheet validate -i review.json -s review    # a review export
+review-sheet validate -i input.json               # a model
+review-sheet validate -i review.json              # a review export
+review-sheet validate -i httpd@2.4.62.yml         # a dictionary (YAML), or its .overlay.yml
 ```
 
 ### `verify` — source maps vs. the real files

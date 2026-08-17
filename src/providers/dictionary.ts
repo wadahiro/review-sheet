@@ -221,7 +221,7 @@ const validateDictionary = dictAjv.compile(dictionarySchema);
 //
 // A hard error, deliberately, matching build.yml and the overlay: there is no
 // warning channel here, and a rejected field is loud and immediately fixable.
-function parseDictionary(path: string, content: string): DictionaryDoc {
+export function parseDictionary(path: string, content: string): DictionaryDoc {
   const raw = parse(content) as Record<string, unknown> | null | undefined;
   if (!raw || typeof raw !== "object") throw new Error("malformed dictionary: " + path);
   if (!validateDictionary(raw)) {

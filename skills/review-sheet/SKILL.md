@@ -26,8 +26,9 @@ review-sheet import   -f conf1 -f conf2 -o input.json  # draft a model (with sou
 review-sheet import   --spec review-sheet/build.yml   # build it from a declarative spec (recipes + enrichment)
 review-sheet generate -i input.json -o sheet.html   # build the HTML sheet
 review-sheet generate -i input.json --no-review -o sheet.html  # delivery copy
-review-sheet validate -i input.json                 # validate input (schema)
-review-sheet validate -i review.json -s review      # validate a review export
+review-sheet validate -i input.json                 # a model
+review-sheet validate -i review.json                # a review export
+review-sheet validate -i <product>@<version>.yml    # a dictionary, or its .overlay.yml
 review-sheet verify   -i input.json                 # check source maps against the real files
 review-sheet apply    -i input.json -r review.json  # preview config edits (dry-run)
 review-sheet apply    -i input.json -r review.json --write        # write them

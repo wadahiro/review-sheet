@@ -19,6 +19,14 @@ import { assembleFromSpecWithReport } from "./assemble-spec.js";
 import { BIND_METHODS } from "./bind.js";
 import { listRecipes } from "./recipe.js";
 import { listMetadataProviders } from "./metadata.js";
+import { parse as parseYaml } from "yaml";
+import { parseDictionary, parseOverlay } from "./providers/dictionary.js";
+import { suggestNearest } from "./schema-errors.js";
+
+// Every document this CLI can check, which is every document the pipeline
+// reads. A typo'd name is an error naming the set rather than a silent
+// fall-through to the model schema.
+const VALIDATE_SCHEMAS = ["input", "review", "dictionary", "overlay"];
 import "./recipes/index.js"; // self-registers built-in recipes
 import { loadBuildSpec, specDirOf } from "./spec.js";
 import { inspectTs, lintTs } from "./parsers/ts.js";
@@ -303,26 +311,66 @@ program
 
 program
   .command("validate")
-  .description("Validate input data or review JSON")
-  .requiredOption("-i, --input <file>", "JSON file to validate")
-  .option("-s, --schema <type>", "Schema type: input | review", "input")
-  .action((opts: { input: string; schema: string }) => {
+  .description("Validate a model, a review document, or a dictionary")
+  .requiredOption("-i, --input <file>", "File to validate (JSON or YAML)")
+  .option("-s, --schema <type>", `Schema: ${VALIDATE_SCHEMAS.join(" | ")} (default: detected from the document)`)
+  .action((opts: { input: string; schema?: string }) => {
     try {
+      if (opts.schema !== undefined && !VALIDATE_SCHEMAS.includes(opts.schema)) {
+        const hint = suggestNearest(opts.schema, VALIDATE_SCHEMAS);
+        throw new Error(
+          `unknown schema "${opts.schema}" (expected ${VALIDATE_SCHEMAS.join(", ")})` + (hint ? ` — did you mean "${hint}"?` : "")
+        );
+      }
       const raw = readFileSync(opts.input, "utf-8");
-      const data = JSON.parse(raw);
+      // Parsed as YAML, which is a superset of JSON, so one reader covers both
+      // — a dictionary is YAML and a model is JSON, and asking the caller to
+      // say which is asking about the file's syntax rather than its content.
+      const data = parseYaml(raw) as Record<string, unknown> | null;
+      if (data === null || typeof data !== "object") throw new Error(`${opts.input}: not a document (expected a map)`);
 
-      if (opts.schema === "review") {
+      // Detected from the shape when not stated. Every kind is recognisable by
+      // a field it must have — except an overlay, which is a strict SUBSET of a
+      // dictionary and would pass as one silently, saying it checked more than
+      // it did. That pair is told apart by the filename the pipeline itself
+      // looks the file up under (`<product>@<version>.overlay.yml`, see
+      // findOverlayFiles), so this is reading the same convention rather than
+      // inventing one.
+      const schema =
+        opts.schema ??
+        ("reviews" in data || "schema_version" in data
+          ? "review"
+          : "parameters" in data && "product" in data
+            ? opts.input.endsWith(".overlay.yml") || opts.input.endsWith(".overlay.yaml")
+              ? "overlay"
+              : "dictionary"
+            : "input");
+
+      if (schema === "review") {
         validateReview(data);
-        console.log("Review JSON validation: OK");
+        console.log("Review document: OK");
+      } else if (schema === "dictionary") {
+        const doc = parseDictionary(opts.input, raw);
+        console.log(`Dictionary: OK (${doc.product}@${doc.version}, ${Object.keys(doc.parameters).length} parameter(s))`);
+      } else if (schema === "overlay") {
+        const doc = parseOverlay(opts.input, raw);
+        console.log(`Dictionary overlay: OK (${doc.product}@${doc.version}, ${Object.keys(doc.parameters).length} parameter(s))`);
       } else if (isVersionedInput(data)) {
         const doc = validateVersionedInput(data);
-        console.log(`Input data validation: OK (${doc.versions.length} version(s))`);
+        console.log(`Model: OK (${doc.versions.length} version(s))`);
       } else {
         validateInput(data);
-        console.log("Input data validation: OK");
+        console.log("Model: OK");
       }
     } catch (e) {
-      console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      const message = e instanceof Error ? e.message : String(e);
+      console.error(`Error: ${message}`);
+      // A dictionary and its overlay are the one pair no field tells apart, so
+      // a document that failed AS a dictionary is exactly where saying this
+      // earns its place.
+      if (opts.schema === undefined && /unknown (field|key)|must NOT have additional/i.test(message)) {
+        console.error(`If this is a dictionary overlay rather than a dictionary, pass -s overlay.`);
+      }
       process.exit(1);
     }
   });
