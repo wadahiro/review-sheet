@@ -2405,18 +2405,25 @@ function pivotSheet(sheet: SheetData["sheets"][number]): { components: CategoryD
   const components = sheet.categories ?? [];
   const rows = new Map<string, PivotRow>();
   for (const component of components) {
+    const add = (p: ParamData, path: string[]): void => {
+      const id = `${path.join("/")}::${p.key}`;
+      const row = rows.get(id) ?? { key: p.key, path, byComponent: new Map() };
+      row.byComponent.set(component.name, p);
+      rows.set(id, row);
+    };
     const walk = (cats: CategoryData[] | undefined, path: string[]): void => {
       for (const c of cats ?? []) {
         const here = [...path, c.name];
-        for (const p of c.params ?? []) {
-          const id = `${here.join("/")}::${p.key}`;
-          const row = rows.get(id) ?? { key: p.key, path: here, byComponent: new Map() };
-          row.byComponent.set(component.name, p);
-          rows.set(id, row);
-        }
+        for (const p of c.params ?? []) add(p, here);
         walk(c.categories, here);
       }
     };
+    // A row the component holds DIRECTLY — `category: null`, the field that in
+    // the admin console sits above the tabs rather than on one. Walking only
+    // the children dropped it from this view alone, and this is the view where
+    // it is most likely to exist: one component per client or per realm is
+    // exactly the shape that puts fields above the tabs.
+    for (const p of component.params ?? []) add(p, []);
     walk(component.categories, []);
   }
   return { components, rows: [...rows.values()] };
@@ -2711,6 +2718,10 @@ function PivotView({ sheet, pivot, sheetIndex, hiddenInstances, showDefaults, re
             ${onLeave && html`<${CompareToggle} on=${true} onToggle=${onLeave} t=${t} />`}
           </h3>
         </div>
+        ${/* Rows with no category of their own go first, directly under the
+              components heading — the same order the stacked view uses, where a
+              category's own params precede its sub-categories. */ ""}
+        ${tree.rows.length > 0 ? renderTable(tree.rows, 1) : null}
         ${[...tree.children.values()].map((child) => renderNode(child, 2))}
       </div>
     </div>

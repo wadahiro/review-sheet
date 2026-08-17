@@ -2038,3 +2038,73 @@ describe("a sheet that is always pivoted", () => {
     expect(leave).toEqual([]);
   });
 });
+
+// `category: null` — the row a component holds directly, which in the admin
+// console is the field ABOVE the tabs. The side-by-side view walked only the
+// component's child categories, so those rows existed in the stacked view and
+// nowhere else; and since a component here is one client or one realm, the
+// fields above the tabs are exactly the ones a comparison is reaching for.
+describe("viewer: a row with no category survives the side-by-side view", () => {
+  const payload = {
+    metadata: { title: "t" },
+    versions: [
+      {
+        version: "current",
+        sheets: [
+          {
+            name: "clients",
+            compare_components: true,
+            categories: ["poc-oidc", "account"].map((c) => ({
+              name: c,
+              params: [{ key: "clientId", value: c, description: "d" }],
+              categories: [
+                { name: "Settings", params: [{ key: "protocol", value: "openid-connect", description: "d" }] },
+              ],
+            })),
+          },
+        ],
+      },
+    ],
+  };
+
+  async function pivot(): Promise<HTMLElement> {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
+    await Promise.resolve();
+    return host;
+  }
+
+  const rowOf = (host: HTMLElement, key: string): Element | undefined =>
+    [...host.querySelectorAll(".rs-pivot tbody tr")].find(
+      (tr) => (tr.querySelector(".rs-col-key")?.textContent ?? "").trim() === key
+    );
+
+  it("shows the row, with a column per component", async () => {
+    const host = await pivot();
+    const row = rowOf(host, "clientId");
+    expect(row).not.toBeUndefined();
+    const cells = [...row!.querySelectorAll(".rs-col-value")].map((e) => (e.textContent ?? "").trim());
+    expect(cells).toHaveLength(2);
+    expect(cells[0]).toContain("poc-oidc");
+    expect(cells[1]).toContain("account");
+    // Two different values: the view has to mark it as a difference, same as
+    // any other row.
+    expect(row!.className).toContain("rs-pivot-differs");
+  });
+
+  it("puts it above the categories, where the stacked view puts it", async () => {
+    const host = await pivot();
+    const keys = [...host.querySelectorAll(".rs-pivot tbody tr .rs-col-key")].map((e) => (e.textContent ?? "").trim());
+    expect(keys).toEqual(["clientId", "protocol"]);
+  });
+
+  it("does not invent a heading for it", async () => {
+    // It has no category, so the only heading above it is the components one.
+    const host = await pivot();
+    const heads = [...host.querySelectorAll(".rs-pivot .rs-cat-label")].map((e) => e.textContent?.replace(/\s+/g, " ").trim());
+    expect(heads).toEqual(["poc-oidc / account", "Settings"]);
+  });
+});
