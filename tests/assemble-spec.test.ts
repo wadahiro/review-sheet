@@ -467,3 +467,77 @@ describe("RecipeIO.listDir — a recipe whose subject is a directory", () => {
     expect(JSON.parse(String(all.find((p) => p.key === "entries")?.value))).toBeNull();
   });
 });
+
+// A recipe can answer "which component is this row of" per ENTRY rather than
+// by building a componentOf map — `templates[].component` becomes
+// EmbeddedEntry.component. Reading an absent map as "this sheet has no
+// components" then gave every key the SHEET'S OWN NAME as a second component
+// beside the real ones, and the rows with no entry-level component — a
+// variable no template interpolates — came out under a category level named
+// after the sheet, above their own.
+describe("assembleFromSpec: components carried on the entries", () => {
+  const recipe: SheetRecipe = {
+    name: "entry-components",
+    schema: { type: "object", properties: {} },
+    load(_sheetSpec, io: RecipeIO): SheetInputs {
+      return {
+        name: "apache",
+        instances: io.instances,
+        // Two real components, declared per entry, and no componentOf at all —
+        // which is what a recipe produces when no row needs one.
+        layers: [
+          {
+            kind: "base",
+            entries: new Map([["overlay_only", { value: "false", source: { file: "d.yml", line: 1 } }]]),
+          },
+        ],
+        embedded: [
+          { key: "ServerTokens", value: "Prod", source: { file: "a.j2", line: 1 }, component: "httpd.conf" },
+          { key: "LoadModule", value: "x", source: { file: "b.j2", line: 1 }, component: "00-mpm.conf" },
+        ],
+      };
+    },
+  };
+
+  const files: Record<string, string> = {
+    "/s/build.yml":
+      "version: 1\ninstances: [production]\nenrich:\n  project: sheet.yml\nsheets:\n  - name: apache\n    recipe: entry-components\n",
+    "/s/sheet.yml":
+      "sheets:\n  apache:\n    params:\n      overlay_only: { category: Access, description: { en: d } }\n" +
+      "      ServerTokens: { category: General, description: { en: d } }\n" +
+      "      LoadModule: { category: General, description: { en: d } }\n",
+  };
+
+  const build = () => {
+    registerRecipe(recipe);
+    const spec = loadBuildSpec("/s/build.yml", { readFile: (p) => files[p] ?? null });
+    return assembleFromSpec(spec, {
+      readFile: (p) => files[p] ?? null,
+      specDir: "/s",
+      resolve: (p) => `/s/${p}`,
+      strictMetadata: false,
+    });
+  };
+
+  const pathsOf = (input: ParameterSheetInput): Record<string, string> => {
+    const out: Record<string, string> = {};
+    const walk = (cats: { name: string; params?: { key: string }[]; categories?: unknown }[], path: string[]): void => {
+      for (const c of cats) {
+        for (const p of c.params ?? []) out[p.key] = [...path, c.name].join(" > ");
+        walk((c.categories ?? []) as never[], [...path, c.name]);
+      }
+    };
+    walk(input.sheets[0].categories as never[], []);
+    return out;
+  };
+
+  it("does not wrap a componentless row in a level named after the sheet", () => {
+    expect(pathsOf(build()).overlay_only).toBe("Access");
+  });
+
+  it("leaves the entries' own components alone", () => {
+    const paths = pathsOf(build());
+    expect(paths.ServerTokens).toBe("httpd.conf > General");
+    expect(paths.LoadModule).toBe("00-mpm.conf > General");
+  });
+});
