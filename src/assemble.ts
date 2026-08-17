@@ -184,6 +184,16 @@ export type SheetInputs = {
   // declares no `key_steps` of its own (assemble-spec.ts); a project that
   // declares them still wins.
   dictKeySteps?: KeyTransformStep[];
+  // Every variable this sheet's template(s) interpolate — including the second
+  // and later variables of a line that mixes several.
+  //
+  // Separate from `keyMap` on purpose. That table answers "which variable may
+  // be SHOWN under this row" and is deliberately empty wherever the
+  // relationship is not 1:1; reading it as "did this row's value come from the
+  // artifact" (which `group_by: file` does — see fileCategory) made exactly the
+  // mixed lines fall out of the artifact they are lines of, and land under the
+  // variable FILE as a one-row category of their own.
+  templateVariables?: string[];
   // Rows whose display key is a PRODUCT key rather than their extracted
   // identity (an Ansible variable, a structural path, ...) — see
   // resolveKey() below. A base/overlay entry whose extracted key appears here
@@ -1297,6 +1307,9 @@ function fileDrafts(
   // not thrown: accumulated across every sheet and printed once by the CLI.
   categoryWarnings: string[],
   // Display names for component ids, when the recipe supplied them.
+  // See SheetInputs.templateVariables — what makes a row a line of the
+  // artifact, as opposed to which variable is displayed under it.
+  templateVariables: Set<string> | undefined,
   componentLabels: Map<string, LangText> | undefined,
   componentFiles: Map<string, { filePath?: string; sourceFile?: string }> | undefined,
   componentOrder: string[] | undefined
@@ -1413,7 +1426,14 @@ function fileDrafts(
             d.param,
             componentFiles?.get(d.component ?? "")?.filePath ?? sheetArtifact,
             componentFiles?.get(d.component ?? "")?.sourceFile ?? sheetTemplate,
-            d.variable !== undefined
+            // A row whose value came from a variable the artifact interpolates
+            // IS a line of that artifact; the variable is provenance, already
+            // shown in the under_key column. `d.variable` alone answered a
+            // NARROWER question — it is set only where one variable and one
+            // directive correspond exactly — so a line built from two
+            // variables was read as belonging to neither file and filed under
+            // the one its variables are DEFINED in.
+            d.variable !== undefined || (templateVariables?.has(d.variable ?? d.key) ?? false)
           );
     const inner = declaredNoCategory
       ? []
@@ -2072,6 +2092,7 @@ export function assembleSheetsWithReport(
       ghostCategories,
       categoryConflicts,
       categoryWarnings,
+      si.templateVariables ? new Set(si.templateVariables) : undefined,
       si.componentLabels,
       si.componentFiles,
       si.componentOrder
