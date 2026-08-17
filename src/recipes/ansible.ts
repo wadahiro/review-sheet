@@ -169,12 +169,20 @@ const schema = {
     // ansible sheet on purpose, guarded by a test in recipe-layered.test.ts —
     // so this one stays a narrower local schema, and narrowing is the point
     // rather than drift. Widen it only by revisiting that decision.
+    //
+    // `component` is not that decision and is allowed: `templates:` already
+    // names a component per rendered artifact, and a sheet that compares a
+    // rendered artifact against a FILE — the same product two releases apart,
+    // one still a template and one recorded as it runs — needs to name the
+    // file's side too. Refusing it would leave that comparison expressible
+    // only by splitting the two halves across two sheets, which is the
+    // comparison not happening.
     static_files: {
       type: "array",
       items: {
         type: "object",
         required: ["path"],
-        properties: { path: { type: "string" }, format: { type: "string" } },
+        properties: { path: { type: "string" }, format: { type: "string" }, component: { type: "string" } },
         additionalProperties: false,
       },
     },
