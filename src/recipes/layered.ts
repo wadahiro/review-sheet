@@ -65,6 +65,8 @@ import {
   keyTransformSchema,
   splitKeySteps,
   splitComponentSteps,
+  nestedMemberPath,
+  nestedMemberId,
   type KeyTransform,
   type KeyTransformStep,
   type StructuralSplit,
@@ -133,6 +135,19 @@ export const splitSchema = {
     at: { type: "string" },
     by: { type: "string" },
     only: { type: "array", items: { type: "string" }, minItems: 1 },
+    // A list nested inside each member — see StructuralSplit.nest.
+    nest: {
+      type: "object",
+      required: ["at", "by", "key_from", "under"],
+      properties: {
+        at: { type: "string" },
+        by: { type: "string" },
+        key_from: { type: "string" },
+        under: { type: "string" },
+        only: { type: "array", items: { type: "string" }, minItems: 1 },
+      },
+      additionalProperties: false,
+    },
   },
   additionalProperties: false,
 };
@@ -425,6 +440,61 @@ function formatKeyCollisionError(what: string, file: string, collisions: InFileC
 // structural `source.path` (a flat/leaf-only format like dotenv has none, and
 // there "the second line wins" is the format's own semantics, not this
 // recipe's to second-guess).
+
+// The `key_from` value of every nested member in one file, keyed by the
+// member's path. Built in one pass BEFORE keys are derived, because the value
+// that prefixes a mapper's keys is its own `providerId` field — another entry
+// of the same object, which no string transform can reach.
+function nestPrefixes(
+  split: StructuralSplit | undefined,
+  entries: readonly { value: string; source: { path?: string } }[]
+): Map<string, string> | undefined {
+  if (!split?.nest) return undefined;
+  const field = split.nest.key_from;
+  const out = new Map<string, string>();
+  for (const e of entries) {
+    const member = nestedMemberPath(split, e.source.path);
+    if (member === undefined || e.source.path !== `${member}.${field}`) continue;
+    out.set(member, e.value);
+  }
+  return out;
+}
+
+// Prefix a nested member's key with what its own `key_from` field says it IS.
+// A member the field does not answer for is left alone rather than guessed at:
+// the row then fails to bind and the strict gate names it, which is the right
+// failure — filing it under a neighbour's type would publish one mapper's
+// meaning under another's.
+function withNestPrefix(
+  key: string | undefined,
+  path: string | undefined,
+  split: StructuralSplit | undefined,
+  prefixes: Map<string, string> | undefined
+): string | undefined {
+  if (key === undefined || prefixes === undefined || split === undefined) return key;
+  const member = nestedMemberPath(split, path);
+  const prefix = member === undefined ? undefined : prefixes.get(member);
+  if (prefix === undefined) return key;
+  // The member's own id leads, because identity is per COMPONENT and every
+  // nested member of one member now shares it — six mappers of one store all
+  // have a `ldap.attribute`, and without this they would be one row six times
+  // over. The type follows, which is what the dictionary is keyed by; a
+  // binding strips the leading id to reach it.
+  const id = nestedMemberId(split, path);
+  return id === undefined ? `${prefix}.${key}` : `${id}.${prefix}.${key}`;
+}
+
+
+// `[under, <nested member>]` for a nested row, nothing for anything else. The
+// LAST-resort category (assemble.ts): a project `category:` and a bound
+// dictionary's own `group` both still win, which is right — this says where
+// the row SITS in the file, not what it is about.
+function nestedCategory(split: StructuralSplit | undefined, path: string | undefined): { categoryPath: string[] } | undefined {
+  if (!split?.nest) return undefined;
+  const id = nestedMemberId(split, path);
+  return id === undefined ? undefined : { categoryPath: [split.nest.under, id] };
+}
+
 export function buildMapFromSources(
   io: RecipeIO,
   specs: SourceSpec[],
@@ -432,20 +502,27 @@ export function buildMapFromSources(
   selector: KeySelector,
   extractOptions: ExtractOptions | undefined,
   warn: (message: string) => void,
-  component?: ComponentDeriver
+  component?: ComponentDeriver,
+  split?: StructuralSplit
 ): ExtractedMap {
   const out: ExtractedMap = new Map();
   for (const spec of specs) {
     const { file, content } = readRequired(io, spec.path, what);
     const transformer = spec.key ? makeKeyTransformer(spec.key) : undefined;
     const seenPathsInFile = new Map<string, string[]>();
-    for (const e of extractFile(content, file, spec.format, extractOptions)) {
+    // Materialized before the loop: a nested member's key prefix comes from
+    // another entry of the same file, so the whole file has to be in hand
+    // before any key is decided.
+    const fileEntriesRaw = [...extractFile(content, file, spec.format, extractOptions)];
+    const prefixes = nestPrefixes(split, fileEntriesRaw);
+    for (const e of fileEntriesRaw) {
       let key: string | undefined;
       if (transformer) {
         key = transformer.apply(selectKeySource(spec.key!.from, e.key, e.source.path));
       } else {
         key = e.key;
       }
+      key = withNestPrefix(key, e.source.path, split, prefixes);
       if (key === undefined) continue;
       if (!selector.select(key)) continue;
       if (e.source.path !== undefined) {
@@ -555,7 +632,8 @@ function buildEmbeddedFromStaticFiles(
   overlayLayers: Extract<ValueLayer, { kind: "overlay" }>[],
   warn: (message: string) => void,
   sheetName: string,
-  component?: ComponentDeriver
+  component?: ComponentDeriver,
+  split?: StructuralSplit
 ): {
   embedded: EmbeddedEntry[];
   keyMap: KeyMapEntry[];
@@ -621,8 +699,12 @@ function buildEmbeddedFromStaticFiles(
     const fileEntries: EmbeddedEntry[] = [];
     // component id (or "" for none) -> key -> the paths that produced it.
     const seenInFile = new Map<string, Map<string, string[]>>();
-    for (const e of extractFile(content, file, sf.format, extractOptions)) {
-      const key = transformer ? transformer.apply(selectKeySource(sf.key!.from, e.key, e.source.path)) : (e.source.path ?? e.key);
+    // See buildMapFromSources: the prefix is another entry of this same file.
+    const rawEntries = [...extractFile(content, file, sf.format, extractOptions)];
+    const prefixes = nestPrefixes(split, rawEntries);
+    for (const e of rawEntries) {
+      const derived = transformer ? transformer.apply(selectKeySource(sf.key!.from, e.key, e.source.path)) : (e.source.path ?? e.key);
+      const key = withNestPrefix(derived, e.source.path, split, prefixes);
       if (key === undefined) continue;
       if (!fileSelector.select(key)) continue;
       // A file that names its component owns it, the same way a file that
@@ -653,6 +735,10 @@ function buildEmbeddedFromStaticFiles(
         value: e.value,
         source: { file, line: e.source.line, path: e.source.path },
         ...(entryComponent ? { component: entryComponent } : {}),
+        // A nested member is filed INSIDE its member's component, under a
+        // category named for it. The component stays the member — a mapper is
+        // part of the store, not a sibling of it.
+        ...(nestedCategory(split, e.source.path) ?? {}),
         ...(sf.origin ? { origin: sf.origin } : {}),
       });
     }
@@ -789,6 +875,12 @@ export const layeredRecipe: SheetRecipe = {
           steps: [...splitComponentSteps(split, (declaredComponent?.steps ?? []).length > 0), ...(declaredComponent?.steps ?? [])],
         }
       : declaredComponent;
+    // `only:` selects members by matching their address; with a nest the
+    // component steps must keep what they do not match, so the two cannot both
+    // decide. Refused rather than silently applied to one level only.
+    if (split?.nest && split.only) {
+      throw new Error(`layered recipe: sheet "${name}": "split.only" and "split.nest" cannot be combined — the nested rows would be dropped with the members the list excludes`);
+    }
     const componentDeriver = makeComponentDeriver(componentSpec, name, warn, split?.only);
     // A split names the identity field, so it also ANSWERS the extractor's
     // question of which field identifies a list item — declaring `id_fields`
@@ -837,7 +929,7 @@ export const layeredRecipe: SheetRecipe = {
     const defaultsSpecs = asSourceSpecs(sheetSpec.defaults).map(withKeyShape("key"));
     const baseMap =
       defaultsSpecs.length > 0
-        ? buildMapFromSources(io, defaultsSpecs, `sheet "${name}": defaults`, selector, extractOptions, warn, componentDeriver)
+        ? buildMapFromSources(io, defaultsSpecs, `sheet "${name}": defaults`, selector, extractOptions, warn, componentDeriver, split)
         : new Map();
     // Display fallback: the first defaults source, when there is one. Recorded
     // as `source_file`, NOT `file_path` — it is a file in this repository, and
@@ -861,7 +953,8 @@ export const layeredRecipe: SheetRecipe = {
           selector,
           extractOptions,
           warn,
-          componentDeriver
+          componentDeriver,
+          split
         ),
       })
     );
@@ -875,7 +968,8 @@ export const layeredRecipe: SheetRecipe = {
       overlayLayers,
       warn,
       name,
-      componentDeriver
+      componentDeriver,
+      split
     );
 
     // A pattern that matched nothing means the filter is not doing what its
