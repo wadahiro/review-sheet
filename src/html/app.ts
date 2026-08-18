@@ -265,13 +265,23 @@ function hideCellToolNow(): void {
 // localStorage persistence
 // ============================================================
 
-function getStorageKey(data: SheetData): string {
+// Where this document's unsaved work is kept in THIS browser.
+//
+// The metadata alone is not enough to say which document that is: every copy of
+// one generated file carries the same project, version and generated_at, so two
+// copies shared a buffer — edit one without saving, open the other, and the
+// first one's work is in it, ready to be saved into the wrong file. The newest
+// save's id separates them, and a file that has never been saved has no id and
+// keeps the bare key, which is what a freshly generated document has always
+// used.
+export function getStorageKey(data: SheetData, saves: SaveRecord[] = []): string {
   const parts = [
     data.metadata?.project ?? "",
     data.metadata?.version ?? "",
     data.metadata?.generated_at ?? "",
   ];
-  return "review-sheet:" + parts.join(":");
+  const rev = saves[saves.length - 1]?.id;
+  return "review-sheet:" + parts.join(":") + (rev ? `:${rev}` : "");
 }
 
 
@@ -3598,7 +3608,9 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
 }) {
   const t = useMemo(() => getMessages(lang), [lang]);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (document.documentElement.dataset.theme as 'light' | 'dark') ?? 'light');
-  const storageKey = getStorageKey(baseData);
+  // Read before the state below, because the key depends on which REVISION of
+  // this file is open — see getStorageKey.
+  const storageKey = getStorageKey(baseData, embedded?.saves ?? []);
   // Two places hold history: the file itself (what was saved) and localStorage
   // (what has been done since, in this browser). Both are append-only, so the
   // union by id is the whole of it. Neither wins — losing an entry because the
@@ -3611,6 +3623,9 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   // One entry per save: who, when, and why. The per-cell chain cannot hold a
   // reason, and a reason is most of what anyone wants months later.
   const [saves, setSaves] = useState<SaveRecord[]>(() => embedded?.saves ?? []);
+  // The key follows the file: after a save this document IS the new revision,
+  // and its buffer moves with it.
+  const liveStorageKey = getStorageKey(baseData, saves);
   // Ids already written into the file. Anything else is unsaved work, and the
   // file is the only place it can survive — hence the warning on close.
   const [persistedIds, setPersistedIds] = useState<Set<string>>(() => new Set((embedded?.reviews ?? []).map((r) => r.id)));
@@ -3694,8 +3709,14 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
 
   useEffect(() => {
     if (diffMode) return; // never persist synthetic diff reviews
-    saveReviews(storageKey, savedReviews);
-  }, [savedReviews, storageKey, diffMode]);
+    saveReviews(liveStorageKey, savedReviews);
+    // The revision just superseded keeps nothing: its buffer would otherwise
+    // sit in the browser forever, and reopening the older copy would offer
+    // work that has already gone into a newer file.
+    if (liveStorageKey !== storageKey) {
+      try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
+    }
+  }, [savedReviews, liveStorageKey, storageKey, diffMode]);
 
 
   // Print what is on screen. An earlier version force-expanded every collapsed
@@ -4064,7 +4085,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
 
     const unsavedIds = new Set(unsaved.map((r) => r.id));
     const stamped = reviews.map((r) => (unsavedIds.has(r.id) && !r.by && by ? { ...r, by } : r));
-    const record: SaveRecord = { at: new Date().toISOString(), by: by || undefined, comment: comment || undefined, changes: unsaved.length };
+    const record: SaveRecord = { id: genId().replace(/^rev_/, "sav_"), at: new Date().toISOString(), by: by || undefined, comment: comment || undefined, changes: unsaved.length };
     const nextSaves = [...saves, record];
 
     try {

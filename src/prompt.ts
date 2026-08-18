@@ -186,7 +186,7 @@ export const HELD_REASON_DOCUMENT =
 export const HELD_REASON_SHARED_INSTANCE =
   "Cannot apply directly: the value is a single shared definition — changing it for one environment means adding an environment-level override, which is a structural decision";
 
-export type SaveRecord = { at: string; by?: string; comment?: string; changes: number };
+export type SaveRecord = { id?: string; at: string; by?: string; comment?: string; changes: number };
 
 export type ReviewTarget = { sheet: string; category?: string; param?: string; instance?: string; field?: string };
 // Mirrors types.ts's ReviewChange/ReviewItem. See there for what `at`/`by`/
