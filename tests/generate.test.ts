@@ -82,6 +82,42 @@ describe("generateHtml", () => {
     expect(html).toContain('"review":true');
   });
 
+  // A "</script>" anywhere in the embedded text ends the element early and the
+  // rest of the document becomes markup — which looks like a blank page. Any
+  // config value can contain one, so this is a live failure, not a
+  // hypothetical.
+  describe("embedded text cannot end its own script element", () => {
+    const parse = (html: string): Document => {
+      const w = new Window();
+      w.document.write(html);
+      return w.document as unknown as Document;
+    };
+    const scriptsOf = (html: string): string[] =>
+      [...parse(html).querySelectorAll("script")].map((e) => e.textContent ?? "");
+
+    it("keeps the app bundle whole", async () => {
+      const html = await generateHtml(simpleFixture as ParameterSheetInput);
+      const scripts = scriptsOf(html);
+      // theme, data, config, app — no more, or something was cut.
+      expect(scripts).toHaveLength(4);
+      const app = scripts[3];
+      expect(app.length).toBeGreaterThan(10_000);
+      // Truncation happens INSIDE the bundle, so the tail is what proves it whole.
+      expect(app.trimEnd().endsWith("</script>")).toBe(false);
+    });
+
+    it("survives a config value that closes a script tag", async () => {
+      const nasty = JSON.parse(JSON.stringify(simpleFixture)) as ParameterSheetInput;
+      nasty.sheets[0].categories[0].params![0].value = '</script><h1>gotcha</h1>';
+      const html = await generateHtml(nasty);
+      expect(scriptsOf(html)).toHaveLength(4);
+      // The text is still in the file — inside the JSON, where it belongs. What
+      // must not happen is the browser reading it as markup.
+      expect(html).toContain("gotcha");
+      expect(parse(html).querySelector("h1")).toBeNull();
+    });
+  });
+
   it("carries capabilities.apply:false through the embedded payload for a single-version input", async () => {
     const input: ParameterSheetInput = {
       ...(simpleFixture as ParameterSheetInput),
