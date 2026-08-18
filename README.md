@@ -792,6 +792,11 @@ Saving rewrites the file in place on Chrome and Edge (via the File System Access
 API) and falls back to a download elsewhere. Closing with unsaved edits warns —
 the file is the only place they live.
 
+Each save stamps the file with a revision, and the browser keeps unsaved work
+under it. Without that, every copy of one generated document shared a buffer:
+edit one copy without saving, open another, and the first one's work is sitting
+in it, ready to be saved into the wrong file.
+
 ### Getting the changes back into the config files
 
 The history travels inside the document, so the edited HTML **is** the review
