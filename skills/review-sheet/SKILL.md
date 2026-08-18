@@ -731,6 +731,39 @@ aggregating three roles' variables shows `common/defaults/main.yml` and
 `sso/defaults/main.yml` rather than one `main.yml` holding both their rows.
 The name grows only where it has to.
 
+**`deployed_file:` — when the file a row is DEFINED in is the wrong axis.**
+
+A sheet aggregating Ansible variables from several roles has, in the model,
+only the `defaults/main.yml` each variable is written in. What a reviewer of
+the host is holding is `/etc/sysctl.d/override.conf`. Nothing can derive that:
+a variable does not know which template interpolates it, and a materialized
+product default has no file at all — which is exactly why the rows a ledger
+adds are the ones a hand-written `category:` cannot reach.
+
+So it is stated, on the dictionary binding:
+
+```yaml
+"OS basics":
+  recipe: layered
+  group_by: file
+  dictionaries:
+    - product: sysctl
+      version: "8.5"
+      deployed_file: /etc/sysctl.d/override.conf
+      materialize: true          # these rows get the file too
+```
+
+and, for the one row that does not follow its neighbours, on the row itself in
+`sheet.yml`:
+
+```yaml
+params:
+  net.ipv4.ip_forward: { deployed_file: /etc/sysctl.conf }
+```
+
+Narrowest wins: the row's own, then its component's binding, then a binding
+with no component (the whole sheet), then the derivation in the table above.
+
 Note what the reader sees: rows the project does not set are hidden behind "show
 unset rows", so the default view of a `group_by: file` sheet IS the file — in
 the reference project, 22 rows of keycloak.conf's own settings rather than the
@@ -1898,6 +1931,7 @@ fails when one of them is missing from this section):
 | sheet | `params:` | the rows themselves |
 | param | `category:` | this row's category — a string, a LIST (a path), or `null` for none |
 | param | `dict_key:` | bind this row to a differently-named dictionary entry (rare — see the next section) |
+| param | `deployed_file:` | where THIS row's value is written on the host, overriding its dictionary binding's own `deployed_file:` — read only by `group_by: file` |
 | param | `description:` | the row's description, when no dictionary supplies one |
 | param | `remarks:` | a project note shown beside the row — not the description |
 | param | `out_of_scope:` | excluded from THIS review, with a reason and an owner |

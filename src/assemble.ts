@@ -241,6 +241,10 @@ export type SheetInputs = {
   // pair cannot answer for three different files, so it is left unset, and the
   // per-template declaration had nowhere to be recorded.
   componentFiles?: Map<string, { filePath?: string; sourceFile?: string }>;
+  // Where each component's settings end up on the host, from its dictionary
+  // binding's `deployed_file`. Keyed by component; "" is the whole sheet.
+  // Read only by `group_by: file` — see fileCategory.
+  deployedFiles?: Map<string, string>;
   // The order the spec declares this sheet's components in. Reading order is a
   // decision, and the order rows arrive in is not one — see fileDrafts.
   componentOrder?: string[];
@@ -1359,6 +1363,7 @@ function fileDrafts(
   templateVariables: Set<string> | undefined,
   componentLabels: Map<string, LangText> | undefined,
   componentFiles: Map<string, { filePath?: string; sourceFile?: string }> | undefined,
+  deployedFiles: Map<string, string> | undefined,
   componentOrder: string[] | undefined
 ): Category[] {
   // How many distinct components the sheet has. One is the ordinary case (a
@@ -1420,6 +1425,15 @@ function fileDrafts(
   // row at a time is what let two files with the same last segment merge into
   // one heading with nothing saying so.
   const rawFileOf = (d: (typeof drafts)[number]): string | undefined =>
+    // Stated beats derived, narrowest first. A project that says where these
+    // settings are written knows something the model cannot work out: a
+    // variable does not know which template interpolates it, and a
+    // materialized product default has no file of its own at all — so without
+    // this, exactly the rows a ledger adds are the rows `group_by: file`
+    // cannot place.
+    paramForRow(projectMeta, sheetName, d.component, d.key)?.deployed_file ??
+    deployedFiles?.get(d.component ?? "") ??
+    deployedFiles?.get("") ??
     fileCategory(
       d.param,
       componentFiles?.get(d.component ?? "")?.filePath ?? sheetArtifact,
@@ -2013,6 +2027,14 @@ export function assembleSheetsWithReport(
     // Expanded here, where the component set is already in hand (above) and
     // before anything reads a binding.
     const sheetDictionaries = expandPerComponent(si.name, opts.dictionaries?.[si.name] ?? [], components);
+    // Where each binding says its settings are written. Built here, from the
+    // bindings this sheet already resolved, so `group_by: file` needs nothing
+    // threaded through the spec loader. A binding with no component speaks for
+    // the whole sheet ("").
+    const declaredDeployed = new Map<string, string>();
+    for (const b of sheetDictionaries) {
+      if (b.deployed_file !== undefined) declaredDeployed.set(b.component ?? "", b.deployed_file);
+    }
     const bindSources: ScopedBindSource[] = loadBindSources(sheetDictionaries, opts.metadataDirs ?? [], opts.readFile, si.dictKeySteps).map(
       (source, i) => ({ source, component: sheetDictionaries[i]!.component })
     );
@@ -2150,6 +2172,7 @@ export function assembleSheetsWithReport(
       si.templateVariables ? new Set(si.templateVariables) : undefined,
       si.componentLabels,
       si.componentFiles,
+      declaredDeployed.size > 0 ? declaredDeployed : si.deployedFiles,
       si.componentOrder
     );
     sheets.push({
