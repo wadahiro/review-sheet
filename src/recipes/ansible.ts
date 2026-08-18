@@ -486,6 +486,9 @@ export const ansibleRecipe: SheetRecipe = {
     // Every variable the template(s) interpolate, filled by pass 1 — see the
     // return, and SheetInputs.templateVariables.
     const templateVariables: string[] = [];
+    // The same fact in the ARTIFACT axis's namespace: the row keys pass 1 saw a
+    // variable go into. See SheetInputs.variableBackedKeys.
+    const variableBackedRowKeys: string[] = [];
     // Candidate row-key -> variable pairs, resolved into `keyMap` once every
     // template has been read. Collected rather than pushed directly because a
     // SCOPED sheet can produce the same row key twice — `Unit.Description`
@@ -659,6 +662,7 @@ export const ansibleRecipe: SheetRecipe = {
             else entryKeysByVariable.set(variable, [productKey]);
           }
           const vars = variablesByEntryKey.get(productKey) ?? new Set<string>();
+          if (vars.size === 0) variableBackedRowKeys.push(productKey);
           for (const variable of lineVars) vars.add(variable);
           variablesByEntryKey.set(productKey, vars);
         }
@@ -1247,6 +1251,10 @@ export const ansibleRecipe: SheetRecipe = {
       // the artifact" made exactly the mixed lines fall out of the artifact
       // they are lines of.
       ...(templateVariables.length > 0 ? { templateVariables } : {}),
+      // The row keys pass 1 saw a variable interpolated into — the mirror of
+      // the above, in the namespace the artifact axis actually uses. See
+      // SheetInputs.variableBackedKeys.
+      ...(variableBackedRowKeys.length > 0 ? { variableBackedKeys: variableBackedRowKeys } : {}),
       ...(componentOf.size > 0 ? { componentOf } : {}),
       ...(componentLabels.size > 0 ? { componentLabels } : {}),
       ...(componentFiles.size > 0 ? { componentFiles } : {}),

@@ -724,4 +724,68 @@ describe("group_by: file with a multi-variable line", () => {
       "port",
     ]);
   });
+
+  // The same line on the ARTIFACT axis, which is where the fix above did not
+  // reach. There a row is named after the DIRECTIVE (`db-url`), and the set the
+  // check consulted holds VARIABLE names — a question in the wrong namespace,
+  // always false. So the row fell out of the artifact it is a line of and
+  // opened a category named after the file its variables are DEFINED in, one
+  // row wide, beside the file it belongs to.
+  it("keeps a multi-variable DIRECTIVE in the artifact, not in the variables' file", () => {
+    const recipe = getRecipe("ansible")!;
+    const files: Record<string, string> = {
+      "/r/defaults.yml": "app_port: 8080\ndb_host: db.internal\ndb_name: appdb\n",
+      "/r/app.conf.j2": "port={{ app_port }}\ndb-url=jdbc:postgresql://{{ db_host }}:5432/{{ db_name }}\n",
+      "project.yml":
+        "sheets:\n  app:\n    group_by: file\n    under_key: { id: variable, label: { en: V } }\n" +
+        "    params:\n      port: { description: { en: p } }\n      db-url: { description: { en: u } }\n",
+    };
+    const si = recipe.load(
+      {
+        name: "app",
+        recipe: "ansible",
+        rows: "artifact",
+        defaults: "defaults.yml",
+        template: "app.conf.j2",
+        deployed_path: "/etc/app/app.conf",
+      },
+      {
+        readFile: (p: string) => files[p] ?? null,
+        specDir: "/r",
+        resolve: (p: string) => `/r/${p.split("/").pop()}`,
+        instances: [],
+      }
+    );
+    const input = assembleSheets([si], {
+      projectPath: "project.yml",
+      readFile: (p: string) => files[p] ?? null,
+      strictMetadata: false,
+    });
+    // One heading. `defaults.yml` beside it, holding only `db-url`, is the bug.
+    expect(input.sheets[0].categories.map((c) => c.name)).toEqual(["/etc/app/app.conf"]);
+    expect((input.sheets[0].categories[0].params ?? []).map((p) => p.key).sort()).toEqual(["db-url", "port"]);
+  });
+
+  // The recipe has to SAY which rows those are: the model could not answer it,
+  // and the set that looked like it could is in the other namespace.
+  it("reports the row keys a variable was interpolated into", () => {
+    const recipe = getRecipe("ansible")!;
+    const files: Record<string, string> = {
+      "/r/defaults.yml": "db_host: db.internal\ndb_name: appdb\n",
+      "/r/app.conf.j2": "db-url=jdbc:postgresql://{{ db_host }}:5432/{{ db_name }}\n",
+    };
+    const si = recipe.load(
+      { name: "app", recipe: "ansible", rows: "artifact", defaults: "defaults.yml", template: "app.conf.j2" },
+      {
+        readFile: (p: string) => files[p] ?? null,
+        specDir: "/r",
+        resolve: (p: string) => `/r/${p.split("/").pop()}`,
+        instances: [],
+      }
+    );
+    expect(si.variableBackedKeys).toEqual(["db-url"]);
+    // ...and the variable names stay in their own list, which is what the
+    // variable axis reads.
+    expect([...(si.templateVariables ?? [])].sort()).toEqual(["db_host", "db_name"]);
+  });
 });
