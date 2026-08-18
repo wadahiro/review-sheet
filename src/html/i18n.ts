@@ -141,6 +141,7 @@ type Messages = {
   docPasting: string;
   docNoSource: string;
   editMenu: (n: number) => string;
+  restoredToast: (n: number) => string;
   saveDocument: string;
   saveTooltip: string;
   saveUnsaved: (n: number) => string;
@@ -364,6 +365,7 @@ const ja: Messages = {
   docPasting: "画像を埋め込んでいます…",
   docNoSource: "この文書は Markdown の原文を持っていません（編集を有効にする前に生成されたものです）。編集するには生成し直してください。",
   editMenu: (n) => `変更 (${n})`,
+  restoredToast: (n) => `前回このブラウザで作業した、保存されていない変更 ${n} 件を読み込みました`,
   saveDocument: "保存",
   saveTooltip: "編集を含めてこのHTMLを書き出す",
   saveUnsaved: (n) => `未保存の変更が ${n} 件あります。閉じると失われます。`,
@@ -560,6 +562,7 @@ const en: Messages = {
   docPasting: "Embedding the image…",
   docNoSource: "This document carries no markdown source (it was built before editing was enabled). Regenerate it to edit.",
   editMenu: (n) => `Changes (${n})`,
+  restoredToast: (n) => `Loaded ${n} unsaved change${n === 1 ? "" : "s"} from a previous session in this browser`,
   saveDocument: "Save",
   saveTooltip: "Write this HTML back out, edits included",
   saveUnsaved: (n) => `${n} unsaved change${n === 1 ? "" : "s"}. Closing now loses them.`,

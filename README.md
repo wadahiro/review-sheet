@@ -797,6 +797,18 @@ under it. Without that, every copy of one generated document shared a buffer:
 edit one copy without saving, open another, and the first one's work is sitting
 in it, ready to be saved into the wrong file.
 
+That work is loaded automatically, and the document **says so** — a notice when
+it opens, and a count beside the save button for as long as it is unsaved. The
+count survives the narrow-window layout that collapses button labels; the word
+"Save" does not, and does not need to. Loading it is not a choice and there is no way to throw it away
+there — both alternatives are worse. A discard button is an irreversible action
+sitting beside the safe one, and "restore later" lets two working states exist
+at once: put the work aside, edit, and now there are two sets of unsaved changes
+and a question about which one the file gets. One state, always loaded, and the
+screen says where it came from.
+
+Only the unsaved work is kept in the browser — the rest is in the file.
+
 ### Getting the changes back into the config files
 
 The history travels inside the document, so the edited HTML **is** the review

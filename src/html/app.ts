@@ -1210,6 +1210,32 @@ function DocumentBody({ sheet, reviews, editEnabled, t }: {
   `;
 }
 
+// WHICH row is unsaved, and what kind of change it is waiting to carry — never
+// the value itself. This is a status notice, not a diff: the value is on the
+// row, one click away, and repeating it here only makes the list long enough
+// that nobody reads which rows are in it.
+//
+// The kind still has to be said. A struck-out row and a rewritten document
+// carry no `changes` at all, so a bare key told the reader that something had
+// happened to `db-url` and not what.
+function unsavedLabel(r: ReviewItem, t: Messages): VNode {
+  const where = [r.target.param ?? r.target.sheet, r.target.instance ? `(${r.target.instance})` : ""]
+    .filter(Boolean)
+    .join(" ");
+  const field = r.target.field ?? "value";
+  const kind =
+    r.deletes === true ? t.rowDelete
+    : r.deletes === false ? t.rowRestore
+    : field === DOCUMENT_FIELD ? t.docEditShort
+    : r.creates === true ? t.addRow
+    : field === "remarks" ? t.fieldRemarks
+    : undefined;
+  return html`
+    <code>${where}</code>
+    ${kind && html`<span class="rs-unsaved-kind">${kind}</span>`}
+  ` as VNode;
+}
+
 // A short, stable name for a pasted image. Content-addressed so the same
 // picture pasted twice is one file, and so two people pasting the same
 // screenshot do not each add one. FNV-1a: this names a file, it does not
@@ -3620,6 +3646,24 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
     const seen = new Set((embedded?.reviews ?? []).map((r) => r.id));
     return [...(embedded?.reviews ?? []), ...stored.filter((r) => !seen.has(r.id))];
   });
+  // How much of the above came from THIS BROWSER rather than from the file,
+  // counted once at mount and used only to say so when the document opens.
+  //
+  // Loading it is not a choice, and there is nowhere here to throw it away.
+  // Both were tried and both are worse: a discard button is an irreversible
+  // action sitting beside the safe one, and "restore later" lets two working
+  // states exist at once — put the work aside, edit, and now there are two sets
+  // of unsaved changes and a question about which one the file gets. One state,
+  // always loaded, and the document says where it came from.
+  const [restoredFromBrowser] = useState<number>(() => {
+    const inFile = new Set((embedded?.reviews ?? []).map((r) => r.id));
+    return loadReviews(storageKey).filter((r) => !inFile.has(r.id)).length;
+  });
+  // Said on open, where it happened. The overview carries the same fact
+  // permanently, but a document does not always open there and a reader who
+  // goes straight to a sheet would never learn that what they are looking at
+  // is not what the file holds.
+  const [notice, setNotice] = useState(() => (editEnabled ? restoredFromBrowser : 0));
   // One entry per save: who, when, and why. The per-cell chain cannot hold a
   // reason, and a reason is most of what anyone wants months later.
   const [saves, setSaves] = useState<SaveRecord[]>(() => embedded?.saves ?? []);
@@ -4353,10 +4397,15 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
             </button>
           `}
           ${effEditEnabled && pristineHtml !== undefined && html`
+            ${/* The word collapses on a narrow window like every other button
+                  label; the COUNT does not. It is the one thing on the bar
+                  saying this document is holding work the file does not have,
+                  and it went with the label. */ ""}
             <button class=${`rs-toolbar-btn rs-toolbar-btn-labelled ${unsaved.length > 0 ? "rs-toolbar-btn-primary" : ""}`}
-                    onClick=${openSave} title=${t.saveTooltip}>
+                    onClick=${openSave} title=${`${t.saveTooltip}${unsaved.length > 0 ? ` \u2014 ${t.saveCount(unsaved.length)}` : ""}`}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              <span class="rs-btn-label">${t.saveDocument}${unsaved.length > 0 ? ` (${unsaved.length})` : ""}</span>
+              <span class="rs-btn-label">${t.saveDocument}</span>
+              ${unsaved.length > 0 && html`<span class="rs-btn-count">(${unsaved.length})</span>`}
             </button>
             <span class="rs-tabs-sep"></span>
           `}
@@ -4636,6 +4685,14 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                           onClose=${() => setArtifactTarget(null)}
                           onPick=${(instance: string | undefined) => setArtifactTarget((c) => (c ? { ...c, instance } : c))}
                           onJumpRow=${jumpToRow} t=${t} />
+      `}
+
+      ${notice > 0 && html`
+        <div class="rs-toast" role="status" onClick=${() => setNotice(0)}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
+          <span>${t.restoredToast(notice)}</span>
+          <button class="rs-toast-close" onClick=${() => setNotice(0)} aria-label="${t.shortcutClose}">\u00d7</button>
+        </div>
       `}
 
       <${CellToolbarHost} onOpenReview=${openReview} onOpenEdit=${openEdit} onToggleDelete=${handleToggleDelete} t=${t} />

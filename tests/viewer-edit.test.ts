@@ -51,11 +51,14 @@ afterEach(() => {
   localStorage.clear();
 });
 
+// `reviews` is the history the FILE carries. It used to be seeded into
+// localStorage, which now means something else entirely: work this browser
+// holds that never reached the file, offered on open rather than applied.
 function mount(opts: { editEnabled: boolean; reviews?: ReviewItem[]; embedded?: ReviewItem[] }): HTMLElement {
   location.hash = "#1";
   const host = document.createElement("div");
   document.body.appendChild(host);
-  if (opts.reviews?.length) localStorage.setItem(STORAGE_KEY, JSON.stringify(opts.reviews));
+  if (!opts.editEnabled && opts.reviews?.length) localStorage.setItem(STORAGE_KEY, JSON.stringify(opts.reviews));
   render(
     h(Root, {
       payload: PAYLOAD,
@@ -67,7 +70,7 @@ function mount(opts: { editEnabled: boolean; reviews?: ReviewItem[]; embedded?: 
       initialLang: "ja",
       server: false,
       pristineHtml: "<!DOCTYPE html><html><body><div id=\"app\"></div></body></html>",
-      embedded: { reviews: opts.embedded ?? [], saves: [] },
+      embedded: { reviews: opts.embedded ?? (opts.editEnabled ? (opts.reviews ?? []) : []), saves: [] },
     }),
     host
   );
@@ -160,20 +163,20 @@ describe("editing one environment of a shared row", () => {
     location.hash = "#1";
     const host = document.createElement("div");
     document.body.appendChild(host);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([{
+    const carried: ReviewItem[] = [{
       id: "rev_x",
       target: { sheet: "db", category: "接続", param: "max_connections", instance: "本番", field: "value" },
       changes: [{ field: "value", suggested: "700" }],
       status: "applied",
       at: "2026-08-18T00:00:00Z",
       by: "田中",
-    }]));
+    }];
     render(
       h(Root, {
         payload: { metadata: SHARED.metadata, versions: [{ version: "current", sheets: SHARED.sheets }] },
         reviewEnabled: true, editEnabled: true, initialLang: "ja", server: false,
         pristineHtml: "<!DOCTYPE html><html><body><div id=\"app\"></div></body></html>",
-        embedded: { reviews: [], saves: [] },
+        embedded: { reviews: carried, saves: [] },
       }),
       host
     );

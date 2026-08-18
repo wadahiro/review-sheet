@@ -2158,6 +2158,118 @@ code {
   color: var(--rs-success);
 }
 
+/* The unsaved work, listed by ROW — not by value. A count alone says the
+   document is not what the file says without saying which rows are involved;
+   the values themselves are on those rows, and repeating them here only makes
+   the list too long to read. */
+.rs-restore-list {
+  margin: 0 0 0.85rem;
+  padding: 0.5rem 0.75rem;
+  list-style: none;
+  max-height: 12rem;
+  overflow-y: auto;
+  background: var(--rs-subtle, #f8fafc);
+  border: 1px solid var(--rs-border-light);
+  border-radius: 4px;
+}
+
+.rs-restore-warn {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--rs-text-muted);
+}
+
+/* One line per entry: what changed on the left, when on the right. The stamp
+   used to sit directly against the key with nothing between them — the gap it
+   relies on elsewhere belongs to the edit chain's flex row, not to this list. */
+.rs-restore-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.2rem 0;
+  font-size: 0.8rem;
+}
+
+.rs-unsaved-what {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.rs-unsaved-kind {
+  font-size: 0.7rem;
+  color: var(--rs-text-muted);
+}
+
+.rs-restore-list .rs-edit-when {
+  flex-shrink: 0;
+}
+
+.rs-restore-list code {
+  font-size: 0.85em;
+}
+
+/* Plain text beside the icon, and NOT hidden with the labels below 960px. A
+   badge was tried: a chip small enough to sit on a 13px icon needs its own
+   palette, its own ring to separate it from the button, and it still read as
+   something stuck to the corner. The count is a number — it can just be one. */
+.rs-btn-count {
+  margin-left: 0.15rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Said on open, then gone. Not a dialog: there is nothing to decide — the work
+   is already loaded — and a modal for a fact is a click somebody has to spend
+   before they can read the page. It stays until dismissed rather than fading on
+   a timer, because a notice nobody happened to be looking at is the same as no
+   notice. */
+.rs-toast {
+  position: fixed;
+  top: calc(var(--rs-tabbar-h) + 0.75rem);
+  left: 50%;
+  transform: translateX(-50%);
+  /* Above the chrome it has to outrank — the outline panel (90), the tab bar
+     and its overflow menu (95/96), the artifact panel (150) — and below a
+     modal overlay (1000), which is the one thing that should cover it: while a
+     dialog is open, this notice is not what the reader is being asked about. */
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: min(40rem, 92vw);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--rs-text);
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-success);
+  border-left: 3px solid var(--rs-success);
+  border-radius: var(--rs-radius);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.12);
+  cursor: pointer;
+}
+
+.rs-toast svg {
+  flex-shrink: 0;
+  color: var(--rs-success);
+}
+
+.rs-toast-close {
+  flex-shrink: 0;
+  margin-left: 0.25rem;
+  padding: 0 0.2rem;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--rs-text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
 .rs-save-busy {
   color: var(--rs-text-muted);
   font-style: italic;
@@ -2433,12 +2545,14 @@ code {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1rem;
   margin-top: 1rem;
 }
 
 .rs-modal-shortcuts {
   font-size: 0.7rem;
   color: var(--rs-text-muted);
+  min-width: 0;
 }
 
 .rs-modal-shortcuts kbd {
@@ -2452,9 +2566,17 @@ code {
   box-shadow: 0 1px 0 var(--rs-border);
 }
 
+/* The buttons keep their size; the text beside them gives way. Without this a
+   long hint squeezed the actions until their LABELS wrapped — "破棄する" broken
+   across two lines is not a button anyone wants to press. */
 .rs-modal-actions {
   display: flex;
   gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.rs-modal-actions button {
+  white-space: nowrap;
 }
 
 .rs-btn-primary {

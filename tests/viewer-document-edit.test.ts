@@ -72,7 +72,8 @@ function mount(opts: { editEnabled: boolean; reviews?: ReviewItem[] }): HTMLElem
   location.hash = "#1";
   const host = document.createElement("div");
   document.body.appendChild(host);
-  if (opts.reviews?.length) localStorage.setItem(STORAGE_KEY, JSON.stringify(opts.reviews));
+  // The history the FILE carries — see viewer-edit.test.ts's mount for why
+  // this is no longer seeded through localStorage.
   render(
     h(Root, {
       payload: PAYLOAD,
@@ -81,7 +82,7 @@ function mount(opts: { editEnabled: boolean; reviews?: ReviewItem[] }): HTMLElem
       initialLang: "ja",
       server: false,
       pristineHtml: '<!DOCTYPE html><html><body><div id="app"></div></body></html>',
-      embedded: { reviews: [], saves: [] },
+      embedded: { reviews: opts.editEnabled ? (opts.reviews ?? []) : [], saves: [] },
     }),
     host
   );
