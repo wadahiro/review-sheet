@@ -378,3 +378,110 @@ describe("a finding survives its row moving to another category", () => {
     expect(out.moved[0].to).toBe("poc/Tokens/Access tokens");
   });
 });
+
+// Edits made in the sheet itself arrive in the same file as review findings.
+// They are the same kind of work — change this line to that value — so they go
+// through the same path, with one difference: an edit history is COLLAPSED to
+// its net change first. Replaying 500 -> 600 -> 700 step by step would fail at
+// the first step the moment anyone had applied part of it by hand.
+describe("edits made in the sheet itself", () => {
+  const edit = (id: string, from: string, to: string, at: string): ReviewItem => ({
+    id,
+    target: { sheet: "OS", category: "Network", param: "net.ipv4.tcp_fin_timeout", field: "value" },
+    changes: [{ field: "value", current: from, suggested: to }],
+    status: "applied",
+    at,
+    by: "田中",
+  });
+  const added: ReviewItem = {
+    id: "rev_add",
+    target: { sheet: "OS", category: "Network", param: "brand.new", field: "value" },
+    changes: [{ field: "value", suggested: "1" }],
+    status: "applied",
+    creates: true,
+    at: "2026-08-18T00:00:00Z",
+  };
+  const struck: ReviewItem = {
+    id: "rev_del",
+    target: { sheet: "OS", category: "Network", param: "drift.key" },
+    status: "applied",
+    deletes: true,
+    at: "2026-08-18T00:00:00Z",
+  };
+
+  it("writes a single edit to the file", () => {
+    const out = computeApply(data, [edit("rev_a", "60", "30", "2026-08-18T00:00:00Z")], files({ "/etc/sysctl.conf": sysctl }));
+    expect(out.applied).toBe(1);
+    expect(out.files[0].content).toContain("net.ipv4.tcp_fin_timeout = 30");
+  });
+
+  // The file still holds the ORIGINAL value, so the pair that matters is
+  // (what the sheet was built with, what it says now) — not each step.
+  it("collapses a chain of edits into one change", () => {
+    const out = computeApply(
+      data,
+      [edit("rev_a", "60", "45", "2026-08-18T00:00:00Z"), edit("rev_b", "45", "30", "2026-09-02T00:00:00Z")],
+      files({ "/etc/sysctl.conf": sysctl })
+    );
+    expect(out.applied).toBe(1);
+    expect(out.files[0].content).toContain("net.ipv4.tcp_fin_timeout = 30");
+  });
+
+  it("does nothing when the chain ends where it started", () => {
+    const out = computeApply(
+      data,
+      [edit("rev_a", "60", "30", "2026-08-18T00:00:00Z"), edit("rev_b", "30", "60", "2026-09-02T00:00:00Z")],
+      files({ "/etc/sysctl.conf": sysctl })
+    );
+    expect(out.applied).toBe(0);
+    expect(out.files).toHaveLength(0);
+  });
+
+  // Neither is an edit to a line that exists, so neither can be written by a
+  // source map — and going quiet about them would leave the most consequential
+  // half of a returned sheet unmentioned.
+  it("holds an added row for the prompt instead of guessing where it goes", () => {
+    const out = computeApply(data, [added], files({ "/etc/sysctl.conf": sysctl }));
+    expect(out.applied).toBe(0);
+    expect(out.held).toBe(1);
+    expect(out.results[0].reason).toContain("no config file has a line for it");
+    expect(out.heldPrompt).toContain("brand.new");
+  });
+
+  it("holds a struck-out row rather than deciding how a line disappears", () => {
+    const out = computeApply(data, [struck], files({ "/etc/sysctl.conf": sysctl }));
+    expect(out.held).toBe(1);
+    expect(out.results[0].reason).toContain("no longer used");
+    expect(out.heldPrompt).toContain("drift.key");
+  });
+
+  it("does not also try to edit a row it is about to strike out", () => {
+    const valueEdit: ReviewItem = {
+      id: "rev_v",
+      target: { sheet: "OS", category: "Network", param: "drift.key", field: "value" },
+      changes: [{ field: "value", current: "100", suggested: "200" }],
+      status: "applied",
+      at: "2026-08-18T00:00:00Z",
+    };
+    const out = computeApply(data, [valueEdit, struck], files({ "/etc/sysctl.conf": sysctl }));
+    expect(out.applied).toBe(0);
+    expect(out.results.map((r) => r.reason)).toEqual([expect.stringContaining("no longer used")]);
+  });
+
+  it("still reports every edit it saw", () => {
+    const out = computeApply(data, [edit("rev_a", "60", "30", "2026-08-18T00:00:00Z"), added, struck], files({ "/etc/sysctl.conf": sysctl }));
+    expect(out.edits.map((e) => e.id)).toEqual(["rev_a", "rev_add", "rev_del"]);
+  });
+
+  it("leaves a review finding on the same document unaffected", () => {
+    const finding: ReviewItem = {
+      id: "rev_pending",
+      target: { sheet: "OS", category: "Network", param: "dup.key", field: "value" },
+      changes: [{ field: "value", current: "1", suggested: "2" }],
+      status: "pending",
+    };
+    const out = computeApply(data, [edit("rev_a", "60", "30", "2026-08-18T00:00:00Z"), finding], files({ "/etc/sysctl.conf": sysctl }));
+    expect(out.edits).toHaveLength(1);
+    expect(out.applied).toBeGreaterThan(0);
+  });
+});

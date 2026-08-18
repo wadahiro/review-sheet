@@ -8,7 +8,9 @@
 // and needs a real browser.
 
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-GlobalRegistrator.register();
+// Guarded: bun can run several DOM test files in one process, and a second
+// register() throws instead of being a no-op.
+if (typeof (globalThis as { document?: unknown }).document === "undefined") GlobalRegistrator.register();
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { h, render } from "preact";
@@ -103,7 +105,7 @@ function mount(reviews: ReviewDocument["reviews"] = []): HTMLElement {
     const payload = JSON.stringify(reviews);
     for (const k of storageKeys()) localStorage.setItem(k, payload);
   }
-  render(h(Root, { payload: PAYLOAD, reviewEnabled: true, initialLang: "ja", server: false }), host);
+  render(h(Root, { payload: PAYLOAD, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
   return host;
 }
 
@@ -227,6 +229,7 @@ describe("viewer: compare two versions", () => {
       h(Root, {
         payload: { metadata: { title: "t" }, versions: [at("4"), at("16")] },
         reviewEnabled: true,
+        editEnabled: false,
         initialLang: "ja",
         server: false,
       }),
@@ -381,7 +384,7 @@ describe("viewer: category label vs identity", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: PAYLOAD_L, reviewEnabled: true, initialLang: lang, server: false }), host);
+    render(h(Root, { payload: PAYLOAD_L, reviewEnabled: true, editEnabled: false, initialLang: lang, server: false }), host);
     return host;
   }
 
@@ -577,7 +580,7 @@ describe("viewer: anchor ids for non-ASCII names", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: PAYLOAD, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: PAYLOAD, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     return host;
   }
 
@@ -644,7 +647,7 @@ describe("viewer: sheet label", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: PAYLOAD_S, reviewEnabled: true, initialLang: lang, server: false }), host);
+    render(h(Root, { payload: PAYLOAD_S, reviewEnabled: true, editEnabled: false, initialLang: lang, server: false }), host);
     return host;
   }
   // `[data-sheet-idx]` excludes the overview tab, which is a .rs-tab too but is
@@ -677,7 +680,7 @@ describe("viewer: sheet label", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
     const bare = { metadata: { title: "t" }, versions: [{ version: "current", sheets: [{ name: "aws infrastructure", categories: LABELLED_SHEET.sheets[0].categories }] }] };
-    render(h(Root, { payload: bare, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: bare, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     expect(tabs(host)).toEqual(["aws infrastructure"]);
   });
 
@@ -720,7 +723,7 @@ describe("viewer: sheet groups", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     return host;
   }
   const groupTabs = (host: HTMLElement): string[] =>
@@ -750,7 +753,7 @@ describe("viewer: sheet groups", () => {
     location.hash = "";
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: payloadOf(GROUPED), reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: payloadOf(GROUPED), reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     expect(host.querySelector(".rs-subtabs")).toBeNull();
   });
 
@@ -866,7 +869,7 @@ describe("viewer: filtering which environments are shown", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     return host;
   }
   const headers = (host: HTMLElement): string[] =>
@@ -933,7 +936,7 @@ describe("viewer: the column filter follows the table's order", () => {
     location.hash = "#2"; // the second sheet: local, staging, production
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     const btn = [...host.querySelectorAll("button")].find((b) => /絞り込み/.test(b.textContent ?? ""));
     (btn as HTMLElement).click();
     await Promise.resolve();
@@ -992,7 +995,7 @@ describe("viewer: components side by side", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     const toggle = host.querySelector(".rs-compare-toggle input") as HTMLInputElement;
     if (!toggle) throw new Error("side-by-side toggle not offered");
     toggle.click();
@@ -1029,7 +1032,7 @@ describe("viewer: components side by side", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: one, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: one, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     expect(host.querySelector(".rs-compare-toggle")).toBeNull();
   });
 });
@@ -1060,7 +1063,7 @@ describe("viewer: cell sub-lines stack", () => {
         },
       ],
     };
-    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
     await Promise.resolve();
     const sublines = host.querySelectorAll(".rs-pivot .rs-key-subline");
@@ -1093,7 +1096,7 @@ describe("viewer: the side-by-side view keeps its bearings", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
     await Promise.resolve();
     return host;
@@ -1151,7 +1154,7 @@ describe("viewer: the side-by-side view keeps the stacked view's structure", () 
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
     await Promise.resolve();
     return host;
@@ -1208,7 +1211,7 @@ describe("viewer: the outline names what is being compared", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     if (pivot) {
       (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
       await Promise.resolve();
@@ -1279,7 +1282,7 @@ describe("viewer: side by side aligns the environments across a row", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
     await Promise.resolve();
     const row = [...host.querySelectorAll(".rs-pivot tbody tr")].find(
@@ -1358,7 +1361,7 @@ function mountArtifact(): HTMLElement {
   openSheetTab();
   const host = document.createElement("div");
   document.body.appendChild(host);
-  render(h(Root, { payload: WITH_ARTIFACT, reviewEnabled: true, initialLang: "ja", server: false }), host);
+  render(h(Root, { payload: WITH_ARTIFACT, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
   return host;
 }
 
@@ -1475,7 +1478,7 @@ describe("artifact panel", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: TWO_COMPONENTS, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: TWO_COMPONENTS, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     const rows = [...host.querySelectorAll("tbody tr")].filter(
       (r) => r.querySelector(".rs-col-key code")?.textContent === "enabled"
     );
@@ -1568,7 +1571,7 @@ describe("artifact panel", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: TWO_FILES_SAME_COMPONENT, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: TWO_FILES_SAME_COMPONENT, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
 
     (rowFor(host, "instance_type").querySelector(".rs-artifact-chip") as HTMLElement).click();
     await Promise.resolve();
@@ -1591,7 +1594,7 @@ describe("artifact panel", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: WITH_SOURCE_ARTIFACT, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: WITH_SOURCE_ARTIFACT, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
 
     (rowFor(host, "instance_type").querySelector(".rs-artifact-chip") as HTMLElement).click();
     await Promise.resolve();
@@ -1653,7 +1656,7 @@ function mountBaseline(): HTMLElement {
   openSheetTab();
   const host = document.createElement("div");
   document.body.appendChild(host);
-  render(h(Root, { payload: WITH_BASELINE, reviewEnabled: true, initialLang: "ja", server: false }), host);
+  render(h(Root, { payload: WITH_BASELINE, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
   return host;
 }
 
@@ -1728,7 +1731,7 @@ describe("viewer: the default under the value", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: doc(params) as never, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: doc(params) as never, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     // An unset row is hidden by default, and the cases below that use one are
     // exactly the cases about what such a row says when it has no value.
     if ((params[0] as { origin?: string }).origin === "default") await showUnsetRows(host);
@@ -1806,6 +1809,7 @@ describe("viewer: versions as columns", () => {
       h(Root, {
         payload: { metadata: { title: "t" }, versions: [at("19.0.2", "4", "ldapsOnly"), at("26.7.0", "4", "always")] },
         reviewEnabled: true,
+        editEnabled: false,
         initialLang: "ja",
         server: false,
       } as never),
@@ -1876,7 +1880,7 @@ describe("viewer: a sheet that is always side by side", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: doc(mode) as never, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: doc(mode) as never, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     return host;
   }
 
@@ -1945,7 +1949,7 @@ describe("option labels", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: PAYLOAD_O, reviewEnabled: true, initialLang: lang, server: false }), host);
+    render(h(Root, { payload: PAYLOAD_O, reviewEnabled: true, editEnabled: false, initialLang: lang, server: false }), host);
     return host;
   }
 
@@ -2024,6 +2028,7 @@ describe("a sheet that is always pivoted", () => {
       h(Root, {
         payload: { metadata: ALWAYS.metadata, versions: [{ version: "current", sheets: ALWAYS.sheets }] },
         reviewEnabled: true,
+        editEnabled: false,
         initialLang: "en",
         server: false,
       }),
@@ -2071,7 +2076,7 @@ describe("viewer: a row with no category survives the side-by-side view", () => 
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
     await Promise.resolve();
     return host;
@@ -2140,7 +2145,7 @@ describe("viewer: a document sheet", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     return host;
   }
 
@@ -2224,7 +2229,7 @@ describe("viewer: two documents with the same heading", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
     return host;
   }
 

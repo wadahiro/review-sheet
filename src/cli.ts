@@ -7,7 +7,8 @@ import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { validateInput, validateReview, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { findBakedSecrets, formatBakedSecrets } from "./secrets.js";
-import type { ParameterSheetInput, VersionedSheetInput } from "./types.js";
+import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument } from "./types.js";
+import { extractReviewsFromHtml } from "./edits.js";
 import { computeApply } from "./apply.js";
 import { verifySources } from "./verify.js";
 import { diffSheets, type CategoryDiff, type DiffResult } from "./diff.js";
@@ -257,15 +258,69 @@ program
   .description("Generate reviewable parameter sheets")
   .version("0.1.0");
 
+// `review` and `edit` are the two MODES, and deliberately exclusive: different
+// jobs done by different people at different times — proposing changes before
+// the sheet is handed over, and maintaining values afterwards — and a document
+// offering both puts two primary actions on every cell and mixes proposals with
+// facts in one file. `prompt` is not a mode; it is one affordance that either
+// mode may or may not carry.
+const ALLOWED_CAPS = ["review", "edit", "prompt"] as const;
+const EXCLUSIVE_MODES = ["review", "edit"] as const;
+
+// `-r` takes a review.json or the edited sheet HTML. Distinguished by content,
+// not by extension: a file renamed on the way back should still work.
+function readReviewSource(path: string): ReviewDocument {
+  const raw = readFileSync(path, "utf-8");
+  if (raw.trimStart().startsWith("<")) {
+    const reviews = extractReviewsFromHtml(raw);
+    if (reviews.length === 0) {
+      console.error(`Error: ${path} is an HTML document with no edits in it (was it generated with --allow edit?)`);
+      process.exit(1);
+    }
+    return validateReview({ schema_version: "2.0", created_at: new Date().toISOString(), reviews });
+  }
+  return validateReview(JSON.parse(raw));
+}
+
+// `--allow a,b`. Returns undefined when the flag was not given at all, so the
+// caller can fall back to --no-review. An unknown name is an error, not a
+// silently ignored word: a typo here would quietly ship a read-only document.
+function parseAllow(spec: string | undefined): Set<string> | undefined {
+  if (spec === undefined) return undefined;
+  const names = spec.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+  const unknown = names.filter((n) => !(ALLOWED_CAPS as readonly string[]).includes(n));
+  if (unknown.length > 0) {
+    console.error(`Error: unknown --allow value: ${unknown.join(", ")} (known: ${ALLOWED_CAPS.join(", ")})`);
+    process.exit(1);
+  }
+  if (EXCLUSIVE_MODES.every((m) => names.includes(m))) {
+    console.error("Error: --allow takes review OR edit, not both. Reviewing a sheet and maintaining one are different jobs; a document that offers both puts two primary actions on every cell.");
+    process.exit(1);
+  }
+  // The prompt is built FROM findings or edits. Without a mode that produces
+  // either, asking for it names something the document cannot offer — said out
+  // loud rather than quietly ignored.
+  if (names.includes("prompt") && !EXCLUSIVE_MODES.some((m) => names.includes(m))) {
+    console.error("Error: --allow prompt needs review or edit — the prompt is built from findings or edits, and a document with neither has nothing to put in it.");
+    process.exit(1);
+  }
+  return new Set(names);
+}
+
 program
   .command("generate")
   .description("Generate parameter sheet HTML")
   .requiredOption("-i, --input <file...>", "Input JSON file(s); pass several snapshots to build a version history")
   .option("-o, --output <file>", "Output file (default: stdout)")
   .option("--title <title>", "Document title")
-  .option("--no-review", "Exclude review UI (for delivery)")
+  .option("--readonly", "A document that can only be read: no review, no editing, no prompt")
+  // Kept working: it named only the review UI, but by the time editing and the
+  // prompt existed it meant "none of them" — which is what --readonly says.
+  // Same behaviour, so nothing breaks.
+  .option("--no-review", "Deprecated spelling of --readonly")
+  .option("--allow <caps>", "What the recipient may do: review OR edit, optionally with prompt. Omitted, the default is review,prompt (overrides --no-review)")
   .option("--lang <lang>", "UI language: ja | en (default: ja)", "ja")
-  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; lang: string }) => {
+  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; lang: string }) => {
     try {
       const files = opts.input;
       let input: ParameterSheetInput | VersionedSheetInput;
@@ -291,9 +346,21 @@ program
       if (baked.length > 0) console.error(formatBakedSecrets(baked));
 
       const lang = opts.lang === "en" ? "en" : "ja";
+      const caps = parseAllow(opts.allow);
+      // Both spellings of "read nothing else into this document".
+      const readable = !(opts.readonly === true || opts.review === false);
       const html = await generateHtml(input, {
         title: opts.title,
-        review: opts.review,
+        // --allow, when given, states the whole permission set; otherwise the
+        // older --no-review still decides, with editing off.
+        review: caps ? caps.has("review") : readable,
+        edit: caps ? caps.has("edit") : false,
+        // Naming the set means naming ALL of it: a document handed to someone
+        // else should not carry an affordance nobody asked to include.
+        // Without --allow, the older behaviour stands and the prompt is there —
+        // but never in a document that produces nothing to put in one, where
+        // claiming the capability would describe a button that cannot exist.
+        prompt: (caps ? caps.has("prompt") : readable) && (caps ? caps.has("review") || caps.has("edit") : readable),
         lang,
       });
 
@@ -995,7 +1062,7 @@ program
   .command("apply")
   .description("Apply reviewed value changes to configuration files using the source map")
   .requiredOption("-i, --input <file>", "Input JSON file (with source mappings)")
-  .requiredOption("-r, --review <file>", "Review JSON file")
+  .requiredOption("-r, --review <file>", "Review JSON file, or the edited sheet HTML itself")
   .option("--write", "Write changes to disk (default: dry-run / preview only)", false)
   .option("--emit-prompt", "Print the AI prompt for everything not applied deterministically", false)
   .option("--parsers-dir <dir>", "Directory of custom parser plugins")
@@ -1004,7 +1071,11 @@ program
     try {
       await loadCustomParsers(opts.parsersDir);
       const input = validateInput(JSON.parse(readFileSync(opts.input, "utf-8")));
-      const reviewDoc = validateReview(JSON.parse(readFileSync(opts.review, "utf-8")));
+      // The edited sheet carries its own history, so the returned HTML IS the
+      // review file. Accepting it directly removes an export step that only
+      // exists to be forgotten — and the recipient of an edit-only document has
+      // no reason to know what a review.json is.
+      const reviewDoc = readReviewSource(opts.review);
 
       const readFile = (path: string): string | null => {
         try {
@@ -1061,6 +1132,21 @@ program
       // a different row than the reviewer meant".
       for (const m of outcome.moved) {
         console.error(`  moved: ${m.target.sheet} > ${m.target.param} — "${m.from}" is now "${m.to}"`);
+      }
+      // Edits made in a delivered document are not this command's to write —
+      // they are the recipient's record of what the system should be, applied
+      // by hand — but a review file that turns out to be mostly those must not
+      // read as "nothing to do".
+      if (outcome.edits.length > 0) {
+        const added = outcome.edits.filter((e) => e.creates).length;
+        const struck = outcome.edits.filter((e) => e.deletes === true).length;
+        const changed = outcome.edits.length - added - struck;
+        const parts = [
+          changed > 0 ? `${changed} value(s) changed` : "",
+          added > 0 ? `${added} row(s) added` : "",
+          struck > 0 ? `${struck} row(s) struck out` : "",
+        ].filter(Boolean);
+        console.error(`Note: not applied to any file — edited in the sheet itself: ${parts.join(", ")}.`);
       }
       console.error(
         `Summary: applied ${outcome.applied}, skipped ${outcome.skipped}, held ${outcome.held}, out-of-scope ${outcome.out_of_scope}` +

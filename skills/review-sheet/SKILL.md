@@ -25,7 +25,9 @@ in the real config (`file` + `line` + `anchor`). Accurate source maps let the
 review-sheet import   -f conf1 -f conf2 -o input.json  # draft a model (with source maps) from config files
 review-sheet import   --spec review-sheet/build.yml   # build it from a declarative spec (recipes + enrichment)
 review-sheet generate -i input.json -o sheet.html   # build the HTML sheet
-review-sheet generate -i input.json --no-review -o sheet.html  # delivery copy
+review-sheet generate -i input.json --readonly -o sheet.html  # read-only copy
+review-sheet generate -i input.json --allow edit -o sheet.html  # maintainable copy: edit values/remarks, add rows, strike rows out (review OR edit, not both)
+review-sheet apply    -i input.json -r returned.html --emit-prompt  # the edited HTML is the review file; applies what a source map proves, prompts for the rest
 review-sheet validate -i input.json                 # a model
 review-sheet validate -i review.json                # a review export
 review-sheet validate -i <product>@<version>.yml    # a dictionary, or its .overlay.yml

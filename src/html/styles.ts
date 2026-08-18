@@ -2020,6 +2020,136 @@ code {
   border-left: 2px solid var(--rs-accent);
 }
 
+/* A value someone changed after the document was generated. Marked in
+   a different colour from a review finding on purpose: a finding is somebody's
+   proposal about the value, this IS the value, and only one of the two still
+   matches the config file the source map points at. */
+.rs-cell-edited {
+  border-left: 2px solid var(--rs-success);
+}
+
+.rs-edited-mark {
+  margin-left: 0.3rem;
+  font-size: 0.8em;
+  color: var(--rs-success);
+  cursor: help;
+  user-select: none;
+}
+
+.rs-tool-edit { color: var(--rs-success); }
+.rs-tool-edit:hover { background: var(--rs-success-bg); }
+.rs-tool-edit.rs-tool-on { background: var(--rs-success); color: #ffffff; }
+
+/* The chain in the edit dialog: the original value first, then every step, so the
+   sequence reads top to bottom. */
+.rs-edit-history {
+  margin-bottom: 0.85rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--rs-subtle, #f8fafc);
+  border: 1px solid var(--rs-border-light);
+  border-radius: 4px;
+}
+
+.rs-edit-history-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--rs-text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.rs-edit-chain {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One flex line per step, so the arrow column, the value and the stamp line up
+   down the list and nothing can overlap what follows the box. */
+.rs-edit-chain li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.15rem 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.rs-edit-step {
+  flex: 0 0 1em;
+  color: var(--rs-text-muted);
+}
+
+.rs-edit-chain code {
+  font-size: 0.85em;
+  padding: 0.05rem 0.3rem;
+  background: var(--rs-bg, #ffffff);
+  border: 1px solid var(--rs-border-light);
+  border-radius: 3px;
+}
+
+.rs-edit-when {
+  font-size: 0.72rem;
+  color: var(--rs-text-muted);
+}
+
+/* An added row with nowhere to go. Loud on purpose: it is the one case where
+   the document holds a value it is not showing. */
+.rs-orphan-notice {
+  margin: 0.75rem 0;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.85rem;
+  background: var(--rs-danger-bg);
+  border-left: 3px solid var(--rs-danger);
+  border-radius: 3px;
+}
+
+.rs-orphan-keys {
+  display: block;
+  margin-top: 0.25rem;
+  font-family: var(--rs-mono, monospace);
+  font-size: 0.8rem;
+  color: var(--rs-text-muted);
+}
+
+.rs-head-tool-add { color: var(--rs-success); }
+
+/* A row written into the document rather than extracted from a config file.
+   The tag says so; this keeps the whole row from reading as a checked one. */
+.rs-row-added .rs-col-key code {
+  border-bottom: 1px dashed var(--rs-success);
+}
+
+/* Struck through, not removed. Muted rather than hidden: the row is still a
+   record of what used to be set, and its history is still readable. */
+.rs-row-deleted .rs-col-key code,
+.rs-row-deleted .rs-col-value,
+.rs-row-deleted .rs-col-default {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.rs-row-deleted {
+  opacity: 0.6;
+}
+
+.rs-tool-delete { color: var(--rs-danger); }
+.rs-tool-delete:hover { background: var(--rs-danger-bg); }
+.rs-tool-delete.rs-tool-on { background: var(--rs-danger); color: #ffffff; }
+
+.rs-save-busy {
+  color: var(--rs-text-muted);
+  font-style: italic;
+}
+
+.rs-edit-note {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8rem;
+  background: var(--rs-accent-light);
+  border-left: 3px solid var(--rs-accent-border);
+  border-radius: 3px;
+}
+
 .rs-value-cell {
   display: flex;
   align-items: center;

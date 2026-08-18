@@ -408,13 +408,42 @@ every field; this is the shape, not the reference.
 ```sh
 review-sheet generate -i input.json -o sheet.html
 review-sheet generate -i v1.json v2.json v3.json -o sheet.html  # version history (ordered by date)
-review-sheet generate -i input.json --no-review -o sheet.html   # read-only delivery copy
+review-sheet generate -i input.json --readonly -o sheet.html    # a copy that can only be read
+review-sheet generate -i input.json --allow edit -o sheet.html  # a copy its owner can maintain
 review-sheet generate -i input.json --lang en -o sheet.html     # English UI (default: ja)
 ```
 
 `-i` accepts multiple files; each is a snapshot, ordered by its
 `metadata.generated_at` (see [Versions & diff](#versions--diff)). `-o` defaults to
 stdout. `--title` overrides the document title.
+
+`--allow` states what the recipient may do — `review` **or** `edit`, never both.
+They are different jobs done by different people at different times: proposing
+changes before the sheet is handed over, and maintaining values afterwards. A
+document offering both would put two primary actions on every cell and mix
+proposals with facts in one file.
+
+`prompt` is not a mode; it adds the AI-prompt affordance to whichever one is on.
+It is off unless named, because it is a judgement about the AUDIENCE: in the
+usual flow the edited document comes back to whoever built it and `apply`
+produces the prompt there, against the real files, so the handed-over copy
+often has no use for one. Asking for `prompt` alone is an error — it is built from
+findings or edits, and a document with neither has nothing to put in it.
+
+| `--allow` | review | edit | prompt |
+|---|:--:|:--:|:--:|
+| *(omitted)* — same as `review,prompt` | ✅ | | ✅ |
+| `--readonly` | | | |
+| `review` | ✅ | | |
+| `edit` | | ✅ | |
+| `edit,prompt` | | ✅ | ✅ |
+| `edit,review` | *error* | | |
+
+Without `--allow`, `--readonly` decides: it hands over a document that can only
+be read. (`--no-review` is the old spelling of it — it named only the review UI,
+but once editing and the prompt existed it meant none of them.) An unknown name
+is an error, not an ignored word. See
+[Editing a generated sheet](#editing-a-generated-sheet).
 
 ### `validate` — schema check
 
@@ -442,6 +471,7 @@ Run it after `import` and after any hand edits.
 review-sheet apply -i input.json -r review.json                 # dry-run preview (diff)
 review-sheet apply -i input.json -r review.json --write          # write the edits
 review-sheet apply -i input.json -r review.json --emit-prompt    # print the AI prompt for the rest
+review-sheet apply -i input.json -r returned.html                # an edited sheet is its own review file
 ```
 
 For each approved value change, `apply` confirms the location (by line + anchor,
@@ -677,7 +707,7 @@ built-in format, so that one plugin remains.
 
 ## Reviewing in the browser
 
-Open `sheet.html` (generated without `--no-review`). Reviewers can:
+Open `sheet.html` (generated without `--readonly`). Reviewers can:
 
 - Edit a value to suggest a change, and leave a comment on any parameter,
   category, or sheet.
@@ -688,6 +718,99 @@ Open `sheet.html` (generated without `--no-review`). Reviewers can:
 
 Feedback persists in the browser's local storage, so a reviewer can stop and
 resume. The exported `review.json` is what you feed to `apply`.
+
+---
+
+## Editing a generated sheet
+
+Generated with `--allow edit`, the HTML is not only readable but maintainable:
+whoever holds it can change a value or a remark and add rows, and save the
+document back over itself. It is for the case where the system is maintained by
+hand, with no pipeline to re-run — the sheet is where the current value lives.
+
+What makes it more than a spreadsheet is that **an edit never overwrites the
+row**. It is appended as an `applied` review item carrying a timestamp and a
+name, so:
+
+- the original value survives underneath, still tied to its `source` — the line
+  in the real config file it was extracted from;
+- the steps between it and the current value are on record, and readable months
+  later from the file itself;
+- an edited cell is marked, so a value somebody changed afterwards is never
+  mistaken for one this tool extracted and checked;
+- an added row is marked too, and carries no source map, because no config file
+  has a line for it;
+- a row that is no longer set is **struck through, not removed** — it stays on
+  the sheet with its value and its history readable, and can be restored. Both
+  the striking-out and the restoring are recorded: months apart, they are two
+  decisions, and the second does not erase the first.
+
+A row whose value is shared by every environment asks which you mean before it
+changes anything. Editing one environment **splits the row**: the others keep
+the shared definition and its `source`, and the one you changed has no config
+line behind it yet — which is exactly the work it is now asking for. Editing all
+of them keeps the row shared.
+
+Saving asks for a name and, more usefully, a **reason** — both optional. Each
+save becomes one line of a change log on the overview page:
+
+| When | By | | Why |
+|---|---|---|---|
+| 2026-09-02 10:30 +09:00 | 佐藤 | 1 | rolled back, the pool was starving |
+| 2026-08-18 18:00 +09:00 | 田中 | 2 | raised after hitting the connection limit |
+
+That log sits beside the generated document's own changelog rather than inside
+it: one is the history of the DOCUMENT, the other of the installation it
+describes, and they have different authors. The per-cell chain records what
+changed and when; nothing but this can record why.
+
+Saving rewrites the file in place on Chrome and Edge (via the File System Access
+API) and falls back to a download elsewhere. Closing with unsaved edits warns —
+the file is the only place they live.
+
+### Getting the changes back into the config files
+
+The history travels inside the document, so the edited HTML **is** the review
+file:
+
+```sh
+review-sheet apply -i input.json -r returned.html --emit-prompt
+```
+
+The HTML is never handed to an AI — it is hundreds of KB of app and data.
+`apply` reads the edit history out of it and splits the work by what a source
+map can prove:
+
+- a value change on a row with a source map is **applied deterministically** —
+  the line is located, verified against what the file actually holds, and
+  rewritten;
+- a row that was added, or struck out, cannot be: where a new setting belongs,
+  and whether a removed one is deleted, commented out or left to the product
+  default, are judgements about the file. Those go into the AI prompt, with the
+  reason and the file attached.
+
+In one measured run that prompt was 2 KB against a 397 KB document.
+
+The document can produce that prompt itself too, if it was built with
+`--allow edit,prompt`, for whoever maintains it without a CLI. It is built from the same collapsed plan, so the two cannot
+describe the same change differently; the difference is that only `apply` can
+verify a location against the file it is about to edit.
+
+There is deliberately **no JSON export in edit mode**. Exporting is what a
+REVIEW document is for: it cannot write itself, its findings live only in that
+browser's storage, and `review.json` is the single way out. An edit document
+saves itself and `apply` reads it, so the same entries as JSON would be a lesser
+copy of what the file already carries — and one that looks like an alternative
+to saving, which is how work gets lost.
+
+An edit history is **collapsed to its net change** first. A value edited from
+500 to 600 to 700 is one change to make, because the file still holds 500 —
+replaying the chain would fail at the first step the moment anyone had applied
+part of it by hand, and cascade from there.
+
+Both are self-declared: a standalone HTML has no identity and no trusted clock,
+so this is a record of intent, not an audit trail. If you need one, that is the
+VCS's job.
 
 ---
 
