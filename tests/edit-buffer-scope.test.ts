@@ -72,18 +72,19 @@ function leaveUnsavedWork(item: ReviewItem, key: string): void {
   localStorage.setItem(key, JSON.stringify([item]));
 }
 
-describe("unsaved work belongs to one file", () => {
-  const A = { reviews: [] as ReviewItem[], saves: [save("r1", "2026-08-18T02:00:00Z")] };
-  const B = { reviews: [] as ReviewItem[], saves: [save("r2", "2026-09-02T02:00:00Z")] };
+// The key the running app uses, asked of the app itself rather than spelled out
+// here: the viewer rewrites version/generated_at per displayed version, so a
+// hand-written key would pass while testing nothing.
+const keyFor = (rev: string): string =>
+  getStorageKey(
+    { metadata: { ...SHEET.metadata, version: "current", generated_at: undefined }, sheets: [] },
+    [save(rev, "2026-08-18T02:00:00Z")]
+  );
 
-  // The key the running app uses, asked of the app itself rather than spelled
-  // out here: the viewer rewrites version/generated_at per displayed version,
-  // so a hand-written key would pass while testing nothing.
-  const keyFor = (rev: string): string =>
-    getStorageKey(
-      { metadata: { ...SHEET.metadata, version: "current", generated_at: undefined }, sheets: [] },
-      [save(rev, "2026-08-18T02:00:00Z")]
-    );
+const A = { reviews: [] as ReviewItem[], saves: [save("r1", "2026-08-18T02:00:00Z")] };
+const B = { reviews: [] as ReviewItem[], saves: [save("r2", "2026-09-02T02:00:00Z")] };
+
+describe("unsaved work belongs to one file", () => {
 
   it("does not carry one copy's unsaved edit into another", () => {
     leaveUnsavedWork(edit("rev_a", "700"), keyFor("r1"));
@@ -96,11 +97,51 @@ describe("unsaved work belongs to one file", () => {
     leaveUnsavedWork(edit("rev_a", "700"), keyFor("r1"));
     expect(valueShown(open_(A))).toContain("700");
   });
+});
 
-  // A freshly generated document has never been saved and carries no history.
-  // It must not inherit a buffer left by a saved copy of itself.
-  it("starts clean in a newly generated copy", () => {
+// Loading it is not a choice — offering to restore or discard was tried and is
+// worse, because a discard button is an irreversible action beside the safe one
+// and "later" lets two working states exist at once. What is left is to SAY the
+// document is not what the file says.
+describe("the document says what it is holding", () => {
+  const overview = (embedded: { reviews: ReviewItem[]; saves: SaveRecord[] }): HTMLElement => {
+    location.hash = "#overview";
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(
+      h(Root, {
+        payload: PAYLOAD, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false,
+        pristineHtml: '<!DOCTYPE html><html><body><div id="app"></div></body></html>',
+        embedded,
+      }),
+      host
+    );
+    return host;
+  };
+
+  it("says on open how much came from this browser rather than the file", () => {
     leaveUnsavedWork(edit("rev_a", "700"), keyFor("r1"));
-    expect(valueShown(open_({ reviews: [], saves: [] }))).toContain("500");
+    const host = overview({ reviews: [], saves: [save("r1", "2026-08-18T02:00:00Z")] });
+    expect(host.querySelector(".rs-toast")?.textContent).toContain("読み込みました");
+  });
+
+  it("says nothing on open when the file and the screen agree", () => {
+    const carried = edit("rev_a", "700");
+    const host = overview({ reviews: [carried], saves: [save("r1", "2026-08-18T02:00:00Z")] });
+    expect(host.querySelector(".rs-toast")).toBeNull();
+  });
+
+  // Below 960px the toolbar labels collapse. The word goes with them; the count
+  // must not — it is the one thing on the bar saying the file is behind.
+  it("keeps the count beside the save icon, where the collapsing label cannot take it", () => {
+    leaveUnsavedWork(edit("rev_a", "700"), keyFor("r1"));
+    const host = overview({ reviews: [], saves: [save("r1", "2026-08-18T02:00:00Z")] });
+    expect(host.querySelector(".rs-btn-count")?.textContent).toBe("(1)");
+  });
+
+  it("shows no count when the file is up to date", () => {
+    const carried = edit("rev_a", "700");
+    const host = overview({ reviews: [carried], saves: [save("r1", "2026-08-18T02:00:00Z")] });
+    expect(host.querySelector(".rs-btn-count")).toBeNull();
   });
 });
