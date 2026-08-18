@@ -777,12 +777,15 @@ the reference project, 22 rows of keycloak.conf's own settings rather than the
 **On a sheet whose COMPONENTS are already files, most of this has nothing left
 to do.** `templates:` naming each component after the artifact it deploys is
 the ordinary shape, so every artifact row already carries the file as its
-component and `group_by: file` only re-derives it. A derived name equal to the
-component is folded away rather than opening a level with one child of its own
-name (`httpd.conf > httpd.conf > ServerTokens`), for the same reason the
-component level itself disappears on a single-component sheet: a level that
-names what its parent already named is not structure. A hand-written
-`category:` is never folded — the project said what it meant.
+component and `group_by: file` only re-derives it. That level is folded away
+rather than opening a child of its own name (`httpd.conf > httpd.conf >
+ServerTokens`), for the same reason the component level itself disappears on a
+single-component sheet: a level that names what its parent already named is not
+structure. The test is whether the component names the same FILE, not whether
+the two names match — a component may be the path itself (`component:
+/etc/logrotate.d/app`) or a short alias for it (`component: keycloak.conf` with
+`deployed_path: /opt/keycloak/conf/keycloak.conf`), and both fold. A
+hand-written `category:` is never folded — the project said what it meant.
 
 What the option still does there is the last row of the table above: a variable
 that is a line of NO artifact keeps its own file's name, instead of being filed
