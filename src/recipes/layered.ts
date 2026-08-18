@@ -55,7 +55,7 @@
 // value's TEXT instead of a template's parse tree.
 
 import { extractFile, type Format } from "../extract.js";
-import type { ExtractOptions } from "../parser.js";
+import { resolveParser, type ExtractOptions } from "../parser.js";
 import { registerRecipe, type SheetRecipe, type RecipeIO, type JsonValue } from "../recipe.js";
 import type { SheetInputs, ExtractedMap, EmbeddedEntry, KeyMapEntry, ValueLayer } from "../assemble.js";
 import { makeKeySelector, type KeySelector } from "../keyglob.js";
@@ -72,7 +72,8 @@ import {
   type StructuralSplit,
 } from "../keytransform.js";
 import { compileSubstitution, bindReferences, type ReferenceSite } from "../substitution.js";
-import { previewFile, previewId, addLineKey, type LineKeys } from "../preview.js";
+import { previewFile, previewRendered, previewId, addLineKey, type LineKeys } from "../preview.js";
+import { inlineFileFor } from "../ansible-tasks.js";
 import type { ArtifactPreview, LangText } from "../types.js";
 
 export type SourceSpec = { path: string; format?: Format; key?: KeyTransform };
@@ -176,6 +177,20 @@ const schema = {
     defaults: sourceOrListSchema,
     overlays: { type: "object", additionalProperties: sourceOrListSchema },
     static_files: staticFilesSchema,
+    // A file whose CONTENT an Ansible task writes inline — see
+    // ansible-tasks.ts. The spec names WHERE to look and never restates what
+    // is there: a copy of those lines in build.yml would go stale the first
+    // time somebody edited the playbook, and a preview is a claim that this IS
+    // the deployed file.
+    preview: {
+      type: "object",
+      required: ["from", "dest"],
+      properties: {
+        from: { type: "string" },
+        dest: { type: "string" },
+      },
+      additionalProperties: false,
+    },
     include: { type: "array", items: { type: "string" } },
     // Reading order for the components, when the sheet's own sources cannot
     // say it: a comparison sheet takes one side from a template and the other
@@ -1012,6 +1027,72 @@ export const layeredRecipe: SheetRecipe = {
     // file_path. No defaults (snapshot-style sheets) leaves it unset.
     const sourceFallback = defaultsSpecs.length > 0 ? io.resolve(defaultsSpecs[0].path) : undefined;
 
+    // A file an Ansible task writes inline (`preview: { from, dest }`). It has
+    // no template of its own, so nothing here could show it — and it lands on
+    // the host like any other file, where a value is judged by what sits
+    // around it.
+    //
+    // The variables are read a SECOND time, without the key transform, because
+    // the content interpolates them by their Ansible names while the sheet's
+    // rows are named by whatever the transform made of them. Reading the same
+    // files again is cheap and cannot drift; carrying the raw names through the
+    // whole pipeline for one panel would put a second identity on every row.
+    const inlinePreview = ((): ArtifactPreview[] => {
+      const spec = sheetSpec.preview === undefined ? undefined : asObject(sheetSpec.preview);
+      if (spec === undefined) return [];
+      // The sheet's declared component, when it has a literal one: that is what
+      // the rows carry, and a preview names the component whose panel it fills.
+      const componentId = typeof (io.component as { id?: unknown } | undefined)?.id === "string"
+        ? String((io.component as { id: string }).id)
+        : undefined;
+      const from = asString(spec.from, "preview.from");
+      const dest = asString(spec.dest, "preview.dest");
+      const file = io.resolve(from);
+      const tasks = io.readFile(file);
+      if (tasks === null) {
+        warn(`sheet "${name}": preview.from "${from}" is not readable`);
+        return [];
+      }
+      const found = inlineFileFor(tasks, dest);
+      if ("error" in found) {
+        warn(`sheet "${name}": preview of "${dest}" from ${from}: ${found.error}`);
+        return [];
+      }
+      const quiet = (): void => {};
+      const rawOf = (specs: JsonValue): Map<string, { value: string }> =>
+        buildMapFromSources(
+          io,
+          asSourceSpecs(specs).map((sp) => ({ ...sp, key: undefined })),
+          `sheet "${name}": preview variables`,
+          makeKeySelector([], []),
+          extractOptions,
+          quiet
+        );
+      const rawBase = sheetSpec.defaults === undefined ? new Map() : rawOf(sheetSpec.defaults);
+      const rawOverlays = new Map<string, Map<string, { value: string }>>();
+      for (const [instance, sp] of Object.entries(asObject(sheetSpec.overlays))) {
+        rawOverlays.set(instance, rawOf(sp as JsonValue));
+      }
+      // Which line of the content became which row: read the content with the
+      // parser the DEST would get, and keep the keys this sheet actually has.
+      const keys: LineKeys = new Map();
+      const parser = resolveParser(dest, found.file.content);
+      if (parser) {
+        for (const e of parser.extract(found.file.content, dest, extractOptions)) {
+          if (baseMap.has(e.key)) addLineKey(keys, e.source?.line, e.key);
+        }
+      }
+      return previewRendered(
+        { id: previewId(name, componentId), sheet: name, ...(componentId !== undefined ? { component: componentId } : {}), deployed_path: dest, source_file: file },
+        found.file.content,
+        io.instances,
+        (instance, n) => (instance !== undefined ? rawOverlays.get(instance)?.get(n)?.value : undefined) ?? rawBase.get(n)?.value,
+        keys,
+        new Set<string>(),
+        warn
+      );
+    })();
+
     const overlayLayers: Extract<ValueLayer, { kind: "overlay" }>[] = Object.entries(asObject(sheetSpec.overlays)).map(
       ([instance, spec]) => ({
         kind: "overlay" as const,
@@ -1090,7 +1171,9 @@ export const layeredRecipe: SheetRecipe = {
       })(),
       ...(staticFilesResult.keyMap.length > 0 ? { keyMap: staticFilesResult.keyMap } : {}),
       ...(staticFilesResult.referenceSites.length > 0 ? { referenceSites: staticFilesResult.referenceSites } : {}),
-      ...(staticFilesResult.artifacts.length > 0 ? { artifacts: staticFilesResult.artifacts } : {}),
+      ...(staticFilesResult.artifacts.length + inlinePreview.length > 0
+        ? { artifacts: [...staticFilesResult.artifacts, ...inlinePreview] }
+        : {}),
     };
   },
 };
