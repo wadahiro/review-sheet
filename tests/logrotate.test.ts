@@ -107,3 +107,81 @@ describe("logrotate", () => {
     expect(idx.map((e) => `${e.key}=${e.value}`)).toEqual(["rotate=5"]);
   });
 });
+
+// One block, its paths on their own lines and the brace on another. Ordinary
+// logrotate: a pattern is "a path, a glob, or a whitespace-separated list", and
+// newlines are whitespace. Read as one-line-only, every directive in the block
+// was filed under the global scope — so a sheet said these settings applied to
+// every log on the host — and each path line became a row of its own.
+const MULTILINE_HEADER = `/var/log/app/server.log
+/var/log/app/access_log.txt
+{
+    rotate 7
+    daily
+    copytruncate
+}
+`;
+
+describe("a block header spread over several lines", () => {
+  it("files the directives under the block, not the global scope", () => {
+    const entries = logrotateIndex(MULTILINE_HEADER);
+    const scopes = new Set(entries.map((e) => e.categoryPath[0]));
+    expect([...scopes]).toEqual(["/var/log/app/server.log /var/log/app/access_log.txt"]);
+  });
+
+  it("does not turn the path lines into directives", () => {
+    expect(logrotateIndex(MULTILINE_HEADER).map((e) => e.key)).toEqual(["rotate", "daily", "copytruncate"]);
+  });
+
+  it("keeps the values and lines addressable", () => {
+    const entries = logrotateIndex(MULTILINE_HEADER);
+    const rotate = entries.find((e) => e.key === "rotate")!;
+    expect(rotate.value).toBe("7");
+    expect(rotate.line).toBe(4);
+    expect(logrotateLocate(MULTILINE_HEADER, rotate.path)).toEqual({ value: "7" });
+  });
+
+  it("still reads the one-line form, and a mix of both", () => {
+    const mixed = `/var/log/a.log /var/log/b.log {
+    rotate 3
+}
+/var/log/c.log
+/var/log/d.log
+{
+    rotate 9
+}
+`;
+    const entries = logrotateIndex(mixed);
+    expect(entries.map((e) => [e.categoryPath[0], e.key, e.value])).toEqual([
+      ["/var/log/a.log /var/log/b.log", "rotate", "3"],
+      ["/var/log/c.log /var/log/d.log", "rotate", "9"],
+    ]);
+  });
+
+  // Global directives and a multi-line header in the same file: a bare flag is
+  // one word and so is nothing else here, so the two are told apart by shape.
+  it("does not mistake a global flag for a path", () => {
+    const withGlobals = `compress
+su root root
+/var/log/a.log
+/var/log/b.log
+{
+    rotate 7
+}
+`;
+    expect(logrotateIndex(withGlobals).map((e) => [e.categoryPath[0], e.key])).toEqual([
+      ["(global)", "compress"],
+      ["(global)", "su"],
+      ["/var/log/a.log /var/log/b.log", "rotate"],
+    ]);
+  });
+
+  // Malformed rather than clever: a pattern with no brace after it must still
+  // reach the sheet, because a line that disappears is the failure this exists
+  // to prevent.
+  it("emits a pattern that never got its brace instead of dropping it", () => {
+    expect(logrotateIndex("/var/log/orphan.log\ncompress\n").map((e) => e.key))
+      .toEqual(["/var/log/orphan.log", "compress"]);
+    expect(logrotateIndex("/var/log/at-eof.log\n").map((e) => e.key)).toEqual(["/var/log/at-eof.log"]);
+  });
+});
