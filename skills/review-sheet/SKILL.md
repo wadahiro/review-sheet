@@ -861,6 +861,27 @@ Two things a sheet can only have one of are refused rather than resolved: parts
 implying different dictionary key rewrites (declare `key_steps` on the bindings
 instead, where it can be scoped), and more than one part rendering a document.
 
+**A file an Ansible task writes inline.** `ansible.builtin.copy` with `content:`
+produces a real file on the host and no template to render, so it had no
+preview. Name where to look and it gets one:
+
+```yaml
+- recipe: layered
+  component: { id: /etc/sysctl.d/10-tuning.conf }
+  defaults: [ ... ]
+  preview:
+    from: ../../roles/common/tasks/main.yml   # the playbook, not a copy of it
+    dest: /etc/sysctl.d/10-tuning.conf        # which task's content
+```
+
+The content is READ from the task every time. A field holding a copy of those
+lines would work until somebody edited the playbook, and then the sheet would
+show a file that does not exist — worse than showing none, because a preview is
+a claim that this IS the deployed file. Anything that stops it (no such task,
+the task copies a file instead, two tasks write the path) is reported, not
+quietly skipped: a preview that fails to appear looks exactly like one nobody
+declared.
+
 #### `recipe: document`
 
 A sheet whose content is a markdown file. It has no rows, no review targets and
