@@ -541,3 +541,106 @@ describe("assembleFromSpec: components carried on the entries", () => {
     expect(paths.LoadModule).toBe("00-mpm.conf > General");
   });
 });
+
+// A sheet built from SEVERAL recipes. A page of an incumbent parameter sheet is
+// a host — its sysctl settings, then its logrotate policy — and which of those
+// this tool reads as variables and which as lines of a rendered artifact is an
+// accident of the build. It used to decide the tab layout.
+describe("a sheet composed from several recipes", () => {
+  const partA: SheetRecipe = {
+    name: "compose-a",
+    schema: { type: "object", properties: { from: { type: "string" } }, additionalProperties: false },
+    load: (sheetSpec, io) => ({
+      name: String(sheetSpec.name),
+      instances: io.instances,
+      layers: [{ kind: "base", entries: new Map([["a_key", { value: "1", source: { file: io.resolve("a.yml"), line: 1 } }]]) }],
+      embedded: [],
+      componentOf: new Map([["a_key", "/etc/one.conf"]]),
+      componentFiles: new Map([["/etc/one.conf", { filePath: "/etc/one.conf" }]]),
+      componentOrder: ["/etc/one.conf"],
+    }),
+  };
+  const partB: SheetRecipe = {
+    name: "compose-b",
+    schema: { type: "object", properties: {}, additionalProperties: false },
+    load: (sheetSpec, io) => ({
+      name: String(sheetSpec.name),
+      instances: io.instances,
+      layers: [{ kind: "base", entries: new Map([["b_key", { value: "2", source: { file: io.resolve("b.yml"), line: 1 } }]]) }],
+      embedded: [],
+      componentOf: new Map([["b_key", "/etc/two.conf"]]),
+      componentFiles: new Map([["/etc/two.conf", { filePath: "/etc/two.conf" }]]),
+      componentOrder: ["/etc/two.conf"],
+    }),
+  };
+  registerRecipe(partA);
+  registerRecipe(partB);
+
+  const spec = (parts: string) => `
+version: 1
+instances: [production]
+enrich:
+  project: sheet.yml
+sheets:
+  - name: host
+${parts}
+`;
+  const PARTS = `    parts:
+      - recipe: compose-a
+      - recipe: compose-b
+`;
+  const project = `
+params:
+  a_key: { category: One, description: A }
+  b_key: { category: Two, description: B }
+`;
+
+  const buildWith = (specYml: string): ParameterSheetInput => {
+    const f: Record<string, string> = { "/p/build.yml": specYml, "/p/sheet.yml": project };
+    const s = loadBuildSpec("/p/build.yml", { readFile: (p) => f[p] ?? null });
+    return assembleFromSpec(s, { readFile: (p) => f[p] ?? null, specDir: "/p" });
+  };
+
+  // Rows sit under their component, so this walks the tree rather than
+  // flattening one level as the fixture above does.
+  const allKeys = (input: ParameterSheetInput): string[] => {
+    const out: string[] = [];
+    const walk = (cats: { params?: Parameter[]; categories?: unknown[] }[]): void => {
+      for (const c of cats) {
+        for (const p of c.params ?? []) out.push(p.key);
+        walk((c.categories ?? []) as { params?: Parameter[]; categories?: unknown[] }[]);
+      }
+    };
+    for (const s of input.sheets) walk(s.categories ?? []);
+    return out;
+  };
+
+  it("produces ONE sheet holding every part's rows", () => {
+    const input = buildWith(spec(PARTS));
+    expect(input.sheets).toHaveLength(1);
+    expect(input.sheets[0].name).toBe("host");
+    expect(allKeys(input)).toEqual(["a_key", "b_key"]);
+  });
+
+  it("keeps each part's components, in the order the parts are written", () => {
+    const input = buildWith(spec(PARTS));
+    const cats = (input.sheets[0].categories ?? []).map((c) => c.name);
+    expect(cats).toEqual(["/etc/one.conf", "/etc/two.conf"]);
+  });
+
+  it("refuses a sheet that declares both a recipe and parts", () => {
+    expect(() => buildWith(spec(`    recipe: compose-a\n${PARTS}`))).toThrow(/both "recipe" and "parts"/);
+  });
+
+  it("refuses a sheet that declares neither", () => {
+    expect(() => buildWith(spec("    instances: [production]\n"))).toThrow(/neither "recipe" nor "parts"/);
+  });
+
+  // Each part's own recipe fields are checked against ITS recipe's schema, and
+  // the error says which part — a typo in the second part reported against the
+  // first one's contract would send the reader to the wrong place.
+  it("validates each part against its own recipe's schema", () => {
+    expect(() => buildWith(spec(`    parts:\n      - recipe: compose-a\n        nosuch: 1\n      - recipe: compose-b\n`)))
+      .toThrow(/part 1 \(recipe "compose-a"\)/);
+  });
+});

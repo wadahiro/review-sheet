@@ -181,7 +181,12 @@ review traditionally wants. Two files divide the work:
   environment, e.g. `cdk synth` output) — and that recipe's own fields:
   `defaults`/`overlays`, `template`, `static_files`, `include`/`exclude` key
   filters, a per-source `key` transform, and `dictionaries` (which product
-  dictionary this sheet's keys bind to, including `materialize`).
+  dictionary this sheet's keys bind to, including `materialize`). A sheet may
+  declare `parts:` instead of `recipe:` to build ONE sheet from several
+  recipes — a host whose sysctl settings come from Ansible variables and whose
+  logrotate policy is read as lines of the deployed file is one page of a
+  parameter sheet, not two. Each part is scoped to its own component, and a row
+  two parts both claim is an error rather than a silent overwrite.
 - **`sheet.yml`** — how a human reads it: one entry per parameter key —
   `category`, `description`/`remarks`, `out_of_scope` (excluded from this
   review, with a mandatory reason), `dict_key` (an explicit rename for a key
