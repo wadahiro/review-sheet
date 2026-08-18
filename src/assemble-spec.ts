@@ -24,7 +24,8 @@ import {
   type UiReport,
   type BindingReport,
 } from "./assemble.js";
-import { getRecipe, type RecipeIO } from "./recipe.js";
+import { getRecipe, type RecipeIO, type JsonValue } from "./recipe.js";
+import { composeSheet } from "./compose.js";
 import type { ExtractOptions } from "./parser.js";
 import { loadBuildSpec, specDirOf, type BuildSpec } from "./spec.js";
 import type { EnrichReport } from "./enrich.js";
@@ -117,12 +118,6 @@ export function assembleFromSpecWithReport(
   const dictionaries: Record<string, SheetDictionaryBinding[]> = {};
 
   for (const sheetSpec of spec.sheets) {
-    const recipe = getRecipe(sheetSpec.recipe);
-    if (!recipe) {
-      // loadBuildSpec already validated every sheet's recipe is registered;
-      // this can only happen if a recipe unregistered itself in between.
-      throw new Error(`Unknown recipe "${sheetSpec.recipe}" for sheet "${sheetSpec.name}".`);
-    }
     // A sheet's own `instances` (validated by loadBuildSpec as a subset of
     // spec.instances) overrides the spec-level default here — the one place
     // that resolution happens, so every recipe just reads `io.instances` and
@@ -130,8 +125,35 @@ export function assembleFromSpecWithReport(
     // findings #10).
     const instances = sheetSpec.instances ?? spec.instances;
     const component = sheetSpec.component as ComponentDecl | undefined;
-    const io: RecipeIO = { ...baseIo, instances, component, dataMaps: spec.data_maps };
-    const si = recipe.load(sheetSpec, io);
+
+    const loadWith = (fields: Record<string, JsonValue>, recipeName: string, decl: ComponentDecl | undefined): SheetInputs => {
+      const recipe = getRecipe(recipeName);
+      if (!recipe) {
+        // loadBuildSpec already validated every recipe is registered; this can
+        // only happen if one unregistered itself in between.
+        throw new Error(`Unknown recipe "${recipeName}" for sheet "${sheetSpec.name}".`);
+      }
+      const io: RecipeIO = { ...baseIo, instances, component: decl, dataMaps: spec.data_maps };
+      // Every part is loaded under the SHEET's name: a recipe that names rows
+      // or components after it must not see the part's own shape instead.
+      return recipe.load({ ...fields, name: sheetSpec.name }, io);
+    };
+
+    // A composed sheet (spec.ts's `parts:`) runs each part's recipe and merges
+    // the results — see compose.ts for why the merge is where the safety lives.
+    const partSpecs = sheetSpec.parts as Array<Record<string, JsonValue>> | undefined;
+    let si: SheetInputs;
+    if (partSpecs === undefined) {
+      si = loadWith(sheetSpec, sheetSpec.recipe, component);
+    } else {
+      const loaded = partSpecs.map((part, i) => ({
+        label: `part ${i + 1} (${String(part.recipe)})`,
+        input: loadWith(part, part.recipe as string, (part.component as ComponentDecl | undefined) ?? component),
+      }));
+      const composed = composeSheet(sheetSpec.name, loaded);
+      if (composed.conflicts.length > 0) throw new Error(composed.conflicts.join("\n"));
+      si = composed.input;
+    }
     // `si.dictKeySteps` — the recipe's own account of how a product
     // dictionary's keys relate to its rows — used to be written into every
     // binding that declared none, right here. It is not, any more: the

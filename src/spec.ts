@@ -188,7 +188,12 @@ const dictionariesSchema = {
 // strip a sheet down to its recipe-specific fields before validating those
 // against `recipe.schema` (below), and as the exact set a bare object
 // literal declares for reuse in the permissive first pass.
-const COMMON_SHEET_FIELDS = ["name", "recipe", "instances", "dictionaries", "component"] as const;
+const COMMON_SHEET_FIELDS = ["name", "recipe", "parts", "instances", "dictionaries", "component"] as const;
+
+// The same, for one PART of a composed sheet. A part carries its recipe's own
+// fields plus these; everything else about the sheet (its name, instances,
+// dictionaries) belongs to the sheet, not to any one part of it.
+const COMMON_PART_FIELDS = ["recipe", "component"] as const;
 
 // Reviewer-facing text: one language, or both.
 const langTextSchema = {
@@ -274,10 +279,26 @@ const specSchema = {
       minItems: 1,
       items: {
         type: "object",
-        required: ["name", "recipe"],
+        required: ["name"],
         properties: {
           name: { type: "string" },
           recipe: { type: "string" },
+          // Several recipes on ONE sheet — see compose.ts. A page of an
+          // incumbent parameter sheet is a host, and which of its files this
+          // tool reads as Ansible variables and which as lines of a rendered
+          // artifact is an accident of the build, not something a reader
+          // should have to follow across tabs.
+          parts: {
+            type: "array",
+            minItems: 2,
+            items: {
+              type: "object",
+              required: ["recipe"],
+              properties: { recipe: { type: "string" }, component: componentSchema },
+              // Same reason as the sheet itself: a part also carries its
+              // recipe's own fields, checked in the per-sheet pass below.
+            },
+          },
           instances: { type: "array", items: { type: "string" }, minItems: 1 },
           dictionaries: dictionariesSchema,
           component: componentSchema,
@@ -340,32 +361,56 @@ export function loadBuildSpec(path: string, io: { readFile: (p: string) => strin
       }
     }
 
-    const recipe = getRecipe(sheet.recipe);
-    if (!recipe) {
-      const names = listRecipes().map((r) => r.name);
-      throw new Error(
-        `Unknown recipe "${sheet.recipe}" for sheet "${sheet.name}". ` +
-          (names.length > 0 ? `Registered: ${names.join(", ")}` : "No recipes are registered.")
-      );
+    // One or the other, never both and never neither. A sheet with `parts:`
+    // has no recipe of its own — each part brings one — and a sheet that
+    // declared both would leave which of them produced a row unanswerable.
+    const parts = sheet.parts as Array<Record<string, JsonValue>> | undefined;
+    if (parts !== undefined && sheet.recipe !== undefined) {
+      throw new Error(`Sheet "${sheet.name}" declares both "recipe" and "parts" — a composed sheet takes its recipes from its parts.`);
     }
-    let validateSheet = sheetValidators.get(recipe.name);
-    if (!validateSheet) {
-      validateSheet = ajv.compile(recipe.schema);
-      sheetValidators.set(recipe.name, validateSheet);
+    if (parts === undefined && sheet.recipe === undefined) {
+      throw new Error(`Sheet "${sheet.name}" declares neither "recipe" nor "parts".`);
     }
+
     // Validate ONLY the recipe-specific fields (recipe.schema's own
     // documented contract — see recipe.ts's SheetRecipe.schema) against
     // recipe.schema's `additionalProperties: false`: the common fields
     // (name/recipe/instances/dictionaries) are spec-level, not part of any
     // recipe's contract, and would themselves be rejected as "additional"
     // if left in — every recipe schema deliberately does not declare them.
-    const recipeFields: Record<string, JsonValue> = { ...(sheet as Record<string, JsonValue>) };
-    for (const field of COMMON_SHEET_FIELDS) delete recipeFields[field];
-    if (!validateSheet(recipeFields)) {
-      throw new Error(
-        `Sheet "${sheet.name}" (recipe "${sheet.recipe}") validation error:\n${formatAjvErrors(validateSheet.errors)}`
-      );
+    const checkRecipeFields = (
+      recipeName: string,
+      fields: Record<string, JsonValue>,
+      common: readonly string[],
+      where: string
+    ): void => {
+      const recipe = getRecipe(recipeName);
+      if (!recipe) {
+        const names = listRecipes().map((r) => r.name);
+        throw new Error(
+          `Unknown recipe "${recipeName}" for ${where}. ` +
+            (names.length > 0 ? `Registered: ${names.join(", ")}` : "No recipes are registered.")
+        );
+      }
+      let validateSheet = sheetValidators.get(recipe.name);
+      if (!validateSheet) {
+        validateSheet = ajv.compile(recipe.schema);
+        sheetValidators.set(recipe.name, validateSheet);
+      }
+      const recipeFields: Record<string, JsonValue> = { ...fields };
+      for (const field of common) delete recipeFields[field];
+      if (!validateSheet(recipeFields)) {
+        throw new Error(`${where} (recipe "${recipeName}") validation error:\n${formatAjvErrors(validateSheet.errors)}`);
+      }
+    };
+
+    if (parts === undefined) {
+      checkRecipeFields(sheet.recipe as string, sheet as Record<string, JsonValue>, COMMON_SHEET_FIELDS, `Sheet "${sheet.name}"`);
+      continue;
     }
+    parts.forEach((part, i) => {
+      checkRecipeFields(part.recipe as string, part, COMMON_PART_FIELDS, `Sheet "${sheet.name}" part ${i + 1}`);
+    });
   }
 
   return spec;

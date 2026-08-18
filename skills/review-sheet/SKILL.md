@@ -806,6 +806,53 @@ so known keys would come out bracketed and unknown ones dotted.
 Only the spelling changes: `attributes["x"]` and `attributes.x` parse to the
 same steps, so `source.path` is untouched and verify/apply resolve either way.
 
+#### `parts:` — several recipes, one sheet
+
+A page of an incumbent parameter sheet is a HOST: `/etc/sysctl.d/override.conf`,
+then `/etc/chrony.conf`, then `/etc/logrotate.d/app`, read top to bottom. Which
+of those this tool reads as Ansible variables and which it reads as lines of a
+rendered artifact is an accident of how the project is built — and with one
+recipe per sheet it decided the tab layout, so a reader had to hold "the host"
+together across tabs the tool split for its own convenience.
+
+A sheet may declare `parts:` instead of `recipe:`. Each part runs its own
+recipe; the results become one sheet.
+
+```yaml
+- name: OS basics
+  parts:
+    - recipe: layered
+      component: { id: /etc/sysctl.d/override.conf }
+      defaults: ../roles/os/defaults/main.yml
+    - recipe: ansible
+      rows: artifact
+      defaults: ../roles/log/defaults/main.yml
+      templates:
+        - path: ../roles/os/templates/logrotate-app.j2
+          deployed_path: /etc/logrotate.d/app
+          component: /etc/logrotate.d/app
+```
+
+With `group_by: file` on the sheet (sheet.yml), that reads as one tab with a
+section per file — which is the layout being reproduced.
+
+**Scope each part to its own component.** That is what makes the merge safe:
+rows are unique within a component, so two parts can only collide by both
+claiming one, and a collision is an ERROR naming both parts rather than one
+recipe quietly overwriting the other's rows. A part may bring several components
+of its own (`templates:` already does), and the same key in two different
+components is not a collision.
+
+Everything else about the sheet — `name`, `instances`, `dictionaries` — belongs
+to the sheet, not to a part; a dictionary binding scopes itself with its own
+`component:` as it always did. `recipe:` and `parts:` are mutually exclusive,
+and each part's recipe-specific fields are validated against that recipe's own
+schema, reported as "part N".
+
+Two things a sheet can only have one of are refused rather than resolved: parts
+implying different dictionary key rewrites (declare `key_steps` on the bindings
+instead, where it can be scoped), and more than one part rendering a document.
+
 #### `recipe: document`
 
 A sheet whose content is a markdown file. It has no rows, no review targets and
