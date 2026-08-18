@@ -177,6 +177,12 @@ export const HELD_REASON_ADDED_ROW =
 export const HELD_REASON_STRUCK_ROW =
   "Cannot apply directly: this setting was marked as no longer used — decide whether its line is removed, commented out, or left to the product default";
 
+// A document sheet's page, rewritten. It goes back to the markdown file the
+// page was rendered from — a whole file, not a line, which no source map
+// addresses and no parser edits.
+export const HELD_REASON_DOCUMENT =
+  "Cannot apply directly: this is a whole markdown document, rewritten — replace the contents of the sheet's source_file with the text below";
+
 export const HELD_REASON_SHARED_INSTANCE =
   "Cannot apply directly: the value is a single shared definition — changing it for one environment means adding an environment-level override, which is a structural decision";
 
@@ -197,6 +203,7 @@ export type ReviewItem = {
   by?: string;
   creates?: boolean;
   deletes?: boolean;
+  assets?: Record<string, string>;
 };
 
 // ============================================================
@@ -490,6 +497,29 @@ export function buildPromptText(reviews: ReviewItem[], data: SheetData): string 
     }
 
     for (const c of otherChanges) {
+      // A document sheet's page is a whole FILE, rewritten — the markdown the
+      // sheet was rendered from. It has a destination, unlike the other edits
+      // in this bucket, so it names it: an instruction to "replace the
+      // contents" is useless without saying of what.
+      if (c.field === "document" && r.target.param === undefined) {
+        const file = data.sheets.find((sh) => sh.name === r.target.sheet)?.source_file;
+        let doc = `- ${r.target.sheet}${file ? ` — ${file}` : ""}`;
+        if (r.comment) doc += `\n  reason: ${r.comment}`;
+        doc += `\n  Replace the whole file with:\n\n${c.suggested}`;
+        // A picture pasted into the document is referenced by PATH, and that
+        // path is a file that does not exist yet. Saying "replace the text"
+        // without saying "and write these" leaves a document whose images are
+        // broken — the failure would show up in the rendered page, long after.
+        const assets = Object.entries(r.assets ?? {});
+        if (assets.length > 0) {
+          doc +=
+            `\n\n  Also write ${assets.length} image file(s), relative to the markdown above. ` +
+            `Each is base64 — decode it to bytes, do not save the text:\n` +
+            assets.map(([path, uri]) => `  - ${path}\n    ${uri}`).join("\n");
+        }
+        docLines.push(doc);
+        continue;
+      }
       let body = `- ${targetLabel(r.target)}\n  ${c.field}: "${c.current ?? ""}" -> "${c.suggested}"`;
       if (r.comment) body += `\n  reason: ${r.comment}`;
       docLines.push(body);

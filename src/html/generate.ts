@@ -5,9 +5,23 @@ import { customStyles } from "./styles.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-async function getAppBundle(): Promise<string> {
+// Two entries, one app. `app-md.ts` is `app.ts` plus a markdown renderer, and
+// it is the only module that imports marked — see html/markdown-runtime.ts for
+// why that costs 43 KB and why most documents should not pay it. Cached per
+// entry: a build with several sheets should not rebuild either one.
+const bundles = new Map<string, Promise<string>>();
+
+async function getAppBundle(entry: "app.ts" | "app-md.ts"): Promise<string> {
+  const cached = bundles.get(entry);
+  if (cached) return cached;
+  const built = buildBundle(entry);
+  bundles.set(entry, built);
+  return built;
+}
+
+async function buildBundle(entry: string): Promise<string> {
   const result = await Bun.build({
-    entrypoints: [resolve(__dirname, "app.ts")],
+    entrypoints: [resolve(__dirname, entry)],
     minify: true,
     target: "browser",
     format: "esm",
@@ -100,8 +114,12 @@ export async function generateHtml(
   const editEnabled = options?.edit === true;
   const promptEnabled = options?.prompt !== false;
   const lang = options?.lang ?? "ja";
-  const appJS = escapeScriptClose(await getAppBundle());
   const data = normalize(input);
+  // The renderer travels only where it can be used: a document sheet that
+  // somebody may edit. A read-only document is already rendered.
+  const editableDocument =
+    editEnabled && data.versions.some((v) => v.sheets.some((s) => s.document !== undefined));
+  const appJS = escapeScriptClose(await getAppBundle(editableDocument ? "app-md.ts" : "app.ts"));
   const dataJson = escapeScriptClose(JSON.stringify(data));
   const configJson = escapeScriptClose(JSON.stringify({ review: reviewEnabled, edit: editEnabled, prompt: promptEnabled, lang, server: options?.server === true }));
   const title = options?.title ?? data.metadata?.title ?? (lang === "en" ? "Parameter Sheet" : "パラメータシート");

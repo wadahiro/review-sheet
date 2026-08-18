@@ -19,6 +19,38 @@ import type { Lang } from "./html/i18n.js";
 // default) is a statement about the product, not about this installation, and
 // is not the recipient's to restate.
 export const EDITABLE_FIELDS = ["value", "remarks"] as const;
+
+// A document sheet has no rows, so its edit names no parameter: the target is
+// the sheet, and the value is the markdown source. Kept out of EDITABLE_FIELDS
+// because that set is about CELLS.
+export const DOCUMENT_FIELD = "document";
+
+// The markdown a document sheet should show now, or undefined for the one it
+// was built with. Same fold as everywhere else: entries are appended, the
+// newest wins, and the original stays reachable underneath.
+// Every image any edit to this document has brought with it, newest last, laid
+// over the ones the build embedded. Kept across the WHOLE history rather than
+// read off the newest edit: a picture pasted in August and still referenced in
+// September belongs to the September text too.
+export function documentAssets(reviews: ReviewItem[], sheet: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const r of sortEdits(reviews)) {
+    if (!isEdit(r) || r.target.sheet !== sheet || r.target.param !== undefined) continue;
+    if ((r.target.field ?? "") !== DOCUMENT_FIELD) continue;
+    for (const [path, uri] of Object.entries(r.assets ?? {})) out[path] = uri;
+  }
+  return out;
+}
+
+export function documentSource(reviews: ReviewItem[], sheet: string): string | undefined {
+  const chain = sortEdits(
+    reviews.filter(
+      (r) => isEdit(r) && r.target.sheet === sheet && r.target.param === undefined && (r.target.field ?? "") === DOCUMENT_FIELD
+    )
+  );
+  const last = chain[chain.length - 1];
+  return last?.changes?.find((c) => c.field === DOCUMENT_FIELD)?.suggested;
+}
 export type EditableField = (typeof EDITABLE_FIELDS)[number];
 
 export const isEditableField = (field: string): field is EditableField =>
@@ -281,6 +313,9 @@ export function extractReviewsFromHtml(html: string): ReviewItem[] {
 }
 
 export type EditPlan = {
+  // Rewrites of a document sheet's markdown. Not a cell and not a row: the
+  // whole page, going back to the markdown file it was rendered from.
+  documents: ReviewItem[];
   // The NET change per cell, shaped like a review finding so it goes through
   // apply's ordinary path — source map, parser dispatch, verification and all.
   changes: ReviewItem[];
@@ -298,6 +333,17 @@ export type EditPlan = {
 // step the moment anyone had already applied part of it by hand, and cascade
 // from there. The pair that matters is (what the sheet was built with, what it
 // says now).
+// The newest rewrite per document sheet. A page edited three times is one file
+// to write, for the same reason a cell edited three times is one change.
+function documentRewrites(reviews: ReviewItem[]): ReviewItem[] {
+  const latest = new Map<string, ReviewItem>();
+  for (const r of sortEdits(reviews)) {
+    if (!isEdit(r) || r.target.param !== undefined || (r.target.field ?? "") !== DOCUMENT_FIELD) continue;
+    latest.set(r.target.sheet, r);
+  }
+  return [...latest.values()];
+}
+
 export function planFromEdits(reviews: ReviewItem[]): EditPlan {
   const added = sortEdits(reviews.filter((r) => isEdit(r) && r.creates === true));
   const struck = deletionTargets(reviews);
@@ -333,7 +379,7 @@ export function planFromEdits(reviews: ReviewItem[]): EditPlan {
       status: "pending",
     });
   }
-  return { changes, added, struck };
+  return { changes, added, struck, documents: documentRewrites(reviews) };
 }
 
 // Rows whose newest delete/restore entry says "no longer set".
@@ -351,7 +397,7 @@ function deletionTargets(reviews: ReviewItem[]): ReviewItem[] {
 // tells the AI what kind of judgement it is being asked for.
 export function promptItemsFromPlan(
   plan: EditPlan,
-  reasons: { added: string; struck: string }
+  reasons: { added: string; struck: string; document: string }
 ): ReviewItem[] {
   const withReason = (r: ReviewItem, reason: string): ReviewItem => ({
     ...r,
@@ -362,5 +408,6 @@ export function promptItemsFromPlan(
     ...plan.changes,
     ...plan.added.map((r) => withReason(r, reasons.added)),
     ...plan.struck.map((r) => withReason(r, reasons.struck)),
+    ...plan.documents.map((r) => withReason(r, reasons.document)),
   ];
 }

@@ -895,6 +895,14 @@ DOM, so it is not the body that breaks: the outline lists every sheet's entries
 at once and marks the current one by comparing ids, so one id shared by three
 entries highlights all three.
 
+A document sheet generated with `--allow edit` can be edited in the browser, as
+markdown. Its source and its images are carried alongside the rendered html for
+that (an image is a data URI in the html, not in the markdown), and the sheet
+records `source_file` so an edit knows which `.md` it belongs to. Pasting an
+image embeds it: the markdown gets a content-addressed path, the bytes ride on
+the edit, and `apply` emits both the new text and the image files to write. The
+renderer is ~45 KB and travels only in a file that has an editable document.
+
 #### `recipe: terraform-plan`
 
 A sheet whose subject is a rendered plan (`terraform show -json`). This is

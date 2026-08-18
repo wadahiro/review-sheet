@@ -289,6 +289,14 @@ export type Sheet = {
 
 export type SheetDocument = {
   html: string;
+  // The markdown the html was rendered FROM, and the images it embeds, carried
+  // only when the document is meant to be editable in the browser
+  // (`--allow edit`). Rendering happens at build time; a viewer that has to
+  // re-render an edit needs both the source and the images, because a data URI
+  // inlined at build time is in the HTML and not in the markdown — re-rendering
+  // without them would silently drop every picture.
+  markdown?: string;
+  images?: Record<string, string>;
   // The headings the outline lists — already filtered by the build's declared
   // depth, so the model states what the navigation IS rather than restating a
   // rule the viewer would apply again and could apply differently.
@@ -586,6 +594,17 @@ export type ReviewItem = {
   // from the sheet: it is struck through, because a parameter that silently
   // disappears is the failure this whole tool exists to prevent.
   deletes?: boolean;
+  // Files this edit brings with it: a path, as the markdown refers to it,
+  // against the image as a data URI. Only a document edit has them, and only
+  // when somebody pasted a picture into it.
+  //
+  // Carried BESIDE the markdown rather than written into it as a `data:` URI.
+  // Both work, and both travel — but a base64 blob in the middle of a
+  // paragraph makes the source unreadable in the editor and in the file it
+  // goes back to, and the markdown is exactly what a person is there to read.
+  // It also matches what the document already does: images are files beside
+  // the .md, referenced by path.
+  assets?: Record<string, string>;
 };
 
 // One save of the document, by whoever was maintaining it.
