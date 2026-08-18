@@ -60,6 +60,13 @@ export type ParamData = {
   instances?: { name: string; value: string; source?: SourceLocation }[];
   out_of_scope?: { reason: LangText; owner?: string };
   origin?: Origin;
+  // Written by the recipient in a delivered document, not extracted from any
+  // config file. Viewer-side only: no built model ever carries it, and the row
+  // has no `source`, which is exactly what it is announcing.
+  added?: boolean;
+  // Struck through: whoever maintains the document says this is no longer set.
+  // Viewer-side only, like `added`.
+  deleted?: boolean;
   extra?: Record<string, string>;
 };
 
@@ -158,11 +165,27 @@ export const HELD_REASON_BASELINE =
 // splitting it into a per-environment override is a structural change to the
 // project's layout — a judgement, not an edit. So the deterministic core refuses
 // and the AI prompt gets it with the right instruction instead.
+// A row somebody wrote into the sheet itself. There is no line to edit, so
+// where it belongs — which file, which section, what syntax — is a judgement
+// about the project's layout, not an edit.
+export const HELD_REASON_ADDED_ROW =
+  "Cannot apply directly: this row was written into the sheet and no config file has a line for it — decide where it belongs and add it";
+
+// A row marked as no longer set. Removing a line is not the inverse of editing
+// one: it may be commented out, deleted, or moved to a default, and which of
+// those is right depends on the file.
+export const HELD_REASON_STRUCK_ROW =
+  "Cannot apply directly: this setting was marked as no longer used — decide whether its line is removed, commented out, or left to the product default";
+
 export const HELD_REASON_SHARED_INSTANCE =
   "Cannot apply directly: the value is a single shared definition — changing it for one environment means adding an environment-level override, which is a structural decision";
 
+export type SaveRecord = { at: string; by?: string; comment?: string; changes: number };
+
 export type ReviewTarget = { sheet: string; category?: string; param?: string; instance?: string; field?: string };
-export type ReviewChange = { field: string; current?: string; suggested: string };
+// Mirrors types.ts's ReviewChange/ReviewItem. See there for what `at`/`by`/
+// `lang` mean; they are set by edits made in a delivered HTML.
+export type ReviewChange = { field: string; current?: string; suggested: string; lang?: "ja" | "en" };
 
 export type ReviewItem = {
   id: string;
@@ -170,6 +193,10 @@ export type ReviewItem = {
   changes?: ReviewChange[];
   comment?: string;
   status: "pending" | "applied" | "rejected";
+  at?: string;
+  by?: string;
+  creates?: boolean;
+  deletes?: boolean;
 };
 
 // ============================================================

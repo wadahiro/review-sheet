@@ -31,7 +31,8 @@
               "properties": {
                 "field": { "type": "string" },
                 "current": { "type": "string" },
-                "suggested": { "type": "string" }
+                "suggested": { "type": "string" },
+                "lang": { "type": "string", "enum": ["ja", "en"] }
               }
             }
           },
@@ -39,7 +40,11 @@
           "status": {
             "type": "string",
             "enum": ["pending", "applied", "rejected"]
-          }
+          },
+          "at": { "type": "string" },
+          "by": { "type": "string" },
+          "creates": { "type": "boolean" },
+          "deletes": { "type": "boolean" }
         }
       }
     }

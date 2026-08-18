@@ -82,10 +82,24 @@ describe("generateHtml", () => {
     expect(html).toContain('"review":true');
   });
 
+  // Editing is off unless asked for. A delivered sheet that silently accepted
+  // edits would let the recipient change values nobody knows changed.
+  it("keeps editing off by default", async () => {
+    const html = await generateHtml(simpleFixture as ParameterSheetInput);
+    expect(html).toContain('"edit":false');
+  });
+
+  it("enables editing with edit: true", async () => {
+    const html = await generateHtml(simpleFixture as ParameterSheetInput, {
+      edit: true,
+    });
+    expect(html).toContain('"edit":true');
+  });
+
   // A "</script>" anywhere in the embedded text ends the element early and the
-  // rest of the document becomes markup — which looks like a blank page. Any
-  // config value can contain one, so this is a live failure, not a
-  // hypothetical.
+  // rest of the document becomes markup. The app's own source contains one (it
+  // reads its embedded history back out), and any config value could too — so
+  // this is a live failure, not a hypothetical, and it looks like a blank page.
   describe("embedded text cannot end its own script element", () => {
     const parse = (html: string): Document => {
       const w = new Window();
@@ -96,21 +110,22 @@ describe("generateHtml", () => {
       [...parse(html).querySelectorAll("script")].map((e) => e.textContent ?? "");
 
     it("keeps the app bundle whole", async () => {
-      const html = await generateHtml(simpleFixture as ParameterSheetInput);
+      const html = await generateHtml(simpleFixture as ParameterSheetInput, { edit: true });
       const scripts = scriptsOf(html);
-      // theme, data, config, app — no more, or something was cut.
-      expect(scripts).toHaveLength(4);
-      const app = scripts[3];
+      // theme, data, config, reviews, app — no more, or something was cut.
+      expect(scripts).toHaveLength(5);
+      const app = scripts[4];
       expect(app.length).toBeGreaterThan(10_000);
       // Truncation happens INSIDE the bundle, so the tail is what proves it whole.
       expect(app.trimEnd().endsWith("</script>")).toBe(false);
+      expect(html.split("</script>")).toHaveLength(6); // 5 elements => 5 separators
     });
 
     it("survives a config value that closes a script tag", async () => {
       const nasty = JSON.parse(JSON.stringify(simpleFixture)) as ParameterSheetInput;
       nasty.sheets[0].categories[0].params![0].value = '</script><h1>gotcha</h1>';
       const html = await generateHtml(nasty);
-      expect(scriptsOf(html)).toHaveLength(4);
+      expect(scriptsOf(html)).toHaveLength(4); // theme, data, config, app
       // The text is still in the file — inside the JSON, where it belongs. What
       // must not happen is the browser reading it as markup.
       expect(html).toContain("gotcha");

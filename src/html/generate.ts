@@ -83,14 +83,13 @@ export function allDated(inputs: { input: ParameterSheetInput }[]): boolean {
 }
 
 // A closing script tag inside embedded text ends the element, whatever that
-// text means to JS or JSON. It is not hypothetical: any config value could
-// contain one, and the app's own source mentions "</script>" wherever it reads
-// its own embedded payloads back out. Both JavaScript and JSON read \/ as a
-// plain forward slash, so one substitution covers the bundle and the payloads
-// alike.
+// text means to JS or JSON. It is not hypothetical: the app's own source
+// mentions "</script>" (it reads its embedded history back out), and any config
+// value could contain one. Both JavaScript and JSON read \/ as a plain forward
+// slash, so one substitution covers the bundle and the payloads alike.
 //
 // This belongs to whoever writes the <script> element, not to whoever produced
-// the text — every caller getting it right separately is how it goes wrong.
+// the text — every caller getting it right separately is how it went wrong.
 const escapeScriptClose = (text: string): string => text.replace(/<\/script/gi, "<\\/script");
 
 export async function generateHtml(
@@ -98,11 +97,13 @@ export async function generateHtml(
   options?: GenerateOptions
 ): Promise<string> {
   const reviewEnabled = options?.review !== false;
+  const editEnabled = options?.edit === true;
+  const promptEnabled = options?.prompt !== false;
   const lang = options?.lang ?? "ja";
   const appJS = escapeScriptClose(await getAppBundle());
   const data = normalize(input);
   const dataJson = escapeScriptClose(JSON.stringify(data));
-  const configJson = escapeScriptClose(JSON.stringify({ review: reviewEnabled, lang, server: options?.server === true }));
+  const configJson = escapeScriptClose(JSON.stringify({ review: reviewEnabled, edit: editEnabled, prompt: promptEnabled, lang, server: options?.server === true }));
   const title = options?.title ?? data.metadata?.title ?? (lang === "en" ? "Parameter Sheet" : "パラメータシート");
 
   return `<!DOCTYPE html>
@@ -124,6 +125,9 @@ ${dataJson}
 <script type="application/json" id="sheet-config">
 ${configJson}
 </script>
+${editEnabled ? `<script type="application/json" id="sheet-reviews">
+[]
+</script>` : ""}
 <script type="module">
 ${appJS}
 </script>

@@ -16,6 +16,8 @@ import {
   HELD_REASON_DEFAULT,
   HELD_REASON_BASELINE,
   HELD_REASON_SHARED_INSTANCE,
+  HELD_REASON_ADDED_ROW,
+  HELD_REASON_STRUCK_ROW,
   type SheetData,
   type ReviewItem,
   type ReviewTarget,
@@ -23,6 +25,7 @@ import {
   type SourceLocation,
 } from "./prompt.js";
 import { parserForSource, type ExtractOptions } from "./parser.js";
+import { planFromEdits, promptItemsFromPlan } from "./edits.js";
 import "./parsers/index.js";
 
 export type ApplyStatus = "applied" | "skipped" | "held" | "out_of_scope";
@@ -56,6 +59,13 @@ export type ApplyOutcome = {
   // re-pointed rather than dropped, and reported because a review silently
   // changing where it points is precisely what this project does not do.
   moved: { target: ReviewTarget; from: string; to: string }[];
+  // Values changed in the generated document itself (`status: "applied"`).
+  // They are NOT written to config files: an edit records what the system is
+  // supposed to be, made by someone who applies it by hand, and some of them
+  // are rows no config file has at all. Counted and returned rather than
+  // filtered out in silence — a review file that turns out to hold work this
+  // command ignored should say so.
+  edits: ReviewItem[];
 };
 
 type ReadFile = (path: string) => string | null;
@@ -77,7 +87,17 @@ export function computeApply(
   // needs a fallback of its own. Applying a change to the wrong file because a
   // category was renamed is the failure this prevents.
   const retargeted = retargetReviews(reviews, data);
-  const pending = retargeted.reviews.filter((r) => r.status === "pending");
+  // Two populations arrive in the same file. A `pending` item is a REVIEW
+  // finding — somebody's proposal, not yet true of anything. An `applied` item
+  // is an edit already made in the sheet, by whoever maintains it; the sheet
+  // says the system should be that, and the config file has not caught up.
+  // Both end up as the same kind of work here — change this line to that value
+  // — so the edits are collapsed into one net change per cell and go through
+  // exactly the same path: source map, parser, verification against what the
+  // file actually holds.
+  const edits = retargeted.reviews.filter((r) => r.status === "applied");
+  const plan = planFromEdits(retargeted.reviews);
+  const pending = [...retargeted.reviews.filter((r) => r.status === "pending"), ...plan.changes];
 
   // Lazily loaded, progressively edited file contents (as line arrays).
   const working = new Map<string, string[] | null>(); // null = unreadable
@@ -266,12 +286,27 @@ export function computeApply(
     }
   }
 
+  // A row nobody has a line for, and a row that must stop having one. Neither
+  // is an edit to an existing location, so neither can be written by a source
+  // map — but both are real work, and going quiet about them would leave the
+  // most consequential half of a returned sheet unmentioned. They go to the
+  // prompt, which is what it is for.
+  const REASONS = { added: HELD_REASON_ADDED_ROW, struck: HELD_REASON_STRUCK_ROW };
+  heldReviews.push(...promptItemsFromPlan({ changes: [], added: plan.added, struck: plan.struck }, REASONS));
+  for (const r of plan.added) {
+    results.push({ target: r.target, status: "held", reason: REASONS.added, current: "", suggested: r.changes?.find((c) => c.field === "value")?.suggested ?? "" });
+  }
+  for (const r of plan.struck) {
+    results.push({ target: r.target, status: "held", reason: REASONS.struck, current: "", suggested: "" });
+  }
+
   const files = [...touched].map((path) => ({ path, content: working.get(path)!.join("\n") }));
   return {
     results,
     moved: retargeted.moved,
     files,
     heldPrompt: buildPromptText(heldReviews, data),
+    edits,
     applied: results.filter((r) => r.status === "applied").length,
     skipped: results.filter((r) => r.status === "skipped").length,
     held: results.filter((r) => r.status === "held").length,

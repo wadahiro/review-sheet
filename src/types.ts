@@ -567,6 +567,38 @@ export type ReviewItem = {
   changes?: ReviewChange[];
   comment?: string;
   status: "pending" | "applied" | "rejected";
+  // Who made this entry and when. Only meaningful for edits made in the
+  // generated HTML (`status: "applied"`), where the list of items IS the
+  // history: an edit never rewrites an earlier one, it appends. Both are
+  // self-declared by whoever had the file open -- there is no identity in a
+  // standalone HTML -- so they are a record of intent, not an audit trail.
+  at?: string;          // ISO 8601, from the editor's own clock
+  by?: string;          // free text; empty when nobody typed a name
+  // This edit BRINGS A ROW INTO EXISTENCE: `target.param` names a key the
+  // generated document does not have. Declared rather than inferred from "the
+  // target does not resolve" — that reading would silently resurrect a row a
+  // later regeneration deliberately removed.
+  creates?: boolean;
+  // This entry marks the row as no longer set (`true`) or puts it back
+  // (`false`). BOTH directions are recorded — deleting a row and restoring it
+  // months later are two decisions, and the second does not erase the first.
+  // The newest entry that states either one decides. The row is never removed
+  // from the sheet: it is struck through, because a parameter that silently
+  // disappears is the failure this whole tool exists to prevent.
+  deletes?: boolean;
+};
+
+// One save of the document, by whoever was maintaining it.
+//
+// The per-cell history answers "why is this value what it is" — but only for
+// someone who already suspects that cell. This answers "what has happened to
+// this system", which is the question asked months later, and it is the only
+// place a REASON can live: a timestamp cannot carry one.
+export type SaveRecord = {
+  at: string;            // ISO 8601, from the editor's own clock
+  by?: string;           // self-declared; blank is allowed
+  comment?: string;      // why, in the author's words
+  changes: number;       // how many entries this save added
 };
 
 export type ReviewTarget = {
@@ -581,6 +613,11 @@ export type ReviewChange = {
   field: string;
   current?: string;
   suggested: string;
+  // Which language this text was written in, for prose fields (`remarks`)
+  // edited in the generated HTML. Shown in the other language the edit does not
+  // apply, so a note written in one language never stands in for a translation
+  // that was never made. Absent on value changes, which have no language.
+  lang?: "ja" | "en";
 };
 
 // ============================================================
@@ -595,4 +632,14 @@ export type GenerateOptions = {
   // `review-sheet serve` backend (POST /api/apply, /api/verify) to apply
   // reviewed changes directly to local files instead of exporting review.json.
   server?: boolean;
+  // Let whoever maintains the sheet edit values and remarks in the generated
+  // HTML. Edits are appended as `applied` review items over the baseline, never
+  // written into the rows themselves, so the original value always survives.
+  edit?: boolean;
+  // Offer the AI prompt (the change requests, ready to hand to an assistant).
+  // Separate from the mode because it is a judgement about the AUDIENCE:
+  // whoever maintains a sheet may have no use for it, or no wish to be
+  // offered one. Defaults to true, which is how it behaved before it could be
+  // turned off.
+  prompt?: boolean;
 };

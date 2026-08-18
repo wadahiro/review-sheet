@@ -11,12 +11,17 @@ import {
   retargetReviews,
   effectiveOrigin,
   HELD_REASON_GENERATED,
+  HELD_REASON_ADDED_ROW,
+  HELD_REASON_STRUCK_ROW,
   type SheetData,
   type CategoryData,
   type ParamData,
   type ReviewItem,
+  type SaveRecord,
 } from "../prompt.js";
 import { buildDiffModel, rowKey, instKey, catKey, sheetKey, type DiffStatusMap } from "../diffview.js";
+import { applyEdits, editsForCell, isEdit, isEditableField, isDeleted, planFromEdits, promptItemsFromPlan, cellKey as editCellKey, targetKey, type EditedSheets } from "../edits.js";
+import { withEmbeddedHistory, readEmbeddedHistory, suggestedFileName, type EmbeddedHistory } from "./save.js";
 import type { DiffStatus } from "../diff.js";
 import { pickLang, type OutOfScope, type Capabilities, type ArtifactPreview } from "../types.js";
 
@@ -34,6 +39,9 @@ const html = htm.bind(h);
 // For "default" there is no file — that IS the point — so it keeps a word.
 // overlay/common render no marker: the value columns already convey those.
 function originTag(param: ParamData, t: Messages): { label: string; title: string } | null {
+  // Checked first, and it wins: a row the recipient wrote has no origin in the
+  // configuration at all, which is a stronger statement than any of the below.
+  if (param.added) return { label: t.originAdded, title: t.originAddedTip };
   const origin = effectiveOrigin(param);
   if (origin === "embedded") {
     // The FILE, not a word for the category. Tried both: a one-word label reads
@@ -177,15 +185,6 @@ function genId(): string {
   return "rev_" + Math.random().toString(36).substring(2, 14);
 }
 
-function targetKey(t: ReviewItem["target"]): string {
-  let key = t.sheet;
-  if (t.category) key += "::" + t.category;
-  if (t.param) key += "::" + t.param;
-  if (t.instance) key += "::" + t.instance;
-  // Exclude field from targetKey (cell-level lookup uses target.field separately)
-  return key;
-}
-
 
 function copyToClipboard(value: string, btn: HTMLElement): void {
   navigator.clipboard.writeText(value).then(() => {
@@ -218,6 +217,14 @@ type CellToolCtx = {
   hasReview: boolean;
   canCopy: boolean;
   reviewEnabled: boolean;
+  // Editing is offered only on the two fields the recipient owns (value,
+  // remarks) — see EDITABLE_FIELDS.
+  editEnabled: boolean;
+  hasEdit: boolean;
+  // Row-level: offered on the key cell only. `rowDeleted` flips the action
+  // between striking the row through and putting it back.
+  canDelete: boolean;
+  rowDeleted: boolean;
   // The cell's horizontal scroll container, so wheel/swipe over the (fixed,
   // overlaying) toolbar can be forwarded to the table beneath it.
   scroller: HTMLElement | null;
@@ -285,6 +292,78 @@ function loadReviews(storageKey: string): ReviewItem[] {
     if (raw) return JSON.parse(raw);
   } catch { /* empty */ }
   return [];
+}
+
+const EDITOR_NAME_KEY = "rs-editor-name";
+
+// A handle to the file the recipient last saved over, so the second save does
+// not ask again. Kept in memory only — a file handle is not serializable, and
+// asking once per session is not the friction worth solving.
+let savedFileHandle: FileSystemFileHandle | null = null;
+
+type FileSystemWritable = { write: (data: string) => Promise<void>; close: () => Promise<void> };
+type FileSystemFileHandle = { createWritable: () => Promise<FileSystemWritable> };
+type SavePicker = (options: { suggestedName?: string; types?: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle>;
+
+// Two ways out, and the difference matters to the recipient. Chrome and Edge
+// can write back over the very file they opened, which is what "maintaining a
+// document" means. Everywhere else — and on any failure — it falls back to a
+// download, which leaves a dated copy beside the original. Never silently: a
+// save that quietly became a copy in the Downloads folder is a lost edit the
+// next time the original is opened.
+// Asked for FIRST, before the document is built. The picker needs the user's
+// gesture, and building a large document ahead of it is what made the page look
+// frozen: several hundred KB of string work ran before anything appeared on
+// screen. Nothing here touches the content.
+async function pickWriteTarget(fileName: string): Promise<FileSystemFileHandle | null> {
+  const picker = (window as unknown as { showSaveFilePicker?: SavePicker }).showSaveFilePicker;
+  if (!picker) return null; // download fallback
+  if (savedFileHandle) return savedFileHandle;
+  try {
+    return await picker({ suggestedName: fileName, types: [{ description: "HTML", accept: { "text/html": [".html"] } }] });
+  } catch {
+    // The user dismissed the picker. Not an error, and not a reason to fall
+    // through to a download they did not ask for.
+    throw new Error("cancelled");
+  }
+}
+
+async function writeDocument(html: string, fileName: string, handle: FileSystemFileHandle | null): Promise<void> {
+  if (handle) {
+    const writable = await handle.createWritable();
+    await writable.write(html);
+    await writable.close();
+    savedFileHandle = handle;
+    return;
+  }
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Let the browser paint before starting synchronous work. Without this, a
+// "saving…" state set immediately before a long task never reaches the screen.
+const paint = (): Promise<void> =>
+  new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+
+// The keys already in one category, so a newly added row cannot collide with an
+// existing one — two rows with the same key ARE the same row to every target,
+// anchor and edit in the document.
+function keysInCategory(data: SheetData, target: ReviewItem["target"]): string[] {
+  const sheet = data.sheets.find((s) => s.name === target.sheet);
+  if (!sheet) return [];
+  let cats: CategoryData[] | undefined = sheet.categories;
+  let cat: CategoryData | undefined;
+  for (const name of (target.category ?? "").split("/")) {
+    cat = cats?.find((c) => c.name === name);
+    if (!cat) return [];
+    cats = cat.categories;
+  }
+  return (cat?.params ?? []).map((p) => p.key);
 }
 
 function saveReviews(storageKey: string, reviews: ReviewItem[]): void {
@@ -493,8 +572,13 @@ function ApplyPanel({ reviews, onClose, onApplied, t }: {
 // user can tweak it before copying (used by the toolbar "AI" button).
 // ============================================================
 
-function PromptModal({ text, onClose, t }: {
+function PromptModal({ text, fromEdits, onClose, t }: {
   text: string;
+  // What the prompt was built FROM. In a maintainable document it is not a set
+  // of proposals waiting to be judged, it is what the sheet already says and
+  // the files have not caught up with — a different thing to hand an AI, and
+  // saying "pending reviews" there is simply false.
+  fromEdits: boolean;
   onClose: () => void;
   t: Messages;
 }) {
@@ -518,7 +602,7 @@ function PromptModal({ text, onClose, t }: {
           <button class="rs-modal-close" onClick=${onClose} aria-label="${t.shortcutClose}">×</button>
         </header>
         <div class="rs-apply-body">
-          <p class="rs-apply-held-hint">${t.aiPromptHint}</p>
+          <p class="rs-apply-held-hint">${fromEdits ? t.aiPromptHintEdits : t.aiPromptHint}</p>
           <textarea class="rs-apply-held-text" spellcheck=${false}
                     value=${value}
                     onInput=${(e: Event) => setValue((e.target as HTMLTextAreaElement).value)}></textarea>
@@ -746,6 +830,346 @@ function ReviewModal({ target, field, currentValue, sharedRow, reviews, onSave, 
 }
 
 // ============================================================
+// Edit modal (editing a generated document)
+// ============================================================
+
+// Changing a value in a document that has already been handed over. Distinct
+// from the review dialog in one way that matters: this does not REPLACE an
+// earlier entry, it appends. The original value stays visible above the chain,
+// so "what was shipped, what it became, and in what steps" is answerable from
+// the file itself.
+function EditModal({ target, field, currentValue, baseline, sharedRow, reviews, lang, onSave, onUndo, onClose, t }: {
+  target: ReviewItem["target"];
+  field: string;
+  currentValue: string;
+  // The original value per edited cell. Looked up with the target this dialog
+  // actually saves to (see `savedTarget`), never the clicked one.
+  baseline: Map<string, string>;
+  sharedRow?: boolean;
+  reviews: ReviewItem[];
+  lang: Lang;
+  onSave: (review: ReviewItem) => void;
+  onUndo: (id: string) => void;
+  onClose: () => void;
+  t: Messages;
+}) {
+  // A shared row stores ONE value shown in every environment column, so an edit
+  // on it is ambiguous until someone says which they mean. Asked, not guessed —
+  // and it defaults to the environment whose column was clicked, because that
+  // is the narrower claim: getting it wrong splits a row that reads correctly
+  // either way, where the other default silently rewrites environments nobody
+  // looked at.
+  const canChooseScope = !!sharedRow && !!target.instance;
+  const [scopeAll, setScopeAll] = useState(false);
+  const savedTarget = useMemo<ReviewItem["target"]>(() => {
+    if (!canChooseScope || !scopeAll) return target;
+    const { instance: _dropped, ...rest } = target;
+    return rest;
+  }, [target, canChooseScope, scopeAll]);
+
+  const history = useMemo(() => editsForCell(reviews, savedTarget, field), [reviews, savedTarget, field]);
+  const original = baseline.get(editCellKey(savedTarget, field));
+  const [next, setNext] = useState(currentValue);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    setNext(currentValue);
+  }, [currentValue, field, target.sheet, target.category, target.param, target.instance]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
+    setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select(); }, 50);
+  }, [field, target.sheet, target.category, target.param, target.instance]);
+
+  const handleSave = useCallback(() => {
+    if (next === currentValue) {
+      alert(t.editUnchanged);
+      return;
+    }
+    onSave({
+      id: genId(),
+      target: { ...savedTarget, field },
+      // `current` is the value this edit moved AWAY from — the step before it,
+      // not the original value. Chained, the entries read as a sequence.
+      changes: [{ field, current: currentValue, suggested: next, lang: field === "remarks" ? lang : undefined }],
+      status: "applied",
+      at: new Date().toISOString(),
+    });
+    onClose();
+  }, [next, currentValue, savedTarget, field, lang, onSave, onClose, t]);
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); handleSave(); }
+  }, [handleSave]);
+
+  const handleUndo = useCallback(() => {
+    const last = history[history.length - 1];
+    if (last && confirm(t.editConfirmUndo)) {
+      onUndo(last.id);
+      onClose();
+    }
+  }, [history, onUndo, onClose, t]);
+
+  const targetLabel = useMemo(() => {
+    const parts = [savedTarget.sheet];
+    if (savedTarget.category) parts.push(savedTarget.category);
+    if (savedTarget.param) parts.push(savedTarget.param);
+    if (savedTarget.instance) parts.push(`(${savedTarget.instance})`);
+    return parts.join(" > ");
+  }, [savedTarget]);
+
+  const fieldLabel = field === "remarks" ? t.fieldRemarks : t.fieldValue;
+
+  return html`
+    <div class="rs-overlay" onClick=${(e: Event) => { if ((e.target as HTMLElement).classList.contains("rs-overlay")) onClose(); }}>
+      <div class="rs-modal" role="dialog" aria-label="${t.editTitle}">
+        <header>
+          <div>
+            <h4>${t.editTitle} — ${fieldLabel}</h4>
+            <div class="rs-modal-path">${targetLabel}</div>
+          </div>
+          <button class="rs-modal-close" onClick=${onClose} aria-label="${t.shortcutClose}">\u00d7</button>
+        </header>
+        <div class="rs-new-review">
+          ${canChooseScope && html`
+            <div class="rs-scope-row">
+              <span class="rs-scope-hint">${t.scopeSharedHint}</span>
+              <label class="rs-scope-opt">
+                <input type="radio" name="rs-edit-scope" checked=${!scopeAll} onChange=${() => setScopeAll(false)} />
+                <span>${t.scopeThisEnv(target.instance ?? "")}</span>
+              </label>
+              <label class="rs-scope-opt">
+                <input type="radio" name="rs-edit-scope" checked=${scopeAll} onChange=${() => setScopeAll(true)} />
+                <span>${t.scopeAllEnvs}</span>
+              </label>
+            </div>
+            <p class="rs-edit-note">${scopeAll ? t.editSharedNote : t.editSplitNote}</p>
+          `}
+          ${history.length > 0 && html`
+            <div class="rs-edit-history">
+              <div class="rs-edit-history-title">${t.editHistory}</div>
+              <ol class="rs-edit-chain">
+                ${/* The step marker is a real element in the row, not a
+                      pseudo-element positioned beside it: absolutely positioned
+                      it drifts against whatever follows the list. */ ""}
+                <li>
+                  <span class="rs-edit-step" aria-hidden="true"></span>
+                  <code>${original ?? currentValue}</code>
+                  <span class="rs-edit-when">${t.editOriginal}</span>
+                </li>
+                ${history.map((e) => html`
+                  <li key=${e.id}>
+                    <span class="rs-edit-step" aria-hidden="true">\u2193</span>
+                    <code>${e.changes?.find((c) => c.field === field)?.suggested || "\u2205"}</code>
+                    <span class="rs-edit-when">${e.at ? formatTimestamp(e.at) : ""}${e.by ? ` \u30fb ${e.by}` : ` \u30fb (${t.editAnonymous})`}</span>
+                  </li>
+                `)}
+              </ol>
+            </div>
+          `}
+
+          <div class="rs-form-row">
+            <label for="rs-edit-next">${t.editNewValue}</label>
+            <textarea id="rs-edit-next" ref=${inputRef} value=${next}
+                      onInput=${(e: Event) => setNext((e.target as HTMLTextAreaElement).value)}
+                      onKeyDown=${handleKeyDown}
+                      rows=${field === "remarks" ? "4" : "2"}></textarea>
+          </div>
+
+          <div class="rs-modal-footer">
+            <span class="rs-modal-shortcuts">
+              <kbd>Ctrl</kbd>+<kbd>Enter</kbd> ${t.shortcutSave}\u3000<kbd>Esc</kbd> ${t.shortcutClose}
+            </span>
+            <div class="rs-modal-actions">
+              ${history.length > 0 && html`<button class="rs-btn-danger" onClick=${handleUndo}>${t.editUndo}</button>`}
+              <button class="rs-btn-primary" onClick=${handleSave}>${t.editSave}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Adding a row to a generated document. Whoever maintains it has a setting the
+// sheet does not list — set by hand after the sheet was built, or never extracted
+// — and the sheet stops being a record of the system if there is nowhere to put
+// it. What it CANNOT do is pretend the row came from a config file: it has no
+// source map, it is marked, and it is listed apart on export.
+function AddRowModal({ category, existingKeys, onSave, onClose, t }: {
+  category: ReviewItem["target"];
+  existingKeys: string[];
+  onSave: (review: ReviewItem) => void;
+  onClose: () => void;
+  t: Messages;
+}) {
+  const [key, setKey] = useState("");
+  const [value, setValue] = useState("");
+  const [remarks, setRemarks] = useState("");
+  const keyRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  useEffect(() => { setTimeout(() => keyRef.current?.focus(), 50); }, []);
+
+  const handleSave = useCallback(() => {
+    const name = key.trim();
+    if (!name) {
+      alert(t.addRowKeyRequired);
+      return;
+    }
+    // The key is the row's identity — every edit, every finding and every
+    // anchor is keyed by it — so a duplicate would make two rows the same row.
+    if (existingKeys.includes(name)) {
+      alert(t.addRowDuplicate(name));
+      return;
+    }
+    const changes: ReviewItem["changes"] = [{ field: "value", suggested: value }];
+    if (remarks.trim()) changes.push({ field: "remarks", suggested: remarks.trim() });
+    onSave({
+      id: genId(),
+      target: { ...category, param: name, field: "value" },
+      changes,
+      status: "applied",
+      creates: true,
+      at: new Date().toISOString(),
+    });
+    onClose();
+  }, [key, value, remarks, category, existingKeys, onSave, onClose, t]);
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); handleSave(); }
+  }, [handleSave]);
+
+  const targetLabel = [category.sheet, category.category].filter(Boolean).join(" > ");
+
+  return html`
+    <div class="rs-overlay" onClick=${(e: Event) => { if ((e.target as HTMLElement).classList.contains("rs-overlay")) onClose(); }}>
+      <div class="rs-modal" role="dialog" aria-label="${t.addRowTitle}">
+        <header>
+          <div>
+            <h4>${t.addRowTitle}</h4>
+            <div class="rs-modal-path">${targetLabel}</div>
+          </div>
+          <button class="rs-modal-close" onClick=${onClose} aria-label="${t.shortcutClose}">\u00d7</button>
+        </header>
+        <div class="rs-new-review">
+          <p class="rs-edit-note">${t.originAddedTip}</p>
+          <div class="rs-form-row">
+            <label for="rs-add-key">${t.addRowKey}</label>
+            <textarea id="rs-add-key" ref=${keyRef} value=${key} rows="1"
+                      onInput=${(e: Event) => setKey((e.target as HTMLTextAreaElement).value)}
+                      onKeyDown=${handleKeyDown}></textarea>
+          </div>
+          <div class="rs-form-row">
+            <label for="rs-add-value">${t.fieldValue}</label>
+            <textarea id="rs-add-value" value=${value} rows="2"
+                      onInput=${(e: Event) => setValue((e.target as HTMLTextAreaElement).value)}
+                      onKeyDown=${handleKeyDown}></textarea>
+          </div>
+          <div class="rs-form-row">
+            <label for="rs-add-remarks">${t.fieldRemarks}</label>
+            <textarea id="rs-add-remarks" value=${remarks} rows="3"
+                      onInput=${(e: Event) => setRemarks((e.target as HTMLTextAreaElement).value)}
+                      onKeyDown=${handleKeyDown}></textarea>
+          </div>
+          <div class="rs-modal-footer">
+            <span class="rs-modal-shortcuts">
+              <kbd>Ctrl</kbd>+<kbd>Enter</kbd> ${t.shortcutSave}\u3000<kbd>Esc</kbd> ${t.shortcutClose}
+            </span>
+            <div class="rs-modal-actions">
+              <button class="rs-btn-primary" onClick=${handleSave}>${t.addRowSave}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Saving the document. Asks for a name and, more importantly, a REASON: the
+// per-cell chain records what changed and when, and nothing else can record
+// why. That line is what someone reads months later on the overview page.
+function SaveModal({ count, defaultName, busy, onSave, onClose, t }: {
+  count: number;
+  defaultName: string;
+  busy: boolean;
+  onSave: (by: string, comment: string) => void;
+  onClose: () => void;
+  t: Messages;
+}) {
+  const [by, setBy] = useState(defaultName);
+  const [comment, setComment] = useState("");
+  const commentRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onClose(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose, busy]);
+
+  // The name is usually already known; the reason never is.
+  useEffect(() => { setTimeout(() => commentRef.current?.focus(), 50); }, []);
+
+  const submit = useCallback(() => {
+    if (busy) return;
+    onSave(by.trim(), comment.trim());
+  }, [by, comment, busy, onSave]);
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); submit(); }
+  }, [submit]);
+
+  return html`
+    <div class="rs-overlay" onClick=${(e: Event) => { if (!busy && (e.target as HTMLElement).classList.contains("rs-overlay")) onClose(); }}>
+      <div class="rs-modal" role="dialog" aria-label="${t.saveDocument}">
+        <header>
+          <div>
+            <h4>${t.saveDocument}</h4>
+            <div class="rs-modal-path">${t.saveCount(count)}</div>
+          </div>
+          <button class="rs-modal-close" onClick=${onClose} disabled=${busy} aria-label="${t.shortcutClose}">\u00d7</button>
+        </header>
+        <div class="rs-new-review">
+          <div class="rs-form-row">
+            <label for="rs-save-by">${t.saveBy} <span class="rs-hint">${t.saveOptional}</span></label>
+            <textarea id="rs-save-by" value=${by} rows="1" disabled=${busy}
+                      onInput=${(e: Event) => setBy((e.target as HTMLTextAreaElement).value)}
+                      onKeyDown=${handleKeyDown}></textarea>
+          </div>
+          <div class="rs-form-row">
+            <label for="rs-save-comment">${t.saveComment} <span class="rs-hint">${t.saveOptional}</span></label>
+            <textarea id="rs-save-comment" ref=${commentRef} value=${comment} rows="3" disabled=${busy}
+                      placeholder="${t.saveCommentPlaceholder}"
+                      onInput=${(e: Event) => setComment((e.target as HTMLTextAreaElement).value)}
+                      onKeyDown=${handleKeyDown}></textarea>
+          </div>
+          <div class="rs-modal-footer">
+            <span class="rs-modal-shortcuts">
+              ${busy
+                ? html`<span class="rs-save-busy">${t.saveInProgress}</span>`
+                : html`<kbd>Ctrl</kbd>+<kbd>Enter</kbd> ${t.shortcutSave}\u3000<kbd>Esc</kbd> ${t.shortcutClose}`}
+            </span>
+            <div class="rs-modal-actions">
+              <button class="rs-btn-primary" onClick=${submit} disabled=${busy}>${busy ? t.saveInProgress : t.saveDocument}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
 // Toolbar menu (popover)
 // ============================================================
 
@@ -811,13 +1235,15 @@ function MenuItem({ label, onClick, danger }: { label: string; onClick: () => vo
 // Reviewable cell component
 // ============================================================
 
-function ReviewableCell({ value, target, field, reviews, reviewEnabled, onOpenReview, className, isCode, badge, subline, unsetLabel, valueLabel, sharedRow }: {
+function ReviewableCell({ value, target, field, reviews, reviewEnabled, editEnabled, onOpenReview, onOpenEdit, className, isCode, badge, subline, unsetLabel, valueLabel, sharedRow, rowDeleted = false, onToggleDelete, t }: {
   value: string;
   target: ReviewItem["target"];
   field: string;
   reviews: ReviewItem[];
   reviewEnabled: boolean;
+  editEnabled: boolean;
   onOpenReview: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
+  onOpenEdit: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
   className?: string;
   isCode?: boolean;
   badge?: VNode | null;
@@ -834,6 +1260,10 @@ function ReviewableCell({ value, target, field, reviews, reviewEnabled, onOpenRe
   valueLabel?: string;
   // Passed straight through to the review modal (see CellToolCtx.sharedRow).
   sharedRow?: boolean;
+  // True when this row is currently struck through.
+  rowDeleted?: boolean;
+  onToggleDelete?: (target: ReviewItem["target"], deleted: boolean) => void;
+  t: Messages;
 }) {
   // A shared-scope review lives on the row target, so a shared row's cells match
   // BOTH: their own environment target and the row's. That is what makes an
@@ -841,12 +1271,20 @@ function ReviewableCell({ value, target, field, reviews, reviewEnabled, onOpenRe
   // also how the Compare overlay's synthetic reviews (diffview.ts emits row
   // targets for changed common values) keep rendering.
   const altTargetKey = sharedRow ? targetKey({ ...target, instance: undefined }) : undefined;
-  const cellReviews = reviews.filter((r) => {
+  const matching = reviews.filter((r) => {
     const k = targetKey(r.target);
     if (k !== targetKey(target) && k !== altTargetKey) return false;
     return r.target.field === field;
   });
+  // Two different things live in `reviews`. A finding (`pending`) is a proposal
+  // and is drawn as "current -> suggested". An edit (`applied`) has already
+  // moved the value — `applyEdits` put it in `value` before this ever ran — so
+  // drawing it the same way would show the new value struck through against
+  // itself. It gets a marker instead, and its history is read from the dialog.
+  const cellReviews = matching.filter((r) => !isEdit(r));
+  const cellEdits = matching.filter(isEdit);
   const hasReview = cellReviews.length > 0;
+  const hasEdit = cellEdits.length > 0;
   // Reflect suggested value from review on screen. A suggestion may be the empty
   // string (a proposal to DELETE/clear the value) — that is a real change, so
   // test for presence with `!== undefined`, not truthiness, and render the
@@ -889,7 +1327,11 @@ function ReviewableCell({ value, target, field, reviews, reviewEnabled, onOpenRe
   // Copy is offered on any non-empty cell (every value is worth copying); the
   // suggest action only when review is enabled.
   const canCopy = value.length > 0;
-  const showActions = canCopy || reviewEnabled;
+  const canEdit = editEnabled && isEditableField(field);
+  // Striking a row through is a statement about the ROW, so it is offered on
+  // the cell that IS the row's identity — its key — and nowhere else.
+  const canDelete = editEnabled && field === "key";
+  const showActions = canCopy || reviewEnabled || canEdit || canDelete;
 
   // The primary gesture is to open the review dialog. Double-clicking the cell
   // does the same as the toolbar's "Suggest" — a big, familiar target (the
@@ -897,6 +1339,11 @@ function ReviewableCell({ value, target, field, reviews, reviewEnabled, onOpenRe
   const openSuggest = (): void => {
     try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
     onOpenReview(target, field, effectiveValue, sharedRow);
+  };
+
+  const openEdit = (): void => {
+    try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
+    onOpenEdit(target, field, value, sharedRow);
   };
 
   // Report this cell to the single shared toolbar on hover (no per-cell toolbar,
@@ -912,17 +1359,17 @@ function ReviewableCell({ value, target, field, reviews, reviewEnabled, onOpenRe
     const el = tdRef.current;
     if (!el) return;
     const scroller = el.closest(".rs-table-wrapper") as HTMLElement | null;
-    showCellTool({ rect: el.getBoundingClientRect(), target, field, effectiveValue, sharedRow, hasReview, canCopy, reviewEnabled, scroller });
+    showCellTool({ rect: el.getBoundingClientRect(), target, field, effectiveValue, sharedRow, hasReview, canCopy, reviewEnabled, editEnabled: canEdit, hasEdit, canDelete, rowDeleted, scroller });
   };
 
   return html`
     <td ref=${tdRef}
-        class=${`${className ?? ""} ${hasReview ? "rs-cell-has-review" : ""}`}
-        onDblClick=${reviewEnabled ? openSuggest : undefined}
+        class=${`${className ?? ""} ${hasReview ? "rs-cell-has-review" : ""} ${hasEdit ? "rs-cell-edited" : ""}`}
+        onDblClick=${canEdit ? openEdit : reviewEnabled ? openSuggest : undefined}
         onMouseEnter=${showActions ? reportHover : undefined}
         onMouseLeave=${showActions ? hideCellToolSoon : undefined}>
       <div class=${`rs-value-cell ${hasSubline ? "rs-value-cell-stacked" : ""}`}>
-        <span class="rs-cell-content">${displayValue}${badge}</span>
+        <span class="rs-cell-content">${displayValue}${hasEdit ? html`<span class="rs-edited-mark" title="${t.editedBadge}" aria-label="${t.editedBadge}">\u270e</span>` : null}${badge}</span>
         ${subline}
       </div>
     </td>
@@ -931,8 +1378,10 @@ function ReviewableCell({ value, target, field, reviews, reviewEnabled, onOpenRe
 
 // The single shared toolbar host: reads the hovered-cell store and renders one
 // floating toolbar, portaled to <body> and clamped into the viewport.
-function CellToolbarHost({ onOpenReview, t }: {
+function CellToolbarHost({ onOpenReview, onOpenEdit, onToggleDelete, t }: {
   onOpenReview: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
+  onOpenEdit: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
+  onToggleDelete: (target: ReviewItem["target"], deleted: boolean) => void;
   t: Messages;
 }) {
   const [ctx, setCtx] = useState<CellToolCtx | null>(null);
@@ -962,6 +1411,17 @@ function CellToolbarHost({ onOpenReview, t }: {
     hideCellToolNow();
   };
 
+  const openEdit = (): void => {
+    try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
+    onOpenEdit(ctx.target, ctx.field, ctx.effectiveValue, ctx.sharedRow);
+    hideCellToolNow();
+  };
+
+  const toggleDelete = (): void => {
+    onToggleDelete(ctx.target, !ctx.rowDeleted);
+    hideCellToolNow();
+  };
+
   return createPortal(
     html`
       <div class="rs-cell-toolbar" role="toolbar" aria-label="${t.cellActions}"
@@ -978,6 +1438,29 @@ function CellToolbarHost({ onOpenReview, t }: {
                e.preventDefault();
              }
            }}>
+        ${ctx.canDelete && html`
+          <button class="rs-tool rs-tool-delete ${ctx.rowDeleted ? "rs-tool-on" : ""}"
+                  onClick=${toggleDelete}
+                  title="${ctx.rowDeleted ? t.rowRestoreTooltip : t.rowDeleteTooltip}"
+                  aria-label="${ctx.rowDeleted ? t.rowRestoreTooltip : t.rowDeleteTooltip}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              ${ctx.rowDeleted
+                ? html`<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/>`
+                : html`<line x1="5" y1="12" x2="19" y2="12"/>`}
+            </svg>
+            <span class="rs-tool-label">${ctx.rowDeleted ? t.rowRestore : t.rowDelete}</span>
+          </button>
+        `}
+        ${ctx.canDelete && ctx.canCopy && html`<span class="rs-tool-sep" aria-hidden="true"></span>`}
+        ${ctx.editEnabled && html`
+          <button class="rs-tool rs-tool-edit ${ctx.hasEdit ? "rs-tool-on" : ""}"
+                  onClick=${openEdit}
+                  title="${t.editTooltip}" aria-label="${t.editTooltip}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            <span class="rs-tool-label">${t.editValue}</span>
+          </button>
+        `}
+        ${ctx.editEnabled && ctx.reviewEnabled && html`<span class="rs-tool-sep" aria-hidden="true"></span>`}
         ${ctx.reviewEnabled && html`
           <button class="rs-tool rs-tool-suggest ${ctx.hasReview ? "rs-tool-on" : ""}"
                   onClick=${openSuggest}
@@ -986,7 +1469,7 @@ function CellToolbarHost({ onOpenReview, t }: {
             <span class="rs-tool-label">${ctx.hasReview ? t.suggestEdit : t.suggest}</span>
           </button>
         `}
-        ${ctx.canCopy && ctx.reviewEnabled && html`<span class="rs-tool-sep" aria-hidden="true"></span>`}
+        ${ctx.canCopy && (ctx.reviewEnabled || ctx.editEnabled) && html`<span class="rs-tool-sep" aria-hidden="true"></span>`}
         ${ctx.canCopy && html`
           <button class="rs-tool rs-tool-copy" onClick=${(e: Event) => copyToClipboard(ctx.effectiveValue, e.currentTarget as HTMLElement)} title="${t.copyTooltip}" aria-label="${t.copyTooltip}">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -1069,7 +1552,7 @@ function saveOutlineOpen(open: boolean): void {
 // Parameter table component
 // ============================================================
 
-function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, hiddenInstances, categoryOutOfScope, onOpenReview, artifact, diff, t }: {
+function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPath, depth, columns, reviews, reviewEnabled, editEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, hiddenInstances, categoryOutOfScope, onOpenReview, onOpenEdit, onToggleDelete, artifact, diff, t }: {
   params: ParamData[];
   sheetName: string;
   // The sheet's declared review axis (see Sheet.instances).
@@ -1090,7 +1573,10 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   // for its own ancestry) — applies to a param that sets no `out_of_scope` of
   // its own (nearest-wins: a param-level flag overrides the category's).
   categoryOutOfScope?: OutOfScope;
+  editEnabled: boolean;
   onOpenReview: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
+  onOpenEdit: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
+  onToggleDelete: (target: ReviewItem["target"], deleted: boolean) => void;
   // The deployed-file panel, when this document has one: `idFor` says which
   // preview (if any) holds this row, `open` shows it there. A single prop
   // because the two halves are useless apart, and threading two through every
@@ -1465,7 +1951,8 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   const renderCell = (spec: CellSpec, cellKey: string) =>
     spec.kind === "review"
       ? html`<${ReviewableCell} key=${cellKey} value=${spec.value} target=${spec.target} field=${spec.field}
-          reviews=${reviews} reviewEnabled=${reviewEnabled} onOpenReview=${onOpenReview}
+          reviews=${reviews} reviewEnabled=${reviewEnabled} editEnabled=${editEnabled}
+          onOpenReview=${onOpenReview} onOpenEdit=${onOpenEdit}
           className=${spec.className} isCode=${spec.isCode} copyable=${spec.copyable}
           unsetLabel=${spec.unsetLabel} valueLabel=${spec.valueLabel} sharedRow=${spec.sharedRow} t=${t} />`
       : html`<td key=${cellKey} class=${spec.className} style=${spec.style}>${spec.content}</td>`;
@@ -1564,9 +2051,12 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     }
     return html`
     <tr key=${param.key} id=${paramAnchorId(sheetIndex, categoryPath, param.key)}
-        class=${`rs-param-row ${oos ? "rs-row-excluded" : ""} ${paramHasReview(param) ? "rs-has-review" : ""} ${rd && rd !== "unchanged" ? `rs-diff-row-${rd}` : ""}`}>
+        class=${`rs-param-row ${oos ? "rs-row-excluded" : ""} ${param.added ? "rs-row-added" : ""} ${param.deleted ? "rs-row-deleted" : ""} ${paramHasReview(param) ? "rs-has-review" : ""} ${rd && rd !== "unchanged" ? `rs-diff-row-${rd}` : ""}`}
+        title=${param.deleted ? t.rowDeletedTip : undefined}>
       <${ReviewableCell} value=${label ?? param.key} target=${baseTarget(param)} field="key"
-        reviews=${reviews} reviewEnabled=${reviewEnabled} onOpenReview=${onOpenReview}
+        reviews=${reviews} reviewEnabled=${reviewEnabled} editEnabled=${editEnabled}
+        rowDeleted=${param.deleted === true} onToggleDelete=${onToggleDelete}
+        onOpenReview=${onOpenReview} onOpenEdit=${onOpenEdit}
         className="rs-col-key" isCode=${!label} t=${t} badge=${rowBadge} subline=${keySubline.length > 0 ? keySubline : null} />
       ${normalLines.map((line) => renderCell(line.cell(param), line.key))}
     </tr>
@@ -1755,7 +2245,7 @@ function categoryDefaultSummary(category: CategoryData): { count: number; allDef
   return { count, allDefault };
 }
 
-function CategorySection({ category, sheetName, sheetInstances, sheetIndex, sheetFilePath, parentPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, hiddenInstances, headingExtra, inheritedOutOfScope, onOpenReview, artifact, diff, t }: {
+function CategorySection({ category, sheetName, sheetInstances, sheetIndex, sheetFilePath, parentPath, depth, columns, reviews, reviewEnabled, editEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, hiddenInstances, headingExtra, inheritedOutOfScope, onOpenReview, onOpenEdit, onAddRow, onToggleDelete, artifact, diff, t }: {
   category: CategoryData;
   sheetName: string;
   sheetInstances?: string[];
@@ -1778,7 +2268,11 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
   // "Out of scope" marks a category AND its descendants, so this threads down
   // through nested categories; a category's own flag (nearest-wins) overrides it.
   inheritedOutOfScope?: OutOfScope;
+  editEnabled: boolean;
+  onAddRow: (category: ReviewItem["target"]) => void;
+  onToggleDelete: (target: ReviewItem["target"], deleted: boolean) => void;
   onOpenReview: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
+  onOpenEdit: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
   artifact?: ArtifactAccess;
   diff?: DiffStatusMap;
   t: Messages;
@@ -1807,6 +2301,16 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
           ${effOutOfScope && html`<span class="rs-oos-badge">${t.outOfScope}</span>`}
           ${diff && diffBadge(catStatus)}
           ${category.file_path && category.file_path !== sheetFilePath && category.file_path !== category.name && html`<span class="rs-cat-filepath">${category.file_path}</span>`}
+          ${editEnabled && html`
+            <span class="rs-header-actions">
+              <button class="rs-head-tool rs-head-tool-add"
+                      onClick=${() => onAddRow(catTarget)}
+                      title="${t.addRowTooltip}" aria-label="${t.addRowTooltip}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span class="rs-tool-label">${t.addRow}</span>
+              </button>
+            </span>
+          `}
           ${reviewEnabled && html`
             <span class="rs-header-actions ${catReviewCount > 0 ? "rs-has-comment" : ""}">
               <button class="rs-head-tool ${catReviewCount > 0 ? "rs-head-tool-on" : ""}"
@@ -1840,7 +2344,7 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
                        columns=${columns} reviews=${reviews} reviewEnabled=${reviewEnabled}
                        showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
                        categoryOutOfScope=${effOutOfScope}
-                       onOpenReview=${onOpenReview} artifact=${artifact} diff=${diff} t=${t} />
+                       onOpenReview=${onOpenReview} onOpenEdit=${onOpenEdit} onToggleDelete=${onToggleDelete} editEnabled=${editEnabled} artifact=${artifact} diff=${diff} t=${t} />
       `}
 
       ${category.categories?.map((sub) => html`
@@ -1849,7 +2353,7 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
                             columns=${columns} reviews=${reviews} reviewEnabled=${reviewEnabled}
                             showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
                             inheritedOutOfScope=${effOutOfScope}
-                            onOpenReview=${onOpenReview} artifact=${artifact} diff=${diff}
+                            onOpenReview=${onOpenReview} onOpenEdit=${onOpenEdit} onAddRow=${onAddRow} onToggleDelete=${onToggleDelete} editEnabled=${editEnabled} artifact=${artifact} diff=${diff}
                             t=${t} />
       `)}
     </div>
@@ -2564,7 +3068,7 @@ function pivotTree(rows: PivotRow[]): PivotNode {
   return root;
 }
 
-function PivotView({ sheet, pivot, sheetIndex, hiddenInstances, showDefaults, reviews, reviewEnabled, onOpenReview, onLeave, t }: {
+function PivotView({ sheet, pivot, sheetIndex, hiddenInstances, showDefaults, reviews, reviewEnabled, editEnabled, onOpenReview, onOpenEdit, onLeave, t }: {
   sheet: SheetData["sheets"][number];
   // Supplied when the columns are not this sheet.s components — a version
   // comparison pivots a whole document, so its columns and rows are built
@@ -2576,7 +3080,9 @@ function PivotView({ sheet, pivot, sheetIndex, hiddenInstances, showDefaults, re
   showDefaults: boolean;
   reviews: ReviewItem[];
   reviewEnabled: boolean;
+  editEnabled: boolean;
   onOpenReview: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
+  onOpenEdit: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
   t: Messages;
 }) {
   const { components, rows } = pivot ?? pivotSheet(sheet);
@@ -2685,7 +3191,8 @@ function PivotView({ sheet, pivot, sheetIndex, hiddenInstances, showDefaults, re
                   return html`<${ReviewableCell} key=${c.name}
                     value=${text}
                     target=${{ sheet: sheet.name, category: [c.name, ...row.path].join("/"), param: row.key }}
-                    field="value" reviews=${reviews} reviewEnabled=${reviewEnabled} onOpenReview=${onOpenReview}
+                    field="value" reviews=${reviews} reviewEnabled=${reviewEnabled} editEnabled=${editEnabled}
+                    onOpenReview=${onOpenReview} onOpenEdit=${onOpenEdit}
                     className="rs-col-value" isCode=${true} copyable=${text.length > 0}
                     subline=${[
                       ...(sub ?? []).map((line) => html`<span class="rs-key-subline"><code>${line}</code></span>` as VNode),
@@ -2879,7 +3386,7 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, t }: {
   `;
 }
 
-function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverride, versionPivot, server, applyEnabled }: {
+function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnabled = true, lang, setLang, diff, reviewsOverride, versionPivot, server, applyEnabled, pristineHtml, embedded }: {
   data: SheetData;
   // A whole-document columnar comparison: rows keyed by sheet + path + key,
   // one column per VERSION. Supplied only while comparing, and rendered
@@ -2892,6 +3399,14 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
   // must not be redrawn under the older document.
   artifacts?: ArtifactPreview[];
   reviewEnabled: boolean;
+  // Let the recipient change values and remarks in place (`--allow edit`).
+  editEnabled: boolean;
+  // Offer the AI prompt at all (`--allow ...,prompt`). A judgement about the
+  // AUDIENCE, not about the mode: in the usual flow the edited document goes
+  // back to whoever built it and the prompt is produced there, by `apply`,
+  // against the real files — so the copy inside the handed-over document is
+  // often something its holder has no use for.
+  promptEnabled?: boolean;
   lang: Lang;
   setLang: (l: Lang) => void;
   // Diff overlay: when comparing versions, App renders the merged sheets with
@@ -2904,22 +3419,56 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
   // false, every apply-related affordance is hidden — never shown in the
   // reading view either way, only gated here at the action-surface level.
   applyEnabled?: boolean;
+  // See init(): the document as loaded, and the history it already carried.
+  pristineHtml?: string;
+  embedded?: EmbeddedHistory;
 }) {
   const t = useMemo(() => getMessages(lang), [lang]);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (document.documentElement.dataset.theme as 'light' | 'dark') ?? 'light');
-  const storageKey = getStorageKey(data);
-  const [savedReviews, setReviews] = useState<ReviewItem[]>(() => loadReviews(storageKey));
+  const storageKey = getStorageKey(baseData);
+  // Two places hold history: the file itself (what was saved) and localStorage
+  // (what has been done since, in this browser). Both are append-only, so the
+  // union by id is the whole of it. Neither wins — losing an entry because the
+  // other copy was older is exactly the failure this must not have.
+  const [savedReviews, setReviews] = useState<ReviewItem[]>(() => {
+    const stored = loadReviews(storageKey);
+    const seen = new Set((embedded?.reviews ?? []).map((r) => r.id));
+    return [...(embedded?.reviews ?? []), ...stored.filter((r) => !seen.has(r.id))];
+  });
+  // One entry per save: who, when, and why. The per-cell chain cannot hold a
+  // reason, and a reason is most of what anyone wants months later.
+  const [saves, setSaves] = useState<SaveRecord[]>(() => embedded?.saves ?? []);
+  // Ids already written into the file. Anything else is unsaved work, and the
+  // file is the only place it can survive — hence the warning on close.
+  const [persistedIds, setPersistedIds] = useState<Set<string>>(() => new Set((embedded?.reviews ?? []).map((r) => r.id)));
   // Saved findings name the category their row was in when they were written.
   // A category is display structure — a product dictionary supplies most of
   // them, and an upgrade can move a setting to another screen — so they are
   // re-pointed at wherever the row is now, once, before anything compares
   // targets. Without this, upgrading the dictionary under a review in progress
   // detaches every finding on a moved row and says nothing.
-  const retargeted = useMemo(() => retargetReviews(savedReviews, data), [savedReviews, data]);
+  const retargeted = useMemo(() => retargetReviews(savedReviews, baseData), [savedReviews, baseData]);
   const movedReviews = retargeted.moved;
   const diffMode = !!reviewsOverride;
   const reviews = reviewsOverride ?? retargeted.reviews;
   const effReviewEnabled = diffMode ? false : reviewEnabled;
+
+  // Edits made in this document are laid over the sheets before
+  // anything else looks at them, so every downstream consumer — rendering,
+  // search, the outline, export — reads the CURRENT value with no special case.
+  // The original value is not lost: `editBaseline` holds it per edited cell.
+  // With no edits (or editing disabled) this is the same object, so an
+  // unedited document behaves exactly as it did before.
+  const edited = useMemo(
+    (): EditedSheets => (editEnabled && !diffMode ? applyEdits(baseData.sheets, reviews, lang) : { sheets: baseData.sheets, baseline: new Map<string, string>(), orphaned: [] }),
+    [editEnabled, diffMode, baseData, reviews, lang]
+  );
+  const editBaseline = edited.baseline;
+  const data = useMemo<SheetData>(
+    () => (edited.sheets === baseData.sheets ? baseData : { ...baseData, sheets: edited.sheets }),
+    [baseData, edited]
+  );
+  const effEditEnabled = editEnabled && !diffMode;
   const hasMetadataInit = !!(data.metadata?.project || data.metadata?.version || data.metadata?.generated_at || data.metadata?.changelog?.length || data.metadata?.extra);
 
   // Restore tab index from URL hash (hash is 1-based)
@@ -2962,6 +3511,10 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
   );
   const [pivoted, setPivoted] = useState<Set<string>>(() => new Set(alwaysPivoted));
   const [modalTarget, setModalTarget] = useState<{ target: ReviewItem["target"]; field: string; currentValue: string; sharedRow?: boolean } | null>(null);
+  const [editTarget, setEditTarget] = useState<{ target: ReviewItem["target"]; field: string; currentValue: string; sharedRow?: boolean } | null>(null);
+  const [addRowTarget, setAddRowTarget] = useState<ReviewItem["target"] | null>(null);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [applyPanelOpen, setApplyPanelOpen] = useState(false);
   const [promptModalText, setPromptModalText] = useState<string | null>(null);
 
@@ -3254,7 +3807,9 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
     if (applied.length === 0) return;
     for (const r of applied) {
       const tgt = r.target;
-      const sheet = data.sheets.find((s) => s.name === tgt.sheet);
+      // The original tree, not the edit-overlaid view: a serve-mode write lands
+      // in the config file, so it moves the BASELINE.
+      const sheet = baseData.sheets.find((s) => s.name === tgt.sheet);
       if (!sheet) continue;
       let cats: CategoryData[] | undefined = sheet.categories;
       let cat: CategoryData | undefined;
@@ -3280,7 +3835,77 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
         return !rev.changes?.some((c) => c.field === "value");
       })
     );
-  }, [data]);
+  }, [baseData]);
+
+  // --- Saving the document itself (editing a generated document) ---
+
+  const unsaved = useMemo(
+    () => (effEditEnabled ? reviews.filter((r) => !persistedIds.has(r.id)) : []),
+    [effEditEnabled, reviews, persistedIds]
+  );
+
+  // The file is the only store. A tab closed with edits in localStorage and not
+  // in the file looks fine until the file is opened somewhere else.
+  useEffect(() => {
+    if (unsaved.length === 0) return;
+    const warn = (e: BeforeUnloadEvent): string => {
+      e.preventDefault();
+      // Browsers show their own wording; the string is required by older ones.
+      e.returnValue = t.saveUnsaved(unsaved.length);
+      return e.returnValue;
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved.length, t]);
+
+  // Opening the dialog does no work at all, so it appears at once however large
+  // the document is. Everything expensive happens after the user has confirmed.
+  const openSave = useCallback(() => {
+    if (pristineHtml === undefined) return;
+    if (unsaved.length === 0) {
+      alert(t.saveNoChanges);
+      return;
+    }
+    setSaveOpen(true);
+  }, [pristineHtml, unsaved.length, t]);
+
+  const handleSaveDocument = useCallback(async (by: string, comment: string) => {
+    if (pristineHtml === undefined || saving) return;
+    try { localStorage.setItem(EDITOR_NAME_KEY, by); } catch { /* ignore */ }
+
+    const fileName = suggestedFileName(location.href, "review-sheet.html");
+    // The picker is asked for BEFORE the document is built: it needs the user's
+    // gesture, and it is the one part that must not wait behind string work.
+    let handle: FileSystemFileHandle | null;
+    try {
+      handle = await pickWriteTarget(fileName);
+    } catch (err) {
+      if (err instanceof Error && err.message === "cancelled") return;
+      alert(t.saveFailed(err instanceof Error ? err.message : String(err)));
+      return;
+    }
+
+    setSaving(true);
+    await paint(); // so "saving…" is on screen before the work starts
+
+    const unsavedIds = new Set(unsaved.map((r) => r.id));
+    const stamped = reviews.map((r) => (unsavedIds.has(r.id) && !r.by && by ? { ...r, by } : r));
+    const record: SaveRecord = { at: new Date().toISOString(), by: by || undefined, comment: comment || undefined, changes: unsaved.length };
+    const nextSaves = [...saves, record];
+
+    try {
+      await writeDocument(withEmbeddedHistory(pristineHtml, { reviews: stamped, saves: nextSaves }), fileName, handle);
+    } catch (err) {
+      setSaving(false);
+      alert(t.saveFailed(err instanceof Error ? err.message : String(err)));
+      return;
+    }
+    setReviews(stamped);
+    setSaves(nextSaves);
+    setPersistedIds(new Set(stamped.map((r) => r.id)));
+    setSaving(false);
+    setSaveOpen(false);
+  }, [pristineHtml, saving, unsaved, reviews, saves, t]);
 
   const handleExport = useCallback(() => {
     const doc: ReviewDocument = {
@@ -3331,14 +3956,26 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
     input.click();
   }, []);
 
+  // In edit mode the items are `applied`, not `pending`, so the prompt is built
+  // from the same collapsed plan the CLI uses — one net change per cell, plus
+  // the added and struck-out rows with the reason they cannot be written by a
+  // source map. Without that the two would describe the same change
+  // differently, and the browser's version would be the wrong one.
+  const promptReviews = useMemo(
+    () => (effEditEnabled
+      ? promptItemsFromPlan(planFromEdits(reviews), { added: HELD_REASON_ADDED_ROW, struck: HELD_REASON_STRUCK_ROW })
+      : reviews),
+    [effEditEnabled, reviews]
+  );
+
   const handleCopyPrompt = useCallback(() => {
-    const text = buildPromptText(reviews, data);
+    const text = buildPromptText(promptReviews, baseData);
     if (!text) {
-      alert(t.noPendingReviews);
+      alert(effEditEnabled ? t.noEditsToApply : t.noPendingReviews);
       return;
     }
     setPromptModalText(text);
-  }, [reviews, data, t]);
+  }, [promptReviews, baseData, t]);
 
   const handleClearAll = useCallback(() => {
     if (reviews.length === 0) return;
@@ -3349,6 +3986,36 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
 
   const openReview = useCallback((target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => {
     setModalTarget({ target, field, currentValue, sharedRow });
+  }, []);
+
+  const openEdit = useCallback((target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => {
+    setEditTarget({ target, field, currentValue, sharedRow });
+  }, []);
+
+  const openAddRow = useCallback((category: ReviewItem["target"]) => {
+    setAddRowTarget(category);
+  }, []);
+
+  // Both directions are appended. Striking a row out and putting it back are
+  // two decisions months apart, and the second is not a correction of the
+  // first — unlike an undone typo, which is why that one deletes its entry.
+  const handleToggleDelete = useCallback((target: ReviewItem["target"], deleted: boolean) => {
+    const { instance: _dropped, field: _f, ...row } = target;
+    setReviews((prev) => [...prev, { id: genId(), target: row, status: "applied", deletes: deleted, at: new Date().toISOString() }]);
+  }, []);
+
+  // An edit is APPENDED. Unlike a review finding, which is one per cell and is
+  // rewritten in place, each edit is its own item — that is what makes the
+  // history a history.
+  const handleSaveEdit = useCallback((edit: ReviewItem) => {
+    setReviews((prev) => [...prev, edit]);
+  }, []);
+
+  // Undo removes the most recent entry outright rather than appending an
+  // inverse one. A mistyped value is not a decision worth recording, and a
+  // history full of corrections stops being readable. Anything older stays.
+  const handleUndoEdit = useCallback((id: string) => {
+    setReviews((prev) => prev.filter((r) => r.id !== id));
   }, []);
 
   const title = data.metadata?.title ?? t.defaultTitle;
@@ -3466,13 +4133,36 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
             <${ToolbarMenu} label=${t.reviewMenu(reviews.length)}>
               ${serveApply ? html`<${MenuItem} label=${t.exportReview} onClick=${handleExport} />` : null}
               <${MenuItem} label=${t.importReviewMenu} onClick=${handleImport} />
-              ${applyEnabled !== false && !server
+              ${applyEnabled !== false && !server && promptEnabled
                 ? html`<${MenuItem} label=${t.aiPromptCopy} onClick=${handleCopyPrompt} />`
                 : null}
               <div class="rs-menu-divider"></div>
               <${MenuItem} label=${t.clearAllMenu} onClick=${handleClearAll} danger=${true} />
             <//>
 
+            <span class="rs-tabs-sep"></span>
+          `}
+          ${/* No export here, deliberately. In REVIEW mode the document cannot
+                write itself and findings live only in this browser's storage,
+                so exporting them is the single way out and the whole point. In
+                EDIT mode the document saves itself and `apply -r sheet.html`
+                reads it, so a JSON of the same entries is a second, lesser copy
+                of what the file already carries — and one that looks like an
+                alternative to saving, which is how work gets lost. What is left
+                here is the prompt, for whoever maintains the sheet without a
+                CLI. */ ""}
+          ${effEditEnabled && promptEnabled && html`
+            <button class="rs-toolbar-btn rs-toolbar-btn-labelled" onClick=${handleCopyPrompt} title=${t.aiPromptCopy}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              <span class="rs-btn-label">${t.aiPromptCopy}</span>
+            </button>
+          `}
+          ${effEditEnabled && pristineHtml !== undefined && html`
+            <button class=${`rs-toolbar-btn rs-toolbar-btn-labelled ${unsaved.length > 0 ? "rs-toolbar-btn-primary" : ""}`}
+                    onClick=${openSave} title=${t.saveTooltip}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              <span class="rs-btn-label">${t.saveDocument}${unsaved.length > 0 ? ` (${unsaved.length})` : ""}</span>
+            </button>
             <span class="rs-tabs-sep"></span>
           `}
           <button class="rs-toolbar-btn" title=${t.themeToggle} aria-label=${t.themeToggle}
@@ -3497,6 +4187,15 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
       </nav>
 
       <main class="rs-main">
+        ${/* A row somebody added, whose category a later version of the document
+              no longer has. It is still in the history and still in the saved
+              file; it just has nowhere to render. Said out loud rather than
+              left to be discovered by its absence. */ ""}
+        ${edited.orphaned.length > 0 && html`
+          <div class="rs-orphan-notice">${t.orphanedRows(edited.orphaned.length)}
+            <span class="rs-orphan-keys">${edited.orphaned.map((o) => o.target.param).join(", ")}</span>
+          </div>
+        `}
         ${activeSheet === OVERVIEW_TAB && hasMetadata && html`
           <section class="rs-overview">
             <h1>${title}</h1>
@@ -3542,6 +4241,29 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
               </div>
             `}
 
+            ${/* What has happened to this system since the sheet was built.
+                  Beside the generated document's own changelog, not folded into
+                  it: one is the history of the DOCUMENT, the other of the
+                  installation it describes, and they have different authors. */ ""}
+            ${effEditEnabled && saves.length > 0 && html`
+              <div class="rs-changelog-section">
+                <h2>${t.editLog}</h2>
+                <table class="rs-changelog-table">
+                  <thead><tr><th>${t.editLogWhen}</th><th>${t.editLogWho}</th><th></th><th>${t.editLogWhat}</th></tr></thead>
+                  <tbody>
+                    ${[...saves].reverse().map((rec, i) => html`
+                      <tr key=${`${rec.at}-${i}`}>
+                        <td>${formatTimestamp(rec.at)}</td>
+                        <td>${rec.by || html`<span class="rs-edit-when">${t.editAnonymous}</span>`}</td>
+                        <td>${t.editLogChanges(rec.changes)}</td>
+                        <td>${rec.comment || ""}</td>
+                      </tr>
+                    `)}
+                  </tbody>
+                </table>
+              </div>
+            `}
+
             <div class="rs-overview-sheets">
               <h2>${t.sheetList}</h2>
               ${(data.groups?.length ?? 0) > 0
@@ -3577,8 +4299,8 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
             <div class="rs-sheet-header"><h1>${versionPivot.components.map((c) => c.name).join("  ↔  ")}</h1></div>
             <${PivotView} sheet=${{ name: "", categories: [] }} pivot=${versionPivot} sheetIndex=${0}
                           hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
-                          reviews=${[]} reviewEnabled=${false}
-                          onOpenReview=${() => {}} t=${t} />
+                          reviews=${[]} reviewEnabled=${false} editEnabled=${false}
+                          onOpenReview=${() => {}} onOpenEdit=${() => {}} t=${t} />
           </section>
         `}
 
@@ -3621,7 +4343,8 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
                 ? html`<div class="rs-doc" dangerouslySetInnerHTML=${{ __html: sheet.document.html }}></div>`
                 : pivoted.has(sheet.name)
                 ? html`<${PivotView} sheet=${sheet} sheetIndex=${idx} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
-                                     reviews=${reviews} reviewEnabled=${effReviewEnabled} onOpenReview=${openReview}
+                                     reviews=${reviews} reviewEnabled=${effReviewEnabled} editEnabled=${effEditEnabled}
+                                     onOpenReview=${openReview} onOpenEdit=${openEdit}
                                      onLeave=${alwaysPivoted.has(sheet.name) ? undefined : () => setPivoted((prev) => { const next = new Set(prev); next.delete(sheet.name); return next; })} t=${t} />`
                 : sheet.categories.map((cat) => html`
                 <${CategorySection} key=${cat.name} category=${cat} sheetName=${sheet.name} sheetInstances=${sheet.instances} sheetIndex=${idx} hiddenInstances=${hiddenInstances}
@@ -3630,9 +4353,9 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
                                                                onToggle=${() => setPivoted((prev) => new Set(prev).add(sheet.name))} />` as VNode
                                       : null}
                                     sheetFilePath=${sheet.file_path} parentPath="" depth=${1}
-                                    columns=${data.columns} reviews=${reviews} reviewEnabled=${effReviewEnabled}
+                                    columns=${data.columns} reviews=${reviews} reviewEnabled=${effReviewEnabled} editEnabled=${effEditEnabled}
                                     showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
-                                    onOpenReview=${openReview} artifact=${artifactAccess} diff=${diff}
+                                    onOpenReview=${openReview} onOpenEdit=${openEdit} onAddRow=${openAddRow} onToggleDelete=${handleToggleDelete} artifact=${artifactAccess} diff=${diff}
                                     t=${t} />
               `)}
             </section>
@@ -3650,6 +4373,26 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
                        showDefaults=${showDefaults} onToggleDefaults=${() => setShowDefaults((v) => !v)} t=${t} />
       `}
 
+      ${saveOpen && html`
+        <${SaveModal} count=${unsaved.length} busy=${saving}
+                      defaultName=${(() => { try { return localStorage.getItem(EDITOR_NAME_KEY) ?? ""; } catch { return ""; } })()}
+                      onSave=${handleSaveDocument} onClose=${() => setSaveOpen(false)} t=${t} />
+      `}
+
+      ${addRowTarget && html`
+        <${AddRowModal} category=${addRowTarget}
+                        existingKeys=${keysInCategory(data, addRowTarget)}
+                        onSave=${handleSaveEdit} onClose=${() => setAddRowTarget(null)} t=${t} />
+      `}
+
+      ${editTarget && html`
+        <${EditModal} target=${editTarget.target} field=${editTarget.field}
+                      currentValue=${editTarget.currentValue} sharedRow=${editTarget.sharedRow}
+                      baseline=${editBaseline} reviews=${reviews} lang=${lang}
+                      onSave=${handleSaveEdit} onUndo=${handleUndoEdit}
+                      onClose=${() => setEditTarget(null)} t=${t} />
+      `}
+
       ${modalTarget && html`
         <${ReviewModal} target=${modalTarget.target} field=${modalTarget.field}
                         currentValue=${modalTarget.currentValue} sharedRow=${modalTarget.sharedRow} reviews=${reviews}
@@ -3662,7 +4405,7 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
       `}
 
       ${promptModalText !== null && html`
-        <${PromptModal} text=${promptModalText} onClose=${() => setPromptModalText(null)} t=${t} />
+        <${PromptModal} text=${promptModalText} fromEdits=${effEditEnabled} onClose=${() => setPromptModalText(null)} t=${t} />
       `}
 
       ${artifactTarget && html`
@@ -3672,7 +4415,7 @@ function App({ data, artifacts, reviewEnabled, lang, setLang, diff, reviewsOverr
                           onJumpRow=${jumpToRow} t=${t} />
       `}
 
-      <${CellToolbarHost} onOpenReview=${openReview} t=${t} />
+      <${CellToolbarHost} onOpenReview=${openReview} onOpenEdit=${openEdit} onToggleDelete=${handleToggleDelete} t=${t} />
     </div>
   `;
 }
@@ -3772,7 +4515,7 @@ function diffBadge(status: DiffStatus | undefined) {
 // Root (version switching + diff) and entry point
 // ============================================================
 
-function Root({ payload, reviewEnabled, initialLang, server }: { payload: Payload; reviewEnabled: boolean; initialLang: Lang; server: boolean }) {
+function Root({ payload, reviewEnabled, editEnabled, promptEnabled = true, initialLang, server, pristineHtml, embedded }: { payload: Payload; reviewEnabled: boolean; editEnabled: boolean; promptEnabled?: boolean; initialLang: Lang; server: boolean; pristineHtml?: string; embedded?: EmbeddedHistory }) {
   const [lang, setLang] = useState<Lang>(initialLang);
   const t = useMemo(() => getMessages(lang), [lang]);
   // Document-level opt-out (`capabilities.apply: false`): hides every
@@ -3837,7 +4580,8 @@ function Root({ payload, reviewEnabled, initialLang, server }: { payload: Payloa
         onFrom=${setFromId} onTo=${setToId} diffSummary=${diffModel?.summary}
         changedOnly=${changedOnly} onChangedOnly=${setChangedOnly}
         columnar=${columnar} onColumnar=${setColumnar} t=${t} />`}
-      <${App} data=${data} artifacts=${shown.artifacts} reviewEnabled=${reviewEnabled} lang=${lang} setLang=${setLang}
+      <${App} data=${data} artifacts=${shown.artifacts} reviewEnabled=${reviewEnabled} editEnabled=${editEnabled} promptEnabled=${promptEnabled} lang=${lang} setLang=${setLang}
+        pristineHtml=${pristineHtml} embedded=${embedded}
         diff=${diffModel?.status} reviewsOverride=${diffModel?.reviews} versionPivot=${versionPivot}
         server=${server} applyEnabled=${applyEnabled} />
     </div>
@@ -3856,13 +4600,25 @@ function init() {
 
   const configEl = document.getElementById("sheet-config");
   const config = configEl ? JSON.parse(configEl.textContent ?? "{}") : {};
+  // The document exactly as it was generated/last saved, captured before the
+  // first render. Saving is this string with one block swapped, so a saved file
+  // is the same document — not a serialization of whatever the DOM had become.
+  const pristineHtml = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+  const embedded = readEmbeddedHistory(document);
   const reviewEnabled = config.review !== false;
+  // Editing is opt-in at generation time (`--allow edit`): a generated sheet is
+  // read-only unless someone said otherwise.
+  const editEnabled = config.edit === true;
+  // Off only when the author said so (`--allow` without `prompt`): a document
+  // built before this switch existed still offers it.
+  const promptEnabled = config.prompt !== false;
   const lang: Lang = config.lang === "en" ? "en" : "ja";
   const serverMode = config.server === true;
 
   const appEl = document.getElementById("app");
   if (!appEl) return;
-  render(html`<${Root} payload=${payload} reviewEnabled=${reviewEnabled} initialLang=${lang} server=${serverMode} />`, appEl);
+  render(html`<${Root} payload=${payload} reviewEnabled=${reviewEnabled} editEnabled=${editEnabled} initialLang=${lang} server=${serverMode}
+                       promptEnabled=${promptEnabled} pristineHtml=${pristineHtml} embedded=${embedded} />`, appEl);
 }
 
 if (typeof document !== "undefined") {
