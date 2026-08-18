@@ -725,6 +725,12 @@ download the distribution from; it is not a line of keycloak.conf, and filing it
 there makes the sheet claim something false about the file. Such rows keep a
 category of their own, which is why the example above declares three.
 
+**Two files with the same name do not merge.** A category is named by the
+shortest tail of the path no other file on the sheet shares, so one sheet
+aggregating three roles' variables shows `common/defaults/main.yml` and
+`sso/defaults/main.yml` rather than one `main.yml` holding both their rows.
+The name grows only where it has to.
+
 Note what the reader sees: rows the project does not set are hidden behind "show
 unset rows", so the default view of a `group_by: file` sheet IS the file — in
 the reference project, 22 rows of keycloak.conf's own settings rather than the

@@ -1264,19 +1264,62 @@ function materializeDrafts(
 //                                               be set
 //   - anything else                          -> its own file. A variable that
 //                                               never reaches the artifact.
+// Returns the PATH, not the display name. Which part of it a reader needs
+// cannot be decided one row at a time — see shortestUniqueNames.
 function fileCategory(
   param: Parameter,
   artifact: string | undefined,
   templateSource: string | undefined,
   hasVariable: boolean
-): string[] | undefined {
+): string | undefined {
   const own =
     ("source" in param ? param.source?.file : undefined) ??
     ("instances" in param ? param.instances?.find((i) => i.source?.file)?.source?.file : undefined);
   const partOfArtifact = own === undefined || hasVariable || (templateSource !== undefined && own === templateSource);
   const file = partOfArtifact ? (artifact ?? own) : own;
-  if (file === undefined) return undefined;
-  return [baseFileName(file.split("/").pop() ?? file)];
+  return file === undefined ? undefined : baseFileName(file);
+}
+
+// Name each path by the shortest tail of it that no other path shares.
+//
+// The file name alone is what a reader wants and almost always enough — one
+// sheet rarely mixes two `keycloak.conf`s. When it does, naming both by their
+// last segment MERGES them: rows from different files land under one heading
+// and nothing on the sheet says so. That is the shape of failure this project
+// exists around, and it is not hypothetical — a sheet aggregating Ansible
+// variables from several roles sees `roles/common/defaults/main.yml` and
+// `roles/sso/defaults/main.yml`, which have the same last segment and nothing
+// else in common.
+//
+// So the tail grows only where it has to, and only for the paths in conflict.
+export function shortestUniqueNames(paths: Iterable<string>): Map<string, string> {
+  const unique = [...new Set(paths)];
+  const out = new Map<string, string>();
+  const segmentsOf = (p: string): string[] => p.split("/").filter(Boolean);
+  let depth = 1;
+  let remaining = unique;
+  while (remaining.length > 0) {
+    const byName = new Map<string, string[]>();
+    for (const p of remaining) {
+      const segs = segmentsOf(p);
+      const name = segs.slice(Math.max(0, segs.length - depth)).join("/") || p;
+      const list = byName.get(name);
+      if (list) list.push(p); else byName.set(name, [p]);
+    }
+    const next: string[] = [];
+    for (const [name, group] of byName) {
+      // Settled: either nothing else wants this name, or the whole path is
+      // already on screen and there is nothing left to add.
+      if (group.length === 1 || group.every((p) => segmentsOf(p).length <= depth)) {
+        for (const p of group) out.set(p, name);
+      } else {
+        next.push(...group);
+      }
+    }
+    remaining = next;
+    depth++;
+  }
+  return out;
 }
 
 function fileDrafts(
@@ -1371,6 +1414,28 @@ function fileDrafts(
   const governingComponent = categoriesFromForSheet(projectMeta, sheetName);
   const dictPathByKey = new Map<string, Map<string, string>>();
 
+  // `group_by: file` names a row's category after the file it belongs to, and
+  // WHICH PART of the path reads as that name depends on the other files on the
+  // sheet — so the paths are collected first and named together. Deciding one
+  // row at a time is what let two files with the same last segment merge into
+  // one heading with nothing saying so.
+  const rawFileOf = (d: (typeof drafts)[number]): string | undefined =>
+    fileCategory(
+      d.param,
+      componentFiles?.get(d.component ?? "")?.filePath ?? sheetArtifact,
+      componentFiles?.get(d.component ?? "")?.sourceFile ?? sheetTemplate,
+      // A row whose value came from a variable the artifact interpolates IS a
+      // line of that artifact; the variable is provenance, already shown in the
+      // under_key column. `d.variable` alone answered a NARROWER question — it
+      // is set only where one variable and one directive correspond exactly —
+      // so a line built from two variables was read as belonging to neither
+      // file and filed under the one its variables are DEFINED in.
+      d.variable !== undefined || (templateVariables?.has(d.variable ?? d.key) ?? false)
+    );
+  const fileNames = groupByFile
+    ? shortestUniqueNames(drafts.map(rawFileOf).filter((f): f is string => f !== undefined))
+    : new Map<string, string>();
+
   for (const d of drafts) {
     // Component-first, then the sheet-wide table (providers/project.ts's
     // paramForRow): two components of one product share their field NAMES, so
@@ -1423,22 +1488,8 @@ function fileDrafts(
     //
     // Kept separate from `inner` because only a DERIVED name can be folded
     // below: a project that writes `category:` by hand said what it meant.
-    const derivedFile =
-      declaredNoCategory || meta?.category || !groupByFile
-        ? undefined
-        : fileCategory(
-            d.param,
-            componentFiles?.get(d.component ?? "")?.filePath ?? sheetArtifact,
-            componentFiles?.get(d.component ?? "")?.sourceFile ?? sheetTemplate,
-            // A row whose value came from a variable the artifact interpolates
-            // IS a line of that artifact; the variable is provenance, already
-            // shown in the under_key column. `d.variable` alone answered a
-            // NARROWER question — it is set only where one variable and one
-            // directive correspond exactly — so a line built from two
-            // variables was read as belonging to neither file and filed under
-            // the one its variables are DEFINED in.
-            d.variable !== undefined || (templateVariables?.has(d.variable ?? d.key) ?? false)
-          );
+    const rawFile = declaredNoCategory || meta?.category || !groupByFile ? undefined : rawFileOf(d);
+    const derivedFile = rawFile === undefined ? undefined : [fileNames.get(rawFile) ?? rawFile];
     const inner = declaredNoCategory
       ? []
       : meta?.category
