@@ -18,6 +18,7 @@ import {
   HELD_REASON_SHARED_INSTANCE,
   HELD_REASON_ADDED_ROW,
   HELD_REASON_STRUCK_ROW,
+  HELD_REASON_DOCUMENT,
   type SheetData,
   type ReviewItem,
   type ReviewTarget,
@@ -291,13 +292,27 @@ export function computeApply(
   // map — but both are real work, and going quiet about them would leave the
   // most consequential half of a returned sheet unmentioned. They go to the
   // prompt, which is what it is for.
-  const REASONS = { added: HELD_REASON_ADDED_ROW, struck: HELD_REASON_STRUCK_ROW };
-  heldReviews.push(...promptItemsFromPlan({ changes: [], added: plan.added, struck: plan.struck }, REASONS));
+  const REASONS = { added: HELD_REASON_ADDED_ROW, struck: HELD_REASON_STRUCK_ROW, document: HELD_REASON_DOCUMENT };
+  heldReviews.push(
+    ...promptItemsFromPlan({ changes: [], added: plan.added, struck: plan.struck, documents: plan.documents }, REASONS)
+  );
   for (const r of plan.added) {
     results.push({ target: r.target, status: "held", reason: REASONS.added, current: "", suggested: r.changes?.find((c) => c.field === "value")?.suggested ?? "" });
   }
   for (const r of plan.struck) {
     results.push({ target: r.target, status: "held", reason: REASONS.struck, current: "", suggested: "" });
+  }
+  // A whole page, rewritten. Held like the others — no source map addresses a
+  // file's entire contents — but it is REAL work with a real destination, and
+  // silence here would lose the page somebody rewrote.
+  for (const r of plan.documents) {
+    results.push({
+      target: r.target,
+      status: "held",
+      reason: REASONS.document,
+      current: "",
+      suggested: r.changes?.find((c) => c.field === "document")?.suggested ?? "",
+    });
   }
 
   const files = [...touched].map((path) => ({ path, content: working.get(path)!.join("\n") }));

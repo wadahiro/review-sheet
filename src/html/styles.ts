@@ -2136,6 +2136,28 @@ code {
 .rs-tool-delete:hover { background: var(--rs-danger-bg); }
 .rs-tool-delete.rs-tool-on { background: var(--rs-danger); color: #ffffff; }
 
+/* The document editor: a source pane, not a preview. It is markdown going back
+   to a markdown file, and a second renderer running while someone types would
+   be a second thing to keep honest. */
+.rs-doc-modal {
+  width: min(56rem, 92vw);
+}
+
+.rs-doc-source {
+  width: 100%;
+  min-height: 22rem;
+  font-family: var(--rs-mono, monospace);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  tab-size: 2;
+}
+
+.rs-doc-edited-note {
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
+  color: var(--rs-success);
+}
+
 .rs-save-busy {
   color: var(--rs-text-muted);
   font-style: italic;

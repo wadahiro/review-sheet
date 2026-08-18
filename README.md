@@ -750,6 +750,25 @@ name, so:
   the striking-out and the restoring are recorded: months apart, they are two
   decisions, and the second does not erase the first.
 
+A `recipe: document` sheet is editable too — as **markdown**, which is what it
+came from and what an edit has to travel back to. The source and the images
+travel with such a document (an image was embedded as a data URI at build time,
+so it is in the HTML and not in the markdown; re-rendering without it would
+quietly drop every picture). The markdown renderer is ~45 KB and is put in the
+file only when a document may actually be edited.
+
+**Paste an image** from the clipboard and it is embedded where the cursor is.
+What goes into the markdown is a path — `images/<hash>.png`, the way the
+document already refers to the pictures beside it — and the bytes travel next to
+the text on the edit. A data URI inline would work equally well and read
+terribly: a paragraph interrupted by 40 KB of base64 is unreadable in the editor
+and in the `.md` the change goes back to. The name is content-addressed, so the
+same picture pasted twice is one file.
+
+An edit to a document reaches `apply` like any other: it names the markdown file
+the page was rendered from, carries the whole new text, and lists any pasted
+image as a file to write beside it.
+
 A row whose value is shared by every environment asks which you mean before it
 changes anything. Editing one environment **splits the row**: the others keep
 the shared definition and its `source`, and the one you changed has no config

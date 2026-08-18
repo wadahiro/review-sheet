@@ -44,7 +44,8 @@
           "at": { "type": "string" },
           "by": { "type": "string" },
           "creates": { "type": "boolean" },
-          "deletes": { "type": "boolean" }
+          "deletes": { "type": "boolean" },
+          "assets": { "type": "object", "additionalProperties": { "type": "string" } }
         }
       }
     }

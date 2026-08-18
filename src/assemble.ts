@@ -1950,6 +1950,10 @@ export function assembleSheetsWithReport(
         name: si.name,
         ...(sheetLabel ? { label: sheetLabel } : {}),
         ...(sheetGroup ? { group: sheetGroup } : {}),
+        // The markdown the page was rendered from. A document sheet has no
+        // rows, so it took this early exit and lost the one thing that says
+        // where an edit to it belongs.
+        ...(si.sourceFile ? { source_file: si.sourceFile } : {}),
         categories: [],
         document: si.document,
       });

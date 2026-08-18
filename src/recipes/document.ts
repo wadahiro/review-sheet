@@ -139,12 +139,29 @@ export const documentRecipe: SheetRecipe = {
     const idPrefix = `rs-doc-${name.replace(/[^A-Za-z0-9\u00A0-\uFFFF]+/g, "-").replace(/^-+|-+$/g, "") || "sheet"}-`;
     const { html, headings } = renderMarkdown(source, load, { navDepth, idPrefix });
 
+    // The source and the images travel with the rendered html, so a viewer
+    // that lets someone edit the document can render what they typed. Every
+    // image was already read to embed it, so this costs no extra I/O — and
+    // omitting it would mean an edited document quietly losing its pictures.
+    const images: Record<string, string> = {};
+    for (const [href, img] of cache) images[href] = `data:${img.mime};base64,${img.base64}`;
+
     return {
       name,
       instances: io.instances,
+      // The markdown this page was rendered from. It is a real file in the
+      // project, so an edit made in the browser has somewhere to go back to —
+      // exactly as a value edit goes back to its config file — and without the
+      // path the change could only be reported, never acted on.
+      sourceFile: io.resolve(file),
       layers: [],
       embedded: [],
-      document: { html, ...(headings.length > 0 ? { headings } : {}) },
+      document: {
+        html,
+        markdown: source,
+        ...(Object.keys(images).length > 0 ? { images } : {}),
+        ...(headings.length > 0 ? { headings } : {}),
+      },
     };
   },
 };

@@ -134,6 +134,12 @@ type Messages = {
   editSplitNote: string;
   editUndo: string;
   editConfirmUndo: string;
+  docEdit: string;
+  docEditShort: string;
+  docRevert: string;
+  docImagesNote: string;
+  docPasting: string;
+  docNoSource: string;
   editMenu: (n: number) => string;
   saveDocument: string;
   saveTooltip: string;
@@ -351,6 +357,12 @@ const ja: Messages = {
   editSplitNote: "この環境だけ変更すると、行が環境ごとに分かれます。変更しなかった環境は共通の定義のままです（この環境には対応する設定行がまだありません）。",
   editUndo: "この変更を取り消す",
   editConfirmUndo: "直近の変更を取り消しますか？（履歴からも消えます）",
+  docEdit: "この文書を編集",
+  docEditShort: "編集",
+  docRevert: "元の内容に戻す",
+  docImagesNote: "Markdown で編集します。画像はクリップボードから貼り付けると、その場で文書に埋め込まれます。",
+  docPasting: "画像を埋め込んでいます…",
+  docNoSource: "この文書は Markdown の原文を持っていません（編集を有効にする前に生成されたものです）。編集するには生成し直してください。",
   editMenu: (n) => `変更 (${n})`,
   saveDocument: "保存",
   saveTooltip: "編集を含めてこのHTMLを書き出す",
@@ -541,6 +553,12 @@ const en: Messages = {
   editSplitNote: "Changing only this environment splits the row: the others keep the shared definition, and this one has no config line behind it yet.",
   editUndo: "Undo this change",
   editConfirmUndo: "Undo the most recent change? It is removed from the history too.",
+  docEdit: "Edit this document",
+  docEditShort: "Edit",
+  docRevert: "Restore the original",
+  docImagesNote: "Edited as markdown. Paste an image from the clipboard and it is embedded into the document where the cursor is.",
+  docPasting: "Embedding the image…",
+  docNoSource: "This document carries no markdown source (it was built before editing was enabled). Regenerate it to edit.",
   editMenu: (n) => `Changes (${n})`,
   saveDocument: "Save",
   saveTooltip: "Write this HTML back out, edits included",

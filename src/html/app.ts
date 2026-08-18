@@ -13,6 +13,7 @@ import {
   HELD_REASON_GENERATED,
   HELD_REASON_ADDED_ROW,
   HELD_REASON_STRUCK_ROW,
+  HELD_REASON_DOCUMENT,
   type SheetData,
   type CategoryData,
   type ParamData,
@@ -20,7 +21,8 @@ import {
   type SaveRecord,
 } from "../prompt.js";
 import { buildDiffModel, rowKey, instKey, catKey, sheetKey, type DiffStatusMap } from "../diffview.js";
-import { applyEdits, editsForCell, isEdit, isEditableField, isDeleted, planFromEdits, promptItemsFromPlan, cellKey as editCellKey, targetKey, type EditedSheets } from "../edits.js";
+import { applyEdits, editsForCell, isEdit, isEditableField, isDeleted, planFromEdits, promptItemsFromPlan, documentSource, documentAssets, DOCUMENT_FIELD, cellKey as editCellKey, targetKey, type EditedSheets } from "../edits.js";
+import { getMarkdownRenderer } from "./markdown-runtime.js";
 import { withEmbeddedHistory, readEmbeddedHistory, suggestedFileName, type EmbeddedHistory } from "./save.js";
 import type { DiffStatus } from "../diff.js";
 import { pickLang, type OutOfScope, type Capabilities, type ArtifactPreview } from "../types.js";
@@ -1161,6 +1163,177 @@ function SaveModal({ count, defaultName, busy, onSave, onClose, t }: {
             </span>
             <div class="rs-modal-actions">
               <button class="rs-btn-primary" onClick=${submit} disabled=${busy}>${busy ? t.saveInProgress : t.saveDocument}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// A document sheet's body, and — when the document may be edited — the control
+// that opens its source.
+//
+// The html shown is RE-RENDERED from the edited markdown rather than stored
+// alongside it. Storing both would let them disagree, and the one that is a
+// fact is the markdown somebody typed.
+function DocumentBody({ sheet, reviews, editEnabled, t }: {
+  sheet: SheetData["sheets"][number];
+  reviews: ReviewItem[];
+  editEnabled: boolean;
+  t: Messages;
+}) {
+  const edited = editEnabled ? documentSource(reviews, sheet.name) : undefined;
+  const render = getMarkdownRenderer();
+  const html_ = useMemo(() => {
+    if (edited === undefined) return sheet.document!.html;
+    // The renderer is absent when this document was built without editing —
+    // in which case there is no edit to render either, so this is unreachable
+    // except in a file whose history outlived its capabilities.
+    if (render === null) return sheet.document!.html;
+    return render(edited, { ...(sheet.document!.images ?? {}), ...documentAssets(reviews, sheet.name) }, { idPrefix: `rs-doc-${sheet.name.replace(/[^A-Za-z0-9\u00A0-\uFFFF]+/g, "-").replace(/^-+|-+$/g, "") || "sheet"}-` }).html;
+  }, [edited, sheet, reviews, render]);
+
+  return html`
+    ${edited !== undefined && html`<p class="rs-doc-edited-note">${t.editedBadge}</p>`}
+    <div class="rs-doc" dangerouslySetInnerHTML=${{ __html: html_ }}></div>
+  `;
+}
+
+// A short, stable name for a pasted image. Content-addressed so the same
+// picture pasted twice is one file, and so two people pasting the same
+// screenshot do not each add one. FNV-1a: this names a file, it does not
+// protect anything, and a hash nobody has to install beats one that drags a
+// dependency into the viewer.
+function contentHash(uri: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < uri.length; i++) {
+    h ^= uri.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+
+const IMAGE_EXT: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+  "image/svg+xml": "svg",
+};
+
+const extensionOf = (uri: string): string => IMAGE_EXT[/^data:([^;,]+)/.exec(uri)?.[1] ?? ""] ?? "png";
+
+// Editing the markdown a document sheet is rendered from. A plain source
+// editor, not a rich one: the file it came from is markdown, an edit that
+// travels back to it has to be markdown, and anything that renders while
+// typing would be a second renderer to keep honest.
+function DocumentModal({ sheet, current, original, onSave, onClose, t }: {
+  sheet: string;
+  current: string;
+  original: string;
+  onSave: (review: ReviewItem) => void;
+  onClose: () => void;
+  t: Messages;
+}) {
+  const [text, setText] = useState(current);
+  const [pasted, setPasted] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  // Paste an image and it becomes part of the document.
+  //
+  // What goes into the markdown is a PATH — `images/<hash>.png`, the way the
+  // document already refers to the pictures beside it — and the bytes travel
+  // next to the text on the edit itself. Writing a data URI inline works
+  // equally well and reads terribly: a paragraph interrupted by 40 KB of
+  // base64 is unreadable in the editor and in the .md the change goes back to,
+  // and the markdown is exactly what a person is there to read.
+  //
+  // The name is content-addressed, so pasting one image twice references it
+  // once, and two edits that paste the same picture do not each carry a copy.
+  const handlePaste = useCallback((e: ClipboardEvent) => {
+    const items = [...(e.clipboardData?.items ?? [])];
+    const image = items.find((i) => i.kind === "file" && i.type.startsWith("image/"));
+    if (!image) return; // an ordinary text paste
+    const file = image.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    const el = ref.current;
+    const from = el?.selectionStart ?? text.length;
+    const to = el?.selectionEnd ?? from;
+    setBusy(true);
+    const reader = new FileReader();
+    reader.onerror = () => setBusy(false);
+    reader.onload = () => {
+      setBusy(false);
+      const uri = typeof reader.result === "string" ? reader.result : "";
+      if (!uri.startsWith("data:image/")) return;
+      const path = `images/${contentHash(uri)}.${extensionOf(uri)}`;
+      setPasted((prev) => ({ ...prev, [path]: uri }));
+      setText((prev) => prev.slice(0, from) + `![](${path})` + prev.slice(to));
+    };
+    reader.readAsDataURL(file);
+  }, [text]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  useEffect(() => { setTimeout(() => ref.current?.focus(), 50); }, [sheet]);
+
+  const handleSave = useCallback(() => {
+    if (text === current) {
+      alert(t.editUnchanged);
+      return;
+    }
+    onSave({
+      id: genId(),
+      target: { sheet, field: DOCUMENT_FIELD },
+      changes: [{ field: DOCUMENT_FIELD, current, suggested: text }],
+      status: "applied",
+      at: new Date().toISOString(),
+      // Only what this edit actually still references: a picture pasted and
+      // then deleted again should not be carried in the file forever.
+      ...(Object.keys(pasted).some((p) => text.includes(p))
+        ? { assets: Object.fromEntries(Object.entries(pasted).filter(([p]) => text.includes(p))) }
+        : {}),
+    });
+    onClose();
+  }, [text, current, pasted, sheet, onSave, onClose, t]);
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); handleSave(); }
+  }, [handleSave]);
+
+  return html`
+    <div class="rs-overlay" onClick=${(e: Event) => { if ((e.target as HTMLElement).classList.contains("rs-overlay")) onClose(); }}>
+      <div class="rs-modal rs-doc-modal" role="dialog" aria-label="${t.docEdit}">
+        <header>
+          <div>
+            <h4>${t.docEdit}</h4>
+            <div class="rs-modal-path">${sheet}</div>
+          </div>
+          <button class="rs-modal-close" onClick=${onClose} aria-label="${t.shortcutClose}">\u00d7</button>
+        </header>
+        <div class="rs-new-review">
+          <p class="rs-edit-note">${t.docImagesNote}</p>
+          <div class="rs-form-row">
+            <textarea class="rs-doc-source" ref=${ref} value=${text} spellcheck=${false}
+                      onInput=${(e: Event) => setText((e.target as HTMLTextAreaElement).value)}
+                      onPaste=${handlePaste}
+                      onKeyDown=${handleKeyDown}></textarea>
+            ${busy && html`<p class="rs-doc-pasting">${t.docPasting}</p>`}
+          </div>
+          <div class="rs-modal-footer">
+            <span class="rs-modal-shortcuts">
+              <kbd>Ctrl</kbd>+<kbd>Enter</kbd> ${t.shortcutSave}\u3000<kbd>Esc</kbd> ${t.shortcutClose}
+            </span>
+            <div class="rs-modal-actions">
+              ${text !== original && html`<button class="rs-btn-danger" onClick=${() => setText(original)}>${t.docRevert}</button>`}
+              <button class="rs-btn-primary" onClick=${handleSave}>${t.editSave}</button>
             </div>
           </div>
         </div>
@@ -3513,6 +3686,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   const [modalTarget, setModalTarget] = useState<{ target: ReviewItem["target"]; field: string; currentValue: string; sharedRow?: boolean } | null>(null);
   const [editTarget, setEditTarget] = useState<{ target: ReviewItem["target"]; field: string; currentValue: string; sharedRow?: boolean } | null>(null);
   const [addRowTarget, setAddRowTarget] = useState<ReviewItem["target"] | null>(null);
+  const [docTarget, setDocTarget] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [applyPanelOpen, setApplyPanelOpen] = useState(false);
@@ -3963,7 +4137,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   // differently, and the browser's version would be the wrong one.
   const promptReviews = useMemo(
     () => (effEditEnabled
-      ? promptItemsFromPlan(planFromEdits(reviews), { added: HELD_REASON_ADDED_ROW, struck: HELD_REASON_STRUCK_ROW })
+      ? promptItemsFromPlan(planFromEdits(reviews), { added: HELD_REASON_ADDED_ROW, struck: HELD_REASON_STRUCK_ROW, document: HELD_REASON_DOCUMENT })
       : reviews),
     [effEditEnabled, reviews]
   );
@@ -4315,6 +4489,20 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                 <h2>
                   <span class=${diff?.get(sheetKey(sheet.name)) === "removed" ? "rs-diff-strike" : ""}>${sheet.display ?? sheet.name}</span>
                   ${diff && diffBadge(diff.get(sheetKey(sheet.name)))}
+                  ${/* A document sheet's own action. In the heading, at the
+                        right end, because that is where a sheet's actions
+                        already are — the comment button below has sat there
+                        since before this existed. */ ""}
+                  ${effEditEnabled && sheet.document && html`
+                    <span class="rs-header-actions">
+                      <button class=${`rs-head-tool ${documentSource(reviews, sheet.name) !== undefined ? "rs-head-tool-on" : ""}`}
+                              onClick=${() => setDocTarget(sheet.name)}
+                              title="${t.docEdit}" aria-label="${t.docEdit}">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        <span class="rs-tool-label">${t.docEditShort}</span>
+                      </button>
+                    </span>
+                  `}
                   ${effReviewEnabled && html`
                     <span class="rs-header-actions ${sheetReviewCount > 0 ? "rs-has-comment" : ""}">
                       <button class="rs-head-tool ${sheetReviewCount > 0 ? "rs-head-tool-on" : ""}"
@@ -4340,7 +4528,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
               `}
 
               ${sheet.document
-                ? html`<div class="rs-doc" dangerouslySetInnerHTML=${{ __html: sheet.document.html }}></div>`
+                ? html`<${DocumentBody} sheet=${sheet} reviews=${reviews} editEnabled=${effEditEnabled} t=${t} />`
                 : pivoted.has(sheet.name)
                 ? html`<${PivotView} sheet=${sheet} sheetIndex=${idx} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
                                      reviews=${reviews} reviewEnabled=${effReviewEnabled} editEnabled=${effEditEnabled}
@@ -4372,6 +4560,20 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
         <${NavPalette} entries=${paletteEntries} onJump=${jumpToNav} onClose=${() => setPaletteOpen(false)}
                        showDefaults=${showDefaults} onToggleDefaults=${() => setShowDefaults((v) => !v)} t=${t} />
       `}
+
+      ${docTarget !== null && (() => {
+        const sheet = baseData.sheets.find((s) => s.name === docTarget);
+        const original = sheet?.document?.markdown;
+        // A document built before the source was carried has nothing to edit.
+        // Said, rather than opening an empty editor that would replace the
+        // whole document with whatever is typed into it.
+        if (original === undefined) return html`<${PromptModal} text=${t.docNoSource} fromEdits=${true} onClose=${() => setDocTarget(null)} t=${t} />`;
+        return html`
+          <${DocumentModal} sheet=${docTarget} original=${original}
+                            current=${documentSource(reviews, docTarget) ?? original}
+                            onSave=${handleSaveEdit} onClose=${() => setDocTarget(null)} t=${t} />
+        `;
+      })()}
 
       ${saveOpen && html`
         <${SaveModal} count=${unsaved.length} busy=${saving}
