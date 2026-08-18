@@ -1512,12 +1512,26 @@ function fileDrafts(
     // below: a project that writes `category:` by hand said what it meant.
     const rawFile = declaredNoCategory || meta?.category || !groupByFile ? undefined : rawFileOf(d);
     const derivedFile = rawFile === undefined ? undefined : [fileNames.get(rawFile) ?? rawFile];
-    // The component under its DISPLAY name, for the fold below. A component
-    // that is a file names it as the project wrote it (`/etc/logrotate.d/x`)
-    // while the category names it as this sheet displays it, and comparing the
-    // two forms directly meant the fold never fired: every such row opened a
-    // level named after the file, holding one level named after the file.
-    const componentDisplay = d.component === undefined ? undefined : (fileNames.get(d.component) ?? d.component);
+    // Does the component name the same FILE this row was just filed under?
+    //
+    // Asked of the file, not of the two names. A component is free to be a
+    // short alias for the file it deploys (`keycloak.conf` for
+    // `/opt/keycloak/conf/keycloak.conf`), and it is free to be the path
+    // itself; either way the level below it would be named after the same
+    // file, which is a level that says what its parent already said. Two
+    // attempts at this compared NAMES — the raw component against the
+    // category, then their display forms — and each worked for the spelling in
+    // front of it and broke on the next one. The identity is in
+    // componentFiles, which is where the recipe recorded what this component
+    // deploys.
+    const componentFile = d.component === undefined ? undefined : componentFiles?.get(d.component)?.filePath;
+    const namesTheSameFile =
+      rawFile !== undefined &&
+      (componentFile !== undefined
+        ? baseFileName(componentFile) === rawFile
+        : // No file recorded for it: fall back to the names, which is all
+          // there is to go on for a component that is not a file at all.
+          (fileNames.get(d.component ?? "") ?? d.component) === derivedFile?.[0]);
     const inner = declaredNoCategory
       ? []
       : meta?.category
@@ -1583,7 +1597,7 @@ function fileDrafts(
     // fileCategory's last branch exists for, and which keeps its own file's
     // name here.
     const folded =
-      inner !== undefined && showComponent && derivedFile !== undefined && inner[0] === componentDisplay
+      inner !== undefined && showComponent && derivedFile !== undefined && namesTheSameFile
         ? inner.slice(1)
         : inner;
     const path = folded === undefined ? undefined : showComponent ? [d.component!, ...folded] : folded;

@@ -698,6 +698,62 @@ sheets:
     expect((input.sheets[0].categories ?? [])[0].params?.map((p) => p.key)).toEqual(["postgresql"]);
   });
 
+  // The same fold, for a component that is a short ALIAS of the file rather
+  // than the path itself — `keycloak.conf` deploying
+  // `/opt/keycloak/conf/keycloak.conf`. Two earlier attempts compared NAMES
+  // (the raw component against the category, then their display forms) and each
+  // worked for the spelling in front of it and broke on the next. The question
+  // is whether the component names the same FILE, which componentFiles answers.
+  it("folds a level whose component is a short name for the same file", () => {
+    const aliasPart = (name: string, alias: string, deployed: string, key: string): SheetRecipe => ({
+      name,
+      schema: { type: "object", properties: {}, additionalProperties: false },
+      load: (sheetSpec, io) => ({
+        name: String(sheetSpec.name),
+        instances: io.instances,
+        layers: [{ kind: "base", entries: new Map([[key, { value: "1", source: { file: io.resolve(`${key}.j2`), line: 1 } }]]) }],
+        embedded: [],
+        componentOf: new Map([[key, alias]]),
+        componentFiles: new Map([[alias, { filePath: deployed, sourceFile: io.resolve(`${key}.j2`) }]]),
+        componentOrder: [alias],
+      }),
+    });
+    registerRecipe(aliasPart("alias-a", "keycloak.conf", "/opt/keycloak/conf/keycloak.conf", "hostname"));
+    registerRecipe(aliasPart("alias-b", "quarkus.properties", "/opt/keycloak/conf/quarkus.properties", "httpport"));
+
+    const f: Record<string, string> = {
+      "/p/build.yml": `
+version: 1
+instances: [production]
+enrich:
+  project: sheet.yml
+sheets:
+  - name: sso
+    parts:
+      - recipe: alias-a
+      - recipe: alias-b
+`,
+      "/p/sheet.yml": `
+sheets:
+  sso:
+    group_by: file
+    params:
+      hostname: { description: A }
+      httpport: { description: B }
+`,
+    };
+    const input = assembleFromSpec(loadBuildSpec("/p/build.yml", { readFile: (p) => f[p] ?? null }), {
+      readFile: (p) => f[p] ?? null,
+      specDir: "/p",
+    });
+    const cats = input.sheets[0].categories ?? [];
+    // The component keeps its own short name as the heading...
+    expect(cats.map((c) => c.name)).toEqual(["keycloak.conf", "quarkus.properties"]);
+    // ...and does not open a second level named after the file it deploys.
+    expect(cats.map((c) => (c.categories ?? []).length)).toEqual([0, 0]);
+    expect(cats[0].params?.map((p) => p.key)).toEqual(["hostname"]);
+  });
+
   it("validates each part against its own recipe's schema", () => {
     expect(() => buildWith(spec(`    parts:\n      - recipe: compose-a\n        nosuch: 1\n      - recipe: compose-b\n`)))
       .toThrow(/part 1 \(recipe "compose-a"\)/);
