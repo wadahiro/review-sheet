@@ -185,3 +185,115 @@ su root root
     expect(logrotateIndex("/var/log/at-eof.log\n").map((e) => e.key)).toEqual(["/var/log/at-eof.log"]);
   });
 });
+
+// A logrotate policy is routinely written as a .j2 with the install prefix in a
+// variable. A block header that begins with one has to be recognised as a
+// header, or every directive under it is read as a global default applying to
+// every log on the host.
+//
+// These go THROUGH the .j2 parser as well as straight in, because the two see
+// different text: jinja2.ts masks every substitution into an opaque token
+// before the base parser runs, so a fix that recognises `{{` passes a direct
+// test and changes nothing at all in the pipeline. That is exactly what
+// happened once.
+describe("a pattern that begins with a template substitution", () => {
+  const TEMPLATED = `/var/log/keycloak/server.log
+{
+    rotate 7
+    daily
+}
+
+{{ keycloak_home }}/data/log/keycloak-http-access.log
+{
+    rotate 14
+    weekly
+}
+`;
+
+  it("reads it as a block header, not as global directives", () => {
+    const entries = logrotateIndex(TEMPLATED);
+    expect(entries.map((e) => [e.categoryPath[0], e.key, e.value])).toEqual([
+      ["/var/log/keycloak/server.log", "rotate", "7"],
+      ["/var/log/keycloak/server.log", "daily", "true"],
+      ["{{ keycloak_home }}/data/log/keycloak-http-access.log", "rotate", "14"],
+      ["{{ keycloak_home }}/data/log/keycloak-http-access.log", "weekly", "true"],
+    ]);
+  });
+
+  it("addresses a row inside it like any other", () => {
+    const entries = logrotateIndex(TEMPLATED);
+    const rotate = entries.find((e) => e.categoryPath[0].startsWith("{{") && e.key === "rotate")!;
+    expect(logrotateLocate(TEMPLATED, rotate.path)).toEqual({ value: "14" });
+  });
+
+  it("takes the brace on the same line too", () => {
+    const same = `{{ home }}/log/*.log {
+    rotate 3
+}
+`;
+    expect(logrotateIndex(same).map((e) => [e.categoryPath[0], e.key])).toEqual([
+      ["{{ home }}/log/*.log", "rotate"],
+    ]);
+  });
+
+  // A directive whose ARGUMENT is templated is still a directive: the shape
+  // test reads the first token, not the line.
+  it("does not mistake a templated argument for a pattern", () => {
+    const args = `/var/log/a.log {
+    rotate {{ keep_days }}
+    su {{ svc_user }} {{ svc_group }}
+}
+`;
+    expect(logrotateIndex(args).map((e) => [e.key, e.value])).toEqual([
+      ["rotate", "{{ keep_days }}"],
+      ["su", "{{ svc_user }} {{ svc_group }}"],
+    ]);
+  });
+
+  // A templated pattern with no brace after it must not be split on whitespace:
+  // that names the row `{{`, which names nothing.
+  it("keeps a strayed templated pattern whole", () => {
+    expect(logrotateIndex("{{ home }}/log/x.log\ncompress\n").map((e) => [e.key, e.value])).toEqual([
+      ["{{ home }}/log/x.log", "true"],
+      ["compress", "true"],
+    ]);
+  });
+
+  // The pipeline, not the core: the base parser sees a MASKED template, so this
+  // is the only test that can tell whether the fix reaches a real file.
+  it("works through the .j2 parser, where the substitution is masked", () => {
+    const file = "roles/keycloak/templates/logrotate-keycloak.j2";
+    const parser = resolveParser(file, TEMPLATED);
+    expect(parser?.name).toBe("jinja2");
+    const entries = parser!.extract(TEMPLATED, file, {});
+    expect(entries.map((e) => [e.categoryPath?.join(" > "), e.key, e.value])).toEqual([
+      ["/var/log/keycloak/server.log", "rotate", "7"],
+      ["/var/log/keycloak/server.log", "daily", "true"],
+      ["{{ keycloak_home }}/data/log/keycloak-http-access.log", "rotate", "14"],
+      ["{{ keycloak_home }}/data/log/keycloak-http-access.log", "weekly", "true"],
+    ]);
+  });
+});
+
+// A block header only ever appears at the TOP LEVEL, so nothing inside a block
+// has to be told apart from one — which is what makes a directive logrotate
+// gained after this was written safe there.
+describe("telling a directive from a pattern", () => {
+  it("reads an unknown directive inside a block as a directive", () => {
+    const entries = logrotateIndex("/var/log/a.log {\n    somethingnew 5\n    futureflag\n}\n");
+    expect(entries.map((e) => [e.categoryPath[0], e.key, e.value])).toEqual([
+      ["/var/log/a.log", "somethingnew", "5"],
+      ["/var/log/a.log", "futureflag", "true"],
+    ]);
+  });
+
+  it("still reads the ordinary global directives as directives", () => {
+    const entries = logrotateIndex("compress\nsu root root\nrotate 4\ninclude /etc/logrotate.d\n");
+    expect(entries.map((e) => [e.categoryPath[0], e.key])).toEqual([
+      ["(global)", "compress"],
+      ["(global)", "su"],
+      ["(global)", "rotate"],
+      ["(global)", "include"],
+    ]);
+  });
+});

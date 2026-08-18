@@ -19,6 +19,7 @@
 ## Notes
 
 - A block's path patterns identify it and become the category path; directives outside any block are filed under (global), which is what logrotate.conf's own defaults are.
+- The patterns may be separated by newlines and the brace may sit on a line of its own. A top-level line is a directive when it NAMES one (the set is closed and defined by logrotate); anything else there starts a block header — so a pattern written as a template substitution works, and so does one this parser has never seen.
 - A bare flag's value is `true`: it has no argument, its presence IS the setting, and logrotate's flags come in pairs (compress/nocompress) so which one is written is the row that matters.
 - postrotate/prerotate/firstaction/lastaction/preremove keep their script body as the value — what runs around a rotation is exactly what a review asks about.
 - Repeated directives in one block are indexed, as everywhere else: postrotate[1].
