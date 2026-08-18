@@ -1300,8 +1300,16 @@ export function shortestUniqueNames(paths: Iterable<string>): Map<string, string
   const unique = [...new Set(paths)];
   const out = new Map<string, string>();
   const segmentsOf = (p: string): string[] => p.split("/").filter(Boolean);
+  // An ABSOLUTE path keeps every segment. Shortening exists to take the noise
+  // off a repo-relative source path — nobody reviewing a value wants to read
+  // `roles/sso/defaults/` to find `main.yml` — and an absolute path is not
+  // noise: it is where the setting LANDS on the host, which is the name a
+  // reviewer is holding, and the name the sheet this replaces used. Two
+  // distinct absolute paths also cannot collide, so there is nothing here for
+  // the shortening to solve.
+  for (const p of unique.filter((p) => p.startsWith("/"))) out.set(p, p);
   let depth = 1;
-  let remaining = unique;
+  let remaining = unique.filter((p) => !p.startsWith("/"));
   while (remaining.length > 0) {
     const byName = new Map<string, string[]>();
     for (const p of remaining) {
@@ -1504,6 +1512,12 @@ function fileDrafts(
     // below: a project that writes `category:` by hand said what it meant.
     const rawFile = declaredNoCategory || meta?.category || !groupByFile ? undefined : rawFileOf(d);
     const derivedFile = rawFile === undefined ? undefined : [fileNames.get(rawFile) ?? rawFile];
+    // The component under its DISPLAY name, for the fold below. A component
+    // that is a file names it as the project wrote it (`/etc/logrotate.d/x`)
+    // while the category names it as this sheet displays it, and comparing the
+    // two forms directly meant the fold never fired: every such row opened a
+    // level named after the file, holding one level named after the file.
+    const componentDisplay = d.component === undefined ? undefined : (fileNames.get(d.component) ?? d.component);
     const inner = declaredNoCategory
       ? []
       : meta?.category
@@ -1560,7 +1574,7 @@ function fileDrafts(
     // fileCategory's last branch exists for, and which keeps its own file's
     // name here.
     const folded =
-      inner !== undefined && showComponent && derivedFile !== undefined && inner[0] === d.component
+      inner !== undefined && showComponent && derivedFile !== undefined && inner[0] === componentDisplay
         ? inner.slice(1)
         : inner;
     const path = folded === undefined ? undefined : showComponent ? [d.component!, ...folded] : folded;

@@ -1097,7 +1097,10 @@ parameters:
 
   it("files a row under the artifact it is written in, not the product's grouping", () => {
     const input = assembleSheets(inputs, opts());
-    expect(categoryOf(input, "max_conn")).toBe("postgresql.conf");
+    // An absolute path is where the setting lands on the host, so it is named
+    // in full — that is what a reviewer is holding, and what the paper sheet
+    // this replaces called it.
+    expect(categoryOf(input, "max_conn")).toBe("/etc/postgresql/postgresql.conf");
   });
 
   // A product default nobody set is written nowhere, so there is no file to
@@ -1163,20 +1166,20 @@ parameters:
   ];
 
   it("groups a set row by where it is written, not by where it is defined", () => {
-    expect(categoryOf(assembleSheets(inputs, opts()), "max_conn")).toBe("postgresql.conf");
+    expect(categoryOf(assembleSheets(inputs, opts()), "max_conn")).toBe("/etc/postgresql/postgresql.conf");
   });
 
   // The whole point: a materialized default has no source file, so before this
   // it was the one population `group_by: file` could never place.
   it("places a materialized product default too", () => {
-    expect(categoryOf(assembleSheets(inputs, opts()), "wal_level")).toBe("postgresql.conf");
+    expect(categoryOf(assembleSheets(inputs, opts()), "wal_level")).toBe("/etc/postgresql/postgresql.conf");
   });
 
   it("lets a single row say it goes somewhere else", () => {
     files["p.yml"] = `sheets:\n  db:\n    group_by: file\n    params:\n      wal_level: { deployed_file: /etc/postgresql/wal.conf }\n`;
     const input = assembleSheets(inputs, opts());
-    expect(categoryOf(input, "max_conn")).toBe("postgresql.conf");
-    expect(categoryOf(input, "wal_level")).toBe("wal.conf");
+    expect(categoryOf(input, "max_conn")).toBe("/etc/postgresql/postgresql.conf");
+    expect(categoryOf(input, "wal_level")).toBe("/etc/postgresql/wal.conf");
   });
 });
 

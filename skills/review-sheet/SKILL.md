@@ -725,11 +725,16 @@ download the distribution from; it is not a line of keycloak.conf, and filing it
 there makes the sheet claim something false about the file. Such rows keep a
 category of their own, which is why the example above declares three.
 
-**Two files with the same name do not merge.** A category is named by the
-shortest tail of the path no other file on the sheet shares, so one sheet
-aggregating three roles' variables shows `common/defaults/main.yml` and
-`sso/defaults/main.yml` rather than one `main.yml` holding both their rows.
-The name grows only where it has to.
+**Two files with the same name do not merge.** A repo-relative path is named by
+the shortest tail no other file on the sheet shares, so one sheet aggregating
+three roles' variables shows `common/defaults/main.yml` and
+`sso/defaults/main.yml` rather than one `main.yml` holding both their rows. The
+name grows only where it has to.
+
+An **absolute** path keeps every segment: `/etc/logrotate.d/postgresql`, not
+`postgresql`. That is where the setting lands on the host — the name a reviewer
+is holding, and the one the paper sheet used — and two distinct absolute paths
+cannot collide, so there is nothing for the shortening to solve.
 
 **`deployed_file:` — when the file a row is DEFINED in is the wrong axis.**
 

@@ -639,6 +639,65 @@ params:
   // Each part's own recipe fields are checked against ITS recipe's schema, and
   // the error says which part — a typo in the second part reported against the
   // first one's contract would send the reader to the wrong place.
+  // A component that IS a file names it as the project wrote it
+  // (`/etc/logrotate.d/x`), while the category names it as the sheet displays
+  // it. Comparing the two forms directly meant the level named after the file
+  // was never folded away, and every such row opened a heading holding one
+  // heading of the same name.
+  it("does not open a level named after the file inside one named after the file", () => {
+    const filePart = (name: string, key: string): SheetRecipe => ({
+      name,
+      schema: { type: "object", properties: {}, additionalProperties: false },
+      load: (sheetSpec, io) => ({
+        name: String(sheetSpec.name),
+        instances: io.instances,
+        layers: [{ kind: "base", entries: new Map([[key, { value: "1", source: { file: io.resolve(`${key}.j2`), line: 1 } }]]) }],
+        embedded: [],
+        componentOf: new Map([[key, `/etc/logrotate.d/${key}`]]),
+        // Both halves, as the ansible recipe supplies them: the row is a line
+        // of the DEPLOYED file, written in the template — which is what makes
+        // it belong to the artifact rather than to the .j2 it came from.
+        componentFiles: new Map([
+          [`/etc/logrotate.d/${key}`, { filePath: `/etc/logrotate.d/${key}`, sourceFile: io.resolve(`${key}.j2`) }],
+        ]),
+        componentOrder: [`/etc/logrotate.d/${key}`],
+      }),
+    });
+    registerRecipe(filePart("compose-file-a", "postgresql"));
+    registerRecipe(filePart("compose-file-b", "netstat"));
+
+    const f: Record<string, string> = {
+      "/p/build.yml": `
+version: 1
+instances: [production]
+enrich:
+  project: sheet.yml
+sheets:
+  - name: host
+    parts:
+      - recipe: compose-file-a
+      - recipe: compose-file-b
+`,
+      "/p/sheet.yml": `
+sheets:
+  host:
+    group_by: file
+    params:
+      postgresql: { description: A }
+      netstat: { description: B }
+`,
+    };
+    const input = assembleFromSpec(loadBuildSpec("/p/build.yml", { readFile: (p) => f[p] ?? null }), {
+      readFile: (p) => f[p] ?? null,
+      specDir: "/p",
+    });
+    const top = (input.sheets[0].categories ?? []).map((c) => c.name);
+    expect(top).toEqual(["/etc/logrotate.d/postgresql", "/etc/logrotate.d/netstat"]);
+    // The rows sit directly under it: no second level of the same name.
+    expect((input.sheets[0].categories ?? []).map((c) => (c.categories ?? []).length)).toEqual([0, 0]);
+    expect((input.sheets[0].categories ?? [])[0].params?.map((p) => p.key)).toEqual(["postgresql"]);
+  });
+
   it("validates each part against its own recipe's schema", () => {
     expect(() => buildWith(spec(`    parts:\n      - recipe: compose-a\n        nosuch: 1\n      - recipe: compose-b\n`)))
       .toThrow(/part 1 \(recipe "compose-a"\)/);

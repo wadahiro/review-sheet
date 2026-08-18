@@ -713,10 +713,11 @@ describe("group_by: file with a multi-variable line", () => {
       strictMetadata: false,
     });
     const cats = input.sheets[0].categories.map((c) => c.name);
-    // One heading, the artifact's. `defaults.yml` appearing beside it — holding
-    // exactly the one variable the first-variable rule could not see — is the
-    // bug this is here for.
-    expect(cats).toEqual(["app.conf"]);
+    // One heading, the artifact's — named in full, because an absolute path is
+    // where the file LANDS and that is what a reviewer is holding.
+    // `defaults.yml` appearing beside it — holding exactly the one variable the
+    // first-variable rule could not see — is the bug this is here for.
+    expect(cats).toEqual(["/etc/app/app.conf"]);
     expect((input.sheets[0].categories[0].params ?? []).map((p) => p.key).sort()).toEqual([
       "db_host",
       "db_name",
