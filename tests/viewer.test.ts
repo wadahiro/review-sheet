@@ -1401,6 +1401,44 @@ const TWO_COMPONENTS = {
   ],
 };
 
+// A component that IS a deployed file. The category path is joined with "/",
+// and such a component contains one — so recovering the outermost level by
+// splitting on the separator took the empty string before the leading slash,
+// and every row under it silently offered no preview at all.
+const PATH_COMPONENTS = {
+  metadata: { title: "t" },
+  versions: [
+    {
+      version: "current",
+      sheets: [
+        {
+          name: "os",
+          categories: [
+            { name: "/etc/logrotate.d/netstat", params: [{ key: "rotate", value: "3", description: "Keep" }] },
+            { name: "/etc/logrotate.d/postgresql", params: [{ key: "rotate", value: "7", description: "Keep" }] },
+          ],
+        },
+      ],
+      artifacts: [
+        {
+          id: "os::netstat",
+          sheet: "os",
+          component: "/etc/logrotate.d/netstat",
+          source_file: "roles/os/templates/logrotate-netstat.j2",
+          lines: [{ text: "    rotate 3", kind: "substituted" as const, key: "rotate" }],
+        },
+        {
+          id: "os::postgresql",
+          sheet: "os",
+          component: "/etc/logrotate.d/postgresql",
+          source_file: "roles/os/templates/logrotate-postgresql.j2",
+          lines: [{ text: "    rotate 7", kind: "substituted" as const, key: "rotate" }],
+        },
+      ],
+    },
+  ],
+};
+
 // The id contract: id identifies one previewed FILE. A Terraform module's rows
 // span several files (main.tf, variables.tf) on the same sheet/component —
 // those previews must get DIFFERENT ids, or the viewer would render them as
@@ -1486,6 +1524,58 @@ describe("artifact panel", () => {
     // Only the component the preview names. The other realm's `enabled` is a
     // different row and that file has no line for it.
     expect(rows.filter((r) => r.querySelector(".rs-artifact-chip")).length).toBe(1);
+  });
+
+  it("offers the file when the component is a path, not only when it is a name", () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: PATH_COMPONENTS, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    const rows = [...host.querySelectorAll("tbody tr")].filter(
+      (r) => r.querySelector(".rs-col-key code")?.textContent === "rotate"
+    );
+    expect(rows.length).toBe(2);
+    // Each row opens ITS OWN file: both are named `rotate`, and the component
+    // is the only thing telling them apart.
+    expect(rows.filter((r) => r.querySelector(".rs-artifact-chip")).length).toBe(2);
+  });
+
+  // A component is free to be a short alias while the CATEGORY is the file it
+  // deploys — which is the ordinary shape once categories are named after the
+  // deployed path. Assuming the category head IS the component left every one
+  // of those rows without a preview: 294 of them on one real sheet.
+  it("offers the file when the category is the path and the component an alias", () => {
+    const payload = {
+      metadata: { title: "t" },
+      versions: [
+        {
+          version: "current",
+          sheets: [
+            {
+              name: "kc",
+              categories: [
+                { name: "/opt/keycloak/conf/keycloak.conf", params: [{ key: "hostname", value: "sso", description: "Host" }] },
+              ],
+            },
+          ],
+          artifacts: [
+            {
+              id: "kc::conf",
+              sheet: "kc",
+              component: "keycloak.conf",
+              deployed_path: "/opt/keycloak/conf/keycloak.conf",
+              source_file: "roles/keycloak/templates/keycloak.conf.j2",
+              lines: [{ text: "hostname=sso", kind: "substituted" as const, key: "hostname" }],
+            },
+          ],
+        },
+      ],
+    };
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    expect(rowFor(host, "hostname").querySelector(".rs-artifact-chip")).not.toBeNull();
   });
 
   it("offers the file only on rows that are a line of it", () => {

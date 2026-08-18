@@ -4281,17 +4281,50 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
     }
     return out;
   }, [artifacts]);
+  // Every name a sheet's outermost category could be wearing, against the
+  // component the previews are indexed by.
+  //
+  // Two things had to go: splitting the category path on "/" to get its head —
+  // a component that is a deployed file contains one, so that took the empty
+  // string before the leading slash — and then assuming the head IS the
+  // component. It need not be. A component is free to be a short alias
+  // (`keycloak.conf`) while the category is the file it deploys
+  // (`/opt/keycloak/conf/keycloak.conf`), and after the category-naming fixes
+  // that is the ordinary case, not a corner. The artifact knows both, so both
+  // are keys here.
+  const componentByCategory = useMemo(() => {
+    const bySheet = new Map<string, Map<string, string>>();
+    const add = (sheet: string, name: string | undefined, component: string): void => {
+      if (name === undefined || name === "") return;
+      const m = bySheet.get(sheet) ?? new Map<string, string>();
+      if (!m.has(name)) m.set(name, component);
+      bySheet.set(sheet, m);
+    };
+    for (const a of artifacts ?? []) {
+      if (a.component === undefined) continue;
+      add(a.sheet, a.component, a.component);
+      add(a.sheet, a.deployed_path, a.component);
+    }
+    return bySheet;
+  }, [artifacts]);
   const artifactFor = useCallback((sheetName: string, categoryPath: string, key: string): string | undefined => {
     // The component is the outermost category, exactly as `assembleSheets`
     // resolves it for a per-component binding — and it collapses away on a
     // single-component sheet, which is why the unscoped lookup is the fallback
     // rather than an error.
-    const head = categoryPath.split("/")[0];
+    //
+    // Read off the names that EXIST rather than by splitting the path: the
+    // separator is "/" and a category naming a deployed file contains one.
+    // Longest first, so a name nested inside another wins.
+    const known = [...(componentByCategory.get(sheetName)?.entries() ?? [])].sort((a, b) => b[0].length - a[0].length);
+    const head =
+      known.find(([name]) => categoryPath === name || categoryPath.startsWith(`${name}/`))?.[1] ??
+      categoryPath.split("/")[0];
     return (
       artifactIndex.get(`${sheetName}\u0000${head}\u0000${key}`) ??
       artifactIndex.get(`${sheetName}\u0000\u0000${key}`)
     );
-  }, [artifactIndex]);
+  }, [artifactIndex, componentByCategory]);
   const artifactAccess = useMemo<ArtifactAccess | undefined>(
     () =>
       (artifacts?.length ?? 0) === 0
