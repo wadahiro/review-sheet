@@ -194,6 +194,18 @@ export type SheetInputs = {
   // mixed lines fall out of the artifact they are lines of, and land under the
   // variable FILE as a one-row category of their own.
   templateVariables?: string[];
+  // Row keys whose VALUE the artifact interpolates from variables — every one,
+  // including a line built from several (`db-url=jdbc:...{{ host }}:5432/{{
+  // name }}`).
+  //
+  // `templateVariables` cannot answer this and never could: it holds VARIABLE
+  // names, and on the artifact axis a row is named after the directive, so
+  // asking whether `db-url` is in it asks a question in the wrong namespace.
+  // The answer matters to `group_by: file` alone (see fileCategory): such a row
+  // IS a line of the artifact, but its `source` points at the file the VARIABLE
+  // is defined in, so without this it fell out of the artifact and opened a
+  // one-row category named after `main.yml`.
+  variableBackedKeys?: string[];
   // Rows whose display key is a PRODUCT key rather than their extracted
   // identity (an Ansible variable, a structural path, ...) — see
   // resolveKey() below. A base/overlay entry whose extracted key appears here
@@ -1369,6 +1381,7 @@ function fileDrafts(
   // See SheetInputs.templateVariables — what makes a row a line of the
   // artifact, as opposed to which variable is displayed under it.
   templateVariables: Set<string> | undefined,
+  variableBackedKeys: Set<string> | undefined,
   componentLabels: Map<string, LangText> | undefined,
   componentFiles: Map<string, { filePath?: string; sourceFile?: string }> | undefined,
   deployedFiles: Map<string, string> | undefined,
@@ -1448,11 +1461,20 @@ function fileDrafts(
       componentFiles?.get(d.component ?? "")?.sourceFile ?? sheetTemplate,
       // A row whose value came from a variable the artifact interpolates IS a
       // line of that artifact; the variable is provenance, already shown in the
-      // under_key column. `d.variable` alone answered a NARROWER question — it
-      // is set only where one variable and one directive correspond exactly —
-      // so a line built from two variables was read as belonging to neither
-      // file and filed under the one its variables are DEFINED in.
-      d.variable !== undefined || (templateVariables?.has(d.variable ?? d.key) ?? false)
+      // under_key column.
+      //
+      // Three questions, because one namespace cannot answer for both axes.
+      // `d.variable` is set only where one variable and one directive
+      // correspond exactly. `templateVariables` holds VARIABLE names, which is
+      // what a row is called on the variable axis and never what it is called
+      // on the artifact one — so a line built from several variables
+      // (`db-url`) matched neither, fell out of the artifact it is a line of,
+      // and opened a one-row category named after the file its variables are
+      // DEFINED in. `variableBackedKeys` is that same fact in the artifact
+      // axis's own namespace.
+      d.variable !== undefined ||
+        (templateVariables?.has(d.variable ?? d.key) ?? false) ||
+        (variableBackedKeys?.has(d.key) ?? false)
     );
   const fileNames = groupByFile
     ? shortestUniqueNames(drafts.map(rawFileOf).filter((f): f is string => f !== undefined))
@@ -2211,6 +2233,7 @@ export function assembleSheetsWithReport(
       categoryConflicts,
       categoryWarnings,
       si.templateVariables ? new Set(si.templateVariables) : undefined,
+      si.variableBackedKeys ? new Set(si.variableBackedKeys) : undefined,
       si.componentLabels,
       si.componentFiles,
       declaredDeployed.size > 0 ? declaredDeployed : si.deployedFiles,
