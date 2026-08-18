@@ -46,4 +46,24 @@ describe("shortestUniqueNames", () => {
   it("is empty for no input", () => {
     expect(shortestUniqueNames([]).size).toBe(0);
   });
+
+  // An absolute path is where the setting LANDS on the host. That is the name a
+  // reviewer is holding — and the name the paper sheet this replaces used — so
+  // it is never shortened. Two distinct absolute paths cannot collide either,
+  // leaving nothing here for the shortening to solve.
+  it("keeps an absolute path whole", () => {
+    const names = shortestUniqueNames(["/etc/logrotate.d/postgresql", "/etc/logrotate.d/netstat", "/etc/chrony.conf"]);
+    expect(names.get("/etc/logrotate.d/postgresql")).toBe("/etc/logrotate.d/postgresql");
+    expect(names.get("/etc/chrony.conf")).toBe("/etc/chrony.conf");
+  });
+
+  it("still shortens the repo-relative paths beside them", () => {
+    const names = shortestUniqueNames([
+      "/etc/logrotate.d/postgresql",
+      "roles/common/defaults/main.yml",
+      "roles/sso/defaults/main.yml",
+    ]);
+    expect(names.get("/etc/logrotate.d/postgresql")).toBe("/etc/logrotate.d/postgresql");
+    expect(names.get("roles/common/defaults/main.yml")).toBe("common/defaults/main.yml");
+  });
 });
