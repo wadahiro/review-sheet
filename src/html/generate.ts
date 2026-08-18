@@ -82,16 +82,27 @@ export function allDated(inputs: { input: ParameterSheetInput }[]): boolean {
   return inputs.every((x) => !!x.input.metadata?.generated_at);
 }
 
+// A closing script tag inside embedded text ends the element, whatever that
+// text means to JS or JSON. It is not hypothetical: any config value could
+// contain one, and the app's own source mentions "</script>" wherever it reads
+// its own embedded payloads back out. Both JavaScript and JSON read \/ as a
+// plain forward slash, so one substitution covers the bundle and the payloads
+// alike.
+//
+// This belongs to whoever writes the <script> element, not to whoever produced
+// the text — every caller getting it right separately is how it goes wrong.
+const escapeScriptClose = (text: string): string => text.replace(/<\/script/gi, "<\\/script");
+
 export async function generateHtml(
   input: ParameterSheetInput | VersionedSheetInput,
   options?: GenerateOptions
 ): Promise<string> {
   const reviewEnabled = options?.review !== false;
   const lang = options?.lang ?? "ja";
-  const appJS = await getAppBundle();
+  const appJS = escapeScriptClose(await getAppBundle());
   const data = normalize(input);
-  const dataJson = JSON.stringify(data);
-  const configJson = JSON.stringify({ review: reviewEnabled, lang, server: options?.server === true });
+  const dataJson = escapeScriptClose(JSON.stringify(data));
+  const configJson = escapeScriptClose(JSON.stringify({ review: reviewEnabled, lang, server: options?.server === true }));
   const title = options?.title ?? data.metadata?.title ?? (lang === "en" ? "Parameter Sheet" : "パラメータシート");
 
   return `<!DOCTYPE html>
