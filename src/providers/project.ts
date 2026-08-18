@@ -33,6 +33,12 @@ export type ProjectMetaParam = {
   // so only it belongs in the sheet's `categories:` declaration. A one-element
   // list and a bare string mean the same thing.
   category?: string | string[] | null;
+  // Where THIS row's value is written on the host, overriding whatever its
+  // dictionary binding says (metadata.ts's DictionaryBinding.deployed_file).
+  // For the row that does not follow its neighbours: one variable out of a
+  // sysctl set that ends up in a different file. Read only by
+  // `group_by: file`.
+  deployed_file?: string;
   // string: a true alias (see bind.ts). null: an explicit severance — this
   // key is declared to bind to nothing. undefined: not declared.
   dict_key?: string | null;

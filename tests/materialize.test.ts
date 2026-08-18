@@ -1114,6 +1114,72 @@ parameters:
   });
 });
 
+// The file a value is DEFINED in is the wrong axis for a sheet aggregating
+// variables from several roles: what a reviewer of the host is holding is the
+// file they END UP in. Nothing in the model can derive that — a variable does
+// not know which template interpolates it, and a materialized product default
+// has no file at all — so it is stated.
+describe("group_by: file with a declared deployed_file", () => {
+  const dict = `
+product: demodb
+version: "1"
+provenance: extracted
+coverage: full
+parameters:
+  max_conn:
+    description: { en: Maximum connections }
+    default: 100
+    group: Connections
+  wal_level:
+    description: { en: WAL detail }
+    default: replica
+    group: Write-Ahead Log
+`;
+  const files: Record<string, string> = {
+    "p.yml": `sheets:\n  db:\n    group_by: file\n    params: {}\n`,
+    "meta/demodb@1.yml": dict,
+  };
+  const opts = (): AssembleOpts => ({
+    projectPath: "p.yml",
+    metadataDirs: ["meta"],
+    readFile: (p) => files[p] ?? null,
+    strictMetadata: false,
+    dictionaries: {
+      db: [{ product: "demodb", version: "1", materialize: true, deployed_file: "/etc/postgresql/postgresql.conf" }],
+    },
+  });
+  const inputs: SheetInputs[] = [
+    {
+      name: "db",
+      instances: [],
+      layers: [
+        {
+          kind: "base",
+          entries: new Map([["max_conn", { value: "200", source: { file: "roles/db/defaults/main.yml", line: 1 } }]]),
+        },
+      ],
+      embedded: [],
+    },
+  ];
+
+  it("groups a set row by where it is written, not by where it is defined", () => {
+    expect(categoryOf(assembleSheets(inputs, opts()), "max_conn")).toBe("postgresql.conf");
+  });
+
+  // The whole point: a materialized default has no source file, so before this
+  // it was the one population `group_by: file` could never place.
+  it("places a materialized product default too", () => {
+    expect(categoryOf(assembleSheets(inputs, opts()), "wal_level")).toBe("postgresql.conf");
+  });
+
+  it("lets a single row say it goes somewhere else", () => {
+    files["p.yml"] = `sheets:\n  db:\n    group_by: file\n    params:\n      wal_level: { deployed_file: /etc/postgresql/wal.conf }\n`;
+    const input = assembleSheets(inputs, opts());
+    expect(categoryOf(input, "max_conn")).toBe("postgresql.conf");
+    expect(categoryOf(input, "wal_level")).toBe("wal.conf");
+  });
+});
+
 // `group_by: file` on a sheet whose COMPONENTS are already files.
 //
 // `templates:` naming each component after the file it deploys is the ordinary

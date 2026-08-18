@@ -77,6 +77,19 @@ export type DictionaryBinding = {
   // what makes the choice — the dictionary is shared and is built without
   // knowing it.
   variant?: string;
+  // Where the settings this dictionary describes actually END UP on the host:
+  // the file a reviewer would open. Used by `group_by: file`, which otherwise
+  // has only the file each value is DEFINED in — and for a sheet aggregating
+  // variables from several roles, that is the wrong axis entirely. Ansible
+  // variables scattered across three `defaults/main.yml` files may all be
+  // written into one `/etc/sysctl.d/override.conf`, which is what somebody
+  // reviewing the host is looking at.
+  //
+  // Stated, because nothing in the model can derive it: a variable does not
+  // know which template interpolates it. It is also what makes the grouping
+  // work for MATERIALIZED rows — product defaults nobody set, which have no
+  // source file at all and so could never be grouped by one.
+  deployed_file?: string;
   key_prefix?: string;
   // A declarative rewrite from the ROW key to the dictionary key, for the case
   // `key_prefix` cannot express: the row's identity legitimately carries more
