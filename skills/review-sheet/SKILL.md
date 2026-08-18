@@ -1675,6 +1675,7 @@ required for `space`, which has no dedicated extension).
 <!-- parsers:start -->
 | Format | Summary | Details |
 | --- | --- | --- |
+| `crontab` | One row per line: a job verbatim, or a `NAME=value` assignment. | [details](formats/crontab.md) |
 | `jinja2` | Templates (.j2): base-format structure + the {{ variable }} behind each value (extraction aid). | [details](formats/jinja2.md) |
 | `logrotate` | `/path/*.log { … }` blocks: flags, `name args`, and script bodies. | [details](formats/logrotate.md) |
 | `haproxy` | Sections and directives; named sections + repeated directive by 1st arg. | [details](formats/haproxy.md) |
