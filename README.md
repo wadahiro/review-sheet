@@ -130,6 +130,7 @@ Supported formats (inferred per file extension, or forced with `--format`):
 <!-- parsers:start -->
 | Format | Files | Notes |
 | --- | --- | --- |
+| `crontab` | /etc/crontab, /etc/cron.d/*, cron.d/*.j2 | One row per line: a job verbatim, or a `NAME=value` assignment. |
 | `jinja2` | *.j2 | Templates (.j2): base-format structure + the {{ variable }} behind each value (extraction aid). |
 | `logrotate` | /etc/logrotate.conf, /etc/logrotate.d/*, logrotate-*.j2 | `/path/*.log { … }` blocks: flags, `name args`, and script bodies. |
 | `haproxy` | haproxy.cfg *.cfg (content-detected) | Sections and directives; named sections + repeated directive by 1st arg. |

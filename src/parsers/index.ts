@@ -6,6 +6,7 @@ import "./yamljson.js";
 import "./xml.js";
 import "./toml.js";
 import "./logrotate.js";
+import "./crontab.js";
 import "./systemd.js";
 import "./shell.js";
 import "./nginx.js";
