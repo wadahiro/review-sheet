@@ -38,6 +38,29 @@ export type LogrotateEntry = {
 
 const SCRIPT_DIRECTIVES = new Set(["postrotate", "prerotate", "firstaction", "lastaction", "preremove"]);
 
+// Every directive logrotate(8) defines. Used to tell a DIRECTIVE from a path
+// pattern at the top level of a file, where both are one word on a line of
+// their own.
+//
+// Recognising the directives rather than guessing at the shape of a path: a
+// pattern is whatever the admin wrote, and the guesses that seemed safe were
+// not. `/`, `~`, quotes and globs miss a template substitution — and by the
+// time such a file reaches this parser the substitution has been MASKED by
+// jinja2.ts into an opaque token, so no amount of looking for `{{` would have
+// found it either. The directives, by contrast, are a closed set defined by the
+// program.
+const DIRECTIVES = new Set([
+  "addextension", "allowhardlink", "compress", "compresscmd", "compressext", "compressoptions",
+  "copy", "copytruncate", "create", "createolddir", "daily", "dateext", "dateformat",
+  "datehourago", "dateyesterday", "delaycompress", "extension", "firstaction", "hourly",
+  "ifempty", "include", "lastaction", "mail", "mailfirst", "maillast", "maxage", "maxsize",
+  "minage", "minsize", "missingok", "monthly", "noallowhardlink", "nocompress", "nocopy",
+  "nocopytruncate", "nocreate", "nocreateolddir", "nodateext", "nodelaycompress", "nomail",
+  "nomissingok", "noolddir", "nosharedscripts", "noshred", "notifempty", "olddir", "postrotate",
+  "preremove", "prerotate", "renamecopy", "rotate", "sharedscripts", "shred", "shredcycles",
+  "size", "start", "su", "tabooext", "taboopat", "weekly", "yearly",
+]);
+
 // Where a block's directives are filed when the file has no block at all —
 // logrotate.conf's own top level, which applies to every log on the host.
 const GLOBAL = "(global)";
@@ -115,12 +138,16 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
 
     const [name, ...args] = text.split(/\s+/);
 
-    // A path line and a bare flag are both a single word, so which one this is
-    // cannot be read off the line alone — it is decided by SHAPE. A directive
-    // is a bare identifier (`daily`, `su root root`); a pattern is absolute,
-    // `~`-relative, quoted, or a glob. logrotate itself requires that much of a
-    // pattern, so nothing legal is misread.
-    if (looksLikePattern(name)) {
+    // A path line and a bare flag are both a single word, so which one a line
+    // is cannot be read off the line alone.
+    //
+    // Two things decide it, and neither is a guess about what a path looks
+    // like. A block header only ever appears at the TOP LEVEL, so inside a
+    // block every line is a directive whatever it resembles. At the top level,
+    // a line is a directive when it names one — the set is closed and defined
+    // by logrotate itself, while a pattern is whatever the admin wrote, quite
+    // possibly a template substitution this parser receives already masked.
+    if (block === undefined && !DIRECTIVES.has(name)) {
       pending.push(text);
       continue;
     }
@@ -128,7 +155,7 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
     // A pattern line followed by something that is not `{` is malformed. Emit
     // what was collected rather than dropping it: a line that disappears from
     // the sheet is the failure this whole area exists to prevent.
-    for (const stray of pending) emit(stray, i + 1);
+    for (const stray of pending) emitPattern(stray, i + 1);
     pending = [];
     if (SCRIPT_DIRECTIVES.has(name)) {
       script = { key: name, line: i + 1, body: [] };
@@ -137,36 +164,31 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
     emit(text, i + 1);
   }
   // A file that ends while patterns are still waiting for a brace.
-  for (const stray of pending) emit(stray, lines.length);
+  for (const stray of pending) emitPattern(stray, lines.length);
   return out;
+
+  // A pattern that never got its brace. The whole line is the key: splitting it
+  // on whitespace the way a directive is split turns `{{ home }}/x.log` into a
+  // row named `{{`, which names nothing.
+  function emitPattern(text: string, line: number): void {
+    push(text, "true", line);
+  }
 
   function emit(text: string, line: number): void {
     const [name, ...args] = text.split(/\s+/);
+    push(name, args.length > 0 ? args.join(" ") : "true", line);
+  }
+
+  function push(name: string, value: string, line: number): void {
     const scope = block ?? GLOBAL;
     const n = seen.get(`${scope}\u0000${name}`) ?? 0;
     seen.set(`${scope}\u0000${name}`, n + 1);
     const key = n === 0 ? name : `${name}[${n}]`;
-    out.push({
-      categoryPath: [scope],
-      key,
-      value: args.length > 0 ? args.join(" ") : "true",
-      line,
-      path: `${scope}.${key}`,
-    });
+    out.push({ categoryPath: [scope], key, value, line, path: `${scope}.${key}` });
   }
 }
 
-// See the block-header comment: shape is what separates a path pattern from a
-// bare flag when both are one word on a line of their own.
-function looksLikePattern(token: string): boolean {
-  return (
-    token.startsWith("/") ||
-    token.startsWith("~") ||
-    token.startsWith('"') ||
-    token.startsWith("'") ||
-    /[*?[]/.test(token)
-  );
-}
+
 
 export function logrotateLocate(content: string, path: string): { value: string } | { error: string } {
   const hit = logrotateIndex(content).find((e) => e.path === path);
