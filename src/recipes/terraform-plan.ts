@@ -208,15 +208,40 @@ function buildFilePreview(
   // `skip_final_snapshot = !var.deletion_protection` still counts as authored
   // even though `hclIndex` (extraction) would have skipped it as an
   // expression.
-  for (const site of hclAttributeSites(content)) {
+  const sites = hclAttributeSites(content);
+  // Every scalar in this file by its own address, so a repeated block's
+  // identifying field can be read from the block the line sits in.
+  const valueAt = new Map<string, string>();
+  for (const site of sites) if (site.value !== undefined) valueAt.set(site.path, site.value);
+
+  for (const site of sites) {
     const srcKey = tfSourceKey(component, site.path);
     if (srcKey === undefined) continue;
     const group = groups.get(normalizeTfKey(srcKey));
     if (group === undefined) continue;
-    addLineKey(keys, site.line, group[0]);
     matched++;
     for (const k of group) authoredKeys.add(k);
-    if (group.length > 1) collapsedHere.set(group.join(SEP), group);
+    // One member: nothing to choose between, and this line is that row's.
+    if (group.length === 1) {
+      addLineKey(keys, site.line, group[0]);
+      continue;
+    }
+    // Several rows normalize onto this line's key, so WHICH of them the line
+    // is has to be answered rather than assumed. Taking group[0] for every one
+    // of them was wrong in both directions at once: every line claimed the
+    // first row — so opening its preview lit the other blocks' assignments too
+    // — and the remaining rows were given no line at all, so they had no
+    // preview to open.
+    const resolved = resolveRepetition(site.path, group, valueAt);
+    if (resolved !== undefined) {
+      addLineKey(keys, site.line, resolved);
+      continue;
+    }
+    // Unresolvable — the two documents address this repetition in ways nothing
+    // here can line up (a `count`ed resource has no identifying field to read).
+    // No preview beats one pointing at another setting's line, and it is
+    // reported rather than dropped.
+    collapsedHere.set(group.join(SEP), group);
   }
   const preview = previewFile(
     { id: previewId(sheetName, component, file.split("/").pop() ?? file), sheet: sheetName, component, source_file: file, nature: "source" },
@@ -254,6 +279,42 @@ function keysByComponent(si: SheetInputs): Map<string, Set<string>> {
 // build-time mistake, not a silently-empty panel.
 //
 // Scoped per component (design decision, see the recipe's module doc): a
+// WHICH row of a repeated block this source line belongs to.
+//
+// The two documents address the repetition differently and neither can produce
+// the other's: the .tf parser numbers the blocks in the order they are written
+// (`parameter[0].value`), and the plan's elements carry an identifying field,
+// so the extractor addresses them by it (`parameter[name=max_connections].value`).
+//
+// Read, not guessed. The source states the identity in the same block, one
+// attribute over — `parameter[0].name = "max_connections"` — so the index
+// resolves to the name without assuming the two documents list their elements
+// in the same order. They need not: a `parameter` block is a SET in the
+// provider's schema, and a set has no order to rely on.
+//
+// undefined when the source's block carries no such field, or its value
+// matches no member: the caller then leaves the line unlinked rather than
+// pointing it at a row it is not.
+function resolveRepetition(
+  sitePath: string,
+  group: readonly string[],
+  valueAt: ReadonlyMap<string, string>
+): string | undefined {
+  // The LAST indexed segment, which is the repetition this attribute sits in.
+  const m = /^(.*\[[0-9]+\])\.[^.\[]+$/.exec(sitePath);
+  if (m === null) return undefined;
+  const blockPath = m[1];
+  for (const candidate of group) {
+    // `…parameter[name=max_connections].value` -> field `name`, value
+    // `max_connections`. Taken from the ROW, so the identifying field is
+    // whichever one the extractor actually used.
+    const id = /\[([A-Za-z_][A-Za-z0-9_.-]*)=("?)(.*?)\2\]/.exec(candidate);
+    if (id === null) continue;
+    if (valueAt.get(`${blockPath}.${id[1]}`) === id[3]) return candidate;
+  }
+  return undefined;
+}
+
 // component named in `sources:` gets its rows judged by the scan; a
 // component that produced rows but has NO `sources:` entry is not evidence
 // it authors nothing — it keeps every row at today's overlay/common origin,
