@@ -1533,7 +1533,16 @@ function fileDrafts(
     // Recorded only where the DICTIONARY decided it: a project that writes a
     // different `category:` per component meant to, and a `category: null` is
     // the same statement on every one of them.
-    if (governingComponent === undefined && d.component !== undefined && meta?.category === undefined && !declaredNoCategory && inner !== undefined) {
+    //
+    // A category derived from the FILE is not such a decision, and reading it
+    // as one turned an ordinary `group_by: file` sheet into an error. Two files
+    // in one sheet can hold rows of the same name without those rows being the
+    // same setting seen twice — `/etc/cron.d/logrotate` and
+    // `/etc/cron.d/netstat` each have a `job`, and neither governs the other.
+    // The check below asks which component's structure a reader should follow;
+    // there is no answer to that here, and no question either.
+    const categoryFromFile = groupByFile && derivedFile !== undefined;
+    if (governingComponent === undefined && d.component !== undefined && meta?.category === undefined && !declaredNoCategory && inner !== undefined && !categoryFromFile) {
       const byComponent = dictPathByKey.get(d.key) ?? new Map<string, string>();
       byComponent.set(d.component, inner.join(" > "));
       dictPathByKey.set(d.key, byComponent);

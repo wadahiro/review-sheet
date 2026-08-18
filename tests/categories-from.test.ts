@@ -197,3 +197,46 @@ describe("dictionaries: per_component", () => {
     ).toThrow(/no components/);
   });
 });
+
+// The same check, on a sheet that is not a comparison at all.
+//
+// `group_by: file` puts several files in one sheet, one component each. Two
+// unrelated files can hold a row of the same NAME without those rows being one
+// setting seen twice: a crontab keys its jobs by position, so every one-job
+// file has a `job`, and `/etc/cron.d/logrotate` and `/etc/cron.d/netstat` each
+// have one. Neither governs the other — the question this check asks has no
+// answer here, and `categories_from` cannot supply one.
+describe("group_by: file, where two files share a row name", () => {
+  const fileInputs = (): SheetInputs[] => [
+    {
+      name: "os",
+      instances: ["production"],
+      componentOrder: ["/etc/cron.d/logrotate", "/etc/cron.d/netstat"],
+      componentFiles: new Map([
+        ["/etc/cron.d/logrotate", { filePath: "/etc/cron.d/logrotate", sourceFile: "cron-logrotate.j2" }],
+        ["/etc/cron.d/netstat", { filePath: "/etc/cron.d/netstat", sourceFile: "cron-netstat.j2" }],
+      ]),
+      layers: [{ kind: "base", entries: new Map() }],
+      embedded: [
+        { key: "job", value: "10 4 * * * root logrotate", source: { file: "cron-logrotate.j2", line: 1 }, component: "/etc/cron.d/logrotate" },
+        { key: "job", value: "*/5 * * * * root netstat", source: { file: "cron-netstat.j2", line: 1 }, component: "/etc/cron.d/netstat" },
+      ],
+    },
+  ];
+  const fileOpts = (): AssembleOpts => ({
+    projectPath: "project.yml",
+    readFile: (p) => (p === "project.yml" ? "sheets:\n  os:\n    group_by: file\n    params: {}\n" : null),
+    strictMetadata: false,
+  });
+
+  it("does not report the shared name as a disagreement", () => {
+    expect(() => assembleSheets(fileInputs(), fileOpts())).not.toThrow();
+  });
+
+  it("files each row under its own file", () => {
+    const input = assembleSheets(fileInputs(), fileOpts());
+    const cats = input.sheets[0].categories.map((c) => c.name);
+    expect(cats).toEqual(["/etc/cron.d/logrotate", "/etc/cron.d/netstat"]);
+    expect(input.sheets[0].categories.map((c) => (c.params ?? []).map((p) => p.key))).toEqual([["job"], ["job"]]);
+  });
+});
