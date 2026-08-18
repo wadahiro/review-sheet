@@ -289,12 +289,26 @@ function walkAttrs(content: string, visit: (segs: Seg[], attr: Attr) => void): v
 // reviewer the line their row corresponds to needs no value at all. Measured on
 // one project's five Terraform modules: 140 attributes assigned, 47 valued, so
 // asking the index for positions finds a third of the file.
-export type HclAttributeSite = { path: string; line: number };
+export type HclAttributeSite = {
+  path: string;
+  line: number;
+  // The scalar written there, when it is one. A caller relating this file to a
+  // document that addresses a repeated block by an identifying FIELD rather
+  // than by position needs to read that field's value here — the source says
+  // `parameter[0].name = "max_connections"`, and only that turns index 0 into
+  // the thing the other document calls `parameter[name=max_connections]`.
+  value?: string;
+};
 
 export function hclAttributeSites(content: string): HclAttributeSite[] {
   const out: HclAttributeSite[] = [];
   walkAttrs(content, (segs, attr) => {
-    out.push({ path: [...segs.map((s) => s.path), attr.name].join("."), line: attr.line });
+    const scalar = parseScalar(attr.rawValue);
+    out.push({
+      path: [...segs.map((s) => s.path), attr.name].join("."),
+      line: attr.line,
+      ...(scalar === null ? {} : { value: scalar }),
+    });
   });
   return out;
 }

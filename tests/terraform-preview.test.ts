@@ -405,3 +405,96 @@ describe("terraform-plan recipe: dictKeySteps and a repeated block", () => {
     expect(apply('alb.aws_lb.this.tags["Name"]')).toBe('aws_lb.tags["Name"]');
   });
 });
+
+// Which ROW of a repeated block a source line is. The two documents address
+// the repetition differently — the .tf parser numbers the blocks, the plan's
+// elements carry an identifying field — and the label used to be group[0] for
+// every one of them: every line claimed the first row, so opening its preview
+// lit the other blocks' assignments too, and the remaining rows were given no
+// line at all and had no preview to open.
+describe("terraform-plan recipe: which line of a repeated block is which row", () => {
+  beforeEach(stubNonBuiltInProviders);
+
+  const TF = `resource "aws_db_parameter_group" "this" {
+  name = "pg"
+  parameter {
+    name  = "max_connections"
+    value = "200"
+  }
+  parameter {
+    name  = "work_mem"
+    value = "4096"
+  }
+}
+`;
+  const plan = (params: { name: string; value: string }[]) =>
+    JSON.stringify({
+      resource_changes: [
+        { address: "module.db.aws_db_parameter_group.this", change: { after: { name: "pg", parameter: params } } },
+      ],
+    });
+
+  const load = (planJson: string, tf: string) => {
+    const r = getRecipe("terraform-plan");
+    if (!r) throw new Error("terraform-plan recipe is not registered");
+    const files: Record<string, string> = { "/f/plan.json": planJson, "/f/module/main.tf": tf };
+    return r.load(
+      { name: "aws", recipe: "terraform-plan", snapshots: { staging: "plan.json" }, sources: { db: "module" } },
+      {
+        readFile: (p) => files[p] ?? null,
+        listDir: (p) => (p === "/f/module" ? ["main.tf"] : null),
+        specDir: "/f",
+        resolve: (p) => `/f/${p}`,
+        instances: ["staging"],
+      }
+    );
+  };
+
+  const labelled = (si: { artifacts?: { lines: ArtifactLine[] }[] }): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (const a of si.artifacts ?? []) {
+      for (const l of a.lines) {
+        const line = l as ArtifactLine & { key?: string; text?: string };
+        if (line.key && line.key.includes("parameter[")) out[line.key] = (line.text ?? "").trim();
+      }
+    }
+    return out;
+  };
+
+  it("gives each row its own line, read from the block's own identity", () => {
+    const map = labelled(load(plan([
+      { name: "max_connections", value: "200" },
+      { name: "work_mem", value: "4096" },
+    ]), TF));
+    expect(map["db.aws_db_parameter_group.this.parameter[name=max_connections].value"]).toBe('value = "200"');
+    expect(map["db.aws_db_parameter_group.this.parameter[name=work_mem].value"]).toBe('value = "4096"');
+  });
+
+  it("does not depend on the two documents listing them in the same order", () => {
+    // `parameter` is a SET in the provider's schema, so the plan may list them
+    // in any order. Reading the identity is what makes that not matter.
+    const map = labelled(load(plan([
+      { name: "work_mem", value: "4096" },
+      { name: "max_connections", value: "200" },
+    ]), TF));
+    expect(map["db.aws_db_parameter_group.this.parameter[name=max_connections].value"]).toBe('value = "200"');
+    expect(map["db.aws_db_parameter_group.this.parameter[name=work_mem].value"]).toBe('value = "4096"');
+  });
+
+  it("leaves a line unlabelled when the source states no identity to read", () => {
+    // Better no preview than one pointing at another setting's line. The
+    // group is still reported as collapsed.
+    const noIdentity = `resource "aws_db_parameter_group" "this" {
+  name = "pg"
+  parameter {
+    value = "200"
+  }
+  parameter {
+    value = "4096"
+  }
+}
+`;
+    const si = load(plan([{ name: "a", value: "200" }, { name: "b", value: "4096" }]), noIdentity);
+    expect(Object.keys(labelled(si))).toHaveLength(0);
+  });
+});
