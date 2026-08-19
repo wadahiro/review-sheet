@@ -15,6 +15,7 @@ export const customStyles = `
   --rs-bg: #fafbfc;
   --rs-surface: #ffffff;
   --rs-subtle: #f8fafc;
+  --rs-container-bg: #f1f5f9;
   --rs-text: #1f2937;
   --rs-text-secondary: #4b5563;
   --rs-text-muted: #565f6b;
@@ -72,6 +73,7 @@ export const customStyles = `
   --rs-bg: #0f172a;
   --rs-surface: #1e293b;
   --rs-subtle: #273449;
+  --rs-container-bg: #253449;
   --rs-text: #e2e8f0;
   --rs-text-secondary: #cbd5e1;
   --rs-text-muted: #94a3b8;
@@ -100,6 +102,7 @@ export const customStyles = `
     --rs-bg: #0f172a;
     --rs-surface: #1e293b;
     --rs-subtle: #273449;
+    --rs-container-bg: #253449;
     --rs-text: #e2e8f0;
     --rs-text-secondary: #cbd5e1;
     --rs-text-muted: #94a3b8;
@@ -2121,6 +2124,86 @@ code {
 
 /* Struck through, not removed. Muted rather than hidden: the row is still a
    record of what used to be set, and its history is still readable. */
+/* A row inside a block is indented under it, and the block itself is a row
+   like any other — one visual grammar, which is what the paper sheets this
+   replaces did with a merged header cell above its group.
+
+   The indent is on the KEY cell only: indenting the whole row would break the
+   column grid every other row shares, and it is the identity that got shorter,
+   not the value. --rs-block-depth is set per row from how many blocks enclose
+   it, so nesting has no fixed limit.
+
+   NOT --rs-depth: that name was already taken, by the offsets that stack
+   sticky category headers, and is set on ancestors — so a row reading it got
+   its category's nesting instead of its own, and every row came out with the
+   same indent. */
+.rs-param-row .rs-col-key {
+  /* 0.75rem is the table's own cell padding, so a row inside no block is
+     exactly where it always was. */
+  padding-left: calc(0.75rem + var(--rs-block-depth, 0) * 1.25rem);
+  position: relative;
+}
+
+/* One rule per level the row sits inside, so the eye can follow a setting back
+   up to the block it belongs to without counting spaces. Drawn in the padding
+   the indent already created — a pseudo-element rather than a background on the
+   cell, which is spoken for by the block ground and the diff colours.
+
+   Width is zero at depth 0, so a row inside no block gets nothing. */
+.rs-param-row .rs-col-key::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 1.15rem;
+  width: calc(var(--rs-block-depth, 0) * 1.25rem);
+  background-image: repeating-linear-gradient(to right, var(--rs-border) 0 1px, transparent 1px 1.25rem);
+  pointer-events: none;
+}
+
+/* A container row is emphasis, not shading: it was tried with a tint and read
+   as a state (excluded, changed) rather than as structure, and the rows below
+   it already carry the tints that mean those. An empty value cell on one is
+   also not a gap to fill — a block has no value of its own beyond the subject
+   already in its key column, and the paper sheets left it empty too. */
+.rs-row-container > td {
+  background: var(--rs-container-bg);
+}
+/* Weight is deliberately NOT used. Bolding only the blocks that can be reviewed
+   put two meanings on one channel — "this is a block" and "you can act on this"
+   — and the result read as one arbitrary row being bold. Being a block is shown
+   by the ground and the indent, which both kinds share; having nothing to act
+   on is shown by the muted text and the absent controls below. */
+
+/* A block whose kind the FILE does not name — logrotate opens one with its
+   patterns and no keyword, and the word comes from that format's manual by way
+   of its dictionary.
+
+   The sheet already carries the distinction that settles this, so it is used
+   rather than a new mark: file text is MONOSPACE everywhere (keys, values, the
+   product's own option names sit beside them in a different face), so a
+   proportional, muted, italic word in the key column cannot be read as
+   something the reader wrote. Face, slant and weight all survive greyscale
+   print, which colour alone does not — and brackets would be a fourth way of
+   saying the same thing, in a column where angle brackets are literal httpd
+   syntax and would assert the opposite. */
+.rs-name-from-docs .rs-col-key .rs-cell-content > code {
+  /* The cell's own text only. The sub-lines beneath it — the backing variable,
+     the way into the preview — are the sheet's own furniture and stay in the
+     register they have everywhere else. */
+  font-family: var(--rs-font);
+  font-weight: 400;
+  color: var(--rs-text-muted);
+}
+
+/* A block with no argument is DRAWN from the chain rather than being a row: it
+   holds no decision, so it has no value, no controls and nothing to review. It
+   is muted for that reason — it explains an indent step and claims nothing
+   else. */
+.rs-row-structure .rs-col-key code {
+  color: var(--rs-text-muted);
+}
+
 .rs-row-deleted .rs-col-key code,
 .rs-row-deleted .rs-col-value,
 .rs-row-deleted .rs-col-default {

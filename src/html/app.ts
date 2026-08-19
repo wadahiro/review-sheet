@@ -1444,8 +1444,18 @@ function MenuItem({ label, onClick, danger }: { label: string; onClick: () => vo
 // Reviewable cell component
 // ============================================================
 
-function ReviewableCell({ value, target, field, reviews, reviewEnabled, editEnabled, onOpenReview, onOpenEdit, className, isCode, badge, subline, unsetLabel, valueLabel, sharedRow, rowDeleted = false, onToggleDelete, t }: {
+function ReviewableCell({ value, display, target, field, reviews, reviewEnabled, editEnabled, onOpenReview, onOpenEdit, className, isCode, badge, subline, unsetLabel, valueLabel, sharedRow, rowDeleted = false, onToggleDelete, t }: {
   value: string;
+  // What to SHOW in place of `value`, when the two differ. The key cell of a
+  // row inside a block shows only its own last segment — the blocks above it
+  // are rows of their own now, so repeating them in every descendant's key is
+  // the redundancy container rows exist to remove.
+  //
+  // `value` stays the identity regardless: it is what a review records as the
+  // current text and what everything outside this table (the review dialog, the
+  // AI prompt, the command palette) shows, correctly, since that is the string
+  // apply and verify resolve by.
+  display?: string;
   target: ReviewItem["target"];
   field: string;
   reviews: ReviewItem[];
@@ -1502,20 +1512,28 @@ function ReviewableCell({ value, target, field, reviews, reviewEnabled, editEnab
     ? cellReviews[0].changes?.find((c) => c.field === field)?.suggested
     : undefined;
   const hasSuggestion = suggestedVal !== undefined;
-  // Value for copy/modal: use suggested value if available
-  const effectiveValue = suggestedVal ?? value;
+  // Value for copy/modal: use suggested value if available.
+  //
+  // The DISPLAYED text when the two differ, which is what a reader expects a
+  // copy button beside something to hand them — and what a labelled row has
+  // always yielded, since `value` is the label there. A key cell showing
+  // `max-count` handing over the whole address was the odd one out.
+  const effectiveValue = suggestedVal ?? display ?? value;
 
   // The "nothing is set here" label stands in for the empty value, so a
   // suggestion strikes through the LABEL — writing a value into this cell means
   // it stops using the default, which is exactly what the reviewer is proposing.
   const showUnsetLabel = !!unsetLabel && value === "";
+  // What the cell SHOWS. Only ever differs from `value` where a row's identity
+  // is longer than what a reader needs in front of them — see `display`.
+  const shown = display ?? value;
   const current = showUnsetLabel
     ? html`<span class=${`rs-unset-label ${hasSuggestion ? "rs-strikethrough" : ""}`}>${unsetLabel}</span>`
     : isCode
-      ? html`<code class=${hasSuggestion ? "rs-strikethrough" : ""}>${value}</code>`
+      ? html`<code class=${hasSuggestion ? "rs-strikethrough" : ""}>${shown}</code>`
       : hasSuggestion
-        ? html`<span class="rs-strikethrough">${value}</span>`
-        : value;
+        ? html`<span class="rs-strikethrough">${shown}</span>`
+        : shown;
 
   // The product's own name for this value, as an annotation NEXT TO it — never
   // part of it. `value` is the same string the review dialog opens with, the
@@ -1966,9 +1984,21 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     return true;
   });
 
+  // A row that survived a filter still hangs under its blocks, so those blocks
+  // stay on screen even when the filter would have removed them — otherwise a
+  // setting appears indented under nothing, and the reader is left to guess
+  // which `<Directory>` they are looking at, which is precisely the question
+  // container rows exist to answer.
+  //
+  // Ancestors are re-admitted, never re-ordered: the params keep their original
+  // sequence, so a block still sits above its contents.
+  const kept = new Set(visibleParams.map((p) => p.key));
+  const needed = new Set(visibleParams.flatMap((p) => (p.container_path ?? []).map((c) => c.path)));
+  const shown = needed.size === 0 ? visibleParams : params.filter((p) => kept.has(p.key) || needed.has(p.key));
+
   // Under a filter a category can end up with nothing to show; render nothing
   // rather than an empty table (a materialized sheet has dozens of categories).
-  if (visibleParams.length === 0) return null;
+  if (shown.length === 0) return null;
 
   const baseTarget = (param: ParamData): ReviewItem["target"] => ({ sheet: sheetName, category: categoryPath, param: param.key });
 
@@ -1999,13 +2029,13 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     cell: (param: ParamData) => CellSpec;
   };
 
-  const descPresent = visibleParams.some((p) => p.description);
-  const remarksPresent = visibleParams.some((p) => p.remarks);
+  const descPresent = shown.some((p) => p.description);
+  const remarksPresent = shown.some((p) => p.remarks);
   // The "Shipped" column (ansible recipe's `baseline:`) — shown only when some
   // row on this sheet actually carries one, same gating `descPresent`/
   // `remarksPresent` use, so a sheet that never declares `baseline:` renders
   // byte-for-byte as it did before this column existed.
-  const baselinePresent = visibleParams.some((p) => p.baseline !== undefined);
+  const baselinePresent = shown.some((p) => p.baseline !== undefined);
 
   // Leading metadata lines (freeze-eligible): description (col 2) and default.
   const leadingLines: TableLine[] = [];
@@ -2192,7 +2222,34 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
       ${colHeader(t.paramName, "rs-col-key", "", 1)}
       ${normalLines.map((line) => colHeader(line.label, line.colClass, line.colStyle, line.freezePos))}
     </tr>`;
-  const normalBody = visibleParams.map((param) => {
+  // A block whose opening carries no argument gets no row of its own — there is
+  // no decision in `<RequireAll>` beyond the fact that it groups — but its level
+  // is still an indent step, and an indent step nothing explains is worse than
+  // no indent at all: the reader sees a setting pushed two levels in with one
+  // heading above it and has to guess what the other level was.
+  //
+  // So the viewer draws it, from the chain the rows already carry. It is not a
+  // row and must not become one: nothing is keyed by it, no dictionary owes it a
+  // description, it has no review target and no place in a diff. It appears and
+  // disappears with its contents for free, because it is derived from them.
+  const emittedBlocks = new Set(shown.map((p) => p.key));
+  const blockLine = (b: { path: string; name?: string }, depth: number): VNode =>
+    html`<tr key=${`block:${b.path}`} class="rs-param-row rs-row-container rs-row-structure" style=${`--rs-block-depth:${depth}`}>
+      <td class="rs-col-key"><code>${b.name ?? ""}</code></td>
+      <td class="rs-col-value" colSpan=${Math.max(1, normalLines.length)}></td>
+    </tr>` as VNode;
+
+  const normalBody = shown.flatMap((param) => {
+    const missing: VNode[] = [];
+    (param.container_path ?? []).forEach((b, i) => {
+      if (emittedBlocks.has(b.path)) return;
+      emittedBlocks.add(b.path);
+      missing.push(blockLine(b, i));
+    });
+    return [...missing, renderParamRow(param)];
+  });
+
+  function renderParamRow(param: ParamData) {
     const rd = rowDiff(param.key);
     // Legibility: at most one badge-style marker per row. "Out of scope" is now
     // row-level muting + a visible inline reason line (not a badge), so the only
@@ -2258,11 +2315,19 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
         </span>
       ` as VNode);
     }
+    // The blocks this row sits in. Their number is its indent, and the last of
+    // them is the row directly above it — so the key cell shows only what this
+    // row adds, which is the whole point: `Directory["/var/www"].AllowOverride`
+    // repeated the block in every one of its settings, and the block is a row
+    // of its own now.
+    const depth = param.container_path?.length ?? 0;
+    const leaf = keyLeaf(param);
     return html`
     <tr key=${param.key} id=${paramAnchorId(sheetIndex, categoryPath, param.key)}
-        class=${`rs-param-row ${oos ? "rs-row-excluded" : ""} ${param.added ? "rs-row-added" : ""} ${param.deleted ? "rs-row-deleted" : ""} ${paramHasReview(param) ? "rs-has-review" : ""} ${rd && rd !== "unchanged" ? `rs-diff-row-${rd}` : ""}`}
+        class=${`rs-param-row ${param.container ? "rs-row-container" : ""} ${param.container?.nameFromDocs ? "rs-name-from-docs" : ""} ${oos ? "rs-row-excluded" : ""} ${param.added ? "rs-row-added" : ""} ${param.deleted ? "rs-row-deleted" : ""} ${paramHasReview(param) ? "rs-has-review" : ""} ${rd && rd !== "unchanged" ? `rs-diff-row-${rd}` : ""}`}
+        style=${depth > 0 ? `--rs-block-depth:${depth}` : undefined}
         title=${param.deleted ? t.rowDeletedTip : undefined}>
-      <${ReviewableCell} value=${label ?? param.key} target=${baseTarget(param)} field="key"
+      <${ReviewableCell} value=${label ?? param.key} display=${label ? undefined : leaf} target=${baseTarget(param)} field="key"
         reviews=${reviews} reviewEnabled=${reviewEnabled} editEnabled=${editEnabled}
         rowDeleted=${param.deleted === true} onToggleDelete=${onToggleDelete}
         onOpenReview=${onOpenReview} onOpenEdit=${onOpenEdit}
@@ -2271,7 +2336,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     </tr>
     ${renderInlineComments(param, 1 + normalLines.length)}
   `;
-  });
+  }
 
   const renderNormal = () => splitHeader
     // Pattern B: split the table so the column header can stick (and the body
@@ -2307,7 +2372,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
         <thead>
           <tr>
             <th class="rs-row-label rs-corner">${t.instanceHeader}</th>
-            ${visibleParams.map((param) => {
+            ${shown.map((param) => {
               const sub = underKeyCols.map((col) => resolveColumnValue(param, col.field)).filter((v) => v.length > 0).join(" · ");
               const oos = rowOutOfScope(param);
               const tag = originTag(param, t);
@@ -2325,7 +2390,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
         <tbody>
           ${transposedLines.map((line) => {
             // Comments for this row's cells, labeled by parameter (the column).
-            const rowComments = visibleParams.flatMap((param) => {
+            const rowComments = shown.flatMap((param) => {
               const spec = line.cell(param);
               return spec.kind === "review"
                 ? getCellReviews(spec.target, spec.field).map((rev) => ({ rev, label: param.key }))
@@ -2336,9 +2401,9 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
                 <th scope="row" class=${`rs-row-label ${line.lineKind === "instance" ? "rs-row-label-instance" : ""}`}>
                   ${line.lineKind === "instance" ? html`<code>${line.label}</code>` : line.label}
                 </th>
-                ${visibleParams.map((param) => renderCell(line.cell(param), param.key))}
+                ${shown.map((param) => renderCell(line.cell(param), param.key))}
               </tr>
-              ${renderCommentRow(1 + visibleParams.length, rowComments)}
+              ${renderCommentRow(1 + shown.length, rowComments)}
             `;
           })}
         </tbody>
@@ -2663,6 +2728,36 @@ function cssEscape(v: string): string {
   const g = globalThis as { CSS?: { escape?: (s: string) => string } };
   return g.CSS?.escape ? g.CSS.escape(v) : v.replace(/["\\]/g, "\\$&");
 }
+
+// What a row's key cell shows: the key minus the block it sits in.
+//
+// Stripping a PREFIX, and only when it matches exactly — the chain is built by
+// joining the same segments the key is, so it always does, and a mismatch means
+// something upstream disagreed about the row's address rather than that the
+// display should guess. In that case the whole key is shown, which is never
+// wrong, only long.
+function keyLeaf(param: ParamData): string {
+  // `@` marks an ATTRIBUTE in this tool's own path grammar, because
+  // `<foo bar="1">` and `<foo><bar>1</bar></foo>` would otherwise both address
+  // as `foo.bar`. The file writes `max-count="10000"`; the marker is ours, and
+  // the key column shows the file's words. Stripped for display only — the key
+  // itself, which apply and verify resolve by, keeps it.
+  const attr = (k: string): string => (k.startsWith("@") ? k.slice(1) : k);
+  // A block shows what KIND of block it is, and its argument goes in the value
+  // column beside it — `Directory` / `"/var/www"`. Showing the address here
+  // instead would put the same string in both cells, which is the exact
+  // redundancy these rows were added to remove.
+  // A block shows what KIND of block it is, and its argument goes in the value
+  // column beside it — `Directory` / `"/var/www"`. Showing the address here
+  // instead would put the same string in both cells, which is the exact
+  // redundancy these rows were added to remove.
+  if (param.container) return param.container.name ?? "";
+  const parent = param.container_path?.[param.container_path.length - 1];
+  if (!parent) return attr(param.key);
+  const prefix = `${parent.path}.`;
+  return attr(param.key.startsWith(prefix) ? param.key.slice(prefix.length) : param.key);
+}
+
 
 function paramAnchorId(sheetIndex: number, path: string, key: string): string {
   return `${navAnchorId(sheetIndex, path)}--${encodeIdPart(key)}`;
@@ -4202,9 +4297,9 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   // differently, and the browser's version would be the wrong one.
   const promptReviews = useMemo(
     () => (effEditEnabled
-      ? promptItemsFromPlan(planFromEdits(reviews), { added: HELD_REASON_ADDED_ROW, struck: HELD_REASON_STRUCK_ROW, document: HELD_REASON_DOCUMENT })
+      ? promptItemsFromPlan(planFromEdits(reviews), { added: HELD_REASON_ADDED_ROW, struck: HELD_REASON_STRUCK_ROW, document: HELD_REASON_DOCUMENT }, baseData.sheets)
       : reviews),
-    [effEditEnabled, reviews]
+    [effEditEnabled, reviews, baseData]
   );
 
   const handleCopyPrompt = useCallback(() => {
