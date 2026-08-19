@@ -80,6 +80,8 @@ export function assembleFromSpecWithReport(
   uiReports: UiReport[];
   binding: BindingReport;
   categoryWarnings: string[];
+  // Advice about a sheet's layout — see assembleSheetsWithReport.
+  layoutNotes: string[];
 } {
   const resolvePathOpt = opts.resolve ?? ((p: string): string => resolvePath(opts.specDir, p));
 

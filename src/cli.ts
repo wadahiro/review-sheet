@@ -517,7 +517,7 @@ async function runSpecImport(opts: {
     // just as well, and a committed input.json shouldn't bake in a local
     // filesystem layout. This means verify/apply must be run from the same CWD
     // used for `import --spec`, same as every other path this CLI records.
-    const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings } = assembleFromSpecWithReport(spec, {
+    const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, layoutNotes } = assembleFromSpecWithReport(spec, {
       readFile,
       listDir,
       readBinary,
@@ -601,6 +601,9 @@ async function runSpecImport(opts: {
     // project `category:` written) that isn't on the sheet's declared tab
     // list — a fact about the product, not a project typo, so it only warns
     // (see assemble.ts's fileDrafts / P10 bug 2).
+    // Advice, printed before the warnings: it is about the shape of what was
+    // just built, not about something being wrong with it.
+    for (const n of layoutNotes) console.error(`Note: ${n}`);
     if (categoryWarnings.length > 0) {
       for (const w of categoryWarnings) console.error(`Warning: ${w}`);
     }

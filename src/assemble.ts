@@ -1423,6 +1423,74 @@ function materializeDrafts(
 // single source, but every instance of it is written in a file of the same
 // KIND (one per environment), so the first is representative — and that is the
 // same assumption `source_file` display fallbacks already make.
+// The container families a grouped layout pulled apart.
+//
+// A dictionary classifies a directive by what IMPLEMENTS it; a block encloses
+// by where the directive SITS. The two are orthogonal, so `Require` is filed
+// under `mod_authz_core` while the `<Directory>` holding it is `core`, and any
+// layout that heads rows by the dictionary's grouping can separate a block from
+// its own contents. Nothing detects this to change the layout — the author
+// asked for the grouping — but a build that silently reorganised somebody's
+// configuration file is exactly the quiet failure this tool exists to prevent,
+// so it says which families it split and names one row from each.
+//
+// Pure, over the built sheet: what the reader will actually see, not what the
+// assembly intended.
+// The categories of a `layout: categories` sheet that hold rows from more than
+// one file. The reader sees this on the page (each such row carries its own
+// file), and the author is told here — the two are not alternatives: one keeps
+// the page honest, the other lets somebody decide the sheet should have been
+// split into components instead.
+export function mixedFileCategories(sheet: { name: string; categories?: Category[] }): { heading: string; files: string[] }[] {
+  const out: { heading: string; files: string[] }[] = [];
+  const walk = (cats: Category[] | undefined, trail: string[]): void => {
+    for (const c of cats ?? []) {
+      const path = [...trail, c.name];
+      const files = new Set<string>();
+      for (const p of c.params ?? []) {
+        const f = ownFileOf(p);
+        if (f !== undefined) files.add(f);
+      }
+      if (files.size > 1) out.push({ heading: path.join(" > "), files: [...files] });
+      walk(c.categories, path);
+    }
+  };
+  walk(sheet.categories, []);
+  return out;
+}
+
+export function splitContainerFamilies(sheet: {
+  name: string;
+  categories?: Category[];
+}): { family: string; headings: string[]; example: string }[] {
+  // Where a row is READ: its category path, plus the sub-heading a
+  // `file+categories` sheet puts it under. Two rows share a heading only when
+  // both agree.
+  const seen = new Map<string, { headings: Set<string>; example: string }>();
+  const walk = (cats: Category[] | undefined, trail: string[]): void => {
+    for (const c of cats ?? []) {
+      const path = [...trail, c.name];
+      for (const p of c.params ?? []) {
+        // The family a row belongs to: the block that directly encloses it, or
+        // — for the block's own row — itself, so a container row separated from
+        // its contents counts as part of the split rather than as a bystander.
+        const chain = "container_path" in p ? (p.container_path ?? []) : [];
+        const family = chain.length > 0 ? chain[chain.length - 1].path : "container" in p && p.container ? p.key : undefined;
+        if (family === undefined) continue;
+        const heading = [...path, ...("sub_category" in p ? (p.sub_category ?? []) : [])].join(" > ");
+        const hit = seen.get(family) ?? { headings: new Set<string>(), example: p.key };
+        hit.headings.add(heading);
+        seen.set(family, hit);
+      }
+      walk(c.categories, path);
+    }
+  };
+  walk(sheet.categories, []);
+  return [...seen]
+    .filter(([, v]) => v.headings.size > 1)
+    .map(([family, v]) => ({ family, headings: [...v.headings], example: v.example }));
+}
+
 // Which file a row belongs to, for `group_by: file`.
 //
 // The distinction that matters is between a row that IS a line of the deployed
@@ -1560,6 +1628,9 @@ function fileDrafts(
   // category would move every review target and apply target the day someone
   // toggled the layout, which is a display decision moving data.
   subHeadings: boolean,
+  // Advice about the layout this sheet ended up with — never a decision, see
+  // the end of this function.
+  layoutNotes: string[],
   // What this sheet DEPLOYS, when it says so (Sheet.file_path). Used only by
   // the file layout — see fileCategory.
   sheetArtifact: string | undefined,
@@ -1702,6 +1773,10 @@ function fileDrafts(
   const sourcePaths = new Set<string>();
   for (const [, f] of componentFiles ?? []) if (f.sourceFile) sourcePaths.add(f.sourceFile);
   if (sheetTemplate) sourcePaths.add(sheetTemplate);
+  // Per file heading: how many rows it swallowed, and how many groups they
+  // would have fallen into. Read only to write the advice at the end of this
+  // function — it decides nothing.
+  const displacedGroups = new Map<string, { groups: Set<string>; rows: number; blocks: boolean }>();
   const derivedFileMarks = new Map<string, { filePath?: string; sourceFile?: string }>();
   if (groupByFile) {
     for (const raw of new Set(drafts.map(rawFileOf).filter((f): f is string => f !== undefined))) {
@@ -1805,9 +1880,24 @@ function fileDrafts(
     // with. Only where the file actually won: a row the project categorised by
     // hand is where the project put it, and saying it "really" belongs
     // somewhere else would be this file arguing with the author.
-    if (subHeadings && !declaredNoCategory && !meta?.category && derivedFile !== undefined) {
+    if (!declaredNoCategory && !meta?.category && derivedFile !== undefined) {
       const group = bindingOrFallback(categoryBinding, d.fallbackCategoryPath, d.categoryPathWins);
-      if (group !== undefined && group.length > 0) d.param.sub_category = group;
+      if (group !== undefined && group.length > 0) {
+        if (subHeadings) d.param.sub_category = group;
+        // Counted either way. A sheet on the default layout has no sub-heads to
+        // show, but the build still knows how many the file it just flattened
+        // WOULD have had — which is the whole content of the advice below, and
+        // is knowable only here, where the displaced grouping is still in hand.
+        const perFile = displacedGroups.get(derivedFile.join(" > ")) ?? { groups: new Set<string>(), rows: 0, blocks: false };
+        perFile.groups.add(group.join(" / "));
+        perFile.rows += 1;
+        // A file with blocks in it must not be advised to group: the grouping
+        // would file a block's settings away from the block, which is the very
+        // thing the split warning exists to report. Advice that earns its own
+        // warning is worse than silence.
+        if ((d.param.container_path?.length ?? 0) > 0 || d.param.container !== undefined) perFile.blocks = true;
+        displacedGroups.set(derivedFile.join(" > "), perFile);
+      }
     }
     // Recorded only where the DICTIONARY decided it: a project that writes a
     // different `category:` per component meant to, and a `category: null` is
@@ -2111,8 +2201,32 @@ function fileDrafts(
     }
   }
 
+  // Advice, on the shape the build just produced. A file heading that swallowed
+  // a few dozen rows into one undifferentiated table is safe — nothing is
+  // scattered and nothing is claimed falsely — but it is a wall to read, and
+  // the remedy is one declared line. Said here rather than detected and applied:
+  // a layout that changed itself because a file grew would reorganise a page for
+  // a reason its reader cannot see.
+  if (!subHeadings) {
+    for (const [file, { groups, rows, blocks }] of displacedGroups) {
+      if (rows < WALL_ROWS || groups.size < WALL_GROUPS || blocks) continue;
+      layoutNotes.push(
+        `${sheetName}: ${rows} rows under "${file}" in one table, which the dictionary would have grouped into ` +
+          `${groups.size} (${[...groups].slice(0, 3).join(", ")}, …). ` +
+          `"layout: file+categories" keeps the file as the heading and sub-heads it by those groups.`
+      );
+    }
+  }
+
   return categories;
 }
+
+// A file table long enough to be a wall, and grouped enough that sub-heads
+// would divide it. Both, deliberately: 60 rows the dictionary files under two
+// groups is not helped by two sub-heads, and 8 rows across 8 groups is a
+// heading per row.
+const WALL_ROWS = 40;
+const WALL_GROUPS = 5;
 
 
 // A short "did you mean" hint for an unused project-metadata key: the closest
@@ -2173,6 +2287,10 @@ export function assembleSheetsWithReport(
   // Undeclared top-level categories reached only via a dictionary `group`
   // fallback (P10 bug 2) — informational, the build already succeeded.
   categoryWarnings: string[];
+  // Advice about a sheet's layout — a file table long enough to read as a wall,
+  // with the declaration that would divide it. Never a decision: detection may
+  // inform a report, and may not decide what a page looks like.
+  layoutNotes: string[];
 } {
   // A configured project path whose file doesn't exist yet (first-ever run,
   // sheet.yml not authored yet) is treated as "no project metadata" here too
@@ -2255,6 +2373,7 @@ export function assembleSheetsWithReport(
   const ghostCategories: string[] = [];
   const categoryConflicts: string[] = [];
   const categoryWarnings: string[] = [];
+  const layoutNotes: string[] = [];
 
   for (const si of inputs) {
     // This sheet's own under_key declaration lives in the project metadata
@@ -2500,6 +2619,7 @@ export function assembleSheetsWithReport(
       declaredCategories,
       groupsByFile(projectMeta, si.name),
       layoutForSheet(projectMeta, si.name) === "file+categories",
+      layoutNotes,
       si.filePath,
       si.sourceFile,
       missingCategory,
@@ -2796,7 +2916,35 @@ export function assembleSheetsWithReport(
     variables: allVariables,
   });
 
-  return { ...enriched, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings };
+  // What each declared layout cost, per sheet. Reported, never enforced: the
+  // author asked for the grouping and a file with one block and two hundred
+  // flat rows is a legitimate thing to group. What is not legitimate is doing
+  // it silently — see splitContainerFamilies.
+  for (const sheet of enriched.input.sheets) {
+    if (layoutForSheet(projectMeta, sheet.name) === "file") continue;
+    if (layoutForSheet(projectMeta, sheet.name) === "categories") {
+      // One line per sheet. A sheet aggregating a role's variables mixes files
+      // in nearly every heading by construction, and a note per heading buries
+      // the sheets where the mixture is actually a surprise.
+      const mixed = mixedFileCategories(sheet);
+      if (mixed.length > 0) {
+        layoutNotes.push(
+          `${sheet.name}: ${mixed.length} heading(s) hold rows from more than one file ` +
+            `(e.g. "${mixed[0].heading}" from ${mixed[0].files.length}: ${mixed[0].files.slice(0, 2).join(", ")}…). ` +
+            `Each row shows its own file; if these are separate things rather than one unit, they want components.`
+        );
+      }
+    }
+    for (const split of splitContainerFamilies(sheet)) {
+      categoryWarnings.push(
+        `${sheet.name}: the declared layout separates ${split.family} from its own contents — ` +
+          `its rows are read under ${split.headings.map((h) => `"${h}"`).join(" and ")} ` +
+          `(e.g. ${split.example}). A dictionary groups a setting by what implements it, which is not where it sits.`
+      );
+    }
+  }
+
+  return { ...enriched, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, layoutNotes };
 }
 
 export function assembleSheets(inputs: SheetInputs[], opts: AssembleOpts): ParameterSheetInput {
