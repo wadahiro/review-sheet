@@ -492,6 +492,35 @@ export type Instance = {
   source?: SourceLocation;
 };
 
+// One ELEMENT of the chain enclosing a value — the unit the file actually has,
+// as opposed to the unit its serialized address happens to split into.
+//
+// The two are not the same and cannot be recovered from each other. An element
+// promoted by its identity attribute renders as ONE address segment holding two
+// steps (`local-cache[name=realms]`), while the same element contributes TWO
+// entries to `categoryPath` (`local-cache`, then `realms`) — so a chain read
+// back out of either string is a different shape depending on which string, and
+// on which parser wrote it. Recording the element itself removes the question:
+// `pathSeg` and the category contribution are both computed FROM this, in one
+// walk, so they cannot disagree without the walk disagreeing with itself.
+export type ContainerNode = {
+  // The element name — the noun a dictionary would document.
+  name: string;
+  // The identity attribute's value, where one was promoted into the address:
+  // the block's own reviewable value (`realms` of `local-cache[name=realms]`).
+  subject?: string;
+  // Which attribute the subject came from, so the attribute's own row can be
+  // suppressed — it would otherwise state the same fact twice.
+  subjectField?: string;
+  // Position among same-named siblings, where no identity attribute could be
+  // promoted. Mutually exclusive with `subject`.
+  index?: number;
+  // This element's contribution to `source.path`, brackets included.
+  pathSeg: string;
+  // The opening tag's line — a container row's own definition site.
+  line: number;
+};
+
 // Source-map-style pointer to where a value lives in the real configuration.
 // `file` + `line` give the precise spot; `anchor`/`path` let a consumer verify
 // the spot and re-locate it if the line has drifted (the fallback path). When

@@ -2,11 +2,26 @@
 // extract/apply/verify all go through resolveParser() instead of per-format
 // `if (fmt === "...")` chains.
 
-import type { SourceLocation, LangText } from "./types.js";
+import type { SourceLocation, LangText, ContainerNode } from "./types.js";
 import { sharedRegistry } from "./registry.js";
 
 export type Entry = {
   categoryPath: string[];
+  // The blocks ENCLOSING this value, innermost last, as the parser's own walk
+  // saw them — one entry per element/block, never per address step.
+  //
+  // `categoryPath` is the same chain flattened for display and cannot be read
+  // back: a parser may put one block on screen as two names, and the shape
+  // differs per format, so which is which is unrecoverable from the strings.
+  // `source.path` cannot be read back either — a logrotate pattern contains the
+  // separator (`/var/log/a.log.rotate`), so its own boundaries are ambiguous.
+  // Both are PROJECTIONS of this; joining runs one way and always works, while
+  // splitting never did.
+  //
+  // Optional because it is a capability, not an obligation: a parser with no
+  // tree to walk (ini, sysctl, the line formats) omits it rather than inventing
+  // a chain, which is the honest answer and the one a reader can act on.
+  containers?: ContainerNode[];
   key: string;
   value: string;
   source: SourceLocation;

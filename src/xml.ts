@@ -11,6 +11,7 @@
 // entity-encoded values are skipped (left for the line/anchor or AI-prompt path).
 
 import { SaxesParser } from "saxes";
+import type { ContainerNode } from "./types.js";
 
 export type XmlEntry = { categoryPath: string[]; key: string; value: string; line: number; range: [number, number] };
 
@@ -26,22 +27,21 @@ type XNode = {
   textValue?: string;
 };
 
-type Seg = { kind: "key"; key: string } | { kind: "index"; index: number } | { kind: "filter"; field: string; value: string };
+
+// What this element contributes to `categoryPath`. Two entries when it carries
+// a subject or a position, one otherwise: the legacy per-step grain, preserved
+// exactly, because it is what every existing heading and every committed model
+// was built from.
+function catNames(n: ContainerNode): string[] {
+  if (n.subject !== undefined) return [n.name, n.subject];
+  if (n.index !== undefined) return [n.name, `[${n.index}]`];
+  return [n.name];
+}
+
+const nodePath = (nodes: ContainerNode[]): string => nodes.map((n) => n.pathSeg).join(".");
 
 function quoteSeg(v: string): string {
   return /^[\w.\-:/]+$/.test(v) ? v : `"${v.replace(/"/g, '\\"')}"`;
-}
-function renderPath(segs: Seg[]): string {
-  let s = "";
-  for (const seg of segs) {
-    if (seg.kind === "key") s += s ? `.${seg.key}` : seg.key;
-    else if (seg.kind === "index") s += `[${seg.index}]`;
-    else s += `[${seg.field}=${quoteSeg(seg.value)}]`;
-  }
-  return s;
-}
-function segName(seg: Seg): string {
-  return seg.kind === "key" ? seg.key : seg.kind === "index" ? `[${seg.index}]` : seg.value;
 }
 
 function attrValueRange(region: string, base: number, attr: string): [number, number] | null {
@@ -118,7 +118,7 @@ function textRange(content: string, node: XNode): { value: string; range: [numbe
   return { value, range: [start, node.textEnd] };
 }
 
-export type XmlIndexEntry = XmlEntry & { path: string };
+export type XmlIndexEntry = XmlEntry & { path: string; containers: ContainerNode[] };
 
 // Public: full index with stable path strings.
 export function xmlIndex(content: string): XmlIndexEntry[] {
@@ -126,29 +126,39 @@ export function xmlIndex(content: string): XmlIndexEntry[] {
   if (!root) return [];
   const out: XmlIndexEntry[] = [];
 
-  const walk = (node: XNode, segs: Seg[]): void => {
-    const idUsed = segs.length && segs[segs.length - 1].kind === "filter" ? (segs[segs.length - 1] as { field: string }).field : null;
+  const walk = (node: XNode, nodes: ContainerNode[]): void => {
+    const here = nodes[nodes.length - 1];
+    // Every name this chain puts on screen, flattened. Sliced rather than
+    // indexed by NODE below, because an element can contribute two of them and
+    // the text-leaf row is keyed by the last NAME, not the last element.
+    const names = nodes.flatMap(catNames);
     for (const a of node.attrs) {
-      if (a.name === idUsed) continue;
-      const leaf: Seg[] = [...segs, { kind: "key", key: `@${a.name}` }];
-      out.push({ categoryPath: segs.map(segName), key: `@${a.name}`, value: a.value, line: node.line, range: a.range, path: renderPath(leaf) });
+      // The subject is already in the address; a row for it would state the
+      // same fact a second time, in a second place, free to disagree.
+      if (a.name === here.subjectField) continue;
+      out.push({ categoryPath: names, key: `@${a.name}`, value: a.value, line: node.line, range: a.range, path: `${nodePath(nodes)}.@${a.name}`, containers: nodes });
     }
     if (node.children.length === 0) {
       const t = textRange(content, node);
-      if (t) out.push({ categoryPath: segs.slice(0, -1).map(segName), key: segs.length ? segName(segs[segs.length - 1]) : node.name, value: t.value, line: node.line, range: t.range, path: renderPath(segs) });
+      // The text row IS the last element, so its own node is not a container
+      // ENCLOSING it — the chain stops one short, exactly as `categoryPath`
+      // does.
+      if (t) out.push({ categoryPath: names.slice(0, -1), key: names.length ? names[names.length - 1] : node.name, value: t.value, line: node.line, range: t.range, path: nodePath(nodes), containers: nodes.slice(0, -1) });
     }
     const groups = new Map<string, XNode[]>();
     for (const c of node.children) { const g = groups.get(c.name); if (g) g.push(c); else groups.set(c.name, [c]); }
     for (const [name, group] of groups) {
       const idf = group.length > 1 ? identityAttr(group) : null;
       group.forEach((child, i) => {
-        const childSegs: Seg[] = [...segs, { kind: "key", key: name }];
-        if (group.length > 1) childSegs.push(idf ? { kind: "filter", field: idf, value: child.attrs.find((a) => a.name === idf)!.value } : { kind: "index", index: i });
-        walk(child, childSegs);
+        const subject = idf ? child.attrs.find((a) => a.name === idf)!.value : undefined;
+        const index = group.length > 1 && !idf ? i : undefined;
+        const pathSeg =
+          subject !== undefined ? `${name}[${idf}=${quoteSeg(subject)}]` : index !== undefined ? `${name}[${index}]` : name;
+        walk(child, [...nodes, { name, ...(subject !== undefined ? { subject, subjectField: idf! } : {}), ...(index !== undefined ? { index } : {}), pathSeg, line: child.line }]);
       });
     }
   };
-  walk(root, [{ kind: "key", key: root.name }]);
+  walk(root, [{ name: root.name, pathSeg: root.name, line: root.line }]);
   return out;
 }
 
