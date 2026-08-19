@@ -1,4 +1,5 @@
 // TOML support. TOML is essentially line-oriented (`key = value` under `[table]`
+import type { ContainerNode } from "./types.js";
 // / `[[array-of-tables]]` headers, plus dotted keys), so we index it with a
 // single line scan — no position-aware parser needed — producing a stable path
 // per scalar plus its source range, mirroring the XML adapter.
@@ -8,7 +9,7 @@
 // reorder-robust. Scope: scalar values (string/number/bool/datetime) on a single
 // line; arrays, inline tables, and multi-line strings are skipped.
 
-export type TomlEntry = { categoryPath: string[]; key: string; value: string; line: number; range: [number, number]; path: string };
+export type TomlEntry = { categoryPath: string[]; key: string; value: string; line: number; range: [number, number]; path: string; containers: ContainerNode[] };
 
 const ID_KEYS = ["name", "id", "key"];
 
@@ -45,7 +46,9 @@ function quoteSeg(v: string): string {
   return /^[\w.\-:/]+$/.test(v) ? v : `"${v.replace(/"/g, '\\"')}"`;
 }
 
-type Prefix = { segs: string[]; arrayPath?: string; arrayIndex?: number };
+// `line` is the `[table]` / `[[array]]` header's own — a container has a
+// definition site just as a key does.
+type Prefix = { segs: string[]; arrayPath?: string; arrayIndex?: number; line?: number };
 
 function joinPath(a: string, b: string): string {
   if (!a) return b;
@@ -55,7 +58,10 @@ function joinPath(a: string, b: string): string {
 
 export function tomlIndex(content: string): TomlEntry[] {
   const lines = content.split("\n");
-  const raw: (TomlEntry & { arrayPath?: string; arrayIndex?: number; isId?: boolean })[] = [];
+  // No `containers` yet: whether an array item is addressed by index or by a
+  // promoted identity is decided only after every item has been read, so the
+  // chain is built in the output pass below.
+  const raw: (Omit<TomlEntry, "containers"> & { arrayPath?: string; arrayIndex?: number; isId?: boolean; prefixSegs: string[]; keySegs: string[]; prefixLine?: number })[] = [];
   let offset = 0;
   let prefix: Prefix = { segs: [] };
   const arrayCounts = new Map<string, number>();
@@ -74,13 +80,13 @@ export function tomlIndex(content: string): TomlEntry[] {
       const apath = segs.join(".");
       const idx = (arrayCounts.get(apath) ?? -1) + 1;
       arrayCounts.set(apath, idx);
-      prefix = { segs, arrayPath: apath, arrayIndex: idx };
+      prefix = { segs, arrayPath: apath, arrayIndex: idx, line: i + 1 };
       continue;
     }
     // [table]
     m = trimmed.match(/^\[\s*(.+?)\s*\]$/);
     if (m) {
-      prefix = { segs: dottedSegs(m[1]) };
+      prefix = { segs: dottedSegs(m[1]), line: i + 1 };
       continue;
     }
 
@@ -112,6 +118,9 @@ export function tomlIndex(content: string): TomlEntry[] {
       path,
       arrayPath: prefix.arrayPath,
       arrayIndex: prefix.arrayIndex,
+      prefixSegs: prefix.segs,
+      keySegs,
+      prefixLine: prefix.line,
       isId: prefix.arrayPath !== undefined && keySegs.length === 1 && ID_KEYS.includes(keySegs[0]),
     });
   }
@@ -131,6 +140,31 @@ export function tomlIndex(content: string): TomlEntry[] {
     }
   }
 
+  // The chain enclosing one key: the table path (its last element carrying the
+  // array position, or the identity promoted in its place) followed by any
+  // dotted key prefix. Built HERE rather than in the scan because whether an
+  // array item is addressed by index or by identity is only decided above,
+  // after every item has been read.
+  const chain = (
+    r: (typeof raw)[number],
+    id: { field: string; value: string } | undefined
+  ): ContainerNode[] => {
+    const nodes: ContainerNode[] = [];
+    r.prefixSegs.forEach((seg, i) => {
+      const last = i === r.prefixSegs.length - 1;
+      const at = r.prefixLine !== undefined ? { line: r.prefixLine } : {};
+      if (!last || r.arrayPath === undefined) { nodes.push({ name: seg, pathSeg: seg, headings: [seg], ...at }); return; }
+      // The array element itself. A `[[service]]` has no argument to name it,
+      // so its identity is either an id field this file happens to carry
+      // uniquely, or its position — the same choice every other format makes.
+      if (id) nodes.push({ name: seg, subject: id.value, subjectField: id.field, pathSeg: `${seg}[${id.field}=${quoteSeg(id.value)}]`, headings: [seg, id.value], ...at });
+      else nodes.push({ name: seg, index: r.arrayIndex!, pathSeg: `${seg}[${r.arrayIndex}]`, headings: [seg, `[${r.arrayIndex}]`], ...at });
+    });
+    // A dotted key writes its own levels on the value's own line.
+    for (const seg of r.keySegs.slice(0, -1)) nodes.push({ name: seg, pathSeg: seg, headings: [seg], line: r.line });
+    return nodes;
+  };
+
   const out: TomlEntry[] = [];
   for (const r of raw) {
     if (r.arrayPath !== undefined) {
@@ -141,11 +175,11 @@ export function tomlIndex(content: string): TomlEntry[] {
         const tail = r.path.slice(`${r.arrayPath}[${r.arrayIndex}]`.length); // ".key"
         const path = pred + tail;
         const catSegs = [...r.arrayPath.split("."), id.value, ...r.categoryPath.slice(r.arrayPath.split(".").length + 1)];
-        out.push({ categoryPath: catSegs, key: r.key, value: r.value, line: r.line, range: r.range, path });
+        out.push({ categoryPath: catSegs, key: r.key, value: r.value, line: r.line, range: r.range, path, containers: chain(r, id) });
         continue;
       }
     }
-    out.push({ categoryPath: r.categoryPath, key: r.key, value: r.value, line: r.line, range: r.range, path: r.path });
+    out.push({ categoryPath: r.categoryPath, key: r.key, value: r.value, line: r.line, range: r.range, path: r.path, containers: chain(r, undefined) });
   }
   return out;
 }

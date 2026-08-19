@@ -1,4 +1,5 @@
 // HAProxy config (haproxy.cfg). Section-based: `global` / `defaults` /
+import type { ContainerNode } from "./types.js";
 // `frontend <name>` / `backend <name>` / `listen <name>` / … headers, with
 // `key value` directives under them (no nesting). Directives often repeat
 // (`server`, `bind`, `acl`). Scanned line by line into sections with source
@@ -6,7 +7,7 @@
 // first argument when unique (e.g. `server web1` → `backend[app].server[web1]`)
 // — reorder-robust — else by index. A directive's value is its argument span.
 
-export type HaproxyEntry = { categoryPath: string[]; key: string; value: string; line: number; range: [number, number]; path: string };
+export type HaproxyEntry = { categoryPath: string[]; key: string; value: string; line: number; range: [number, number]; path: string; containers: ContainerNode[] };
 
 const SECTIONS = new Set([
   "global", "defaults", "frontend", "backend", "listen", "peers", "resolvers",
@@ -14,7 +15,10 @@ const SECTIONS = new Set([
 ]);
 
 type Dir = { name: string; value: string; range: [number, number]; line: number };
-type Section = { name: string; label: string; dirs: Dir[] };
+// `line` is the section header's own — a container has a definition site just
+// as a directive does, and until the chain was recorded nothing had asked for
+// it.
+type Section = { name: string; label: string; dirs: Dir[]; line: number };
 
 export function isHaproxy(file: string, content: string): boolean {
   const base = (file.split("/").pop() ?? "").toLowerCase();
@@ -38,7 +42,7 @@ function scan(content: string): Section[] {
 
     const head = trimmed.match(/^(\S+)(?:\s+(.*))?$/);
     if (head && SECTIONS.has(head[1]) && line[0] !== " " && line[0] !== "\t") {
-      current = { name: head[1], label: (head[2] ?? "").trim(), dirs: [] };
+      current = { name: head[1], label: (head[2] ?? "").trim(), dirs: [], line: i + 1 };
       sections.push(current);
       continue;
     }
@@ -58,8 +62,11 @@ function scan(content: string): Section[] {
 export function haproxyIndex(content: string): HaproxyEntry[] {
   const out: HaproxyEntry[] = [];
   for (const sec of scan(content)) {
-    const secPath = sec.label ? `${sec.name}[${sec.label}]` : sec.name;
-    const secCat = sec.label ? `${sec.name} ${sec.label}` : sec.name;
+    // A section's label is its subject — which frontend, which backend — so it
+    // goes in the address and, later, in the container row's value.
+    const node: ContainerNode = sec.label
+      ? { name: sec.name, subject: sec.label, pathSeg: `${sec.name}[${sec.label}]`, headings: [`${sec.name} ${sec.label}`], line: sec.line }
+      : { name: sec.name, pathSeg: sec.name, headings: [sec.name], line: sec.line };
     const groups = new Map<string, Dir[]>();
     for (const d of sec.dirs) { const g = groups.get(d.name); if (g) g.push(d); else groups.set(d.name, [d]); }
     for (const [name, group] of groups) {
@@ -67,7 +74,7 @@ export function haproxyIndex(content: string): HaproxyEntry[] {
       const useArg = group.length > 1 && new Set(firstArgs).size === firstArgs.length;
       group.forEach((d, i) => {
         const key = group.length === 1 ? name : useArg ? `${name}[${firstArgs[i]}]` : `${name}[${i}]`;
-        out.push({ categoryPath: [secCat], key, value: d.value, line: d.line, range: d.range, path: `${secPath}.${key}` });
+        out.push({ categoryPath: node.headings, key, value: d.value, line: d.line, range: d.range, path: `${node.pathSeg}.${key}`, containers: [node] });
       });
     }
   }

@@ -1,4 +1,5 @@
 // nginx config (nginx.conf, sites-available/*). Directives `name args...;` and
+import type { ContainerNode } from "./types.js";
 // blocks `name label... { ... }` (http / server / location / upstream / …).
 // A small character scanner builds a block tree with source ranges, then we
 // walk it (like the XML adapter): labeled blocks (location /api, upstream name)
@@ -9,7 +10,7 @@
 // Scope: standard `;`/`{`/`}` syntax with `#` comments and quoted args. The
 // value is the raw argument text (multi-arg kept verbatim).
 
-export type NginxEntry = { categoryPath: string[]; key: string; value: string; line: number; range: [number, number]; path: string };
+export type NginxEntry = { categoryPath: string[]; key: string; value: string; line: number; range: [number, number]; path: string; containers: ContainerNode[] };
 
 // nginx files have no reliable extension (`.conf` collides with sysctl), so
 // detect by name or by the presence of block syntax (a line ending in `{`).
@@ -101,27 +102,20 @@ function scan(content: string): Block {
   return root;
 }
 
-type Seg = { path: string; cat: string };
-
 export function nginxIndex(content: string): NginxEntry[] {
   const root = scan(content);
   const out: NginxEntry[] = [];
 
-  const walk = (block: Block, segs: Seg[]): void => {
+  const walk = (block: Block, nodes: ContainerNode[]): void => {
+    const cats = nodes.flatMap((n) => n.headings);
+    const addr = (key: string): string => [...nodes.map((n) => n.pathSeg), key].join(".");
     // Directives, grouped by name (repeated → indexed).
     const dirGroups = new Map<string, Dir[]>();
     for (const d of block.dirs) { const g = dirGroups.get(d.name); if (g) g.push(d); else dirGroups.set(d.name, [d]); }
     for (const [name, group] of dirGroups) {
       group.forEach((d, i) => {
         const key = group.length > 1 ? `${name}[${i}]` : name;
-        out.push({
-          categoryPath: segs.map((s) => s.cat),
-          key,
-          value: d.value,
-          line: d.line,
-          range: d.range,
-          path: [...segs.map((s) => s.path), key].join("."),
-        });
+        out.push({ categoryPath: cats, key, value: d.value, line: d.line, range: d.range, path: addr(key), containers: nodes });
       });
     }
     // Child blocks, grouped by name.
@@ -132,10 +126,15 @@ export function nginxIndex(content: string): NginxEntry[] {
       const labels = group.map((b) => b.label);
       const useLabel = !expr && labels.every((l) => l !== "") && new Set(labels).size === labels.length;
       group.forEach((b, i) => {
-        let seg: Seg;
+        let node: ContainerNode;
         if (expr) {
-          // Positional identity, never the condition text (see EXPR_CONTAINERS).
-          seg = group.length > 1 ? { path: `${name}[${i}]`, cat: `${name}[${i}]` } : { path: name, cat: name };
+          // Positional identity, never the condition text (see EXPR_CONTAINERS)
+          // — the condition is a value somebody edits, so it must not be the
+          // address that edit is applied through.
+          node =
+            group.length > 1
+              ? { name, index: i, pathSeg: `${name}[${i}]`, headings: [`${name}[${i}]`], line: b.line }
+              : { name, pathSeg: name, headings: [name], line: b.line };
           // The condition becomes a synthetic row filed in the enclosing
           // category, one level above the block's own children — the value is
           // sliced straight from source (not the space-joined `b.label`) so it
@@ -143,18 +142,23 @@ export function nginxIndex(content: string): NginxEntry[] {
           if (b.labelRange) {
             const key = group.length > 1 ? `${name}[${i}]` : name;
             out.push({
-              categoryPath: segs.map((s) => s.cat),
+              categoryPath: cats,
               key,
               value: content.slice(b.labelRange[0], b.labelRange[1]),
               line: b.line,
               range: b.labelRange,
-              path: [...segs.map((s) => s.path), key].join("."),
+              path: addr(key),
+              // Filed in the enclosing category, so the block it describes is
+              // not among its own containers.
+              containers: nodes,
             });
           }
-        } else if (group.length === 1 && b.label === "") seg = { path: name, cat: name };
-        else if (useLabel) seg = { path: `${name}[${b.label}]`, cat: `${name} ${b.label}` };
-        else seg = { path: `${name}[${i}]`, cat: `${name}[${i}]` };
-        walk(b, [...segs, seg]);
+        } else if (group.length === 1 && b.label === "") node = { name, pathSeg: name, headings: [name], line: b.line };
+        // A `location /api` label is the block's subject — what it governs —
+        // so it goes in the address and, later, in the row's value.
+        else if (useLabel) node = { name, subject: b.label, pathSeg: `${name}[${b.label}]`, headings: [`${name} ${b.label}`], line: b.line };
+        else node = { name, index: i, pathSeg: `${name}[${i}]`, headings: [`${name}[${i}]`], line: b.line };
+        walk(b, [...nodes, node]);
       });
     }
   };

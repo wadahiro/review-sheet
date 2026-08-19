@@ -526,8 +526,14 @@ export type ContainerNode = {
   // and uses `name`/`subject`, which is the same shape everywhere — this exists
   // only so the old spelling cannot drift while both are on screen.
   headings: string[];
-  // The opening tag's line — a container row's own definition site.
-  line: number;
+  // The opening tag/header's line — a container row's own definition site.
+  //
+  // Optional because a container is not always written down: a systemd file may
+  // set keys before any `[Section]` header, and the section they belong to is
+  // then an assumption the parser makes, not a line anybody typed. Pointing a
+  // row's source map at a line chosen to fill this in would be a false claim
+  // about the file, which is worse than having no line to offer.
+  line?: number;
 };
 
 // Source-map-style pointer to where a value lives in the real configuration.
