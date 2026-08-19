@@ -2408,3 +2408,50 @@ describe("sub-headings inside a file's table", () => {
     expect(keysOf(host)).toEqual(["a", "b"]);
   });
 });
+
+// `layout: categories` heads rows by the product's grouping and says nothing
+// about files — right for a unit whose file is how it SHIPS rather than what it
+// IS. The hazard it carries is that two files' rows can land under one heading
+// with nothing on the page saying so, and a reader then takes them for one
+// file's settings. A build-time report would tell the author; this tells the
+// reader, where the mixture is.
+describe("a group holding rows from more than one file", () => {
+  const row = (key: string, file?: string) => ({
+    key,
+    value: "v",
+    description: { ja: "d" },
+    ...(file ? { source: { file, line: 1 } } : {}),
+  });
+
+  function mountFiles(params: ReturnType<typeof row>[]): HTMLElement {
+    const payload = {
+      metadata: { title: "t" },
+      versions: [{ version: "current", sheets: [{ name: "s", categories: [{ name: "General", params }] }] }],
+    } as unknown as ParameterSheetInput as never;
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    return host;
+  }
+
+  const filesShown = (host: HTMLElement): string[] =>
+    [...host.querySelectorAll(".rs-row-file code")].map((e) => e.textContent?.trim() ?? "");
+
+  it("says which file each row is a line of", () => {
+    expect(filesShown(mountFiles([row("a", "realm-a.json"), row("b", "realm-b.json")]))).toEqual([
+      "realm-a.json",
+      "realm-b.json",
+    ]);
+  });
+
+  // One file is the ordinary case and needs no mark: repeating the same path on
+  // every row would be noise that says nothing a reader did not already know.
+  it("says nothing when every row is a line of the same file", () => {
+    expect(filesShown(mountFiles([row("a", "realm.json"), row("b", "realm.json")]))).toEqual([]);
+  });
+
+  it("says nothing when no row has a file at all", () => {
+    expect(filesShown(mountFiles([row("a"), row("b")]))).toEqual([]);
+  });
+});

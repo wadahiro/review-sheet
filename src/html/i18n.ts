@@ -74,6 +74,10 @@ type Messages = {
   // deployed" was a false claim over the third.
   artifactOpen: string;
   artifactTitle: string;
+  // The heading on a row's file sub-line. Shown only where one group holds
+  // rows from more than one file (`layout: categories`), so a reader can see
+  // the mixture instead of reading two files' settings as one file's.
+  rowFile: string;
   artifactRenderedFrom: string;
   artifactSourceFile: string;
   artifactInstance: string;
@@ -303,6 +307,7 @@ const ja: Messages = {
   shortcutClose: "閉じる",
   artifactOpen: "設定ファイルの該当箇所を見る",
   artifactTitle: "プレビュー",
+  rowFile: "ファイル",
   artifactRenderedFrom: "生成元",
   artifactSourceFile: "ソースファイル",
   artifactInstance: "環境",
@@ -500,6 +505,7 @@ const en: Messages = {
   shortcutClose: "Close",
   artifactOpen: "Show this line in the file",
   artifactTitle: "Preview",
+  rowFile: "File",
   artifactRenderedFrom: "Rendered from",
   artifactSourceFile: "Source file",
   artifactInstance: "Instance",

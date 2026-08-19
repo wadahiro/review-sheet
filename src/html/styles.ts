@@ -2204,6 +2204,13 @@ code {
   color: var(--rs-text-muted);
 }
 
+/* The file a row is a line of, shown only where its group holds more than one
+   (layout: categories). Muted and in the mono face like every other sub-line
+   here: it is context for reading the row, not a value anybody reviews. */
+.rs-row-file code {
+  color: var(--rs-text-muted);
+}
+
 /* A sub-head inside a file's table (layout: file+categories). Reads as a
    divider between groups of rows, not as a row: no value cell, and the rule
    above it is what separates one group from the last. Sticky is deliberately

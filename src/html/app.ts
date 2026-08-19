@@ -2255,6 +2255,17 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   // sub-head than the line that opens them. The build reports each family it
   // separated; the redrawn block line above such a row carries the block's own
   // argument so the row still says what it was torn from.
+  // A group holding rows from more than one file. `layout: categories` heads by
+  // the product's grouping and says nothing about files, which is right for a
+  // unit whose file is how it SHIPS — but when two files' rows land under one
+  // heading, nothing on the page distinguishes them, and a reader takes them
+  // for one file's settings. So each row says which file it is a line of,
+  // exactly where the mixture is, rather than the mixture being reported once
+  // at build time to somebody who is not the reader.
+  const fileOfRow = (p: ParamData): string | undefined =>
+    p.source?.file ?? p.instances?.find((i) => i.source?.file)?.source?.file;
+  const mixedFiles = new Set(shown.map(fileOfRow).filter((f): f is string => f !== undefined)).size > 1;
+
   const subKey = (p: ParamData): string => (p.sub_category ?? []).join(" / ");
   const subHeaded = shown.some((p) => (p.sub_category?.length ?? 0) > 0);
   const ordered = subHeaded
@@ -2336,6 +2347,12 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
       );
     }
     if (tag) keySubline.push(html`<span class="rs-key-subline"><span class="rs-origin-tag" title=${tag.title}>${tag.label}</span></span>` as VNode);
+    const rowFile = mixedFiles ? fileOfRow(param) : undefined;
+    if (rowFile !== undefined) {
+      keySubline.push(
+        html`<span class="rs-key-subline rs-row-file"><span class="rs-subline-head">${t.rowFile}</span><code>${rowFile}</code></span>` as VNode
+      );
+    }
     // The way into the file this row is a line of. Only where there IS one: a
     // row with no artifact (a product default, a variable-axis sheet) gets no
     // affordance rather than one that opens nothing.
