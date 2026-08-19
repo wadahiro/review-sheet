@@ -64,7 +64,11 @@ Three stances decide most design arguments here:
   the CLI reads.
 
 Per-module rationale lives in `.claude/rules/architecture.md`, which loads
-automatically when you touch `src/` or `tests/`.
+automatically when you touch `src/` or `tests/`. Beside it,
+`.claude/rules/verifying.md` records how a claim about this codebase earns the
+right to be believed — written from a measured failure record, not from
+principle, and the rule that matters most is that nothing is green until it has
+been seen red.
 
 ## Source map
 
