@@ -127,3 +127,36 @@ describe("diff --equivalence", () => {
     expect(onlyPresenceDoc.summary.removed).toBe(1); // "b" (default-origin) still counted removed
   });
 });
+
+// The CLI face of crossCategory: `--equivalence` carries it, and a key it could
+// not join is named on stdout rather than counted in the summary — a number
+// would say something was wrong without saying what.
+describe("diff --cross-category", () => {
+  const sheetFile = (dir: string, name: string, cats: object[]): string => {
+    const p = join(dir, name);
+    writeFileSync(p, JSON.stringify({ metadata: { title: "t" }, sheets: [{ name: "S", categories: cats }] }), "utf-8");
+    return p;
+  };
+
+  it("joins two sides that file the same setting under different headings", () => {
+    const dir = mkdtempSync(join(tmpdir(), "rs-cross-"));
+    const a = sheetFile(dir, "a.json", [{ name: "/etc/app.conf", params: [{ key: "db-url", value: "jdbc:x", description: "d" }] }]);
+    const b = sheetFile(dir, "b.json", [{ name: "Database", params: [{ key: "db-url", value: "jdbc:x", description: "d" }] }]);
+
+    expect(runDiff(a, b).stderr).toContain("0 unchanged");
+    expect(runDiff(a, b, "--cross-category").stderr).toContain("1 unchanged");
+    expect(runDiff(a, b, "--equivalence").stderr).toContain("1 unchanged");
+  });
+
+  it("names a key it refused to join, on stdout", () => {
+    const dir = mkdtempSync(join(tmpdir(), "rs-cross2-"));
+    const a = sheetFile(dir, "a.json", [
+      { name: "A", params: [{ key: "dup", value: "1", description: "d" }] },
+      { name: "B", params: [{ key: "dup", value: "1", description: "d" }] },
+    ]);
+    const b = sheetFile(dir, "b.json", [{ name: "Elsewhere", params: [{ key: "dup", value: "1", description: "d" }] }]);
+    const run = runDiff(a, b, "--cross-category");
+    expect(run.stdout).toContain("filed under 2 categories (A, B)");
+    expect(run.stderr).toContain("1 key(s) filed in several categories");
+  });
+});

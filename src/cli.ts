@@ -1256,7 +1256,11 @@ program
   .option("--all", "Print unchanged rows too")
   .option(
     "--equivalence",
-    "Equivalence-check mode for comparing two DIFFERENT sheets (e.g. two deployment platforms mid-migration): shorthand for --exclude-default-origin --sheet-presence"
+    "Equivalence-check mode for comparing two DIFFERENT sheets (e.g. two deployment platforms mid-migration): shorthand for --exclude-default-origin --sheet-presence --cross-category"
+  )
+  .option(
+    "--cross-category",
+    "Join the two sides by a row's key rather than by which category each files it under — two deployment forms of one product share their settings, not their structure"
   )
   .option(
     "--exclude-default-origin",
@@ -1267,7 +1271,7 @@ program
     "Report a sheet present on only one side as one fact instead of exploding every one of its parameters into removed/added rows (see sheetsOnlyOnOneSide)"
   )
   .option("--format <fmt>", "Output format: text | json (json prints one document, summary included, on stdout)", "text")
-  .action((opts: { input: string[]; all?: boolean; format: string; equivalence?: boolean; excludeDefaultOrigin?: boolean; sheetPresence?: boolean }) => {
+  .action((opts: { input: string[]; all?: boolean; format: string; equivalence?: boolean; excludeDefaultOrigin?: boolean; sheetPresence?: boolean; crossCategory?: boolean }) => {
     try {
       if (opts.format !== "text" && opts.format !== "json") {
         throw new Error(`Unknown --format "${opts.format}". Use text or json.`);
@@ -1276,7 +1280,8 @@ program
       const [from, to] = opts.input.map((f) => validateInput(JSON.parse(readFileSync(f, "utf-8"))));
       const excludeDefaultOrigin = Boolean(opts.equivalence || opts.excludeDefaultOrigin);
       const sheetPresence = Boolean(opts.equivalence || opts.sheetPresence);
-      const result: DiffResult = diffSheets(from.sheets, to.sheets, { excludeDefaultOrigin, sheetPresence });
+      const crossCategory = Boolean(opts.equivalence || opts.crossCategory);
+      const result: DiffResult = diffSheets(from.sheets, to.sheets, { excludeDefaultOrigin, sheetPresence, crossCategory });
 
       // In text mode "no differences" is an empty stdout, which a CI job cannot
       // tell apart from the command having failed. JSON emits ONE document with
@@ -1298,7 +1303,7 @@ program
         };
         for (const sheet of result.sheets) for (const cat of sheet.categories) collect(cat, sheet.name);
         process.stdout.write(
-          JSON.stringify({ summary: result.summary, excluded: result.excluded, sheetsOnlyOnOneSide: result.sheetsOnlyOnOneSide, rows }, null, 2) + "\n"
+          JSON.stringify({ summary: result.summary, excluded: result.excluded, sheetsOnlyOnOneSide: result.sheetsOnlyOnOneSide, ambiguousKeys: result.ambiguousKeys, rows }, null, 2) + "\n"
         );
         return;
       }
@@ -1342,6 +1347,14 @@ program
         console.log(`o ${s.name}: sheet only in the ${side} input (${s.paramCount} params, excluded from removed/added counts)`);
       }
 
+      // A key the cross-category join could not use is a row that will read as
+      // added/removed for a reason the numbers do not show. Printed beside the
+      // rows, one line each: a count in the summary would say something was
+      // wrong without saying what.
+      for (const a of result.ambiguousKeys) {
+        console.log(`o ${a.sheet} > ${a.key}: filed under ${a.categories.length} categories (${a.categories.join(", ")}) — not joined across them`);
+      }
+
       const { changed, docOnly, added, removed, unchanged } = result.summary;
       // The doc-only share is called out rather than folded in. Comparing one
       // configuration across two product dictionaries, prose churn dominates —
@@ -1353,6 +1366,8 @@ program
       let summaryLine = `diff: ${changedPart}, ${added} added, ${removed} removed, ${unchanged} unchanged`;
       if (excludeDefaultOrigin) summaryLine += ` (excluded ${result.excluded.defaultOrigin} materialize default-origin rows)`;
       if (sheetPresence) summaryLine += ` (${result.sheetsOnlyOnOneSide.length} sheet(s) present on only one side, see stdout)`;
+      if (crossCategory && result.ambiguousKeys.length > 0)
+        summaryLine += ` (${result.ambiguousKeys.length} key(s) filed in several categories, not joined — see stdout)`;
       console.error(summaryLine);
     } catch (e) {
       console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);

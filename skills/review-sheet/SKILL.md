@@ -3287,12 +3287,23 @@ apart from a real difference:
 review-sheet diff -i platform-a.json -i platform-b.json --equivalence --format json
 ```
 
-`--equivalence` is shorthand for `--exclude-default-origin` (drops materialize
-rows from the comparison, counted in `excluded.defaultOrigin` — filtered, not
-hidden) and `--sheet-presence` (reports a sheet present on only one side once,
-as `sheetsOnlyOnOneSide: [{ name, onlyIn: "from" | "to", paramCount }]`, instead
-of exploding its parameters into `removed`/`added`). Both flags work
-independently too. On a real staged migration (Keycloak, EC2 vs. ECS) this took
+`--equivalence` is shorthand for three flags, each of which works independently:
+
+- `--exclude-default-origin` drops materialize rows from the comparison, counted
+  in `excluded.defaultOrigin` — filtered, not hidden.
+- `--sheet-presence` reports a sheet present on only one side once, as
+  `sheetsOnlyOnOneSide: [{ name, onlyIn: "from" | "to", paramCount }]`, instead
+  of exploding its parameters into `removed`/`added`.
+- `--cross-category` joins the two sides by a row's KEY rather than by which
+  category each files it under. Two deployment forms of one product do not share
+  a structure — the same settings live in one `keycloak.conf` on a host and in a
+  Dockerfile plus a task definition in a container — so matching by category
+  name only ever worked when both projects had hand-written the same category
+  list, which makes a machine check depend on two people agreeing about display
+  text. What IS the same is the setting, which the dictionary key already
+  states. The result is read in the baseline's own organisation. A key one side
+  files in two places has no single answer, so it is left alone and named in
+  `ambiguousKeys: [{ sheet, key, categories }]` rather than matched to a guess. On a real staged migration (Keycloak, EC2 vs. ECS) this took
 `removed` from 181 to 6, with the exclusion stated rather than assumed:
 `excluded: { defaultOrigin: 152 }`, `sheetsOnlyOnOneSide: [{ name: "httpd
 reverse proxy", onlyIn: "from", paramCount: 23 }]`.

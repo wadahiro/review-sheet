@@ -107,7 +107,29 @@ export type DiffOptions = {
   // such a sheet is reported once in `DiffResult.sheetsOnlyOnOneSide` instead
   // of every one of its parameters coming out `added`/`removed` in `summary`.
   sheetPresence?: boolean;
+  // Join two sheets by their ROWS rather than by how each side files them.
+  //
+  // Two deployment forms of one product do not share a structure: the same
+  // Keycloak settings live in one keycloak.conf on a host and in a Dockerfile
+  // plus a task definition in a container, so neither the files nor the
+  // headings line up, and matching by category name only ever worked because
+  // both projects had hand-written the same category list. What IS the same is
+  // the setting: `db-url` is one product's parameter however it is delivered,
+  // which is what the dictionary key already states.
+  //
+  // So when true, a row on the `to` side is compared against the row with its
+  // key on the `from` side, wherever each side happened to file it, and the
+  // result is read in the baseline's own organisation. A key that appears more
+  // than once on either side cannot be joined this way without picking one
+  // arbitrarily, so it is left where it is and reported in
+  // `DiffResult.ambiguousKeys` — never merged silently.
+  crossCategory?: boolean;
 };
+
+// A key `crossCategory` could not join, because one side files it in more than
+// one place. Reported rather than resolved: which of them the other side's row
+// corresponds to is not something this function can know.
+export type AmbiguousKey = { sheet: string; key: string; categories: string[] };
 
 export type DiffResult = {
   sheets: SheetDiff[];
@@ -121,6 +143,7 @@ export type DiffResult = {
   // off) so a JSON consumer never has to branch on whether a field exists.
   excluded: { defaultOrigin: number };
   sheetsOnlyOnOneSide: SheetPresence[];
+  ambiguousKeys: AmbiguousKey[];
 };
 
 // Order-preserving outer join: yields { from?, to? } pairs in `to` order, then
@@ -309,6 +332,91 @@ function countParams(categories: CategoryData[] | undefined): number {
   return n;
 }
 
+// Move each of `to`'s rows to the category its counterpart occupies on the
+// `from` side, so the comparison reads in the baseline's own organisation
+// whatever the other side's layout is. Pure, and a no-op for a key that is not
+// on the other side or that either side files in two places.
+//
+// Rewriting `to` rather than teaching the comparison to ignore categories keeps
+// one code path: everything downstream still merges categories by name and
+// still reports a category's own status, and the rows are simply where the
+// baseline says they belong.
+export function realignByKey(
+  from: { categories?: CategoryData[] },
+  to: { categories?: CategoryData[] },
+  sheetName: string,
+  ambiguous: AmbiguousKey[]
+): CategoryData[] {
+  const index = (cats: CategoryData[] | undefined): Map<string, string[][]> => {
+    const out = new Map<string, string[][]>();
+    const walk = (list: CategoryData[] | undefined, trail: string[]): void => {
+      for (const c of list ?? []) {
+        const path = [...trail, c.name];
+        for (const p of c.params ?? []) out.set(p.key, [...(out.get(p.key) ?? []), path]);
+        walk(c.categories, path);
+      }
+    };
+    walk(cats, []);
+    return out;
+  };
+
+  const fromIndex = index(from.categories);
+  const toIndex = index(to.categories);
+
+  // A key filed twice on either side has no single answer, and picking one
+  // would report a difference against a row nobody chose.
+  const report = (key: string, paths: string[][]): void => {
+    if (ambiguous.some((a) => a.sheet === sheetName && a.key === key)) return;
+    ambiguous.push({ sheet: sheetName, key, categories: paths.map((p) => p.join(" > ")) });
+  };
+  const joinable = (key: string): string[] | undefined => {
+    const f = fromIndex.get(key);
+    const t = toIndex.get(key);
+    if (!f || !t) return undefined;
+    if (f.length > 1) return report(key, f), undefined;
+    if (t.length > 1) return report(key, t), undefined;
+    return f[0];
+  };
+
+  // Rebuild `to` under the baseline's paths. A category is created on demand so
+  // a heading the other side never had still appears, holding exactly the rows
+  // the baseline files there.
+  const root: CategoryData = { name: "", categories: [], params: [] };
+  const childOf = (node: CategoryData, name: string, template?: CategoryData): CategoryData => {
+    node.categories ??= [];
+    const hit = node.categories.find((c) => c.name === name);
+    if (hit) return hit;
+    const made: CategoryData = { ...(template ? { ...template } : {}), name, categories: [], params: [] };
+    node.categories.push(made);
+    return made;
+  };
+  const at = (path: string[], template?: CategoryData): CategoryData => {
+    let node = root;
+    for (const seg of path) node = childOf(node, seg, seg === path[path.length - 1] ? template : undefined);
+    return node;
+  };
+
+  const walk = (list: CategoryData[] | undefined, trail: string[]): void => {
+    for (const c of list ?? []) {
+      const here = [...trail, c.name];
+      for (const p of c.params ?? []) {
+        const moved = joinable(p.key);
+        const node = at(moved ?? here, moved ? undefined : c);
+        node.params ??= [];
+        node.params.push(p);
+      }
+      walk(c.categories, here);
+    }
+  };
+  walk(to.categories, []);
+
+  const prune = (c: CategoryData): CategoryData => ({
+    ...c,
+    categories: (c.categories ?? []).map(prune).filter((x) => (x.params?.length ?? 0) > 0 || (x.categories?.length ?? 0) > 0),
+  });
+  return (root.categories ?? []).map(prune);
+}
+
 export function diffSheets(
   fromSheets: SheetData["sheets"],
   toSheets: SheetData["sheets"],
@@ -316,6 +424,7 @@ export function diffSheets(
 ): DiffResult {
   const excluded = { defaultOrigin: 0 };
   const sheetsOnlyOnOneSide: SheetPresence[] = [];
+  const ambiguousKeys: AmbiguousKey[] = [];
 
   const sheets: SheetDiff[] = mergeByKey(fromSheets, toSheets, (s) => s.name).map((pair) => {
     const onlyIn = !pair.from ? "to" : !pair.to ? "from" : "both";
@@ -328,7 +437,11 @@ export function diffSheets(
       return { name: only.name, status: onlyIn === "to" ? "added" : "removed", categories: [] };
     }
 
-    const categories = mergeByKey(pair.from?.categories ?? [], pair.to?.categories ?? [], (c) => c.name).map((cp) =>
+    const toCategories =
+      opts.crossCategory && pair.from && pair.to
+        ? realignByKey(pair.from, pair.to, (pair.to ?? pair.from)!.name, ambiguousKeys)
+        : (pair.to?.categories ?? []);
+    const categories = mergeByKey(pair.from?.categories ?? [], toCategories, (c) => c.name).map((cp) =>
       diffCategory(cp.from, cp.to, "", opts, excluded)
     );
     const name = (pair.to ?? pair.from)!.name;
@@ -345,5 +458,5 @@ export function diffSheets(
   };
   for (const s of sheets) s.categories.forEach(countCat);
 
-  return { sheets, summary, excluded, sheetsOnlyOnOneSide };
+  return { sheets, summary, excluded, sheetsOnlyOnOneSide, ambiguousKeys };
 }
