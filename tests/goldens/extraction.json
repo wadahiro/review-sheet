@@ -27,7 +27,7 @@
     "file": "examples/ansible-basic/input.json",
     "parser": "json",
     "count": 3424,
-    "sha": "294680fd36266eb1"
+    "sha": "03b68e865472ce0f"
   },
   {
     "file": "examples/ansible-basic/inventories/production/group_vars/db.yml",

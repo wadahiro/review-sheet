@@ -719,6 +719,17 @@ changed because someone added one `<Directory>`, or because a dictionary was
 updated, would reorganise a page for a reason its reader cannot see. Detection
 informs the build report; it never decides the layout.
 
+What the build says about a layout:
+
+| it says | when |
+| --- | --- |
+| `Note: … N rows under "<file>" in one table, which the dictionary would have grouped into M` | the default swallowed a long file, and `file+categories` would divide it |
+| `Note: … "<heading>" holds rows from N files` | `layout: categories` merged files under one heading — each such row also shows its own file on the page |
+| `Warning: … the declared layout separates <block> from its own contents` | a grouped layout filed a block's settings away from the block, with one row named so it can be looked at |
+
+None of these stops the build. A file with one block and two hundred flat rows
+is a legitimate thing to group; a build that reorganised it silently is not.
+
 `group_by: file` was the old spelling of the default. It is now an error rather
 than a no-op, because a key whose meaning inverted is worse than one that is
 gone — the build says what to write instead.
