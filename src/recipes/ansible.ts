@@ -704,7 +704,12 @@ export const ansibleRecipe: SheetRecipe = {
       // name.
       const bound: ExtractedMap = new Map();
       for (const { spec, file, entries, structured, conditions } of read) {
-        if (spec.component !== undefined) componentLabels.set(spec.component, spec.component);
+        // The heading a reader wants is the file on the host, not the id this
+        // spec files rows under: `logrotate-httpd` is the template's name,
+        // `/etc/logrotate.d/httpd` is the thing being reviewed. The id stays
+        // the category's identity — bindings, per-component params and every
+        // diff join key still read it — and only the display changes.
+        if (spec.component !== undefined) componentLabels.set(spec.component, spec.deployedPath ?? spec.component);
         for (const entry of entries) {
           // A line inside `{% if %}`/`{% for %}`. Under the ARTIFACT axis the
           // row IS the line, so whether it is in the deployed file is the
