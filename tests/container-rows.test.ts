@@ -329,3 +329,64 @@ describe("a block inside a conditional", () => {
     for (const child of inside) expect(child.instances?.map((i) => i.name)).toEqual(audit.instances?.map((i) => i.name));
   });
 });
+
+// A block the VENDOR ships and this project does not (`baseline:` — see
+// recipes/ansible.ts). Its three settings are rows of the DEPLOYED file, saying
+// "the vendor has these and we do not"; its own row used to say something else
+// entirely — `origin: "embedded"`, sourced at the opening line in the vendor's
+// file — and so was filed under the vendor's file while its contents sat under
+// the deployed one. A block separated from its own settings, this time by
+// attribution rather than by grouping.
+describe("a block only the vendor's file has", () => {
+  const SHEET_YML = "sheets:\n  web:\n    params: {}\n";
+  const io = { readFile: (p: string) => (p === "/sheet.yml" ? SHEET_YML : null), instances: [], projectPath: "/sheet.yml" };
+  const D = { name: "Directory", subject: `"/var/www/cgi-bin"`, pathSeg: `Directory["/var/www/cgi-bin"]`, headings: [`Directory "/var/www/cgi-bin"`], line: 12, file: "/vendor/httpd.conf" };
+
+  const rows = () => {
+    const out = assembleSheets(
+      [
+        {
+          name: "web",
+          instances: [],
+          layers: [{ kind: "base" as const, entries: new Map() }],
+          // The sheet names the file it deploys, which is what places a
+          // block's own row — see the missing-category message for a sheet
+          // that names none.
+          deployedFiles: new Map([["", "/etc/httpd/conf/httpd.conf"]]),
+          embedded: [
+            {
+              key: `Directory["/var/www/cgi-bin"].AllowOverride`,
+              value: "None",
+              origin: "baseline" as const,
+              categoryPath: ["httpd.conf"],
+              containers: [D],
+            },
+          ],
+        },
+      ] as never,
+      { ...io, strictMetadata: false } as never
+    );
+    const flat: { key: string; origin?: string; source?: unknown }[] = [];
+    const walk = (cats: { params?: never[]; categories?: never[] }[] | undefined): void => {
+      for (const c of cats ?? []) { flat.push(...((c.params ?? []) as never[])); walk(c.categories); }
+    };
+    for (const sh of out.sheets) walk(sh.categories as never);
+    return flat;
+  };
+
+  it("says the block is the vendor's, not something embedded in the deployed file", () => {
+    expect(rows().find((p) => p.key === `Directory["/var/www/cgi-bin"]`)?.origin).toBe("baseline");
+  });
+
+  // The schema says a baseline row carries no source, because nothing in OUR
+  // files holds it. The opening line it has is in the vendor's file: a place to
+  // look, not a place the row lives — and its three settings carry none either.
+  it("carries no source, like its contents", () => {
+    expect(rows().find((p) => p.key === `Directory["/var/www/cgi-bin"]`)?.source).toBeUndefined();
+  });
+
+  it("stays with its contents", () => {
+    const keys = rows().map((p) => p.key);
+    expect(keys).toEqual([`Directory["/var/www/cgi-bin"]`, `Directory["/var/www/cgi-bin"].AllowOverride`]);
+  });
+});
