@@ -1620,6 +1620,34 @@ function fileDrafts(
     ? shortestUniqueNames(drafts.map(rawFileOf).filter((f): f is string => f !== undefined))
     : new Map<string, string>();
 
+  // What KIND of file each derived category is named after, so the category can
+  // say so the way a component-derived one does. Without it a category named
+  // after a file carried no `file_path` at all, while the component-derived
+  // category beside it did — the same fact, marked in one place and not the
+  // other, so nothing downstream could tell the second was a file.
+  //
+  // Only where the kind is KNOWN. `rawFileOf` answers with a deployed path for
+  // an artifact and with a source file for anything else (a role's
+  // `defaults/main.yml` is neither deployed nor a template), and a category
+  // marked as the wrong kind is worse than one marked as neither: `file_path`
+  // is what verify and apply fall back to for a row that has no file of its
+  // own, so a wrong one would send them to a file that does not hold the value.
+  const deployedPaths = new Set<string>();
+  for (const [, f] of componentFiles ?? []) if (f.filePath) deployedPaths.add(f.filePath);
+  for (const [, p2] of deployedFiles ?? []) deployedPaths.add(p2);
+  if (sheetArtifact) deployedPaths.add(sheetArtifact);
+  const sourcePaths = new Set<string>();
+  for (const [, f] of componentFiles ?? []) if (f.sourceFile) sourcePaths.add(f.sourceFile);
+  if (sheetTemplate) sourcePaths.add(sheetTemplate);
+  const derivedFileMarks = new Map<string, { filePath?: string; sourceFile?: string }>();
+  if (groupByFile) {
+    for (const raw of new Set(drafts.map(rawFileOf).filter((f): f is string => f !== undefined))) {
+      const name = fileNames.get(raw) ?? raw;
+      if (deployedPaths.has(raw)) derivedFileMarks.set(name, { filePath: raw });
+      else if (sourcePaths.has(raw)) derivedFileMarks.set(name, { sourceFile: raw });
+    }
+  }
+
   for (const d of drafts) {
     // Component-first, then the sheet-wide table (providers/project.ts's
     // paramForRow): two components of one product share their field NAMES, so
@@ -1933,7 +1961,12 @@ function fileDrafts(
     // only a component IS a deployed artifact. verify/apply already read the
     // nearest file_path/source_file up the tree, so declaring them here puts
     // every row of that component on the right file with nothing else to do.
-    const files = componentFiles?.get(node.name);
+    // A category NAMED AFTER A FILE says so too, whichever of the two routes
+    // produced it — a declared component, or `group_by: file` deriving one. The
+    // second carried no mark at all, so a category named after a path was
+    // indistinguishable from a topic that happens to contain a slash, and
+    // verify/apply fell back to the sheet's file instead of this one.
+    const files = componentFiles?.get(node.name) ?? derivedFileMarks.get(node.name);
     if (files?.filePath) cat.file_path = files.filePath;
     if (files?.sourceFile) cat.source_file = files.sourceFile;
     if (node.params.length > 0) cat.params = node.params;
