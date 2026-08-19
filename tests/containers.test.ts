@@ -32,7 +32,7 @@ import type { Entry } from "../src/parser";
 // template and hands the text to the declared base format, so it inherits
 // whatever that parser reports — which is the point of wrapping rather than
 // reimplementing, and worth asserting so the delegation cannot quietly stop.
-const EMITTING = ["xml", "httpd", "nginx", "haproxy", "systemd", "toml", "logrotate", "jinja2"];
+const EMITTING = ["xml", "httpd", "nginx", "haproxy", "systemd", "toml", "logrotate", "hcl", "jinja2"];
 
 type Emitted = { file: string; parser: string; entries: Entry[] };
 
