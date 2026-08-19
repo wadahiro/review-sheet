@@ -1,5 +1,6 @@
 // HAProxy config (haproxy.cfg). Section-based: `global` / `defaults` /
 import type { ContainerNode } from "./types.js";
+import { containerSubjectAt } from "./parser.js";
 // `frontend <name>` / `backend <name>` / `listen <name>` / … headers, with
 // `key value` directives under them (no nesting). Directives often repeat
 // (`server`, `bind`, `acl`). Scanned line by line into sections with source
@@ -18,7 +19,7 @@ type Dir = { name: string; value: string; range: [number, number]; line: number 
 // `line` is the section header's own — a container has a definition site just
 // as a directive does, and until the chain was recorded nothing had asked for
 // it.
-type Section = { name: string; label: string; dirs: Dir[]; line: number };
+type Section = { name: string; label: string; labelRange?: [number, number]; dirs: Dir[]; line: number };
 
 export function isHaproxy(file: string, content: string): boolean {
   const base = (file.split("/").pop() ?? "").toLowerCase();
@@ -42,7 +43,12 @@ function scan(content: string): Section[] {
 
     const head = trimmed.match(/^(\S+)(?:\s+(.*))?$/);
     if (head && SECTIONS.has(head[1]) && line[0] !== " " && line[0] !== "\t") {
-      current = { name: head[1], label: (head[2] ?? "").trim(), dirs: [], line: i + 1 };
+      const label = (head[2] ?? "").trim();
+      // Where the label is written, for the container's own value and source
+      // map. Found by offset from the header's start rather than by searching,
+      // so a label that happens to repeat the section name cannot mislocate.
+      const labelAt = label ? lineStart + line.indexOf(label, line.indexOf(head[1]) + head[1].length) : undefined;
+      current = { name: head[1], label, ...(labelAt !== undefined ? { labelRange: [labelAt, labelAt + label.length] as [number, number] } : {}), dirs: [], line: i + 1 };
       sections.push(current);
       continue;
     }
@@ -65,7 +71,7 @@ export function haproxyIndex(content: string): HaproxyEntry[] {
     // A section's label is its subject — which frontend, which backend — so it
     // goes in the address and, later, in the container row's value.
     const node: ContainerNode = sec.label
-      ? { name: sec.name, subject: sec.label, pathSeg: `${sec.name}[${sec.label}]`, headings: [`${sec.name} ${sec.label}`], line: sec.line }
+      ? { name: sec.name, subject: sec.label, ...(sec.labelRange ? { subjectRange: sec.labelRange } : {}), pathSeg: `${sec.name}[${sec.label}]`, headings: [`${sec.name} ${sec.label}`], line: sec.line }
       : { name: sec.name, pathSeg: sec.name, headings: [sec.name], line: sec.line };
     const groups = new Map<string, Dir[]>();
     for (const d of sec.dirs) { const g = groups.get(d.name); if (g) g.push(d); else groups.set(d.name, [d]); }
@@ -84,6 +90,9 @@ export function haproxyIndex(content: string): HaproxyEntry[] {
 export type HaproxyLocate = { value: string } | { error: string };
 export function haproxyLocate(content: string, path: string): HaproxyLocate {
   const e = haproxyIndex(content).find((x) => x.path === path);
+  // A BLOCK's own address, which is not an entry (see containerSubjectAt).
+  const containerSubject = containerSubjectAt(haproxyIndex(content), path);
+  if (containerSubject !== undefined) return { value: containerSubject };
   return e ? { value: e.value } : { error: "path not found" };
 }
 

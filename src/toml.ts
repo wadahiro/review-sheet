@@ -1,5 +1,6 @@
 // TOML support. TOML is essentially line-oriented (`key = value` under `[table]`
 import type { ContainerNode } from "./types.js";
+import { containerSubjectAt } from "./parser.js";
 // / `[[array-of-tables]]` headers, plus dotted keys), so we index it with a
 // single line scan — no position-aware parser needed — producing a stable path
 // per scalar plus its source range, mirroring the XML adapter.
@@ -127,14 +128,17 @@ export function tomlIndex(content: string): TomlEntry[] {
 
   // Upgrade array-of-tables index paths to identity predicates when a unique id
   // field exists, and drop the id field itself from the params.
-  const idByArrayItem = new Map<string, { field: string; value: string }>();
+  const idByArrayItem = new Map<string, { field: string; value: string; range: [number, number]; raw: string }>();
   for (const arrayPath of new Set(raw.map((r) => r.arrayPath).filter((p): p is string => !!p))) {
     const items = raw.filter((r) => r.arrayPath === arrayPath);
     const indices = [...new Set(items.map((r) => r.arrayIndex!))];
     for (const f of ID_KEYS) {
-      const vals = indices.map((idx) => items.find((r) => r.arrayIndex === idx && r.key === f && r.path.endsWith(`].${f}`))?.value);
+      const hits = indices.map((idx) => items.find((r) => r.arrayIndex === idx && r.key === f && r.path.endsWith(`].${f}`)));
+      const vals = hits.map((h) => h?.value);
       if (vals.every((v) => v !== undefined) && new Set(vals).size === vals.length) {
-        indices.forEach((idx, k) => idByArrayItem.set(`${arrayPath}[${idx}]`, { field: f, value: vals[k]! }));
+        // The id field's own range travels with it: it is where the subject is
+        // written, and a container row points at it.
+        indices.forEach((idx, k) => idByArrayItem.set(`${arrayPath}[${idx}]`, { field: f, value: vals[k]!, range: hits[k]!.range, raw: content.slice(hits[k]!.range[0], hits[k]!.range[1]) }));
         break;
       }
     }
@@ -147,7 +151,7 @@ export function tomlIndex(content: string): TomlEntry[] {
   // after every item has been read.
   const chain = (
     r: (typeof raw)[number],
-    id: { field: string; value: string } | undefined
+    id: { field: string; value: string; range: [number, number]; raw: string } | undefined
   ): ContainerNode[] => {
     const nodes: ContainerNode[] = [];
     r.prefixSegs.forEach((seg, i) => {
@@ -157,7 +161,11 @@ export function tomlIndex(content: string): TomlEntry[] {
       // The array element itself. A `[[service]]` has no argument to name it,
       // so its identity is either an id field this file happens to carry
       // uniquely, or its position — the same choice every other format makes.
-      if (id) nodes.push({ name: seg, subject: id.value, subjectField: id.field, pathSeg: `${seg}[${id.field}=${quoteSeg(id.value)}]`, headings: [seg, id.value], ...at });
+      // The subject is the source text — `"web"`, quotes and all — while the
+      // ADDRESS uses the unquoted value, as it always has. Two spellings for
+      // two jobs: an address is built to be matched, a subject is shown and
+      // pointed at, and only the second has to be something the file contains.
+      if (id) nodes.push({ name: seg, subject: id.raw, subjectField: id.field, subjectRange: id.range, pathSeg: `${seg}[${id.field}=${quoteSeg(id.value)}]`, headings: [seg, id.value], ...at });
       else nodes.push({ name: seg, index: r.arrayIndex!, pathSeg: `${seg}[${r.arrayIndex}]`, headings: [seg, `[${r.arrayIndex}]`], ...at });
     });
     // A dotted key writes its own levels on the value's own line.
@@ -187,6 +195,9 @@ export function tomlIndex(content: string): TomlEntry[] {
 export type TomlLocate = { value: string } | { error: string };
 export function tomlLocate(content: string, path: string): TomlLocate {
   const e = tomlIndex(content).find((x) => x.path === path);
+  // A BLOCK's own address, which is not an entry (see containerSubjectAt).
+  const containerSubject = containerSubjectAt(tomlIndex(content), path);
+  if (containerSubject !== undefined) return { value: containerSubject };
   return e ? { value: e.value } : { error: "path not found" };
 }
 

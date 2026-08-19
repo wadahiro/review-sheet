@@ -9,7 +9,7 @@
 
 import { parseDocument, isMap, isSeq, isScalar, type Node } from "yaml";
 import type { ParameterSheetInput, Sheet, Category, SourceLocation, InstanceParameter, Instance, LangText } from "./types.js";
-import { getParser, resolveParser, parserNames, type ConfigParser, type ExtractOptions } from "./parser.js";
+import { getParser, resolveParser, parserNames, type ConfigParser, type ExtractOptions, type Entry } from "./parser.js";
 import "./parsers/index.js";
 // Re-export line primitives so external code and parsers can share them.
 export { extractLines, LINE_CONFIGS } from "./line-config.js";
@@ -35,21 +35,14 @@ export type Format =
   | "space"
   | "generic";
 
-// A single extracted assignment, with the category path it should nest under.
-// Optional doc fields are co-extracted by parsers that can (e.g. annotations).
-export type Entry = {
-  categoryPath: string[];
-  key: string;
-  value: string;
-  source: SourceLocation;
-  description?: string;
-  default?: string;
-  remarks?: string;
-  out_of_scope?: { reason: LangText; owner?: string };
-  extra?: Record<string, string>;
-  sheet?: string;
-  instance?: string;
-};
+// A single extracted assignment. Re-exported from `parser.ts` — the interface
+// every parser implements — rather than declared again here.
+//
+// It WAS declared again here, structurally identical and with its own comments,
+// which is the shape a drift takes before it is one: a field added to the
+// parser interface simply did not exist for anything reading through
+// `extractFile`, and the two only agreed for as long as nobody extended either.
+export type { Entry } from "./parser.js";
 
 const DEFAULT_CATEGORY = "Parameters";
 

@@ -1,5 +1,6 @@
 // Apache HTTP Server (httpd) config: httpd.conf, apache2.conf, .htaccess,
 import type { ContainerNode } from "./types.js";
+import { containerSubjectAt } from "./parser.js";
 // sites/*.conf. Directives are one per line `Name arg1 arg2` (no terminator);
 // containers are `<Tag args> ... </Tag>`. We scan it line by line into a block
 // tree with source ranges, then walk it like the nginx/XML adapters: containers
@@ -208,7 +209,7 @@ export function httpdIndex(content: string): HttpdEntry[] {
         // httpd folds it into ONE heading name where XML splits it into two;
         // that difference is exactly why the flattening is recorded per node
         // rather than derived from a rule.
-        else if (useLabel) node = { name, subject: b.label, pathSeg: `${name}[${b.label}]`, headings: [`${name} ${b.label}`], line: b.line };
+        else if (useLabel) node = { name, subject: b.label, ...(b.labelRange ? { subjectRange: b.labelRange } : {}), pathSeg: `${name}[${b.label}]`, headings: [`${name} ${b.label}`], line: b.line };
         else node = { name, index: i, pathSeg: `${name}[${i}]`, headings: [`${name}[${i}]`], line: b.line };
         walk(b, [...nodes, node]);
       });
@@ -222,6 +223,9 @@ export function httpdIndex(content: string): HttpdEntry[] {
 export type HttpdLocate = { value: string } | { error: string };
 export function httpdLocate(content: string, path: string): HttpdLocate {
   const e = httpdIndex(content).find((x) => x.path === path);
+  // A BLOCK's own address, which is not an entry (see containerSubjectAt).
+  const containerSubject = containerSubjectAt(httpdIndex(content), path);
+  if (containerSubject !== undefined) return { value: containerSubject };
   return e ? { value: e.value } : { error: "path not found" };
 }
 

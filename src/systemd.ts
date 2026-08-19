@@ -61,7 +61,7 @@ export function systemdIndex(content: string): SystemdEntry[] {
     // Keep the param key unique within the section so a repeated key (e.g. two
     // ExecStartPre=) stays individually addressable.
     // A section groups and nothing else — it has no argument, so no subject.
-    const node: ContainerNode = { name: r.section, pathSeg: r.section, headings: [r.section], ...(r.sectionLine !== undefined ? { line: r.sectionLine } : {}) };
+    const node: ContainerNode = { name: r.section, pathSeg: r.section, headings: [r.section], ...(r.sectionLine === undefined ? { nameFromDocs: true } : { line: r.sectionLine }) };
     return { categoryPath: [r.section], key: r.key + suffix, value: r.value, line: r.line, range: r.range, path: `${r.section}.${r.key}${suffix}`, containers: [node] };
   });
 }

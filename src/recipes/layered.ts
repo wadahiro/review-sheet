@@ -803,6 +803,10 @@ function buildEmbeddedFromStaticFiles(
         key,
         value: e.value,
         source: { file, line: e.source.line, path: e.source.path },
+        // The blocks around this value, with the file they are written in —
+        // a committed file is read as itself, so it is the same one, unlike a
+        // template whose rows are sourced at the variables that fill them.
+        ...(e.containers ? { containers: e.containers.map((n) => ({ ...n, file })) } : {}),
         ...(entryComponent ? { component: entryComponent } : {}),
         // A nested member is filed INSIDE its member's component, under a
         // category named for it. The component stays the member — a mapper is

@@ -1,5 +1,6 @@
 // logrotate policy files: `/path/to/*.log { directive … }`.
 import type { ContainerNode } from "./types.js";
+import { containerSubjectAt } from "./parser.js";
 //
 // The format a rotation policy is written in, and — until this existed — a
 // blind spot with real consequences: a project reviewing its retention had
@@ -40,18 +41,29 @@ export type LogrotateEntry = {
 
 // The block enclosing a directive.
 //
-// logrotate gives a block no keyword — the pattern IS the whole opening, so
-// `name` and `subject` coincide here where elsewhere they differ
-// (`Directory` / `"/var/www"`). They are set from one value in one place, so
-// there is nothing for them to drift apart from; recording the pattern as a
-// SUBJECT is what says this block is identified by an argument rather than
-// being the bare structure a systemd `[Section]` is.
+// It reports NO NAME. logrotate opens a block with its patterns and no keyword,
+// so there is nothing in the file to read — and what the manual calls such a
+// block ("log file definition", logrotate(8)) is a fact about the FORMAT, which
+// belongs in its dictionary alongside every other thing that page states, not
+// in a constant here. A word coined in a parser would be the only vocabulary it
+// carries that exists purely to be displayed; everything else it knows — the
+// directive list, which containers are positional, which attributes identify an
+// element — is needed to parse.
 //
 // The global pseudo-scope is not a block at all: nothing in the file opens it,
 // so it carries no subject and no line to point at.
-function scopeNode(scope: string, line: number | undefined): ContainerNode {
-  if (scope === GLOBAL) return { name: GLOBAL, pathSeg: GLOBAL, headings: [GLOBAL] };
-  return { name: scope, subject: scope, pathSeg: scope, headings: [scope], ...(line !== undefined ? { line } : {}) };
+function scopeNode(content: string, scope: string, line: number | undefined, range: [number, number] | undefined): ContainerNode {
+  if (scope === GLOBAL) return { name: GLOBAL, nameFromDocs: true, pathSeg: GLOBAL, headings: [GLOBAL] };
+  return {
+    // Verbatim from the source, so a header written across several lines keeps
+    // its newlines instead of becoming a space-joined string that appears
+    // nowhere. The ADDRESS keeps the joined form, which is what it has always
+    // been and what every existing path is built from.
+    ...(range ? { subject: content.slice(range[0], range[1]), subjectRange: range } : { subject: scope }),
+    pathSeg: scope,
+    headings: [scope],
+    ...(line !== undefined ? { line } : {}),
+  };
 }
 
 const SCRIPT_DIRECTIVES = new Set(["postrotate", "prerotate", "firstaction", "lastaction", "preremove"]);
@@ -98,14 +110,24 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
   // where the FIRST of them is.
   let blockLine: number | undefined;
   let pendingLine: number | undefined;
-  // Pattern lines seen since the last directive, waiting for their `{`.
-  let pending: string[] = [];
+  // Where the block's patterns are written, as absolute offsets — the whole
+  // header region, so a block spanning several pattern lines keeps its subject
+  // verbatim, newlines included, rather than becoming a space-joined string
+  // that appears nowhere in the file.
+  let blockRange: [number, number] | undefined;
+  // Pattern lines seen since the last directive, waiting for their `{`. Their
+  // source offsets travel with them: a stray one is emitted on its own, and a
+  // collected one becomes part of the block's subject.
+  let pending: { text: string; start: number; end: number }[] = [];
+  let offset = 0;
   let script: { key: string; line: number; body: string[] } | undefined;
   // Repeated directives in one block are indexed, the same way every other
   // parser here indexes them: two `postrotate` scripts are two rows.
   const seen = new Map<string, number>();
 
   for (let i = 0; i < lines.length; i++) {
+    const lineStart = offset;
+    offset += lines[i].length + 1;
     const raw = lines[i];
     const text = stripComment(raw);
 
@@ -117,7 +139,7 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
         const key = n === 0 ? script.key : `${script.key}[${n}]`;
         out.push({
           categoryPath: [scope],
-          containers: [scopeNode(scope, blockLine)],
+          containers: [scopeNode(content, scope, blockLine, blockRange)],
           key,
           // Kept as written, minus the indentation the template gave it: the
           // command is the value, and a reviewer compares commands.
@@ -137,6 +159,7 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
     if (text === "}") {
       block = undefined;
       blockLine = undefined;
+      blockRange = undefined;
       continue;
     }
 
@@ -153,11 +176,17 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
     // and the comment above this code claimed to handle it, which is how it
     // went unnoticed.
     if (text.endsWith("{")) {
-      const head = [...pending, text.slice(0, -1).trim()].filter(Boolean);
+      const own = text.slice(0, -1).trim();
+      const ownAt = own ? lineStart + lines[i].indexOf(own) : undefined;
+      const head = [...pending, ...(own ? [{ text: own, start: ownAt!, end: ownAt! + own.length }] : [])];
       pending = [];
       // `{` with nothing before it anywhere: not a block header, and not
       // something to guess about.
-      if (head.length > 0) { block = head.join(" "); blockLine = pendingLine ?? i + 1; }
+      if (head.length > 0) {
+        block = head.map((h) => h.text).join(" ");
+        blockLine = pendingLine ?? i + 1;
+        blockRange = [head[0].start, head[head.length - 1].end];
+      }
       pendingLine = undefined;
       continue;
     }
@@ -175,14 +204,15 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
     // possibly a template substitution this parser receives already masked.
     if (block === undefined && !DIRECTIVES.has(name)) {
       if (pending.length === 0) pendingLine = i + 1;
-      pending.push(text);
+      const at = lineStart + lines[i].indexOf(text);
+      pending.push({ text, start: at, end: at + text.length });
       continue;
     }
 
     // A pattern line followed by something that is not `{` is malformed. Emit
     // what was collected rather than dropping it: a line that disappears from
     // the sheet is the failure this whole area exists to prevent.
-    for (const stray of pending) emitPattern(stray, i + 1);
+    for (const stray of pending) emitPattern(stray.text, i + 1);
     pending = [];
     pendingLine = undefined;
     if (SCRIPT_DIRECTIVES.has(name)) {
@@ -192,7 +222,7 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
     emit(text, i + 1);
   }
   // A file that ends while patterns are still waiting for a brace.
-  for (const stray of pending) emitPattern(stray, lines.length);
+  for (const stray of pending) emitPattern(stray.text, lines.length);
   return out;
 
   // A pattern that never got its brace. The whole line is the key: splitting it
@@ -212,7 +242,7 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
     const n = seen.get(`${scope}\u0000${name}`) ?? 0;
     seen.set(`${scope}\u0000${name}`, n + 1);
     const key = n === 0 ? name : `${name}[${n}]`;
-    out.push({ categoryPath: [scope], key, value, line, path: `${scope}.${key}`, containers: [scopeNode(scope, blockLine)] });
+    out.push({ categoryPath: [scope], key, value, line, path: `${scope}.${key}`, containers: [scopeNode(content, scope, blockLine, blockRange)] });
   }
 }
 
@@ -220,6 +250,9 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
 
 export function logrotateLocate(content: string, path: string): { value: string } | { error: string } {
   const hit = logrotateIndex(content).find((e) => e.path === path);
+  // A BLOCK's own address, which is not an entry (see containerSubjectAt).
+  const containerSubject = containerSubjectAt(logrotateIndex(content), path);
+  if (containerSubject !== undefined) return { value: containerSubject };
   return hit ? { value: hit.value } : { error: `no logrotate directive at ${path}` };
 }
 
