@@ -1,4 +1,5 @@
 // HCL (Terraform / Consul / Nomad / Vault / Packer) support.
+import type { ContainerNode } from "./types.js";
 // A self-contained character scanner builds a block tree with source ranges,
 // mirroring the nginx adapter. Block paths use name+labels as segments, so
 // reordering resources does not break source maps.
@@ -8,7 +9,7 @@
 // function-call expressions, and variable/data/local/module references — is
 // silently skipped (→ AI prompt).
 
-export type HclEntry = { categoryPath: string[]; key: string; value: string; line: number; range: [number, number]; path: string };
+export type HclEntry = { categoryPath: string[]; key: string; value: string; line: number; range: [number, number]; path: string; containers: ContainerNode[] };
 
 // ---- Tokeniser ---------------------------------------------------------------
 
@@ -263,18 +264,17 @@ function parseScalar(raw: string): string | null {
 // ---- Indexer ----------------------------------------------------------------
 
 // Path segment: path portion + category display name
-type Seg = { path: string; cat: string };
 
 // One walk, two consumers. `hclIndex` wants the attributes it can VALUE;
 // `hclAttributeSites` wants every attribute the file assigns, valuable or not.
 // The block-path logic below (labels, positional indexing of unlabeled repeats)
 // is the part that must not be written twice — it decides row identity, and two
 // copies would drift.
-function walkAttrs(content: string, visit: (segs: Seg[], attr: Attr) => void): void {
+function walkAttrs(content: string, visit: (nodes: ContainerNode[], attr: Attr) => void): void {
   const root = scan(content);
-  const walk = (block: Block, segs: Seg[]): void => {
-    for (const attr of block.attrs) visit(segs, attr);
-    walkBlocks(block, segs, walk);
+  const walk = (block: Block, nodes: ContainerNode[]): void => {
+    for (const attr of block.attrs) visit(nodes, attr);
+    walkBlocks(block, nodes, walk);
   };
   walk(root, []);
 }
@@ -302,10 +302,10 @@ export type HclAttributeSite = {
 
 export function hclAttributeSites(content: string): HclAttributeSite[] {
   const out: HclAttributeSite[] = [];
-  walkAttrs(content, (segs, attr) => {
+  walkAttrs(content, (nodes, attr) => {
     const scalar = parseScalar(attr.rawValue);
     out.push({
-      path: [...segs.map((s) => s.path), attr.name].join("."),
+      path: [...nodes.map((n) => n.pathSeg), attr.name].join("."),
       line: attr.line,
       ...(scalar === null ? {} : { value: scalar }),
     });
@@ -315,22 +315,23 @@ export function hclAttributeSites(content: string): HclAttributeSite[] {
 
 export function hclIndex(content: string): HclEntry[] {
   const out: HclEntry[] = [];
-  walkAttrs(content, (segs, attr) => {
+  walkAttrs(content, (nodes, attr) => {
     const scalar = parseScalar(attr.rawValue);
     if (scalar === null) return; // skip non-scalars / expressions
     out.push({
-      categoryPath: segs.map((s) => s.cat),
+      categoryPath: nodes.flatMap((n) => n.headings),
       key: attr.name,
       value: scalar,
       line: attr.line,
       range: [attr.valStart, attr.valEnd],
-      path: [...segs.map((s) => s.path), attr.name].join("."),
+      path: [...nodes.map((n) => n.pathSeg), attr.name].join("."),
+      containers: nodes,
     });
   });
   return out;
 }
 
-function walkBlocks(block: Block, segs: Seg[], walk: (b: Block, segs: Seg[]) => void): void {
+function walkBlocks(block: Block, nodes: ContainerNode[], walk: (b: Block, nodes: ContainerNode[]) => void): void {
   {
 
     // Child blocks, grouped by name for positional indexing of unlabeled repeats
@@ -348,21 +349,28 @@ function walkBlocks(block: Block, segs: Seg[], walk: (b: Block, segs: Seg[]) => 
       const allUnique = allLabeled && new Set(labelTuples).size === labelTuples.length;
 
       group.forEach((b, idx) => {
-        let seg: Seg;
+        let node: ContainerNode;
         if (group.length === 1 && b.labels.length === 0) {
           // Single unlabeled block: just use name
-          seg = { path: name, cat: name };
+          node = { name, pathSeg: name, headings: [name], line: b.line };
         } else if (allUnique) {
           // Labeled blocks: path = name.label1.label2...; category keeps name + all
           // labels so it stays unique (two resource types sharing a label, e.g.
           // aws_instance.web vs google_db.web, do not collapse together).
+          //
+          // HCL is where a block carries MORE THAN ONE identifying argument
+          // (`resource "aws_lb" "this"`), so the subject is the labels as
+          // written — one verbatim string, which is what a container row shows
+          // and what every other format's subject already is. And the path
+          // segment contains DOTS, which is the second format after logrotate
+          // where reading a chain back out of the joined path is impossible.
           const pathParts = [name, ...b.labels];
-          seg = { path: pathParts.join("."), cat: pathParts.join(" ") };
+          node = { name, subject: b.labels.join(" "), pathSeg: pathParts.join("."), headings: [pathParts.join(" ")], line: b.line };
         } else {
           // Repeated unlabeled blocks: index them
-          seg = { path: `${name}[${idx}]`, cat: `${name}[${idx}]` };
+          node = { name, index: idx, pathSeg: `${name}[${idx}]`, headings: [`${name}[${idx}]`], line: b.line };
         }
-        walk(b, [...segs, seg]);
+        walk(b, [...nodes, node]);
       });
     }
   }
