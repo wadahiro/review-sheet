@@ -984,6 +984,13 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
         n.line !== undefined && file !== undefined && !n.subjectAssembled
           ? { file, line: n.line, anchor: n.subject, path: addr }
           : undefined;
+      // A block the vendor ships and this project does not: its own row carries
+      // no source for the same reason its contents do not — nothing in OUR
+      // files holds it, and the schema says so. The opening line it does have
+      // is in the vendor's file, which is a place to look, not a place the row
+      // lives; carrying it only on the parent also split the block from its
+      // three settings, which sat under the deployed file.
+      const fromBaselineEntry = e.origin === "baseline";
       const param: Parameter = {
         key: addr,
         container: { ...(n.name === undefined ? {} : { name: n.name }), ...(n.nameFromDocs ? { nameFromDocs: true } : {}) },
@@ -991,15 +998,21 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
         // environments and simply is not in the others, which an instance list
         // expresses by leaving them out.
         ...(present !== undefined && present !== "all"
-          ? { instances: [...present].map((name) => ({ name, value: n.subject!, ...(src ? { source: src } : {}) })) }
+          ? { instances: [...present].map((name) => ({ name, value: n.subject!, ...(src && !fromBaselineEntry ? { source: src } : {}) })) }
           : { value: n.subject }),
-        origin: "embedded",
+        // A block the VENDOR ships and this project does not is not embedded in
+        // the deployed artifact — nothing opens it there. Saying "embedded"
+        // claimed the opposite, and (through attributedFile, which reads a
+        // row's own file) filed the block under the vendor's file while its
+        // three settings sat under the deployed one: a block separated from its
+        // own contents by attribution rather than by grouping.
+        origin: fromBaselineEntry ? "baseline" : "embedded",
         // The opening line, which is where the argument is written. Its column
         // range is deliberately not carried: apply holds a container anyway
         // (see HELD_REASON_CONTAINER_SUBJECT), so an exact span would be
         // precision nothing acts on, and a template parser cannot give one at
         // all.
-        ...(src ? { source: src } : {}),
+        ...(src && !fromBaselineEntry ? { source: src } : {}),
       };
       if (i > 0) param.container_path = chain.slice(0, i).map((x, k) => ({ path: chain.slice(0, k + 1).map((y) => y.pathSeg).join("."), name: x.name }));
       // Filed where the block ITSELF sits — one level above its contents,
@@ -2004,8 +2017,9 @@ function fileDrafts(
       if (d.param.container) {
         missingCategory.push(
           `${sheetName} > ${d.key} (a block's own row — this sheet is organised by the parser's own structure, ` +
-            `where a top-level block has nothing above it to file under. Set "group_by: file" on this sheet in ` +
-            `sheet.yml, which files every row by the file it comes from, blocks included)`
+            `where a top-level block has nothing above it to file under. Heading rows by their file places it, ` +
+            `blocks included — that is the default, so this sheet either declares "layout: categories" or names ` +
+            `no file it deploys)`
         );
         continue;
       }
