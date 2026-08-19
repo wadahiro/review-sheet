@@ -1,0 +1,9 @@
+ServerName {{ web_server_name }}
+Timeout {{ web_timeout }}
+
+Include conf.modules.d/*.conf
+
+<Directory "/var/www/html">
+    AllowOverride {{ web_allow_override }}
+    Options {{ web_options }}
+</Directory>

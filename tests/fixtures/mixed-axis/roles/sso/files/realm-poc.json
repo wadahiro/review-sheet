@@ -1,0 +1,7 @@
+{
+  "realm": "poc",
+  "enabled": true,
+  "sslRequired": "external",
+  "loginTheme": "keycloak",
+  "accessTokenLifespan": 300
+}

@@ -1,0 +1,19 @@
+version: 1
+instances: [production]
+metadata: { project: mixed-axis, version: "1" }
+enrich: { project: ./sheet.yml, strict: false }
+sheets:
+  - name: sso
+    recipe: ansible
+    rows: artifact
+    defaults: ../roles/sso/defaults/main.yml
+    templates:
+      - path: ../roles/sso/templates/keycloak.conf.j2
+        component: /opt/keycloak/conf/keycloak.conf
+        deployed_path: /opt/keycloak/conf/keycloak.conf
+    static_files:
+      # Imported through the product's own API rather than deployed as a file:
+      # there is no path on the host this ends up at, which is the whole point
+      # of the fixture.
+      - path: ../roles/sso/files/realm-poc.json
+        component: realm poc

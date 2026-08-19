@@ -774,6 +774,42 @@
     "sha": "0f594678cd6add57"
   },
   {
+    "file": "tests/fixtures/body-layout/README.md",
+    "parser": "generic",
+    "count": 2,
+    "sha": "fb2dd33a1a204572"
+  },
+  {
+    "file": "tests/fixtures/body-layout/roles/web/defaults/main.yml",
+    "parser": "yaml",
+    "count": 7,
+    "sha": "776d402166e5012d"
+  },
+  {
+    "file": "tests/fixtures/body-layout/roles/web/templates/httpd.conf.j2",
+    "parser": "jinja2",
+    "count": 5,
+    "sha": "4ee3d78dcf9f6bb9"
+  },
+  {
+    "file": "tests/fixtures/body-layout/roles/web/templates/mpm.conf.j2",
+    "parser": "jinja2",
+    "count": 4,
+    "sha": "435e0cf2f829ce92"
+  },
+  {
+    "file": "tests/fixtures/body-layout/rs/build.yml",
+    "parser": "yaml",
+    "count": 15,
+    "sha": "3f0009a43c53436b"
+  },
+  {
+    "file": "tests/fixtures/body-layout/rs/sheet.yml",
+    "parser": "yaml",
+    "count": 4,
+    "sha": "7e9fea2d42ba7ca7"
+  },
+  {
     "file": "tests/fixtures/diff-demo.json",
     "parser": "json",
     "count": 64,
@@ -790,6 +826,42 @@
     "parser": "json",
     "count": 76,
     "sha": "e8ecd9f40bba0776"
+  },
+  {
+    "file": "tests/fixtures/mixed-axis/README.md",
+    "parser": "generic",
+    "count": 2,
+    "sha": "1305048b9a485375"
+  },
+  {
+    "file": "tests/fixtures/mixed-axis/roles/sso/defaults/main.yml",
+    "parser": "yaml",
+    "count": 3,
+    "sha": "45106d2fc298b908"
+  },
+  {
+    "file": "tests/fixtures/mixed-axis/roles/sso/files/realm-poc.json",
+    "parser": "json",
+    "count": 5,
+    "sha": "0ab9fd8c03a9fade"
+  },
+  {
+    "file": "tests/fixtures/mixed-axis/roles/sso/templates/keycloak.conf.j2",
+    "parser": "jinja2",
+    "count": 3,
+    "sha": "cc57e4803d014b99"
+  },
+  {
+    "file": "tests/fixtures/mixed-axis/rs/build.yml",
+    "parser": "yaml",
+    "count": 14,
+    "sha": "13dbfc6bc8b28352"
+  },
+  {
+    "file": "tests/fixtures/mixed-axis/rs/sheet.yml",
+    "parser": "yaml",
+    "count": 4,
+    "sha": "734288ec97809000"
   },
   {
     "file": "tests/fixtures/multi-instance.json",

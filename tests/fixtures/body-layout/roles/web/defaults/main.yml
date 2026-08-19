@@ -1,0 +1,7 @@
+web_server_name: www.example.invalid
+web_timeout: 60
+web_allow_override: None
+web_options: FollowSymLinks
+web_start_servers: 2
+web_max_workers: 256
+web_threads_per_child: 25
