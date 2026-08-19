@@ -433,7 +433,18 @@ export type ParameterBase = {
   // viewer draws those from this, which is also why they are not rows: nothing
   // is keyed by them, no dictionary owes them a description, and they carry no
   // review target or diff presence.
-  container_path?: { path: string; name?: string }[];
+  // `subject` is the block's ARGUMENT (`"/var/www"`), carried here because a
+  // row separated from its container row — which happens the moment a display
+  // groups rows by anything other than the file — has no other way to say WHICH
+  // block it came from: the viewer redraws the block line from this chain, and a
+  // bare `Directory` above two different blocks names neither.
+  container_path?: { path: string; name?: string; subject?: string }[];
+  // The grouping a file heading displaced (`layout: file+categories`): the
+  // dictionary's own group path for this row, carried so the viewer can
+  // sub-head a long flat file by it. DISPLAY ONLY — the row's identity stays
+  // `sheet :: category :: key` with the file as the category, so switching the
+  // layout moves no review target, no apply target and no diff key.
+  sub_category?: string[];
   // What the PRODUCT calls it where a human meets it — a Keycloak admin-console
   // label. Display only, filled by enrich from the bound dictionary, and never
   // a substitute for the key: a reviewer needs both, one to recognise the

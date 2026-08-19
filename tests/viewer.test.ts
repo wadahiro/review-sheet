@@ -2343,3 +2343,68 @@ describe("viewer: two documents with the same heading", () => {
     expect(await currentCount(mountWith("rs-doc-ツリー", "rs-doc-ツリー"))).toBe(2);
   });
 });
+
+// `layout: file+categories`: the file heads the rows, and the grouping that
+// heading displaced sub-heads them inside its table. Derived here rather than
+// stored as a second category level, because a row's identity is
+// `sheet :: category :: key` — making the group a category would move every
+// review target and apply target the day a project changed its layout, which is
+// a display decision moving data.
+describe("sub-headings inside a file's table", () => {
+  const row = (key: string, sub?: string[]) => ({
+    key,
+    value: "v",
+    description: { ja: "d" },
+    ...(sub ? { sub_category: sub } : {}),
+  });
+
+  function mountSub(params: ReturnType<typeof row>[]): HTMLElement {
+    const payload = {
+      metadata: { title: "t" },
+      versions: [{ version: "current", sheets: [{ name: "s", categories: [{ name: "/etc/app.conf", params }] }] }],
+    } as unknown as ParameterSheetInput as never;
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    return host;
+  }
+
+  const headsOf = (host: HTMLElement): string[] =>
+    [...host.querySelectorAll("tr.rs-row-subhead")].map((tr) => tr.textContent?.trim() ?? "");
+  const keysOf = (host: HTMLElement): string[] =>
+    [...host.querySelectorAll("tr.rs-param-row")]
+      .filter((tr) => !tr.className.includes("rs-row-subhead"))
+      .map((tr) => tr.querySelector(".rs-col-key")?.textContent?.trim() ?? "");
+
+  it("heads each group once, in first-appearance order", () => {
+    const host = mountSub([row("a", ["Logging"]), row("b", ["Memory"]), row("c", ["Logging"])]);
+    expect(headsOf(host)).toEqual(["Logging", "Memory"]);
+  });
+
+  it("gathers a group's rows under its heading, keeping their order within it", () => {
+    const host = mountSub([row("a", ["Logging"]), row("b", ["Memory"]), row("c", ["Logging"])]);
+    expect(keysOf(host)).toEqual(["a", "c", "b"]);
+  });
+
+  // A path is written as one heading, the way a dictionary states it.
+  it("writes a nested group as its path", () => {
+    expect(headsOf(mountSub([row("a", ["Write-Ahead Log", "Archiving"])]))).toEqual(["Write-Ahead Log / Archiving"]);
+  });
+
+  // The rows a file heads but a dictionary never grouped keep their place at
+  // the top rather than being filed under a heading invented for them.
+  it("leaves an ungrouped row unheaded", () => {
+    const host = mountSub([row("plain"), row("a", ["Logging"])]);
+    expect(headsOf(host)).toEqual(["Logging"]);
+    expect(keysOf(host)).toEqual(["plain", "a"]);
+  });
+
+  // The default layout stores no `sub_category` at all, and a table with none
+  // must render exactly as it did before this existed.
+  it("adds nothing to a table whose rows carry no grouping", () => {
+    const host = mountSub([row("a"), row("b")]);
+    expect(headsOf(host)).toEqual([]);
+    expect(keysOf(host)).toEqual(["a", "b"]);
+  });
+});

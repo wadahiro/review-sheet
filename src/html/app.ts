@@ -2233,20 +2233,62 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   // description, it has no review target and no place in a diff. It appears and
   // disappears with its contents for free, because it is derived from them.
   const emittedBlocks = new Set(shown.map((p) => p.key));
-  const blockLine = (b: { path: string; name?: string }, depth: number): VNode =>
+  // The block's ARGUMENT belongs on this line whenever the line is standing in
+  // for a container row that is not on screen. Without it two `<Directory>`
+  // blocks redraw as two identical `Directory` headers and the reader cannot
+  // tell which one a displaced setting came from — the same redundancy question
+  // the container rows answered, asked from the other side.
+  const blockLine = (b: { path: string; name?: string; subject?: string }, depth: number): VNode =>
     html`<tr key=${`block:${b.path}`} class="rs-param-row rs-row-container rs-row-structure" style=${`--rs-block-depth:${depth}`}>
       <td class="rs-col-key"><code>${b.name ?? ""}</code></td>
-      <td class="rs-col-value" colSpan=${Math.max(1, normalLines.length)}></td>
+      <td class="rs-col-value rs-block-subject" colSpan=${Math.max(1, normalLines.length)}>${b.subject ? html`<code>${b.subject}</code>` : null}</td>
     </tr>` as VNode;
 
-  const normalBody = shown.flatMap((param) => {
-    const missing: VNode[] = [];
+  // `layout: file+categories`: the file heads these rows and the grouping it
+  // displaced sub-heads them here, from `sub_category` on the rows themselves.
+  // Derived rather than stored as categories, so the row identity every review
+  // target and diff key is written against does not move when a project changes
+  // its mind about the layout.
+  //
+  // Grouping REORDERS, which is why it is opt-in: a block's contents can be
+  // classified away from the block, and then they are read under a different
+  // sub-head than the line that opens them. The build reports each family it
+  // separated; the redrawn block line above such a row carries the block's own
+  // argument so the row still says what it was torn from.
+  const subKey = (p: ParamData): string => (p.sub_category ?? []).join(" / ");
+  const subHeaded = shown.some((p) => (p.sub_category?.length ?? 0) > 0);
+  const ordered = subHeaded
+    ? // First appearance decides the order of the sub-heads, and rows keep
+      // their order within one. A sort by name would reshuffle the page every
+      // time a group was renamed.
+      [...new Map<string, ParamData[]>(shown.map((p) => [subKey(p), []])).entries()]
+        .map(([k, _]) => shown.filter((p) => subKey(p) === k))
+        .flat()
+    : shown;
+
+  const subHeadLine = (label: string): VNode =>
+    html`<tr key=${`sub:${label}`} class="rs-param-row rs-row-subhead">
+      <td class="rs-col-key" colSpan=${1 + Math.max(1, normalLines.length)}>${label}</td>
+    </tr>` as VNode;
+
+  let lastSub: string | undefined;
+  const normalBody = ordered.flatMap((param) => {
+    const out: VNode[] = [];
+    if (subHeaded) {
+      const k = subKey(param);
+      if (k !== lastSub) {
+        lastSub = k;
+        // A row the file heads but the dictionary never grouped sits at the top
+        // with no sub-head, rather than under one invented for it.
+        if (k !== "") out.push(subHeadLine(k));
+      }
+    }
     (param.container_path ?? []).forEach((b, i) => {
       if (emittedBlocks.has(b.path)) return;
       emittedBlocks.add(b.path);
-      missing.push(blockLine(b, i));
+      out.push(blockLine(b, i));
     });
-    return [...missing, renderParamRow(param)];
+    return [...out, renderParamRow(param)];
   });
 
   function renderParamRow(param: ParamData) {
