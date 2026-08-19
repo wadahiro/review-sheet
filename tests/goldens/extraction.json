@@ -26,8 +26,8 @@
   {
     "file": "examples/ansible-basic/input.json",
     "parser": "json",
-    "count": 3085,
-    "sha": "67a8c18f09f967f4"
+    "count": 3424,
+    "sha": "294680fd36266eb1"
   },
   {
     "file": "examples/ansible-basic/inventories/production/group_vars/db.yml",
@@ -140,8 +140,8 @@
   {
     "file": "examples/ansible-basic/review-sheet/sheet.yml",
     "parser": "yaml",
-    "count": 83,
-    "sha": "1b5ecb3646aeef7a"
+    "count": 84,
+    "sha": "bb0fb66de443492a"
   },
   {
     "file": "examples/ansible-basic/roles/nginx/defaults/main.yml",

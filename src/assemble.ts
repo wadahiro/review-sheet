@@ -35,6 +35,7 @@ import {
   compareComponentsForSheet,
   declaredComponentsForSheet,
   groupsByFile,
+  layoutForSheet,
   sheetGroups,
   checkProjectMetaSheets,
   type ProjectMetaDoc,
@@ -1552,8 +1553,15 @@ function fileDrafts(
   // first-appearance, and the ghost-tab check below is skipped entirely.
   declaredCategories: string[],
   groupByFile: boolean,
+  // `layout: file+categories` — the file still heads the rows, and the
+  // dictionary's grouping is carried ALONGSIDE it as display-only metadata for
+  // the viewer to sub-head with. Deliberately not a second category level: a
+  // row's identity is `sheet :: category :: key`, so making the group a
+  // category would move every review target and apply target the day someone
+  // toggled the layout, which is a display decision moving data.
+  subHeadings: boolean,
   // What this sheet DEPLOYS, when it says so (Sheet.file_path). Used only by
-  // `group_by: file` — see fileCategory.
+  // the file layout — see fileCategory.
   sheetArtifact: string | undefined,
   // The file the artifact is BUILT from (Sheet.source_file) — a row sourced
   // there is a literal line of it.
@@ -1793,6 +1801,14 @@ function fileDrafts(
         : groupByFile
           ? (derivedFile ?? bindingOrFallback(categoryBinding, d.fallbackCategoryPath, d.categoryPathWins))
           : bindingOrFallback(categoryBinding, d.fallbackCategoryPath, d.categoryPathWins);
+    // The grouping the file heading displaced, kept for the viewer to sub-head
+    // with. Only where the file actually won: a row the project categorised by
+    // hand is where the project put it, and saying it "really" belongs
+    // somewhere else would be this file arguing with the author.
+    if (subHeadings && !declaredNoCategory && !meta?.category && derivedFile !== undefined) {
+      const group = bindingOrFallback(categoryBinding, d.fallbackCategoryPath, d.categoryPathWins);
+      if (group !== undefined && group.length > 0) d.param.sub_category = group;
+    }
     // Recorded only where the DICTIONARY decided it: a project that writes a
     // different `category:` per component meant to, and a `category: null` is
     // the same statement on every one of them.
@@ -2483,6 +2499,7 @@ export function assembleSheetsWithReport(
       projectMeta,
       declaredCategories,
       groupsByFile(projectMeta, si.name),
+      layoutForSheet(projectMeta, si.name) === "file+categories",
       si.filePath,
       si.sourceFile,
       missingCategory,

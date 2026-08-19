@@ -123,6 +123,7 @@ sheets:
           en: Adds the Referrer-Policy header that controls how much referrer information is sent on navigation.
           ja: リクエスト遷移時に送信するリファラー情報の範囲を制御する Referrer-Policy ヘッダーを付与する。
   "postgresql configuration":
+    layout: file+categories
     categories: [Connections, Memory, Write-Ahead Log, Query planner, Autovacuum, Logging]
     under_key:
       id: ansible_var

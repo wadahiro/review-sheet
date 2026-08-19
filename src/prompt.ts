@@ -47,7 +47,11 @@ export type ParamData = {
   // these mirror. Carried here because both the viewer and the CLI read this
   // shape, and a container is not a fact either of them may guess at.
   container?: { name?: string; nameFromDocs?: boolean };
-  container_path?: { path: string; name?: string }[];
+  container_path?: { path: string; name?: string; subject?: string }[];
+  // The grouping a file heading displaced, for the viewer to sub-head with —
+  // see `ParameterBase.sub_category`. Display only; the row's identity is its
+  // category and key, and neither moves when the layout does.
+  sub_category?: string[];
   // The product's own display name — LangText in a built model, resolved to a
   // string by the viewer's localizeParam. Display only; `key` is identity.
   label?: LangText | string;

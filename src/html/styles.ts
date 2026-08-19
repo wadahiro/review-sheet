@@ -2204,6 +2204,36 @@ code {
   color: var(--rs-text-muted);
 }
 
+/* A sub-head inside a file's table (layout: file+categories). Reads as a
+   divider between groups of rows, not as a row: no value cell, and the rule
+   above it is what separates one group from the last. Sticky is deliberately
+   NOT used here -- the category header already sticks, and two sticky bands
+   stacking would eat the viewport on a long file. */
+.rs-row-subhead > .rs-col-key {
+  padding-top: 1.1rem;
+  padding-bottom: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--rs-text-muted);
+  border-bottom: 1px solid var(--rs-border);
+  background: transparent;
+}
+
+.rs-row-subhead:first-child > .rs-col-key {
+  padding-top: 0.35rem;
+}
+
+/* The argument on a REDRAWN block line. Muted like the block name beside it:
+   this line is context for the rows under it, not a value anyone reviews --
+   the reviewable copy of it lives on the container row, in the file's own
+   table. */
+.rs-block-subject code {
+  color: var(--rs-text-muted);
+  font-size: 0.92em;
+}
+
 .rs-row-deleted .rs-col-key code,
 .rs-row-deleted .rs-col-value,
 .rs-row-deleted .rs-col-default {

@@ -1289,3 +1289,71 @@ parameters:
     files["p.yml"] = `sheets:\n  web:\n    params: {}\n`;
   });
 });
+
+// `layout: file+categories` — the file still heads the rows, and the grouping
+// it displaced travels with them for the viewer to sub-head with. The point of
+// carrying it as row metadata rather than as a second category level is that
+// the row's identity does not move: a project that changes its mind about the
+// layout must not invalidate every review comment written against the sheet.
+describe("the file layout, sub-headed by the dictionary's groups", () => {
+  const files: Record<string, string> = {
+    "p.yml": `sheets:\n  db:\n    layout: file+categories\n    params: {}\n`,
+    "meta/demodb@1.yml": DICT_YAML,
+  };
+  const opts = (): AssembleOpts => ({
+    projectPath: "p.yml",
+    metadataDirs: ["meta"],
+    readFile: (p) => files[p] ?? null,
+    strictMetadata: false,
+    dictionaries: {
+      db: [{ product: "demodb", version: "1", key_prefix: "db_", deployed_file: "/etc/postgresql/postgresql.conf" }],
+    },
+  });
+  const inputs: SheetInputs[] = [
+    {
+      name: "db",
+      instances: [],
+      layers: [{ kind: "base", entries: new Map([["db_max_conn", { value: "100", source: { file: "base.yml", line: 1 } }]]) }],
+      embedded: [],
+    },
+  ];
+
+  const rowOf = (input: ParameterSheetInput, key: string): Parameter | undefined => {
+    const walk = (cats: Category[] | undefined): Parameter | undefined => {
+      for (const c of cats ?? []) {
+        const hit = (c.params ?? []).find((p) => p.key === key);
+        if (hit) return hit;
+        const deeper = walk(c.categories);
+        if (deeper) return deeper;
+      }
+      return undefined;
+    };
+    return walk(input.sheets[0].categories);
+  };
+
+  it("keeps the file as the row's category — the identity does not move", () => {
+    const input = assembleSheets(inputs, opts());
+    expect(input.sheets[0].categories.map((c) => c.name)).toEqual(["/etc/postgresql/postgresql.conf"]);
+    expect(input.sheets[0].categories[0].categories ?? []).toEqual([]);
+  });
+
+  it("carries the grouping the file heading displaced", () => {
+    expect(rowOf(assembleSheets(inputs, opts()), "db_max_conn")?.sub_category).toEqual(["Connections"]);
+  });
+
+  it("carries none of it on the default layout, which has nothing to sub-head", () => {
+    files["p.yml"] = `sheets:\n  db:\n    params: {}\n`;
+    expect(rowOf(assembleSheets(inputs, opts()), "db_max_conn")?.sub_category).toBeUndefined();
+    files["p.yml"] = `sheets:\n  db:\n    layout: file+categories\n    params: {}\n`;
+  });
+
+  // A row the project filed by hand is where the project put it, and a
+  // sub-heading claiming it "really" belongs elsewhere would be this build
+  // arguing with the author.
+  it("says nothing about a row the project categorised itself", () => {
+    files["p.yml"] = `sheets:\n  db:\n    layout: file+categories\n    params:\n      db_max_conn: { category: Tuning }\n`;
+    const row = rowOf(assembleSheets(inputs, opts()), "db_max_conn");
+    expect(row?.sub_category).toBeUndefined();
+    files["p.yml"] = `sheets:\n  db:\n    layout: file+categories\n    params: {}\n`;
+  });
+});
