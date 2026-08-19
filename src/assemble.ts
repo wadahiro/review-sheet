@@ -614,7 +614,31 @@ const EMPTY_PROJECT_META: ProjectMetaDoc = { params: {} };
 // materializing a large dictionary (httpd@2.4's 100+ modules) doesn't flatten
 // into 100+ top-level tabs alongside the project's own, hand-declared,
 // actually-reviewable categories.
-type Draft = { key: string; param: Parameter; variable?: string; fallbackCategoryPath?: string[]; categoryPathWins?: boolean; component?: string };
+type Draft = {
+  key: string;
+  param: Parameter;
+  variable?: string;
+  fallbackCategoryPath?: string[];
+  categoryPathWins?: boolean;
+  component?: string;
+  // WHICH FILE this row belongs to, as `attributedFile` decides it — the
+  // structural fact the file axis is built on, recorded for every row rather
+  // than only where a sheet asks to be grouped by it.
+  //
+  // Deliberately NOT `component`. That field is a binding SCOPE as well as a
+  // level: `bindingFor`, materialize's per-component sets, per-component
+  // dictionary scoping and keyMap all key off it, and this codebase has already
+  // been bitten once by that coupling — introducing `component:` on a sheet
+  // silently emptied `under_key` and misplaced rows. Every row that has no
+  // component today would acquire one if the file went in there, and every one
+  // of those lookups would move. A separate field cannot make that mistake: the
+  // binding path does not see it by type, not by anyone remembering.
+  //
+  // Read by nothing yet. It is here first, and alone, so that the claim "the
+  // bindings do not move" is a thing the build can be compared against rather
+  // than a thing anyone has to believe.
+  structure?: string;
+};
 
 // Category of last resort for a materialized row whose dictionary carries no
 // `group`. Model-level (like extract.ts's DEFAULT_CATEGORY), not a UI string.
@@ -1680,6 +1704,10 @@ function fileDrafts(
   }
 
   for (const d of drafts) {
+    // Which file this row belongs to, recorded on every row regardless of how
+    // the sheet is grouped — a fact about the deployment, not a display mode.
+    // Nothing reads it yet; see Draft.structure.
+    d.structure = rawFileOf(d);
     // Component-first, then the sheet-wide table (providers/project.ts's
     // paramForRow): two components of one product share their field NAMES, so
     // a flat table would hand one component's remarks to the other.

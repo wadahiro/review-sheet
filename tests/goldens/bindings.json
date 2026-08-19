@@ -1,0 +1,1131 @@
+{
+  "ansible-basic": {
+    "rows": [
+      {
+        "sheet": "nginx configuration",
+        "key": "user",
+        "dictKey": "user",
+        "method": "exact",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "worker_processes",
+        "dictKey": "worker_processes",
+        "method": "exact",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "pid",
+        "dictKey": "pid",
+        "method": "exact",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "worker_connections",
+        "dictKey": "worker_connections",
+        "method": "exact",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "http.include",
+        "dictKey": "include",
+        "method": "leaf",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "http.default_type",
+        "dictKey": "default_type",
+        "method": "leaf",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "http.sendfile",
+        "dictKey": "sendfile",
+        "method": "leaf",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "keepalive_timeout",
+        "dictKey": "keepalive_timeout",
+        "method": "exact",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "client_max_body_size",
+        "dictKey": "client_max_body_size",
+        "method": "exact",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "http.access_log",
+        "dictKey": "access_log",
+        "method": "leaf",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "http.error_log",
+        "dictKey": "error_log",
+        "method": "leaf",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "listen",
+        "dictKey": "listen",
+        "method": "exact",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "server_name",
+        "dictKey": "server_name",
+        "method": "exact",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "root",
+        "dictKey": "root",
+        "method": "exact",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "http.server.index",
+        "dictKey": "index",
+        "method": "leaf",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "http.server.include",
+        "dictKey": "include",
+        "method": "leaf",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "http.server.location[/].try_files",
+        "dictKey": "try_files",
+        "method": "leaf",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "nginx_gzip",
+        "dictKey": "gzip",
+        "method": "prefix",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "server_tokens",
+        "dictKey": "server_tokens",
+        "method": "exact",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "add_header[0]",
+        "dictKey": "add_header",
+        "method": "repeat",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "add_header[1]",
+        "dictKey": "add_header",
+        "method": "repeat",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "nginx configuration",
+        "key": "add_header[2]",
+        "dictKey": "add_header",
+        "method": "repeat",
+        "product": "nginx",
+        "version": "1.26"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "listen_addresses",
+        "dictKey": "listen_addresses",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "port",
+        "dictKey": "port",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "max_connections",
+        "dictKey": "max_connections",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "shared_buffers",
+        "dictKey": "shared_buffers",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "effective_cache_size",
+        "dictKey": "effective_cache_size",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "maintenance_work_mem",
+        "dictKey": "maintenance_work_mem",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "work_mem",
+        "dictKey": "work_mem",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "huge_pages",
+        "dictKey": "huge_pages",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "wal_buffers",
+        "dictKey": "wal_buffers",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "min_wal_size",
+        "dictKey": "min_wal_size",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "max_wal_size",
+        "dictKey": "max_wal_size",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "checkpoint_completion_target",
+        "dictKey": "checkpoint_completion_target",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "random_page_cost",
+        "dictKey": "random_page_cost",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "effective_io_concurrency",
+        "dictKey": "effective_io_concurrency",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "default_statistics_target",
+        "dictKey": "default_statistics_target",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "autovacuum_max_workers",
+        "dictKey": "autovacuum_max_workers",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "autovacuum_naptime",
+        "dictKey": "autovacuum_naptime",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "log_min_duration_statement",
+        "dictKey": "log_min_duration_statement",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "log_line_prefix",
+        "dictKey": "log_line_prefix",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "log_checkpoints",
+        "dictKey": "log_checkpoints",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "password_encryption",
+        "dictKey": "password_encryption",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      },
+      {
+        "sheet": "postgresql configuration",
+        "key": "dynamic_shared_memory_type",
+        "dictKey": "dynamic_shared_memory_type",
+        "method": "exact",
+        "product": "postgresql",
+        "version": "16"
+      }
+    ],
+    "summary": {
+      "alias": 0,
+      "exact": 32,
+      "aka": 0,
+      "repeat": 3,
+      "prefix": 1,
+      "derived": 0,
+      "derived-default": 0,
+      "leaf": 8,
+      "normalized": 0,
+      "none": 0
+    }
+  },
+  "ansible-httpd": {
+    "rows": [
+      {
+        "sheet": "httpd configuration",
+        "key": "Listen",
+        "dictKey": "Listen",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "ServerName",
+        "dictKey": "ServerName",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "ServerTokens",
+        "dictKey": "ServerTokens",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "ServerSignature",
+        "dictKey": "ServerSignature",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "TimeOut",
+        "dictKey": "TimeOut",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "LogLevel",
+        "dictKey": "LogLevel",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "DocumentRoot",
+        "dictKey": "DocumentRoot",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "KeepAlive",
+        "dictKey": "KeepAlive",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "KeepAliveTimeout",
+        "dictKey": "KeepAliveTimeout",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "MaxKeepAliveRequests",
+        "dictKey": "MaxKeepAliveRequests",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "Include",
+        "dictKey": "Include",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "TypesConfig",
+        "dictKey": "TypesConfig",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "IfModule",
+        "dictKey": "IfModule",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "StartServers",
+        "dictKey": "StartServers",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "MinSpareThreads",
+        "dictKey": "MinSpareThreads",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "MaxSpareThreads",
+        "dictKey": "MaxSpareThreads",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "ThreadsPerChild",
+        "dictKey": "ThreadsPerChild",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "MaxRequestWorkers",
+        "dictKey": "MaxRequestWorkers",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      },
+      {
+        "sheet": "httpd configuration",
+        "key": "ServerLimit",
+        "dictKey": "ServerLimit",
+        "method": "exact",
+        "product": "httpd",
+        "version": "2.4"
+      }
+    ],
+    "summary": {
+      "alias": 0,
+      "exact": 19,
+      "aka": 0,
+      "repeat": 0,
+      "prefix": 0,
+      "derived": 0,
+      "derived-default": 0,
+      "leaf": 0,
+      "normalized": 0,
+      "none": 0
+    }
+  },
+  "ansible-keycloak": {
+    "rows": [
+      {
+        "sheet": "keycloak configuration",
+        "key": "db",
+        "dictKey": "db",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "db-url",
+        "dictKey": "db-url",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "db-username",
+        "dictKey": "db-username",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "db-password",
+        "dictKey": "db-password",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "hostname",
+        "dictKey": "hostname",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "hostname-strict",
+        "dictKey": "hostname-strict",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "http-enabled",
+        "dictKey": "http-enabled",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "http-port",
+        "dictKey": "http-port",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "https-port",
+        "dictKey": "https-port",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "https-certificate-file",
+        "dictKey": "https-certificate-file",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "https-certificate-key-file",
+        "dictKey": "https-certificate-key-file",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "proxy-headers",
+        "dictKey": "proxy-headers",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "health-enabled",
+        "dictKey": "health-enabled",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "metrics-enabled",
+        "dictKey": "metrics-enabled",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "log",
+        "dictKey": "log",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "log-level",
+        "dictKey": "log-level",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "cache",
+        "dictKey": "cache",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak configuration",
+        "key": "cache-stack",
+        "dictKey": "cache-stack",
+        "method": "exact",
+        "product": "keycloak",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "realm",
+        "dictKey": "realm",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "enabled",
+        "dictKey": "enabled",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "displayName",
+        "dictKey": "displayName",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "loginTheme",
+        "dictKey": "loginTheme",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "sslRequired",
+        "dictKey": "sslRequired",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "ssoSessionIdleTimeout",
+        "dictKey": "ssoSessionIdleTimeout",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "ssoSessionMaxLifespan",
+        "dictKey": "ssoSessionMaxLifespan",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "accessTokenLifespan",
+        "dictKey": "accessTokenLifespan",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "registrationAllowed",
+        "dictKey": "registrationAllowed",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "resetPasswordAllowed",
+        "dictKey": "resetPasswordAllowed",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "verifyEmail",
+        "dictKey": "verifyEmail",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "loginWithEmailAllowed",
+        "dictKey": "loginWithEmailAllowed",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "duplicateEmailsAllowed",
+        "dictKey": "duplicateEmailsAllowed",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "rememberMe",
+        "dictKey": "rememberMe",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "bruteForceProtected",
+        "dictKey": "bruteForceProtected",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "failureFactor",
+        "dictKey": "failureFactor",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "waitIncrementSeconds",
+        "dictKey": "waitIncrementSeconds",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "passwordPolicy",
+        "dictKey": "passwordPolicy",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "smtpServer.host",
+        "dictKey": "smtpServer.host",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "smtpServer.port",
+        "dictKey": "smtpServer.port",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "smtpServer.from",
+        "dictKey": "smtpServer.from",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "smtpServer.fromDisplayName",
+        "dictKey": "smtpServer.fromDisplayName",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "smtpServer.auth",
+        "dictKey": "smtpServer.auth",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "smtpServer.starttls",
+        "method": "none"
+      },
+      {
+        "sheet": "keycloak realm",
+        "key": "smtpServer.user",
+        "dictKey": "smtpServer.user",
+        "method": "exact",
+        "product": "keycloak-realm",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "ifResourceExists",
+        "method": "none"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-web].name",
+        "dictKey": "name",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-web].protocol",
+        "dictKey": "protocol",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-web].enabled",
+        "dictKey": "enabled",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-web].publicClient",
+        "dictKey": "publicClient",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-web].rootUrl",
+        "dictKey": "rootUrl",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-web].baseUrl",
+        "dictKey": "baseUrl",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-web].redirectUris",
+        "dictKey": "redirectUris",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-web].webOrigins",
+        "dictKey": "webOrigins",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-web].standardFlowEnabled",
+        "dictKey": "standardFlowEnabled",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-web].directAccessGrantsEnabled",
+        "dictKey": "directAccessGrantsEnabled",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-web].fullScopeAllowed",
+        "dictKey": "fullScopeAllowed",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-web].attributes[\"post.logout.redirect.uris\"]",
+        "dictKey": "post.logout.redirect.uris",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-web].attributes[\"backchannel.logout.url\"]",
+        "dictKey": "backchannel.logout.url",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-web].attributes[\"backchannel.logout.session.required\"]",
+        "dictKey": "backchannel.logout.session.required",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-saml].name",
+        "dictKey": "name",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-saml].protocol",
+        "dictKey": "protocol",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-saml].enabled",
+        "dictKey": "enabled",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-saml].adminUrl",
+        "dictKey": "adminUrl",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-saml].redirectUris",
+        "dictKey": "redirectUris",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-saml].frontchannelLogout",
+        "dictKey": "frontchannelLogout",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-saml].attributes[\"saml.client.signature\"]",
+        "dictKey": "saml.client.signature",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-saml].attributes[\"saml.encrypt\"]",
+        "dictKey": "saml.encrypt",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-saml].attributes[\"saml.signature.algorithm\"]",
+        "dictKey": "saml.signature.algorithm",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-saml].attributes.saml_signature_canonicalization_method",
+        "dictKey": "saml_signature_canonicalization_method",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-saml].attributes.saml_name_id_format",
+        "dictKey": "saml_name_id_format",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-saml].attributes.saml_assertion_consumer_url_post",
+        "dictKey": "saml_assertion_consumer_url_post",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      },
+      {
+        "sheet": "keycloak clients",
+        "key": "clients[clientId=corp-saml].attributes.saml_single_logout_service_url_post",
+        "dictKey": "saml_single_logout_service_url_post",
+        "method": "leaf",
+        "product": "keycloak-client",
+        "version": "26.7.0"
+      }
+    ],
+    "summary": {
+      "alias": 0,
+      "exact": 42,
+      "aka": 0,
+      "repeat": 0,
+      "prefix": 0,
+      "derived": 0,
+      "derived-default": 0,
+      "leaf": 27,
+      "normalized": 0,
+      "none": 2
+    }
+  },
+  "cdk-snapshot": {
+    "rows": [],
+    "summary": {
+      "alias": 0,
+      "exact": 0,
+      "aka": 0,
+      "repeat": 0,
+      "prefix": 0,
+      "derived": 0,
+      "derived-default": 0,
+      "leaf": 0,
+      "normalized": 0,
+      "none": 0
+    }
+  }
+}
