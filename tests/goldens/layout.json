@@ -1,0 +1,3558 @@
+{
+  "placements": [
+    {
+      "sheet": "API stack",
+      "path": "Compute",
+      "key": "Resources.ApiFunction4A2B0C1D.Properties.Environment.Variables.LOG_LEVEL"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Compute",
+      "key": "Resources.ApiFunction4A2B0C1D.Properties.Handler"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Compute",
+      "key": "Resources.ApiFunction4A2B0C1D.Properties.MemorySize"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Compute",
+      "key": "Resources.ApiFunction4A2B0C1D.Properties.ReservedConcurrentExecutions"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Compute",
+      "key": "Resources.ApiFunction4A2B0C1D.Properties.Runtime"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Compute",
+      "key": "Resources.ApiFunction4A2B0C1D.Properties.Timeout"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Data store",
+      "key": "Resources.AppTable815C50BC.DeletionPolicy"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Data store",
+      "key": "Resources.AppTable815C50BC.Properties.BillingMode"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Data store",
+      "key": "Resources.AppTable815C50BC.Properties.PointInTimeRecoverySpecification.PointInTimeRecoveryEnabled"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Data store",
+      "key": "Resources.AppTable815C50BC.Properties.ProvisionedThroughput.ReadCapacityUnits"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Data store",
+      "key": "Resources.AppTable815C50BC.Properties.ProvisionedThroughput.WriteCapacityUnits"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Data store",
+      "key": "Resources.AppTable815C50BC.Properties.SSESpecification.SSEEnabled"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Logging",
+      "key": "Resources.ApiLogGroup2E9F0B3A.DeletionPolicy"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Logging",
+      "key": "Resources.ApiLogGroup2E9F0B3A.Properties.LogGroupName"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Logging",
+      "key": "Resources.ApiLogGroup2E9F0B3A.Properties.RetentionInDays"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Scaling",
+      "key": "Resources.TableReadScalingTargetD6E4C6F0.Properties.MaxCapacity"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Scaling",
+      "key": "Resources.TableReadScalingTargetD6E4C6F0.Properties.MinCapacity"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Scaling",
+      "key": "Resources.TableReadScalingTargetD6E4C6F0.Properties.ScalableDimension"
+    },
+    {
+      "sheet": "API stack",
+      "path": "Scaling",
+      "key": "Resources.TableReadScalingTargetD6E4C6F0.Properties.ServiceNamespace"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "General",
+      "key": "DocumentRoot"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "General",
+      "key": "Include"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "General",
+      "key": "Listen"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "General",
+      "key": "LogLevel"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "General",
+      "key": "ServerName"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "General",
+      "key": "ServerSignature"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "General",
+      "key": "ServerTokens"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "General",
+      "key": "TimeOut"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "General",
+      "key": "TypesConfig"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "KeepAlive",
+      "key": "KeepAlive"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "KeepAlive",
+      "key": "KeepAliveTimeout"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "KeepAlive",
+      "key": "MaxKeepAliveRequests"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "MPM",
+      "key": "IfModule"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "MPM",
+      "key": "MaxRequestWorkers"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "MPM",
+      "key": "MaxSpareThreads"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "MPM",
+      "key": "MinSpareThreads"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "MPM",
+      "key": "ServerLimit"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "MPM",
+      "key": "StartServers"
+    },
+    {
+      "sheet": "httpd configuration",
+      "path": "MPM",
+      "key": "ThreadsPerChild"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Advanced",
+      "key": "clients[clientId=corp-saml].attributes.saml_assertion_consumer_url_post"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Advanced",
+      "key": "clients[clientId=corp-saml].attributes.saml_single_logout_service_url_post"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Capability config",
+      "key": "clients[clientId=corp-web].directAccessGrantsEnabled"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Capability config",
+      "key": "clients[clientId=corp-web].fullScopeAllowed"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Capability config",
+      "key": "clients[clientId=corp-web].standardFlowEnabled"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "General",
+      "key": "clients[clientId=corp-saml].attributes.saml_signature_canonicalization_method"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "General",
+      "key": "clients[clientId=corp-saml].attributes[\"saml.signature.algorithm\"]"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Import",
+      "key": "ifResourceExists"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-saml].adminUrl"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-saml].attributes.saml_name_id_format"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-saml].attributes[\"saml.client.signature\"]"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-saml].attributes[\"saml.encrypt\"]"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-saml].enabled"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-saml].frontchannelLogout"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-saml].name"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-saml].protocol"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-saml].redirectUris"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-web].attributes[\"backchannel.logout.session.required\"]"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-web].attributes[\"backchannel.logout.url\"]"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-web].attributes[\"post.logout.redirect.uris\"]"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-web].baseUrl"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-web].enabled"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-web].name"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-web].protocol"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-web].publicClient"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-web].redirectUris"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-web].rootUrl"
+    },
+    {
+      "sheet": "keycloak clients",
+      "path": "Settings",
+      "key": "clients[clientId=corp-web].webOrigins"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Bootstrap admin",
+      "key": "bootstrap-admin-client-id"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Bootstrap admin",
+      "key": "bootstrap-admin-username"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Cache",
+      "key": "cache"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Cache",
+      "key": "cache-config-mutate"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Cache",
+      "key": "cache-embedded-mtls-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Cache",
+      "key": "cache-embedded-mtls-rotation-interval-days"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Cache",
+      "key": "cache-metrics-histograms-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Cache",
+      "key": "cache-remote-port"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Cache",
+      "key": "cache-remote-tls-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Cache",
+      "key": "cache-stack"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Config keystore",
+      "key": "config-keystore-type"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database / Named datasources",
+      "key": "db-connect-timeout-<datasource>"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database / Named datasources",
+      "key": "db-debug-jpql-<datasource>"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database / Named datasources",
+      "key": "db-enabled-<datasource>"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database / Named datasources",
+      "key": "db-health-exclude-<datasource>"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database / Named datasources",
+      "key": "db-log-slow-queries-threshold-<datasource>"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database / Named datasources",
+      "key": "db-pool-max-size-<datasource>"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database / Named datasources",
+      "key": "db-tls-mode-<datasource>"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database",
+      "key": "db"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database",
+      "key": "db-connect-timeout"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database",
+      "key": "db-debug-jpql"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database",
+      "key": "db-log-slow-queries-threshold"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database",
+      "key": "db-password"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database",
+      "key": "db-pool-max-size"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database",
+      "key": "db-tls-mode"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database",
+      "key": "db-url"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Database",
+      "key": "db-username"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Events",
+      "key": "event-metrics-user-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Events",
+      "key": "event-metrics-user-tags"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Export (kc.sh export)",
+      "key": "users"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Export (kc.sh export)",
+      "key": "users-per-file"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Hostname",
+      "key": "hostname"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Hostname",
+      "key": "hostname-backchannel-dynamic"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Hostname",
+      "key": "hostname-debug"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Hostname",
+      "key": "hostname-strict"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP / TLS",
+      "key": "http-accept-non-normalized-paths"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP / TLS",
+      "key": "http-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP / TLS",
+      "key": "http-metrics-histograms-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP / TLS",
+      "key": "http-port"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP / TLS",
+      "key": "http-relative-path"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP / TLS",
+      "key": "https-certificate-file"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP / TLS",
+      "key": "https-certificate-key-file"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP / TLS",
+      "key": "https-certificates-reload-period"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP / TLS",
+      "key": "https-client-auth"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP / TLS",
+      "key": "https-key-store-password"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP / TLS",
+      "key": "https-port"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP / TLS",
+      "key": "https-protocols"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP / TLS",
+      "key": "shutdown-delay"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP / TLS",
+      "key": "shutdown-timeout"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP access log",
+      "key": "http-access-log-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP access log",
+      "key": "http-access-log-file-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP access log",
+      "key": "http-access-log-file-name"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP access log",
+      "key": "http-access-log-file-rotate"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP access log",
+      "key": "http-access-log-file-suffix"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "HTTP access log",
+      "key": "http-access-log-pattern"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Import (kc.sh import)",
+      "key": "override"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-async"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-console-async"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-console-async-queue-length"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-console-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-console-format"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-console-include-mdc"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-console-include-trace"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-console-json-format"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-console-level"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-console-output"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-file"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-file-async"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-file-async-queue-length"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-file-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-file-format"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-file-include-mdc"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-file-include-trace"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-file-json-format"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-file-level"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-file-output"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-file-rotation-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-file-rotation-max-backup-index"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-file-rotation-max-file-size"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-file-rotation-rotate-on-boot"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-level"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-mdc-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-mdc-keys"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-service-name"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-syslog-app-name"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-syslog-async"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-syslog-async-queue-length"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-syslog-counting-framing"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-syslog-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-syslog-endpoint"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-syslog-format"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-syslog-include-mdc"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-syslog-include-trace"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-syslog-json-format"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-syslog-level"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-syslog-output"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-syslog-protocol"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Logging",
+      "key": "log-syslog-type"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Management interface",
+      "key": "http-management-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Management interface",
+      "key": "http-management-health-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Management interface",
+      "key": "http-management-port"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Management interface",
+      "key": "http-management-relative-path"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Management interface",
+      "key": "http-management-scheme"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Management interface",
+      "key": "https-management-certificates-reload-period"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Management interface",
+      "key": "https-management-client-auth"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Management interface",
+      "key": "https-management-key-store-password"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Management interface",
+      "key": "https-management-protocols"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Management interface",
+      "key": "legacy-observability-interface"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Observability",
+      "key": "health-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Observability",
+      "key": "metrics-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "OpenAPI",
+      "key": "openapi-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "OpenAPI",
+      "key": "openapi-ui-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Reverse proxy",
+      "key": "proxy-headers"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Reverse proxy",
+      "key": "proxy-protocol-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Security",
+      "key": "fips-mode"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Telemetry (OpenTelemetry)",
+      "key": "telemetry-endpoint"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Telemetry (OpenTelemetry)",
+      "key": "telemetry-logs-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Telemetry (OpenTelemetry)",
+      "key": "telemetry-logs-level"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Telemetry (OpenTelemetry)",
+      "key": "telemetry-metrics-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Telemetry (OpenTelemetry)",
+      "key": "telemetry-metrics-interval"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Telemetry (OpenTelemetry)",
+      "key": "telemetry-protocol"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Telemetry (OpenTelemetry)",
+      "key": "telemetry-service-name"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Tracing",
+      "key": "tracing-compression"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Tracing",
+      "key": "tracing-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Tracing",
+      "key": "tracing-endpoint"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Tracing",
+      "key": "tracing-infinispan-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Tracing",
+      "key": "tracing-jdbc-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Tracing",
+      "key": "tracing-protocol"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Tracing",
+      "key": "tracing-sampler-ratio"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Tracing",
+      "key": "tracing-sampler-type"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Tracing",
+      "key": "tracing-service-name"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Transactions",
+      "key": "transaction-default-timeout"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Transactions",
+      "key": "transaction-setup-timeout"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Transactions",
+      "key": "transaction-xa-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Transactions",
+      "key": "transaction-xa-enabled-<datasource>"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Truststore",
+      "key": "tls-hostname-verifier"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Truststore",
+      "key": "truststore-kubernetes-enabled"
+    },
+    {
+      "sheet": "keycloak configuration",
+      "path": "Vault",
+      "key": "vault-type"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Admin events settings",
+      "key": "adminEventsDetailsEnabled"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Admin events settings",
+      "key": "adminEventsEnabled"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Admin events settings",
+      "key": "eventsEnabled"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Brute force detection",
+      "key": "bruteForceProtected"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Brute force detection",
+      "key": "bruteForceStrategy"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Brute force detection",
+      "key": "failureFactor"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Brute force detection",
+      "key": "maxDeltaTimeSeconds"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Brute force detection",
+      "key": "maxFailureWaitSeconds"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Brute force detection",
+      "key": "maxSecondaryAuthFailures"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Brute force detection",
+      "key": "maxTemporaryLockouts"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Brute force detection",
+      "key": "minimumQuickLoginWaitSeconds"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Brute force detection",
+      "key": "quickLoginCheckMilliSeconds"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Brute force detection",
+      "key": "waitIncrementSeconds"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Email",
+      "key": "smtpServer.auth"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Email",
+      "key": "smtpServer.from"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Email",
+      "key": "smtpServer.fromDisplayName"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Email",
+      "key": "smtpServer.host"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Email",
+      "key": "smtpServer.port"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Email",
+      "key": "smtpServer.starttls"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Email",
+      "key": "smtpServer.user"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "General",
+      "key": "adminPermissionsEnabled"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "General",
+      "key": "displayName"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "General",
+      "key": "enabled"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "General",
+      "key": "organizationsEnabled"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "General",
+      "key": "realm"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "General",
+      "key": "scimApiEnabled"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "General",
+      "key": "sslRequired"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "General",
+      "key": "userManagedAccessAllowed"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "General",
+      "key": "verifiableCredentialsEnabled"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Headers",
+      "key": "browserSecurityHeaders.contentSecurityPolicy"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Headers",
+      "key": "browserSecurityHeaders.contentSecurityPolicyReportOnly"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Headers",
+      "key": "browserSecurityHeaders.referrerPolicy"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Headers",
+      "key": "browserSecurityHeaders.strictTransportSecurity"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Headers",
+      "key": "browserSecurityHeaders.xContentTypeOptions"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Headers",
+      "key": "browserSecurityHeaders.xFrameOptions"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Headers",
+      "key": "browserSecurityHeaders.xRobotsTag"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Localization",
+      "key": "internationalizationEnabled"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Login",
+      "key": "duplicateEmailsAllowed"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Login",
+      "key": "editUsernameAllowed"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Login",
+      "key": "loginWithEmailAllowed"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Login",
+      "key": "passwordPolicy"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Login",
+      "key": "registrationAllowed"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Login",
+      "key": "registrationEmailAsUsername"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Login",
+      "key": "rememberMe"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Login",
+      "key": "resetPasswordAllowed"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Login",
+      "key": "verifyEmail"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "attributes.cibaAuthRequestedUserHint"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "attributes.cibaBackchannelTokenDeliveryMode"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "attributes.cibaExpiresIn"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "attributes.cibaInterval"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "otpPolicyAlgorithm"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "otpPolicyCodeReusable"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "otpPolicyDigits"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "otpPolicyInitialCounter"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "otpPolicyLookAheadWindow"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "otpPolicyPeriod"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "otpPolicyType"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyAttestationConveyancePreference"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyAuthenticatorAttachment"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyAvoidSameAuthenticatorRegister"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyCreateTimeout"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyPasswordlessAttestationConveyancePreference"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyPasswordlessAuthenticatorAttachment"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyPasswordlessCreateTimeout"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyPasswordlessRequireResidentKey"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyPasswordlessResidentKey"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyPasswordlessRpEntityName"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyPasswordlessRpId"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyPasswordlessUserVerificationRequirement"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyRequireResidentKey"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyResidentKey"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyRpEntityName"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyRpId"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Policies",
+      "key": "webAuthnPolicyUserVerificationRequirement"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Sessions",
+      "key": "accessCodeLifespanLogin"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Sessions",
+      "key": "accessCodeLifespanUserAction"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Sessions",
+      "key": "clientOfflineSessionIdleTimeout"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Sessions",
+      "key": "clientOfflineSessionMaxLifespan"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Sessions",
+      "key": "clientSessionIdleTimeout"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Sessions",
+      "key": "clientSessionMaxLifespan"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Sessions",
+      "key": "offlineSessionIdleTimeout"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Sessions",
+      "key": "offlineSessionMaxLifespan"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Sessions",
+      "key": "offlineSessionMaxLifespanEnabled"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Sessions",
+      "key": "ssoSessionIdleTimeout"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Sessions",
+      "key": "ssoSessionIdleTimeoutRememberMe"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Sessions",
+      "key": "ssoSessionMaxLifespan"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Sessions",
+      "key": "ssoSessionMaxLifespanRememberMe"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Themes",
+      "key": "loginTheme"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Tokens / Access tokens",
+      "key": "accessCodeLifespan"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Tokens / Access tokens",
+      "key": "accessTokenLifespan"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Tokens / Access tokens",
+      "key": "accessTokenLifespanForImplicitFlow"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Tokens / Action tokens",
+      "key": "actionTokenGeneratedByAdminLifespan"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Tokens / Action tokens",
+      "key": "actionTokenGeneratedByUserLifespan"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Tokens / General",
+      "key": "attributes.parRequestUriLifespan"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Tokens / General",
+      "key": "defaultSignatureAlgorithm"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Tokens / General",
+      "key": "oauth2DeviceCodeLifespan"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Tokens / General",
+      "key": "oauth2DevicePollingInterval"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Tokens / Refresh tokens",
+      "key": "refreshTokenMaxReuse"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Tokens / Refresh tokens",
+      "key": "revokeRefreshToken"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Uncategorized",
+      "key": "attributes.oauth2DeviceCodeLifespan"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Uncategorized",
+      "key": "attributes.oauth2DevicePollingInterval"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Uncategorized",
+      "key": "attributes.realmReusableOtpCode"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Uncategorized",
+      "key": "browserFlow"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Uncategorized",
+      "key": "clientAuthenticationFlow"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Uncategorized",
+      "key": "directGrantFlow"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Uncategorized",
+      "key": "dockerAuthenticationFlow"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Uncategorized",
+      "key": "firstBrokerLoginFlow"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Uncategorized",
+      "key": "notBefore"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Uncategorized",
+      "key": "permanentLockout"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Uncategorized",
+      "key": "registrationFlow"
+    },
+    {
+      "sheet": "keycloak realm",
+      "path": "Uncategorized",
+      "key": "resetCredentialsFlow"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Features",
+      "key": "nginx_gzip"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Logging",
+      "key": "http.access_log"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Logging",
+      "key": "http.error_log"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Network",
+      "key": "listen"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Network",
+      "key": "server_name"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Performance",
+      "key": "http.sendfile"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Performance",
+      "key": "keepalive_timeout"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Performance",
+      "key": "worker_connections"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Performance",
+      "key": "worker_processes"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Process",
+      "key": "pid"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Process",
+      "key": "user"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Security",
+      "key": "add_header[0]"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Security",
+      "key": "add_header[1]"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Security",
+      "key": "add_header[2]"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Security",
+      "key": "http.server.include"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Security",
+      "key": "server_tokens"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Virtual host",
+      "key": "client_max_body_size"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Virtual host",
+      "key": "http.default_type"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Virtual host",
+      "key": "http.include"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Virtual host",
+      "key": "http.server.index"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Virtual host",
+      "key": "http.server.location[/].try_files"
+    },
+    {
+      "sheet": "nginx configuration",
+      "path": "Virtual host",
+      "key": "root"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Autovacuum",
+      "key": "autovacuum"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Autovacuum",
+      "key": "autovacuum_analyze_scale_factor"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Autovacuum",
+      "key": "autovacuum_analyze_threshold"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Autovacuum",
+      "key": "autovacuum_freeze_max_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Autovacuum",
+      "key": "autovacuum_max_workers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Autovacuum",
+      "key": "autovacuum_multixact_freeze_max_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Autovacuum",
+      "key": "autovacuum_naptime"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Autovacuum",
+      "key": "autovacuum_vacuum_cost_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Autovacuum",
+      "key": "autovacuum_vacuum_cost_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Autovacuum",
+      "key": "autovacuum_vacuum_insert_scale_factor"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Autovacuum",
+      "key": "autovacuum_vacuum_insert_threshold"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Autovacuum",
+      "key": "autovacuum_vacuum_scale_factor"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Autovacuum",
+      "key": "autovacuum_vacuum_threshold"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Locale and Formatting",
+      "key": "client_encoding"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Locale and Formatting",
+      "key": "DateStyle"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Locale and Formatting",
+      "key": "default_text_search_config"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Locale and Formatting",
+      "key": "extra_float_digits"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Locale and Formatting",
+      "key": "icu_validation_level"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Locale and Formatting",
+      "key": "IntervalStyle"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Locale and Formatting",
+      "key": "lc_messages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Locale and Formatting",
+      "key": "lc_monetary"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Locale and Formatting",
+      "key": "lc_numeric"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Locale and Formatting",
+      "key": "lc_time"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Locale and Formatting",
+      "key": "TimeZone"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Locale and Formatting",
+      "key": "timezone_abbreviations"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Other Defaults",
+      "key": "dynamic_library_path"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Other Defaults",
+      "key": "gin_fuzzy_search_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Shared Library Preloading",
+      "key": "jit_provider"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Shared Library Preloading",
+      "key": "local_preload_libraries"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Shared Library Preloading",
+      "key": "session_preload_libraries"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Shared Library Preloading",
+      "key": "shared_preload_libraries"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "bytea_output"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "check_function_bodies"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "client_min_messages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "createrole_self_grant"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "default_table_access_method"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "default_tablespace"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "default_toast_compression"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "default_transaction_deferrable"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "default_transaction_isolation"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "default_transaction_read_only"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "gin_pending_list_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "idle_in_transaction_session_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "idle_session_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "lock_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "restrict_nonsystem_relation_kind"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "row_security"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "search_path"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "session_replication_role"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "statement_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "temp_tablespaces"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "transaction_deferrable"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "transaction_isolation"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "transaction_read_only"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "vacuum_failsafe_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "vacuum_freeze_min_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "vacuum_freeze_table_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "vacuum_multixact_failsafe_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "vacuum_multixact_freeze_min_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "vacuum_multixact_freeze_table_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "xmlbinary"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Client Connection Defaults / Statement Behavior",
+      "key": "xmloption"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / Authentication",
+      "key": "authentication_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / Authentication",
+      "key": "db_user_namespace"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / Authentication",
+      "key": "gss_accept_delegation"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / Authentication",
+      "key": "krb_caseins_users"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / Authentication",
+      "key": "krb_server_keyfile"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / Authentication",
+      "key": "scram_iterations"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / Connection Settings",
+      "key": "bonjour"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / Connection Settings",
+      "key": "bonjour_name"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / Connection Settings",
+      "key": "reserved_connections"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / Connection Settings",
+      "key": "superuser_reserved_connections"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / Connection Settings",
+      "key": "unix_socket_directories"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / Connection Settings",
+      "key": "unix_socket_group"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / Connection Settings",
+      "key": "unix_socket_permissions"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / SSL",
+      "key": "ssl"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / SSL",
+      "key": "ssl_ca_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / SSL",
+      "key": "ssl_cert_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / SSL",
+      "key": "ssl_ciphers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / SSL",
+      "key": "ssl_crl_dir"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / SSL",
+      "key": "ssl_crl_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / SSL",
+      "key": "ssl_dh_params_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / SSL",
+      "key": "ssl_ecdh_curve"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / SSL",
+      "key": "ssl_key_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / SSL",
+      "key": "ssl_max_protocol_version"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / SSL",
+      "key": "ssl_min_protocol_version"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / SSL",
+      "key": "ssl_passphrase_command"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / SSL",
+      "key": "ssl_passphrase_command_supports_reload"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / SSL",
+      "key": "ssl_prefer_server_ciphers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / TCP Settings",
+      "key": "client_connection_check_interval"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / TCP Settings",
+      "key": "tcp_keepalives_count"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / TCP Settings",
+      "key": "tcp_keepalives_idle"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / TCP Settings",
+      "key": "tcp_keepalives_interval"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections and Authentication / TCP Settings",
+      "key": "tcp_user_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections",
+      "key": "listen_addresses"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections",
+      "key": "max_connections"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections",
+      "key": "password_encryption"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Connections",
+      "key": "port"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "allow_in_place_tablespaces"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "allow_system_table_mods"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "backtrace_functions"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "debug_discard_caches"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "debug_io_direct"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "debug_logical_replication_streaming"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "debug_parallel_query"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "ignore_checksum_failure"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "ignore_invalid_pages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "ignore_system_indexes"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "jit_debugging_support"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "jit_dump_bitcode"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "jit_expressions"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "jit_profiling_support"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "jit_tuple_deforming"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "post_auth_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "pre_auth_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "remove_temp_files_after_crash"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "send_abort_for_crash"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "send_abort_for_kill"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "trace_notify"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "trace_recovery_messages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "trace_sort"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "wal_consistency_checking"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Developer Options",
+      "key": "zero_damaged_pages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Error Handling",
+      "key": "data_sync_retry"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Error Handling",
+      "key": "exit_on_error"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Error Handling",
+      "key": "recovery_init_sync_method"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Error Handling",
+      "key": "restart_after_crash"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "File Locations",
+      "key": "config_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "File Locations",
+      "key": "data_directory"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "File Locations",
+      "key": "extension_destdir"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "File Locations",
+      "key": "external_pid_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "File Locations",
+      "key": "hba_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "File Locations",
+      "key": "ident_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Lock Management",
+      "key": "deadlock_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Lock Management",
+      "key": "max_locks_per_transaction"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Lock Management",
+      "key": "max_pred_locks_per_page"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Lock Management",
+      "key": "max_pred_locks_per_relation"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Lock Management",
+      "key": "max_pred_locks_per_transaction"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Logging",
+      "key": "log_checkpoints"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Logging",
+      "key": "log_line_prefix"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Logging",
+      "key": "log_min_duration_statement"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Memory",
+      "key": "dynamic_shared_memory_type"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Memory",
+      "key": "effective_cache_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Memory",
+      "key": "huge_pages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Memory",
+      "key": "maintenance_work_mem"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Memory",
+      "key": "shared_buffers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Memory",
+      "key": "work_mem"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "block_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "data_checksums"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "data_directory_mode"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "debug_assertions"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "in_hot_standby"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "integer_datetimes"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "max_function_args"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "max_identifier_length"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "max_index_keys"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "segment_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "server_encoding"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "server_version"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "server_version_num"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "shared_memory_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "shared_memory_size_in_huge_pages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "ssl_library"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "wal_block_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Preset Options",
+      "key": "wal_segment_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query planner",
+      "key": "default_statistics_target"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query planner",
+      "key": "effective_io_concurrency"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query planner",
+      "key": "random_page_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Genetic Query Optimizer",
+      "key": "geqo"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Genetic Query Optimizer",
+      "key": "geqo_effort"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Genetic Query Optimizer",
+      "key": "geqo_generations"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Genetic Query Optimizer",
+      "key": "geqo_pool_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Genetic Query Optimizer",
+      "key": "geqo_seed"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Genetic Query Optimizer",
+      "key": "geqo_selection_bias"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Genetic Query Optimizer",
+      "key": "geqo_threshold"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Other Planner Options",
+      "key": "constraint_exclusion"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Other Planner Options",
+      "key": "cursor_tuple_fraction"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Other Planner Options",
+      "key": "from_collapse_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Other Planner Options",
+      "key": "jit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Other Planner Options",
+      "key": "join_collapse_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Other Planner Options",
+      "key": "plan_cache_mode"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Other Planner Options",
+      "key": "recursive_worktable_factor"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Cost Constants",
+      "key": "cpu_index_tuple_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Cost Constants",
+      "key": "cpu_operator_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Cost Constants",
+      "key": "cpu_tuple_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Cost Constants",
+      "key": "jit_above_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Cost Constants",
+      "key": "jit_inline_above_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Cost Constants",
+      "key": "jit_optimize_above_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Cost Constants",
+      "key": "min_parallel_index_scan_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Cost Constants",
+      "key": "min_parallel_table_scan_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Cost Constants",
+      "key": "parallel_setup_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Cost Constants",
+      "key": "parallel_tuple_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Cost Constants",
+      "key": "seq_page_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_async_append"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_bitmapscan"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_gathermerge"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_hashagg"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_hashjoin"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_incremental_sort"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_indexonlyscan"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_indexscan"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_material"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_memoize"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_mergejoin"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_nestloop"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_parallel_append"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_parallel_hash"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_partition_pruning"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_partitionwise_aggregate"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_partitionwise_join"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_presorted_aggregate"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_seqscan"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_sort"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Query Tuning / Planner Method Configuration",
+      "key": "enable_tidscan"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Primary Server",
+      "key": "synchronous_standby_names"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Sending Servers",
+      "key": "max_replication_slots"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Sending Servers",
+      "key": "max_slot_wal_keep_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Sending Servers",
+      "key": "max_wal_senders"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Sending Servers",
+      "key": "track_commit_timestamp"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Sending Servers",
+      "key": "wal_keep_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Sending Servers",
+      "key": "wal_sender_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Standby Servers",
+      "key": "hot_standby"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Standby Servers",
+      "key": "hot_standby_feedback"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Standby Servers",
+      "key": "max_standby_archive_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Standby Servers",
+      "key": "max_standby_streaming_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Standby Servers",
+      "key": "primary_conninfo"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Standby Servers",
+      "key": "primary_slot_name"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Standby Servers",
+      "key": "recovery_min_apply_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Standby Servers",
+      "key": "wal_receiver_create_temp_slot"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Standby Servers",
+      "key": "wal_receiver_status_interval"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Standby Servers",
+      "key": "wal_receiver_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Standby Servers",
+      "key": "wal_retrieve_retry_interval"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Subscribers",
+      "key": "max_logical_replication_workers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Subscribers",
+      "key": "max_parallel_apply_workers_per_subscription"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Replication / Subscribers",
+      "key": "max_sync_workers_per_subscription"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / Process Title",
+      "key": "cluster_name"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / Process Title",
+      "key": "update_process_title"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "application_name"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "debug_pretty_print"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "debug_print_parse"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "debug_print_plan"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "debug_print_rewritten"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "log_autovacuum_min_duration"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "log_connections"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "log_disconnections"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "log_duration"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "log_error_verbosity"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "log_hostname"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "log_lock_waits"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "log_parameter_max_length"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "log_parameter_max_length_on_error"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "log_recovery_conflict_waits"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "log_replication_commands"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "log_statement"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "log_temp_files"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / What to Log",
+      "key": "log_timezone"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / When to Log",
+      "key": "log_min_duration_sample"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / When to Log",
+      "key": "log_min_error_statement"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / When to Log",
+      "key": "log_min_messages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / When to Log",
+      "key": "log_startup_progress_interval"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / When to Log",
+      "key": "log_statement_sample_rate"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / When to Log",
+      "key": "log_transaction_sample_rate"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / Where to Log",
+      "key": "event_source"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / Where to Log",
+      "key": "log_destination"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / Where to Log",
+      "key": "log_directory"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / Where to Log",
+      "key": "log_file_mode"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / Where to Log",
+      "key": "log_filename"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / Where to Log",
+      "key": "log_rotation_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / Where to Log",
+      "key": "log_rotation_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / Where to Log",
+      "key": "log_truncate_on_rotation"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / Where to Log",
+      "key": "logging_collector"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / Where to Log",
+      "key": "syslog_facility"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / Where to Log",
+      "key": "syslog_ident"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / Where to Log",
+      "key": "syslog_sequence_numbers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Reporting and Logging / Where to Log",
+      "key": "syslog_split_messages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Asynchronous Behavior",
+      "key": "backend_flush_after"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Asynchronous Behavior",
+      "key": "maintenance_io_concurrency"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Asynchronous Behavior",
+      "key": "max_parallel_maintenance_workers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Asynchronous Behavior",
+      "key": "max_parallel_workers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Asynchronous Behavior",
+      "key": "max_parallel_workers_per_gather"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Asynchronous Behavior",
+      "key": "max_worker_processes"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Asynchronous Behavior",
+      "key": "old_snapshot_threshold"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Asynchronous Behavior",
+      "key": "parallel_leader_participation"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Background Writer",
+      "key": "bgwriter_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Background Writer",
+      "key": "bgwriter_flush_after"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Background Writer",
+      "key": "bgwriter_lru_maxpages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Background Writer",
+      "key": "bgwriter_lru_multiplier"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Cost-Based Vacuum Delay",
+      "key": "vacuum_cost_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Cost-Based Vacuum Delay",
+      "key": "vacuum_cost_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Cost-Based Vacuum Delay",
+      "key": "vacuum_cost_page_dirty"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Cost-Based Vacuum Delay",
+      "key": "vacuum_cost_page_hit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Cost-Based Vacuum Delay",
+      "key": "vacuum_cost_page_miss"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Disk",
+      "key": "file_extend_method"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Disk",
+      "key": "temp_file_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Kernel Resources",
+      "key": "max_files_per_process"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Memory",
+      "key": "autovacuum_work_mem"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Memory",
+      "key": "hash_mem_multiplier"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Memory",
+      "key": "huge_page_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Memory",
+      "key": "logical_decoding_work_mem"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Memory",
+      "key": "max_prepared_transactions"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Memory",
+      "key": "max_stack_depth"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Memory",
+      "key": "min_dynamic_shared_memory"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Memory",
+      "key": "shared_memory_type"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Memory",
+      "key": "temp_buffers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Resource Usage / Memory",
+      "key": "vacuum_buffer_usage_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Statistics / Cumulative Query and Index Statistics",
+      "key": "stats_fetch_consistency"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Statistics / Cumulative Query and Index Statistics",
+      "key": "track_activities"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Statistics / Cumulative Query and Index Statistics",
+      "key": "track_activity_query_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Statistics / Cumulative Query and Index Statistics",
+      "key": "track_counts"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Statistics / Cumulative Query and Index Statistics",
+      "key": "track_functions"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Statistics / Cumulative Query and Index Statistics",
+      "key": "track_io_timing"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Statistics / Cumulative Query and Index Statistics",
+      "key": "track_wal_io_timing"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Statistics / Monitoring",
+      "key": "compute_query_id"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Statistics / Monitoring",
+      "key": "log_executor_stats"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Statistics / Monitoring",
+      "key": "log_parser_stats"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Statistics / Monitoring",
+      "key": "log_planner_stats"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Statistics / Monitoring",
+      "key": "log_statement_stats"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Version and Platform Compatibility / Other Platforms and Clients",
+      "key": "transform_null_equals"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Version and Platform Compatibility / Previous PostgreSQL Versions",
+      "key": "array_nulls"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Version and Platform Compatibility / Previous PostgreSQL Versions",
+      "key": "backslash_quote"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Version and Platform Compatibility / Previous PostgreSQL Versions",
+      "key": "escape_string_warning"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Version and Platform Compatibility / Previous PostgreSQL Versions",
+      "key": "lo_compat_privileges"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Version and Platform Compatibility / Previous PostgreSQL Versions",
+      "key": "quote_all_identifiers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Version and Platform Compatibility / Previous PostgreSQL Versions",
+      "key": "standard_conforming_strings"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Version and Platform Compatibility / Previous PostgreSQL Versions",
+      "key": "synchronize_seqscans"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Archive Recovery",
+      "key": "archive_cleanup_command"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Archive Recovery",
+      "key": "recovery_end_command"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Archive Recovery",
+      "key": "restore_command"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Archiving",
+      "key": "archive_command"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Archiving",
+      "key": "archive_library"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Archiving",
+      "key": "archive_mode"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Archiving",
+      "key": "archive_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Checkpoints",
+      "key": "checkpoint_flush_after"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Checkpoints",
+      "key": "checkpoint_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Checkpoints",
+      "key": "checkpoint_warning"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Recovery",
+      "key": "recovery_prefetch"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Recovery Target",
+      "key": "recovery_target"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Recovery Target",
+      "key": "recovery_target_action"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Recovery Target",
+      "key": "recovery_target_inclusive"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Recovery Target",
+      "key": "recovery_target_lsn"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Recovery Target",
+      "key": "recovery_target_name"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Recovery Target",
+      "key": "recovery_target_time"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Recovery Target",
+      "key": "recovery_target_timeline"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Recovery Target",
+      "key": "recovery_target_xid"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Recovery",
+      "key": "wal_decode_buffer_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Settings",
+      "key": "commit_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Settings",
+      "key": "commit_siblings"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Settings",
+      "key": "fsync"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Settings",
+      "key": "full_page_writes"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Settings",
+      "key": "synchronous_commit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Settings",
+      "key": "wal_compression"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Settings",
+      "key": "wal_init_zero"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Settings",
+      "key": "wal_level"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Settings",
+      "key": "wal_log_hints"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Settings",
+      "key": "wal_recycle"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Settings",
+      "key": "wal_skip_threshold"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Settings",
+      "key": "wal_sync_method"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Settings",
+      "key": "wal_writer_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log / Settings",
+      "key": "wal_writer_flush_after"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log",
+      "key": "checkpoint_completion_target"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log",
+      "key": "max_wal_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log",
+      "key": "min_wal_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "Write-Ahead Log",
+      "key": "wal_buffers"
+    }
+  ],
+  "sheets": [
+    {
+      "spec": "ansible-basic",
+      "sheet": "nginx configuration",
+      "rows": 22,
+      "categories": 7
+    },
+    {
+      "spec": "ansible-basic",
+      "sheet": "postgresql configuration",
+      "rows": 363,
+      "categories": 47
+    },
+    {
+      "spec": "ansible-httpd",
+      "sheet": "httpd configuration",
+      "rows": 19,
+      "categories": 3
+    },
+    {
+      "spec": "ansible-keycloak",
+      "sheet": "keycloak configuration",
+      "rows": 139,
+      "categories": 22
+    },
+    {
+      "spec": "ansible-keycloak",
+      "sheet": "keycloak realm",
+      "rows": 112,
+      "categories": 15
+    },
+    {
+      "spec": "ansible-keycloak",
+      "sheet": "keycloak clients",
+      "rows": 28,
+      "categories": 5
+    },
+    {
+      "spec": "cdk-snapshot",
+      "sheet": "API stack",
+      "rows": 19,
+      "categories": 4
+    }
+  ]
+}
