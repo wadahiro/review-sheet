@@ -42,7 +42,7 @@ import {
 } from "./providers/project.js";
 import { findDictionary, dictionaryCoverage, resolveVariantDefaults } from "./providers/dictionary.js";
 import { baseFileName } from "./jinja2.js";
-import { bindKey, isBindError, loadBindSources, BIND_METHODS, type Binding, type BindSource, type BindMethod } from "./bind.js";
+import { bindKey, isBindError, loadBindSources, BIND_METHODS, type Binding, type BindSource, type BindMethod, bindableKey, CONTAINER_BIND_METHODS } from "./bind.js";
 import type { DictionaryBinding } from "./metadata.js";
 import type { KeyTransformStep } from "./keytransform.js";
 // Re-exported so importers that reached for it here keep working; the
@@ -65,6 +65,7 @@ import type {
   LangText,
   ArtifactPreview,
   SheetDocument,
+  ContainerNode,
 } from "./types.js";
 
 // `origin: "embedded"` marks a base-layer entry whose position relative to its
@@ -122,6 +123,13 @@ export type EmbeddedEntry = {
   component?: string;
   origin?: "embedded" | "default" | "baseline";
   categoryPath?: string[];
+  // The blocks this row sits inside, as the parser read them. Distinct from
+  // `categoryPath`, which is the same structure flattened for headings and
+  // cannot be read back: a parser may put one block on screen as two names, and
+  // which is which differs per format. Carried through to the row's
+  // `container_path` so the sheet can indent it under its own block and a
+  // filter can keep the blocks a surviving row hangs under.
+  containers?: ContainerNode[];
   // The categoryPath outranks a bound dictionary's own `group` — see
   // bindingOrFallback. Set by a recipe that knows the row came out of a
   // repetition axis.
@@ -886,7 +894,97 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
   }
 
   // 3) Embedded literals, appended after all base-derived params, in order.
+  //
+  // A block whose opening carries an ARGUMENT becomes a row of its own, once,
+  // the first time something inside it is seen — so it lands above its contents
+  // without anything having to sort them.
+  //
+  // Only a block with an argument. `<RequireAll>` and `[Unit]` group and say
+  // nothing else, and making every one of them a row costs a third more rows on
+  // real files (measured: 40 such blocks against 12 with arguments here) plus a
+  // dictionary entry each to satisfy the description gate — for rows carrying
+  // no decision. The argument is the decision: `/var/www` is a path somebody
+  // chose, and until now it existed only inside the keys of the settings under
+  // it, with nowhere to comment on it and no way to say it should be deleted.
+  // Which environments each block is actually IN.
+  //
+  // A block inside `{% if %}` renders for some instances and not others, and
+  // its contents already say so — one row per instance that has it. The block's
+  // own row has to say the same or it claims a structure that is not there,
+  // with the subject attached: on a real sheet that reads as "production's
+  // audit policy exists everywhere", which is the most consequential thing on
+  // the row being wrong.
+  //
+  // A block is in an instance if anything inside it is. An entry with no
+  // instance list is in all of them, which makes its block unconditional too.
+  const containerInstances = new Map<string, Set<string> | "all">();
   for (const e of si.embedded) {
+    const chain = e.containers ?? [];
+    for (let i = 0; i < chain.length; i++) {
+      if (chain[i].subject === undefined) continue;
+      const id = `${e.component ?? ""}\u0000${chain.slice(0, i + 1).map((x) => x.pathSeg).join(".")}`;
+      const cur = containerInstances.get(id);
+      if (cur === "all") continue;
+      if (e.instances === undefined) { containerInstances.set(id, "all"); continue; }
+      const set = cur ?? new Set<string>();
+      for (const inst of e.instances) set.add(inst.name);
+      containerInstances.set(id, set);
+    }
+  }
+
+  const emittedContainers = new Set<string>();
+  const containerDrafts = (e: EmbeddedEntry): void => {
+    const chain = e.containers ?? [];
+    for (let i = 0; i < chain.length; i++) {
+      const n = chain[i];
+      if (n.subject === undefined) continue;
+      const addr = chain.slice(0, i + 1).map((x) => x.pathSeg).join(".");
+      const id = `${e.component ?? ""}\u0000${addr}`;
+      if (emittedContainers.has(id)) continue;
+      emittedContainers.add(id);
+      const present = containerInstances.get(id);
+      // The block's own address IS carried, because a format that resolves by
+      // path has no other way to check the row — see xmlLocate, which answers
+      // for a container address by walking the same chain the rows carry.
+      //
+      // The FILE is the block's own, never the row's: a template-driven row is
+      // sourced at the variable that fills it, in another file, and pointing a
+      // block there claims an opening that file does not contain.
+      const file = n.file ?? (e.source.substituted ? undefined : e.source.file);
+      // A subject a template assembles from variables has no site holding it —
+      // see ContainerNode.subjectAssembled. The block still has a line, which
+      // is what the preview jumps to; what it has no honest answer for is
+      // "where is this value written".
+      const src =
+        n.line !== undefined && file !== undefined && !n.subjectAssembled
+          ? { file, line: n.line, anchor: n.subject, path: addr }
+          : undefined;
+      const param: Parameter = {
+        key: addr,
+        container: { ...(n.name === undefined ? {} : { name: n.name }), ...(n.nameFromDocs ? { nameFromDocs: true } : {}) },
+        // Pattern B when the block is inside a conditional: it exists for these
+        // environments and simply is not in the others, which an instance list
+        // expresses by leaving them out.
+        ...(present !== undefined && present !== "all"
+          ? { instances: [...present].map((name) => ({ name, value: n.subject!, ...(src ? { source: src } : {}) })) }
+          : { value: n.subject }),
+        origin: "embedded",
+        // The opening line, which is where the argument is written. Its column
+        // range is deliberately not carried: apply holds a container anyway
+        // (see HELD_REASON_CONTAINER_SUBJECT), so an exact span would be
+        // precision nothing acts on, and a template parser cannot give one at
+        // all.
+        ...(src ? { source: src } : {}),
+      };
+      if (i > 0) param.container_path = chain.slice(0, i).map((x, k) => ({ path: chain.slice(0, k + 1).map((y) => y.pathSeg).join("."), name: x.name }));
+      // Filed where the block ITSELF sits — one level above its contents,
+      // which is where the parsers already put an expression container's row.
+      pushDraft(addr, param, undefined, undefined, e.component, chain.slice(0, i).flatMap((x) => x.headings), e.categoryPathWins);
+    }
+  };
+
+  for (const e of si.embedded) {
+    containerDrafts(e);
     // A row a recipe emitted per ARTIFACT LINE arrives here already keyed by
     // the product's own key (ansible's `rows: artifact` on a sheet with
     // components puts its rows in `embedded`, not in a layer), so keyMap has
@@ -912,6 +1010,11 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
             ? { key: e.key, value: e.value, default: e.value, origin: "default" }
             : { key: e.key, value: e.value, source: e.source, origin: "embedded" }
     ) as Parameter;
+    // The enclosing blocks, as cumulative addresses. Kept even when the sheet
+    // groups by file and the parser's own headings are dropped — that mode is
+    // exactly where the structure would otherwise survive only inside the row
+    // keys, as text.
+    if (e.containers?.length) param.container_path = e.containers.map((n, i) => ({ path: e.containers!.slice(0, i + 1).map((x) => x.pathSeg).join("."), name: n.name }));
     pushDraft(e.key, withUnderKey(param, variable), variable, undefined, e.component, e.categoryPath, e.categoryPathWins);
   }
 
@@ -988,6 +1091,25 @@ function bindDrafts(
 ): SheetBindings {
   const bindings: SheetBindings = new Map();
   if (bindSources.length === 0) return bindings;
+  // What this format calls a block its syntax leaves unnamed. A document-level
+  // fact of the dictionary bound to the sheet — not an entry, so it needs no
+  // binding, which is just as well since a block with no name has nothing to
+  // bind BY. Taken only when the dictionaries in scope agree: two products
+  // disagreeing about the word is not something to pick a winner from.
+  for (const d of drafts) {
+    if (!d.param.container || d.param.container.name !== undefined) continue;
+    const labels = bindSources
+      .filter((b) => b.component === undefined || b.component === d.component)
+      .map((b) => b.source.doc.block_label)
+      .filter((l): l is LangText => l !== undefined);
+    const first = labels[0];
+    if (first === undefined || labels.some((l) => JSON.stringify(l) !== JSON.stringify(first))) continue;
+    // NOT `label`. That field means "the product's display name for this
+    // setting", and a row carrying one is drawn with the name above and the KEY
+    // beneath it, so a reviewer has both. For a block the key IS the address IS
+    // the subject, so the second line simply repeated the value column.
+    d.param.container = { ...d.param.container, name: typeof first === "string" ? first : (first.en ?? first.ja ?? ""), nameFromDocs: true };
+  }
   for (const d of drafts) {
     // A dictionary scoped to another component is not a dictionary this row
     // has (SheetDictionaryBinding.component).
@@ -997,13 +1119,31 @@ function bindDrafts(
       continue;
     }
     const dictKey = paramForRow(projectMeta, sheetName, d.component, d.key)?.dict_key;
-    const result = bindKey(d.key, dictKey, inScope);
+    // A block the grammar does not name has nothing to bind BY. Skipped rather
+    // than bound by its key, which is a deployment path and would match some
+    // unrelated entry.
+    const matchKey = bindableKey(d.key, d.param.container);
+    if (matchKey === undefined) {
+      reportRows.push({ sheet: sheetName, key: d.key, method: "none" });
+      continue;
+    }
+    const result = bindKey(matchKey, dictKey, inScope);
     if (result === undefined) {
       reportRows.push({ sheet: sheetName, key: d.key, method: "none" });
       continue;
     }
     if (isBindError(result)) {
       bindErrors.push(`${sheetName} > ${d.key}: ${result.message}`);
+      continue;
+    }
+    // See CONTAINER_BIND_METHODS. A hard error, not a warning: the failure it
+    // guards against is a block silently documented as some unrelated setting,
+    // which reads as a working sheet.
+    if (d.param.container && !CONTAINER_BIND_METHODS.includes(result.method)) {
+      bindErrors.push(
+        `${sheetName} > ${d.key}: a container bound by "${result.method}" — a block is matched by its own name ` +
+          `("${d.param.container.name}"), and ${CONTAINER_BIND_METHODS.join("/")} are the only ways that can happen`
+      );
       continue;
     }
     setBinding(bindings, d.component, d.key, result);
@@ -1634,6 +1774,20 @@ function fileDrafts(
         missingCategory.push(
           `${sheetName} > ${d.key} (declared category: null, but this sheet has no component level to file it under — ` +
             `a sheet with one component IS that component, so the level is collapsed and there is nothing above its categories)`
+        );
+        continue;
+      }
+      // A BLOCK's row has no category of its own to fall back on: its category
+      // is the headings of the blocks above it, and a top-level block has none.
+      // The generic remedy is wrong here and actively harmful — it asks for a
+      // `category:` keyed by a per-deployment address, so the declaration count
+      // grows with every block anybody adds. The remedy that fits is one line
+      // per SHEET, so it is named instead.
+      if (d.param.container) {
+        missingCategory.push(
+          `${sheetName} > ${d.key} (a block's own row — this sheet is organised by the parser's own structure, ` +
+            `where a top-level block has nothing above it to file under. Set "group_by: file" on this sheet in ` +
+            `sheet.yml, which files every row by the file it comes from, blocks included)`
         );
         continue;
       }

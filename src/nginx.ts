@@ -1,5 +1,6 @@
 // nginx config (nginx.conf, sites-available/*). Directives `name args...;` and
 import type { ContainerNode } from "./types.js";
+import { containerSubjectAt } from "./parser.js";
 // blocks `name label... { ... }` (http / server / location / upstream / …).
 // A small character scanner builds a block tree with source ranges, then we
 // walk it (like the XML adapter): labeled blocks (location /api, upstream name)
@@ -156,7 +157,7 @@ export function nginxIndex(content: string): NginxEntry[] {
         } else if (group.length === 1 && b.label === "") node = { name, pathSeg: name, headings: [name], line: b.line };
         // A `location /api` label is the block's subject — what it governs —
         // so it goes in the address and, later, in the row's value.
-        else if (useLabel) node = { name, subject: b.label, pathSeg: `${name}[${b.label}]`, headings: [`${name} ${b.label}`], line: b.line };
+        else if (useLabel) node = { name, subject: content.slice(b.labelRange![0], b.labelRange![1]), subjectRange: b.labelRange!, pathSeg: `${name}[${b.label}]`, headings: [`${name} ${b.label}`], line: b.line };
         else node = { name, index: i, pathSeg: `${name}[${i}]`, headings: [`${name}[${i}]`], line: b.line };
         walk(b, [...nodes, node]);
       });
@@ -170,6 +171,9 @@ export function nginxIndex(content: string): NginxEntry[] {
 export type NginxLocate = { value: string } | { error: string };
 export function nginxLocate(content: string, path: string): NginxLocate {
   const e = nginxIndex(content).find((x) => x.path === path);
+  // A BLOCK's own address, which is not an entry (see containerSubjectAt).
+  const containerSubject = containerSubjectAt(nginxIndex(content), path);
+  if (containerSubject !== undefined) return { value: containerSubject };
   return e ? { value: e.value } : { error: "path not found" };
 }
 

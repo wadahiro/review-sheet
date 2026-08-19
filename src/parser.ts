@@ -102,6 +102,10 @@ export interface ParserMeta {
   delimiter?: string;   // line formats only
   comments?: string;    // line formats only
   pathStyle?: string;   // how paths are structured
+  // What this parser reports as the BLOCKS enclosing a value, and which of them
+  // carry an argument that becomes a row of its own. Absent means the format
+  // has no tree to report, which is an answer — not a gap.
+  containers?: string;
   notes?: string[];     // limitations / behavior bullets
   examples?: string[];  // example path strings or snippets
 }
@@ -133,6 +137,28 @@ export interface ConfigParser {
 // Process-wide, so a plugin that resolved its own copy of this module still
 // registers into the array the CLI reads — see registry.ts.
 const registry = sharedRegistry<ConfigParser>("review-sheet.parsers.v1");
+
+// The identity a BLOCK's address names, found in a parser's own index.
+//
+// A block is not an entry — an element is not a value — so no index lookup
+// answers for its address, and a container row on a format that resolves by
+// path reported "no locator" and went unchecked. But the identity IS written in
+// the file, at a place the same walk already recorded, so every parser answers
+// the same way: rebuild each entry's chain and see whether one of its prefixes
+// is the address being asked about.
+//
+// Shared rather than repeated per parser: eight copies of a six-line search is
+// how the two spellings of a path drifted apart in the first place.
+export function containerSubjectAt(entries: { containers?: ContainerNode[] }[], path: string): string | undefined {
+  for (const e of entries) {
+    let addr = "";
+    for (const n of e.containers ?? []) {
+      addr = addr ? `${addr}.${n.pathSeg}` : n.pathSeg;
+      if (addr === path && n.subject !== undefined) return n.subject;
+    }
+  }
+  return undefined;
+}
 
 export function registerParser(p: ConfigParser): void {
   const i = registry.findIndex((r) => r.name === p.name);

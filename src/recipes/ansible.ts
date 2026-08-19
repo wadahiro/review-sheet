@@ -785,9 +785,37 @@ export const ansibleRecipe: SheetRecipe = {
             // templated is the same string one level up (a logrotate block is
             // named by the log path it rotates). A tab reading `{{ keycloak_home
             // }}/data/log/...` names a file nobody has.
-            const categoryPath = entry.categoryPath.map(
-              (c) => substituteJinja(c, (n) => defaultsMap.get(n)?.value).text
-            );
+            const sub = (t: string): string => substituteJinja(t, (n) => defaultsMap.get(n)?.value).text;
+            const categoryPath = entry.categoryPath.map(sub);
+            // And the CHAIN, which is the same names a third time. The row's
+            // key is substituted above and the chain has to address the same
+            // blocks it does — a chain still reading `{{ keycloak_home }}` is
+            // no longer a prefix of the key it belongs to. Exactly the leak the
+            // template parser had for its own three copies, one layer up.
+            const containers = entry.containers?.map((n) => {
+              const subject = n.subject === undefined ? undefined : sub(n.subject);
+              // A block whose name the template ASSEMBLES from variables has no
+              // single place holding the result: the template writes
+              // `{{ app_log_dir }}/*.log` and the deployed file will say
+              // `/var/log/app/*.log`, and neither file contains the other. An
+              // ordinary row answers this by pointing at the variable instead;
+              // a block cannot, because its identity is the whole expression
+              // rather than any one variable in it. So it carries no definition
+              // site — which is what this tool does everywhere it cannot answer
+              // honestly, and costs nothing here, since apply holds a block
+              // regardless and the jump into the preview is indexed by line
+              // rather than by source.
+              const assembled = subject !== undefined && subject !== n.subject;
+              return {
+                ...n,
+                file,
+                ...(assembled ? { subjectAssembled: true } : {}),
+                ...(n.name === undefined ? {} : { name: sub(n.name) }),
+                ...(subject === undefined ? {} : { subject }),
+                pathSeg: sub(n.pathSeg),
+                headings: n.headings.map(sub),
+              };
+            });
             // The value's variables and the key's are counted SEPARATELY. Both
             // are consumed — neither should be rescued into a row of its own —
             // but only a variable the VALUE came from can be the row's source:
@@ -866,9 +894,9 @@ export const ansibleRecipe: SheetRecipe = {
               const varies =
                 onlyIn !== undefined || perInstance.some((i) => i.value !== perInstance[0]?.value);
               if (varies && perInstance.length > 0) {
-                embedded.push({ key, value: text, source, component: spec.component, categoryPath, instances: perInstance });
+                embedded.push({ key, value: text, source, component: spec.component, categoryPath, containers, instances: perInstance });
               } else {
-                embedded.push({ key, value: text, source, component: spec.component, categoryPath });
+                embedded.push({ key, value: text, source, component: spec.component, categoryPath, containers });
               }
             } else {
               bound.set(key, { value: text, source });
@@ -890,6 +918,14 @@ export const ansibleRecipe: SheetRecipe = {
             // Which line of which template this row IS, so the preview can
             // point back at it and the sheet can point into the preview.
             rowAtLine(spec.path, entry.source.line, key);
+            // And the BLOCKS around it, at the lines that open them. A block is
+            // a row with a real line in this file, so it gets the same jump
+            // both ways as any other row — without this it was the one row on
+            // the sheet that could not show you where it is.
+            (containers ?? []).forEach((n, i) => {
+              if (n.subject === undefined) return;
+              rowAtLine(spec.path, n.line, (containers ?? []).slice(0, i + 1).map((x) => x.pathSeg).join("."));
+            });
             continue;
           }
           const variable = entry.source.templateVar;
@@ -936,7 +972,7 @@ export const ansibleRecipe: SheetRecipe = {
             // base layer rather than interleaved at their template position,
             // so within a component the variables come first. Grouping by
             // component reorders them anyway.
-            embedded.push({ key: literalKey, value: entry.value, source, component: spec.component, categoryPath: entry.categoryPath });
+            embedded.push({ key: literalKey, value: entry.value, source, component: spec.component, categoryPath: entry.categoryPath, containers: entry.containers });
             rowAtLine(spec.path, entry.source.line, literalKey);
             continue;
           }
@@ -1081,6 +1117,7 @@ export const ansibleRecipe: SheetRecipe = {
             source: { file: resolvedBaselineFile },
             origin: "baseline",
             categoryPath: entry.categoryPath,
+            containers: entry.containers,
           });
           // The row and the commented line point at each other, exactly as an
           // ordinary row and its live line do.

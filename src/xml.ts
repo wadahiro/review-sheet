@@ -12,6 +12,7 @@
 
 import { SaxesParser } from "saxes";
 import type { ContainerNode } from "./types.js";
+import { containerSubjectAt } from "./parser.js";
 
 export type XmlEntry = { categoryPath: string[]; key: string; value: string; line: number; range: [number, number] };
 
@@ -87,6 +88,23 @@ function parseTree(content: string): XNode | null {
   return root;
 }
 
+// Which attribute identifies these same-named siblings, if any.
+//
+// Consulted for a group of ONE as much as for a group of many, deliberately.
+// Gating it on arity made an element's address depend on how many siblings it
+// happened to have: adding a second `<local-cache>` elsewhere in the file
+// re-keyed the first one's every descendant — every source map, review target
+// and apply target under it — and DELETED its `@name` row, since a promoted
+// attribute is suppressed. A row disappearing because something unrelated was
+// added is the failure this project refuses to let happen quietly, and this
+// parser's own header claims paths survive reordering, which they did only for
+// as long as nobody added anything.
+//
+// The `@name` row does not disappear now, it CHANGES SHAPE: the element itself
+// is a row, carrying that same value at that same attribute, so the fact stays
+// on the sheet and gains a description and a review target it never had. That
+// row is why this could not ship earlier — before it existed, promoting a
+// singleton simply lost the value.
 function identityAttr(group: XNode[]): string | null {
   for (const f of ID_ATTRS) {
     const vals = group.map((n) => n.attrs.find((a) => a.name === f)?.value);
@@ -138,16 +156,17 @@ export function xmlIndex(content: string): XmlIndexEntry[] {
     const groups = new Map<string, XNode[]>();
     for (const c of node.children) { const g = groups.get(c.name); if (g) g.push(c); else groups.set(c.name, [c]); }
     for (const [name, group] of groups) {
-      const idf = group.length > 1 ? identityAttr(group) : null;
+      const idf = identityAttr(group);
       group.forEach((child, i) => {
-        const subject = idf ? child.attrs.find((a) => a.name === idf)!.value : undefined;
+        const idAttr = idf ? child.attrs.find((a) => a.name === idf)! : undefined;
+        const subject = idAttr?.value;
         const index = group.length > 1 && !idf ? i : undefined;
         const pathSeg =
           subject !== undefined ? `${name}[${idf}=${quoteSeg(subject)}]` : index !== undefined ? `${name}[${index}]` : name;
         // XML's flattening splits a promoted element in two — the legacy
         // per-step grain, kept exactly.
         const headings = subject !== undefined ? [name, subject] : index !== undefined ? [name, `[${index}]`] : [name];
-        walk(child, [...nodes, { name, ...(subject !== undefined ? { subject, subjectField: idf! } : {}), ...(index !== undefined ? { index } : {}), pathSeg, headings, line: child.line }]);
+        walk(child, [...nodes, { name, ...(subject !== undefined ? { subject, subjectField: idf!, subjectRange: idAttr!.range } : {}), ...(index !== undefined ? { index } : {}), pathSeg, headings, line: child.line }]);
       });
     }
   };
@@ -162,8 +181,12 @@ export function xmlEntries(content: string): { categoryPath: string[]; key: stri
 
 export type XmlLocate = { value: string } | { error: string };
 export function xmlLocate(content: string, path: string): XmlLocate {
-  const e = xmlIndex(content).find((x) => x.path === path);
-  return e ? { value: e.value } : { error: "path not found" };
+  const index = xmlIndex(content);
+  const e = index.find((x) => x.path === path);
+  if (e) return { value: e.value };
+  // A BLOCK's own address (see containerSubjectAt).
+  const subject = containerSubjectAt(index, path);
+  return subject === undefined ? { error: "path not found" } : { value: subject };
 }
 
 function escapeXml(s: string): string {
