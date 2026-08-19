@@ -32,6 +32,7 @@ const nginxParser: ConfigParser = {
       key: e.key,
       value: e.value,
       source: { line: e.line, path: e.path },
+          containers: e.containers,
     })),
   locate: (content, source: SourceLocation, _expected: string): LocateResult => {
     if (!source.path) return { error: "no path", status: "unmapped" };

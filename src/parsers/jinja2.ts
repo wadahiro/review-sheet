@@ -78,6 +78,17 @@ const jinja2Parser: ConfigParser = {
       // it is the container's own name, so a templated container names its
       // rows' heading too.
       const categoryPath = e.categoryPath.map(restore);
+      // And the CONTAINER CHAIN, which is the same names a third time — the
+      // conformance suite caught this one, because a masked chain stops being a
+      // prefix of the restored path the moment a container is templated, which
+      // is precisely the logrotate case the comment above describes.
+      const containers = e.containers?.map((n) => ({
+        ...n,
+        name: restore(n.name),
+        ...(n.subject === undefined ? {} : { subject: restore(n.subject) }),
+        pathSeg: restore(n.pathSeg),
+        headings: n.headings.map(restore),
+      }));
       const templateVar = jinjaVariable(value);
       const conditional = e.source.line !== undefined && cond.has(e.source.line);
       if (
@@ -85,6 +96,7 @@ const jinja2Parser: ConfigParser = {
         value === e.value &&
         path === e.source.path &&
         categoryPath.every((c, i) => c === e.categoryPath[i]) &&
+        (containers ?? []).every((n, i) => n.pathSeg === e.containers?.[i].pathSeg) &&
         !templateVar &&
         !conditional
       )
@@ -94,6 +106,7 @@ const jinja2Parser: ConfigParser = {
         key,
         value,
         categoryPath,
+        ...(containers ? { containers } : {}),
         source: {
           ...e.source,
           ...(path === undefined ? {} : { path }),

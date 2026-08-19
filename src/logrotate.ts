@@ -1,4 +1,5 @@
 // logrotate policy files: `/path/to/*.log { directive … }`.
+import type { ContainerNode } from "./types.js";
 //
 // The format a rotation policy is written in, and — until this existed — a
 // blind spot with real consequences: a project reviewing its retention had
@@ -34,7 +35,24 @@ export type LogrotateEntry = {
   value: string;
   line: number;
   path: string;
+  containers: ContainerNode[];
 };
+
+// The block enclosing a directive.
+//
+// logrotate gives a block no keyword — the pattern IS the whole opening, so
+// `name` and `subject` coincide here where elsewhere they differ
+// (`Directory` / `"/var/www"`). They are set from one value in one place, so
+// there is nothing for them to drift apart from; recording the pattern as a
+// SUBJECT is what says this block is identified by an argument rather than
+// being the bare structure a systemd `[Section]` is.
+//
+// The global pseudo-scope is not a block at all: nothing in the file opens it,
+// so it carries no subject and no line to point at.
+function scopeNode(scope: string, line: number | undefined): ContainerNode {
+  if (scope === GLOBAL) return { name: GLOBAL, pathSeg: GLOBAL, headings: [GLOBAL] };
+  return { name: scope, subject: scope, pathSeg: scope, headings: [scope], ...(line !== undefined ? { line } : {}) };
+}
 
 const SCRIPT_DIRECTIVES = new Set(["postrotate", "prerotate", "firstaction", "lastaction", "preremove"]);
 
@@ -75,6 +93,11 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
   const lines = content.split("\n");
   const out: LogrotateEntry[] = [];
   let block: string | undefined;
+  // The block header's own line, for the container's definition site. A
+  // header may span several lines (the patterns are collected), so this is
+  // where the FIRST of them is.
+  let blockLine: number | undefined;
+  let pendingLine: number | undefined;
   // Pattern lines seen since the last directive, waiting for their `{`.
   let pending: string[] = [];
   let script: { key: string; line: number; body: string[] } | undefined;
@@ -94,6 +117,7 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
         const key = n === 0 ? script.key : `${script.key}[${n}]`;
         out.push({
           categoryPath: [scope],
+          containers: [scopeNode(scope, blockLine)],
           key,
           // Kept as written, minus the indentation the template gave it: the
           // command is the value, and a reviewer compares commands.
@@ -112,6 +136,7 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
 
     if (text === "}") {
       block = undefined;
+      blockLine = undefined;
       continue;
     }
 
@@ -132,7 +157,8 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
       pending = [];
       // `{` with nothing before it anywhere: not a block header, and not
       // something to guess about.
-      if (head.length > 0) block = head.join(" ");
+      if (head.length > 0) { block = head.join(" "); blockLine = pendingLine ?? i + 1; }
+      pendingLine = undefined;
       continue;
     }
 
@@ -148,6 +174,7 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
     // by logrotate itself, while a pattern is whatever the admin wrote, quite
     // possibly a template substitution this parser receives already masked.
     if (block === undefined && !DIRECTIVES.has(name)) {
+      if (pending.length === 0) pendingLine = i + 1;
       pending.push(text);
       continue;
     }
@@ -157,6 +184,7 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
     // the sheet is the failure this whole area exists to prevent.
     for (const stray of pending) emitPattern(stray, i + 1);
     pending = [];
+    pendingLine = undefined;
     if (SCRIPT_DIRECTIVES.has(name)) {
       script = { key: name, line: i + 1, body: [] };
       continue;
@@ -184,7 +212,7 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
     const n = seen.get(`${scope}\u0000${name}`) ?? 0;
     seen.set(`${scope}\u0000${name}`, n + 1);
     const key = n === 0 ? name : `${name}[${n}]`;
-    out.push({ categoryPath: [scope], key, value, line, path: `${scope}.${key}` });
+    out.push({ categoryPath: [scope], key, value, line, path: `${scope}.${key}`, containers: [scopeNode(scope, blockLine)] });
   }
 }
 

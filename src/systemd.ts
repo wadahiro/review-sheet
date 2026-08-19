@@ -1,4 +1,5 @@
 // systemd unit files (.service/.timer/.socket/.mount/.target/...). INI-shaped
+import type { ContainerNode } from "./types.js";
 // (`[Section]` + `Key=Value`) but keys may repeat within a section (e.g. several
 // `ExecStartPre=` or `Environment=`). Indexed with a single line scan into a
 // stable path per value plus its source range, mirroring the TOML/XML adapters.
@@ -8,16 +9,19 @@
 // identity here). Scalar one-line values; line-continued (`\`) values are
 // skipped.
 
-export type SystemdEntry = { categoryPath: string[]; key: string; value: string; line: number; range: [number, number]; path: string };
+export type SystemdEntry = { categoryPath: string[]; key: string; value: string; line: number; range: [number, number]; path: string; containers: ContainerNode[] };
 
 const DEFAULT_SECTION = "Unit";
 
 export function systemdIndex(content: string): SystemdEntry[] {
   const lines = content.split("\n");
-  type Raw = { section: string; key: string; value: string; line: number; range: [number, number] };
+  type Raw = { section: string; key: string; value: string; line: number; range: [number, number]; sectionLine?: number };
   const raw: Raw[] = [];
   let offset = 0;
   let section = DEFAULT_SECTION;
+  // Undefined until a header is actually read: the default section is assumed,
+  // not written, so it has no line of its own (see ContainerNode.line).
+  let sectionLine: number | undefined;
   let continuation = false;
 
   for (let i = 0; i < lines.length; i++) {
@@ -29,7 +33,7 @@ export function systemdIndex(content: string): SystemdEntry[] {
     if (trimmed === "" || trimmed.startsWith("#") || trimmed.startsWith(";")) continue;
 
     const sec = trimmed.match(/^\[(.+)\]$/);
-    if (sec) { section = sec[1].trim(); continue; }
+    if (sec) { section = sec[1].trim(); sectionLine = i + 1; continue; }
 
     const eq = line.indexOf("=");
     if (eq < 0) continue;
@@ -41,7 +45,7 @@ export function systemdIndex(content: string): SystemdEntry[] {
     if (line.trimEnd().endsWith("\\")) { continuation = true; continue; } // multi-line value: skip
     if (value === "") continue;
     const tokenStart = lineStart + eq + 1 + leading;
-    raw.push({ section, key, value, line: i + 1, range: [tokenStart, tokenStart + value.length] });
+    raw.push({ section, key, value, line: i + 1, range: [tokenStart, tokenStart + value.length], sectionLine });
   }
 
   const counts = new Map<string, number>();
@@ -56,7 +60,9 @@ export function systemdIndex(content: string): SystemdEntry[] {
     const suffix = repeated ? `[${occ}]` : "";
     // Keep the param key unique within the section so a repeated key (e.g. two
     // ExecStartPre=) stays individually addressable.
-    return { categoryPath: [r.section], key: r.key + suffix, value: r.value, line: r.line, range: r.range, path: `${r.section}.${r.key}${suffix}` };
+    // A section groups and nothing else — it has no argument, so no subject.
+    const node: ContainerNode = { name: r.section, pathSeg: r.section, headings: [r.section], ...(r.sectionLine !== undefined ? { line: r.sectionLine } : {}) };
+    return { categoryPath: [r.section], key: r.key + suffix, value: r.value, line: r.line, range: r.range, path: `${r.section}.${r.key}${suffix}`, containers: [node] };
   });
 }
 
