@@ -694,7 +694,7 @@ describe("group_by: file with a multi-variable line", () => {
       "/r/defaults.yml": "app_port: 8080\ndb_host: db.internal\ndb_name: appdb\n",
       "/r/app.conf.j2": "port={{ app_port }}\ndb-url=jdbc:postgresql://{{ db_host }}:5432/{{ db_name }}\n",
       "project.yml":
-        "sheets:\n  app:\n    group_by: file\n    under_key: { id: variable, label: { en: V } }\n" +
+        "sheets:\n  app:\n    under_key: { id: variable, label: { en: V } }\n" +
         "    params:\n      port: { description: { en: p } }\n      db_host: { description: { en: h } }\n" +
         "      db_name: { description: { en: n } }\n",
     };
@@ -737,7 +737,7 @@ describe("group_by: file with a multi-variable line", () => {
       "/r/defaults.yml": "app_port: 8080\ndb_host: db.internal\ndb_name: appdb\n",
       "/r/app.conf.j2": "port={{ app_port }}\ndb-url=jdbc:postgresql://{{ db_host }}:5432/{{ db_name }}\n",
       "project.yml":
-        "sheets:\n  app:\n    group_by: file\n    under_key: { id: variable, label: { en: V } }\n" +
+        "sheets:\n  app:\n    under_key: { id: variable, label: { en: V } }\n" +
         "    params:\n      port: { description: { en: p } }\n      db-url: { description: { en: u } }\n",
     };
     const si = recipe.load(

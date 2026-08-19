@@ -8,8 +8,10 @@
 # unpasteable into this file).
 sheets:
   app:
+    layout: categories
     params: {}
   other:
+    layout: categories
     params:
       known_key:
         category: General

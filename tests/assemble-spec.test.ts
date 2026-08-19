@@ -68,6 +68,7 @@ sheets:
 // looked up with a parameter's final identity, which is the contract `keyFor`
 // has to honour.
 const PROJECT_YML = `
+layout: categories
 params:
   host:
     category: Database
@@ -681,7 +682,6 @@ sheets:
       "/p/sheet.yml": `
 sheets:
   host:
-    group_by: file
     params:
       postgresql: { description: A }
       netstat: { description: B }
@@ -736,7 +736,6 @@ sheets:
       "/p/sheet.yml": `
 sheets:
   sso:
-    group_by: file
     params:
       hostname: { description: A }
       httpport: { description: B }

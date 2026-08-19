@@ -37,7 +37,7 @@ function assembled(xml: string): { key: string; value?: string; container?: { na
     layers: [{ kind: "base" as const, entries: new Map() }],
     embedded: es.map((e) => ({ key: e.source!.path!, value: e.value, source: e.source, categoryPath: ["a.xml"], containers: e.containers })),
   };
-  const readFile = (p: string): string | null => (p === "/sheet.yml" ? "sheets:\n  x:\n    group_by: file\n    params: {}\n" : null);
+  const readFile = (p: string): string | null => (p === "/sheet.yml" ? "sheets:\n  x:\n    params: {}\n" : null);
   const out = assembleSheets([si] as never, { readFile, projectPath: "/sheet.yml", instances: [], strictMetadata: false } as never);
   const flat: { key: string; value?: string; container?: { name: string } }[] = [];
   const walk = (cs: { params?: never[]; categories?: never[] }[] | undefined): void => {

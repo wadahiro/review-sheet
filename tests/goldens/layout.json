@@ -1697,23 +1697,1698 @@
     },
     {
       "sheet": "postgresql configuration",
-      "path": "Autovacuum",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "allow_in_place_tablespaces"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "allow_system_table_mods"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "application_name"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "archive_cleanup_command"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "archive_command"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "archive_library"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "archive_mode"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "archive_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "array_nulls"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "authentication_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
       "key": "autovacuum"
     },
     {
       "sheet": "postgresql configuration",
-      "path": "Autovacuum",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
       "key": "autovacuum_analyze_scale_factor"
     },
     {
       "sheet": "postgresql configuration",
-      "path": "Autovacuum",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
       "key": "autovacuum_analyze_threshold"
     },
     {
       "sheet": "postgresql configuration",
-      "path": "Autovacuum",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
       "key": "autovacuum_freeze_max_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "autovacuum_multixact_freeze_max_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "autovacuum_vacuum_cost_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "autovacuum_vacuum_cost_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "autovacuum_vacuum_insert_scale_factor"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "autovacuum_vacuum_insert_threshold"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "autovacuum_vacuum_scale_factor"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "autovacuum_vacuum_threshold"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "autovacuum_work_mem"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "backend_flush_after"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "backslash_quote"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "backtrace_functions"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "bgwriter_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "bgwriter_flush_after"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "bgwriter_lru_maxpages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "bgwriter_lru_multiplier"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "block_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "bonjour"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "bonjour_name"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "bytea_output"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "check_function_bodies"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "checkpoint_flush_after"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "checkpoint_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "checkpoint_warning"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "client_connection_check_interval"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "client_encoding"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "client_min_messages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "cluster_name"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "commit_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "commit_siblings"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "compute_query_id"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "config_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "constraint_exclusion"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "cpu_index_tuple_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "cpu_operator_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "cpu_tuple_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "createrole_self_grant"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "cursor_tuple_fraction"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "data_checksums"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "data_directory"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "data_directory_mode"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "data_sync_retry"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "DateStyle"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "db_user_namespace"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "deadlock_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "debug_assertions"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "debug_discard_caches"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "debug_io_direct"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "debug_logical_replication_streaming"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "debug_parallel_query"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "debug_pretty_print"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "debug_print_parse"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "debug_print_plan"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "debug_print_rewritten"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "default_table_access_method"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "default_tablespace"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "default_text_search_config"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "default_toast_compression"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "default_transaction_deferrable"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "default_transaction_isolation"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "default_transaction_read_only"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "dynamic_library_path"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_async_append"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_bitmapscan"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_gathermerge"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_hashagg"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_hashjoin"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_incremental_sort"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_indexonlyscan"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_indexscan"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_material"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_memoize"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_mergejoin"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_nestloop"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_parallel_append"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_parallel_hash"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_partition_pruning"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_partitionwise_aggregate"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_partitionwise_join"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_presorted_aggregate"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_seqscan"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_sort"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "enable_tidscan"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "escape_string_warning"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "event_source"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "exit_on_error"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "extension_destdir"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "external_pid_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "extra_float_digits"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "file_extend_method"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "from_collapse_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "fsync"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "full_page_writes"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "geqo"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "geqo_effort"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "geqo_generations"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "geqo_pool_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "geqo_seed"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "geqo_selection_bias"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "geqo_threshold"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "gin_fuzzy_search_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "gin_pending_list_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "gss_accept_delegation"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "hash_mem_multiplier"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "hba_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "hot_standby"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "hot_standby_feedback"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "huge_page_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "icu_validation_level"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ident_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "idle_in_transaction_session_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "idle_session_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ignore_checksum_failure"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ignore_invalid_pages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ignore_system_indexes"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "in_hot_standby"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "integer_datetimes"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "IntervalStyle"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "jit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "jit_above_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "jit_debugging_support"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "jit_dump_bitcode"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "jit_expressions"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "jit_inline_above_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "jit_optimize_above_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "jit_profiling_support"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "jit_provider"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "jit_tuple_deforming"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "join_collapse_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "krb_caseins_users"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "lc_messages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "lc_monetary"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "lc_numeric"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "lc_time"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "lo_compat_privileges"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "local_preload_libraries"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "lock_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_autovacuum_min_duration"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_connections"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_destination"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_directory"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_disconnections"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_duration"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_error_verbosity"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_executor_stats"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_file_mode"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_filename"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_hostname"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_lock_waits"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_min_duration_sample"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_min_error_statement"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_min_messages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_parameter_max_length"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_parameter_max_length_on_error"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_parser_stats"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_planner_stats"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_recovery_conflict_waits"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_replication_commands"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_rotation_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_rotation_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_startup_progress_interval"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_statement"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_statement_sample_rate"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_statement_stats"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_temp_files"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_timezone"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_transaction_sample_rate"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "log_truncate_on_rotation"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "logging_collector"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "logical_decoding_work_mem"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "maintenance_io_concurrency"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_files_per_process"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_function_args"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_identifier_length"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_index_keys"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_locks_per_transaction"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_logical_replication_workers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_parallel_apply_workers_per_subscription"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_parallel_maintenance_workers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_parallel_workers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_parallel_workers_per_gather"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_pred_locks_per_page"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_pred_locks_per_relation"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_pred_locks_per_transaction"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_prepared_transactions"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_replication_slots"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_slot_wal_keep_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_stack_depth"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_standby_archive_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_standby_streaming_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_sync_workers_per_subscription"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_wal_senders"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "max_worker_processes"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "min_dynamic_shared_memory"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "min_parallel_index_scan_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "min_parallel_table_scan_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "old_snapshot_threshold"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "parallel_leader_participation"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "parallel_setup_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "parallel_tuple_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "plan_cache_mode"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "post_auth_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "pre_auth_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "primary_conninfo"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "primary_slot_name"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "quote_all_identifiers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "recovery_end_command"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "recovery_init_sync_method"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "recovery_min_apply_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "recovery_prefetch"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "recovery_target"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "recovery_target_action"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "recovery_target_inclusive"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "recovery_target_lsn"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "recovery_target_name"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "recovery_target_time"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "recovery_target_timeline"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "recovery_target_xid"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "recursive_worktable_factor"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "remove_temp_files_after_crash"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "reserved_connections"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "restart_after_crash"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "restore_command"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "restrict_nonsystem_relation_kind"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "row_security"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "scram_iterations"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "search_path"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "segment_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "send_abort_for_crash"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "send_abort_for_kill"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "seq_page_cost"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "server_encoding"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "server_version"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "server_version_num"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "session_preload_libraries"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "session_replication_role"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "shared_memory_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "shared_memory_size_in_huge_pages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "shared_memory_type"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "shared_preload_libraries"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ssl"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ssl_ca_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ssl_cert_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ssl_ciphers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ssl_crl_dir"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ssl_crl_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ssl_dh_params_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ssl_ecdh_curve"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ssl_key_file"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ssl_library"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ssl_max_protocol_version"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ssl_min_protocol_version"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ssl_passphrase_command"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ssl_passphrase_command_supports_reload"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "ssl_prefer_server_ciphers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "standard_conforming_strings"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "statement_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "stats_fetch_consistency"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "superuser_reserved_connections"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "synchronize_seqscans"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "synchronous_commit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "synchronous_standby_names"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "syslog_facility"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "syslog_ident"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "syslog_sequence_numbers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "syslog_split_messages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "tcp_keepalives_count"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "tcp_keepalives_idle"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "tcp_keepalives_interval"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "tcp_user_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "temp_buffers"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "temp_file_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "temp_tablespaces"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "TimeZone"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "timezone_abbreviations"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "trace_notify"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "trace_recovery_messages"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "trace_sort"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "track_activities"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "track_activity_query_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "track_commit_timestamp"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "track_counts"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "track_functions"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "track_io_timing"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "track_wal_io_timing"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "transaction_deferrable"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "transaction_isolation"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "transaction_read_only"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "transform_null_equals"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "unix_socket_directories"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "unix_socket_group"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "unix_socket_permissions"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "update_process_title"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "vacuum_buffer_usage_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "vacuum_cost_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "vacuum_cost_limit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "vacuum_cost_page_dirty"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "vacuum_cost_page_hit"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "vacuum_cost_page_miss"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "vacuum_failsafe_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "vacuum_freeze_min_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "vacuum_freeze_table_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "vacuum_multixact_failsafe_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "vacuum_multixact_freeze_min_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "vacuum_multixact_freeze_table_age"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_block_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_compression"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_consistency_checking"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_decode_buffer_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_init_zero"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_keep_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_log_hints"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_receiver_create_temp_slot"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_receiver_status_interval"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_receiver_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_recycle"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_retrieve_retry_interval"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_segment_size"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_sender_timeout"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_skip_threshold"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_sync_method"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_writer_delay"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "wal_writer_flush_after"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "xmlbinary"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "xmloption"
+    },
+    {
+      "sheet": "postgresql configuration",
+      "path": "/var/lib/pgsql/data/postgresql.conf",
+      "key": "zero_damaged_pages"
     },
     {
       "sheet": "postgresql configuration",
@@ -1723,447 +3398,12 @@
     {
       "sheet": "postgresql configuration",
       "path": "Autovacuum",
-      "key": "autovacuum_multixact_freeze_max_age"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Autovacuum",
       "key": "autovacuum_naptime"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Autovacuum",
-      "key": "autovacuum_vacuum_cost_delay"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Autovacuum",
-      "key": "autovacuum_vacuum_cost_limit"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Autovacuum",
-      "key": "autovacuum_vacuum_insert_scale_factor"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Autovacuum",
-      "key": "autovacuum_vacuum_insert_threshold"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Autovacuum",
-      "key": "autovacuum_vacuum_scale_factor"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Autovacuum",
-      "key": "autovacuum_vacuum_threshold"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Locale and Formatting",
-      "key": "client_encoding"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Locale and Formatting",
-      "key": "DateStyle"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Locale and Formatting",
-      "key": "default_text_search_config"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Locale and Formatting",
-      "key": "extra_float_digits"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Locale and Formatting",
-      "key": "icu_validation_level"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Locale and Formatting",
-      "key": "IntervalStyle"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Locale and Formatting",
-      "key": "lc_messages"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Locale and Formatting",
-      "key": "lc_monetary"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Locale and Formatting",
-      "key": "lc_numeric"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Locale and Formatting",
-      "key": "lc_time"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Locale and Formatting",
-      "key": "TimeZone"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Locale and Formatting",
-      "key": "timezone_abbreviations"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Other Defaults",
-      "key": "dynamic_library_path"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Other Defaults",
-      "key": "gin_fuzzy_search_limit"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Shared Library Preloading",
-      "key": "jit_provider"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Shared Library Preloading",
-      "key": "local_preload_libraries"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Shared Library Preloading",
-      "key": "session_preload_libraries"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Shared Library Preloading",
-      "key": "shared_preload_libraries"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "bytea_output"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "check_function_bodies"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "client_min_messages"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "createrole_self_grant"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "default_table_access_method"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "default_tablespace"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "default_toast_compression"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "default_transaction_deferrable"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "default_transaction_isolation"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "default_transaction_read_only"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "gin_pending_list_limit"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "idle_in_transaction_session_timeout"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "idle_session_timeout"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "lock_timeout"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "restrict_nonsystem_relation_kind"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "row_security"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "search_path"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "session_replication_role"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "statement_timeout"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "temp_tablespaces"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "transaction_deferrable"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "transaction_isolation"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "transaction_read_only"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "vacuum_failsafe_age"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "vacuum_freeze_min_age"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "vacuum_freeze_table_age"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "vacuum_multixact_failsafe_age"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "vacuum_multixact_freeze_min_age"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "vacuum_multixact_freeze_table_age"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "xmlbinary"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Client Connection Defaults / Statement Behavior",
-      "key": "xmloption"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / Authentication",
-      "key": "authentication_timeout"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / Authentication",
-      "key": "db_user_namespace"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / Authentication",
-      "key": "gss_accept_delegation"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / Authentication",
-      "key": "krb_caseins_users"
     },
     {
       "sheet": "postgresql configuration",
       "path": "Connections and Authentication / Authentication",
       "key": "krb_server_keyfile"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / Authentication",
-      "key": "scram_iterations"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / Connection Settings",
-      "key": "bonjour"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / Connection Settings",
-      "key": "bonjour_name"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / Connection Settings",
-      "key": "reserved_connections"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / Connection Settings",
-      "key": "superuser_reserved_connections"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / Connection Settings",
-      "key": "unix_socket_directories"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / Connection Settings",
-      "key": "unix_socket_group"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / Connection Settings",
-      "key": "unix_socket_permissions"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / SSL",
-      "key": "ssl"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / SSL",
-      "key": "ssl_ca_file"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / SSL",
-      "key": "ssl_cert_file"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / SSL",
-      "key": "ssl_ciphers"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / SSL",
-      "key": "ssl_crl_dir"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / SSL",
-      "key": "ssl_crl_file"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / SSL",
-      "key": "ssl_dh_params_file"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / SSL",
-      "key": "ssl_ecdh_curve"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / SSL",
-      "key": "ssl_key_file"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / SSL",
-      "key": "ssl_max_protocol_version"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / SSL",
-      "key": "ssl_min_protocol_version"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / SSL",
-      "key": "ssl_passphrase_command"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / SSL",
-      "key": "ssl_passphrase_command_supports_reload"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / SSL",
-      "key": "ssl_prefer_server_ciphers"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / TCP Settings",
-      "key": "client_connection_check_interval"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / TCP Settings",
-      "key": "tcp_keepalives_count"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / TCP Settings",
-      "key": "tcp_keepalives_idle"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / TCP Settings",
-      "key": "tcp_keepalives_interval"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Connections and Authentication / TCP Settings",
-      "key": "tcp_user_timeout"
     },
     {
       "sheet": "postgresql configuration",
@@ -2184,206 +3424,6 @@
       "sheet": "postgresql configuration",
       "path": "Connections",
       "key": "port"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "allow_in_place_tablespaces"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "allow_system_table_mods"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "backtrace_functions"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "debug_discard_caches"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "debug_io_direct"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "debug_logical_replication_streaming"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "debug_parallel_query"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "ignore_checksum_failure"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "ignore_invalid_pages"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "ignore_system_indexes"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "jit_debugging_support"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "jit_dump_bitcode"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "jit_expressions"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "jit_profiling_support"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "jit_tuple_deforming"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "post_auth_delay"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "pre_auth_delay"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "remove_temp_files_after_crash"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "send_abort_for_crash"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "send_abort_for_kill"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "trace_notify"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "trace_recovery_messages"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "trace_sort"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "wal_consistency_checking"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Developer Options",
-      "key": "zero_damaged_pages"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Error Handling",
-      "key": "data_sync_retry"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Error Handling",
-      "key": "exit_on_error"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Error Handling",
-      "key": "recovery_init_sync_method"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Error Handling",
-      "key": "restart_after_crash"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "File Locations",
-      "key": "config_file"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "File Locations",
-      "key": "data_directory"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "File Locations",
-      "key": "extension_destdir"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "File Locations",
-      "key": "external_pid_file"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "File Locations",
-      "key": "hba_file"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "File Locations",
-      "key": "ident_file"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Lock Management",
-      "key": "deadlock_timeout"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Lock Management",
-      "key": "max_locks_per_transaction"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Lock Management",
-      "key": "max_pred_locks_per_page"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Lock Management",
-      "key": "max_pred_locks_per_relation"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Lock Management",
-      "key": "max_pred_locks_per_transaction"
     },
     {
       "sheet": "postgresql configuration",
@@ -2432,96 +3472,6 @@
     },
     {
       "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "block_size"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "data_checksums"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "data_directory_mode"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "debug_assertions"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "in_hot_standby"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "integer_datetimes"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "max_function_args"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "max_identifier_length"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "max_index_keys"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "segment_size"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "server_encoding"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "server_version"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "server_version_num"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "shared_memory_size"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "shared_memory_size_in_huge_pages"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "ssl_library"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "wal_block_size"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Preset Options",
-      "key": "wal_segment_size"
-    },
-    {
-      "sheet": "postgresql configuration",
       "path": "Query planner",
       "key": "default_statistics_target"
     },
@@ -2537,958 +3487,8 @@
     },
     {
       "sheet": "postgresql configuration",
-      "path": "Query Tuning / Genetic Query Optimizer",
-      "key": "geqo"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Genetic Query Optimizer",
-      "key": "geqo_effort"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Genetic Query Optimizer",
-      "key": "geqo_generations"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Genetic Query Optimizer",
-      "key": "geqo_pool_size"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Genetic Query Optimizer",
-      "key": "geqo_seed"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Genetic Query Optimizer",
-      "key": "geqo_selection_bias"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Genetic Query Optimizer",
-      "key": "geqo_threshold"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Other Planner Options",
-      "key": "constraint_exclusion"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Other Planner Options",
-      "key": "cursor_tuple_fraction"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Other Planner Options",
-      "key": "from_collapse_limit"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Other Planner Options",
-      "key": "jit"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Other Planner Options",
-      "key": "join_collapse_limit"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Other Planner Options",
-      "key": "plan_cache_mode"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Other Planner Options",
-      "key": "recursive_worktable_factor"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Cost Constants",
-      "key": "cpu_index_tuple_cost"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Cost Constants",
-      "key": "cpu_operator_cost"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Cost Constants",
-      "key": "cpu_tuple_cost"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Cost Constants",
-      "key": "jit_above_cost"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Cost Constants",
-      "key": "jit_inline_above_cost"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Cost Constants",
-      "key": "jit_optimize_above_cost"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Cost Constants",
-      "key": "min_parallel_index_scan_size"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Cost Constants",
-      "key": "min_parallel_table_scan_size"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Cost Constants",
-      "key": "parallel_setup_cost"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Cost Constants",
-      "key": "parallel_tuple_cost"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Cost Constants",
-      "key": "seq_page_cost"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_async_append"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_bitmapscan"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_gathermerge"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_hashagg"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_hashjoin"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_incremental_sort"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_indexonlyscan"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_indexscan"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_material"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_memoize"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_mergejoin"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_nestloop"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_parallel_append"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_parallel_hash"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_partition_pruning"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_partitionwise_aggregate"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_partitionwise_join"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_presorted_aggregate"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_seqscan"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_sort"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Query Tuning / Planner Method Configuration",
-      "key": "enable_tidscan"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Primary Server",
-      "key": "synchronous_standby_names"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Sending Servers",
-      "key": "max_replication_slots"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Sending Servers",
-      "key": "max_slot_wal_keep_size"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Sending Servers",
-      "key": "max_wal_senders"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Sending Servers",
-      "key": "track_commit_timestamp"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Sending Servers",
-      "key": "wal_keep_size"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Sending Servers",
-      "key": "wal_sender_timeout"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Standby Servers",
-      "key": "hot_standby"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Standby Servers",
-      "key": "hot_standby_feedback"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Standby Servers",
-      "key": "max_standby_archive_delay"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Standby Servers",
-      "key": "max_standby_streaming_delay"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Standby Servers",
-      "key": "primary_conninfo"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Standby Servers",
-      "key": "primary_slot_name"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Standby Servers",
-      "key": "recovery_min_apply_delay"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Standby Servers",
-      "key": "wal_receiver_create_temp_slot"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Standby Servers",
-      "key": "wal_receiver_status_interval"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Standby Servers",
-      "key": "wal_receiver_timeout"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Standby Servers",
-      "key": "wal_retrieve_retry_interval"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Subscribers",
-      "key": "max_logical_replication_workers"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Subscribers",
-      "key": "max_parallel_apply_workers_per_subscription"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Replication / Subscribers",
-      "key": "max_sync_workers_per_subscription"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / Process Title",
-      "key": "cluster_name"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / Process Title",
-      "key": "update_process_title"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "application_name"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "debug_pretty_print"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "debug_print_parse"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "debug_print_plan"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "debug_print_rewritten"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "log_autovacuum_min_duration"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "log_connections"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "log_disconnections"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "log_duration"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "log_error_verbosity"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "log_hostname"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "log_lock_waits"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "log_parameter_max_length"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "log_parameter_max_length_on_error"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "log_recovery_conflict_waits"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "log_replication_commands"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "log_statement"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "log_temp_files"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / What to Log",
-      "key": "log_timezone"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / When to Log",
-      "key": "log_min_duration_sample"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / When to Log",
-      "key": "log_min_error_statement"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / When to Log",
-      "key": "log_min_messages"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / When to Log",
-      "key": "log_startup_progress_interval"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / When to Log",
-      "key": "log_statement_sample_rate"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / When to Log",
-      "key": "log_transaction_sample_rate"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / Where to Log",
-      "key": "event_source"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / Where to Log",
-      "key": "log_destination"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / Where to Log",
-      "key": "log_directory"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / Where to Log",
-      "key": "log_file_mode"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / Where to Log",
-      "key": "log_filename"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / Where to Log",
-      "key": "log_rotation_age"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / Where to Log",
-      "key": "log_rotation_size"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / Where to Log",
-      "key": "log_truncate_on_rotation"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / Where to Log",
-      "key": "logging_collector"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / Where to Log",
-      "key": "syslog_facility"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / Where to Log",
-      "key": "syslog_ident"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / Where to Log",
-      "key": "syslog_sequence_numbers"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Reporting and Logging / Where to Log",
-      "key": "syslog_split_messages"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Asynchronous Behavior",
-      "key": "backend_flush_after"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Asynchronous Behavior",
-      "key": "maintenance_io_concurrency"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Asynchronous Behavior",
-      "key": "max_parallel_maintenance_workers"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Asynchronous Behavior",
-      "key": "max_parallel_workers"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Asynchronous Behavior",
-      "key": "max_parallel_workers_per_gather"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Asynchronous Behavior",
-      "key": "max_worker_processes"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Asynchronous Behavior",
-      "key": "old_snapshot_threshold"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Asynchronous Behavior",
-      "key": "parallel_leader_participation"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Background Writer",
-      "key": "bgwriter_delay"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Background Writer",
-      "key": "bgwriter_flush_after"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Background Writer",
-      "key": "bgwriter_lru_maxpages"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Background Writer",
-      "key": "bgwriter_lru_multiplier"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Cost-Based Vacuum Delay",
-      "key": "vacuum_cost_delay"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Cost-Based Vacuum Delay",
-      "key": "vacuum_cost_limit"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Cost-Based Vacuum Delay",
-      "key": "vacuum_cost_page_dirty"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Cost-Based Vacuum Delay",
-      "key": "vacuum_cost_page_hit"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Cost-Based Vacuum Delay",
-      "key": "vacuum_cost_page_miss"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Disk",
-      "key": "file_extend_method"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Disk",
-      "key": "temp_file_limit"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Kernel Resources",
-      "key": "max_files_per_process"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Memory",
-      "key": "autovacuum_work_mem"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Memory",
-      "key": "hash_mem_multiplier"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Memory",
-      "key": "huge_page_size"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Memory",
-      "key": "logical_decoding_work_mem"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Memory",
-      "key": "max_prepared_transactions"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Memory",
-      "key": "max_stack_depth"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Memory",
-      "key": "min_dynamic_shared_memory"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Memory",
-      "key": "shared_memory_type"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Memory",
-      "key": "temp_buffers"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Resource Usage / Memory",
-      "key": "vacuum_buffer_usage_limit"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Statistics / Cumulative Query and Index Statistics",
-      "key": "stats_fetch_consistency"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Statistics / Cumulative Query and Index Statistics",
-      "key": "track_activities"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Statistics / Cumulative Query and Index Statistics",
-      "key": "track_activity_query_size"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Statistics / Cumulative Query and Index Statistics",
-      "key": "track_counts"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Statistics / Cumulative Query and Index Statistics",
-      "key": "track_functions"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Statistics / Cumulative Query and Index Statistics",
-      "key": "track_io_timing"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Statistics / Cumulative Query and Index Statistics",
-      "key": "track_wal_io_timing"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Statistics / Monitoring",
-      "key": "compute_query_id"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Statistics / Monitoring",
-      "key": "log_executor_stats"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Statistics / Monitoring",
-      "key": "log_parser_stats"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Statistics / Monitoring",
-      "key": "log_planner_stats"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Statistics / Monitoring",
-      "key": "log_statement_stats"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Version and Platform Compatibility / Other Platforms and Clients",
-      "key": "transform_null_equals"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Version and Platform Compatibility / Previous PostgreSQL Versions",
-      "key": "array_nulls"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Version and Platform Compatibility / Previous PostgreSQL Versions",
-      "key": "backslash_quote"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Version and Platform Compatibility / Previous PostgreSQL Versions",
-      "key": "escape_string_warning"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Version and Platform Compatibility / Previous PostgreSQL Versions",
-      "key": "lo_compat_privileges"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Version and Platform Compatibility / Previous PostgreSQL Versions",
-      "key": "quote_all_identifiers"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Version and Platform Compatibility / Previous PostgreSQL Versions",
-      "key": "standard_conforming_strings"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Version and Platform Compatibility / Previous PostgreSQL Versions",
-      "key": "synchronize_seqscans"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Archive Recovery",
-      "key": "archive_cleanup_command"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Archive Recovery",
-      "key": "recovery_end_command"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Archive Recovery",
-      "key": "restore_command"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Archiving",
-      "key": "archive_command"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Archiving",
-      "key": "archive_library"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Archiving",
-      "key": "archive_mode"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Archiving",
-      "key": "archive_timeout"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Checkpoints",
-      "key": "checkpoint_flush_after"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Checkpoints",
-      "key": "checkpoint_timeout"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Checkpoints",
-      "key": "checkpoint_warning"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Recovery",
-      "key": "recovery_prefetch"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Recovery Target",
-      "key": "recovery_target"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Recovery Target",
-      "key": "recovery_target_action"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Recovery Target",
-      "key": "recovery_target_inclusive"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Recovery Target",
-      "key": "recovery_target_lsn"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Recovery Target",
-      "key": "recovery_target_name"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Recovery Target",
-      "key": "recovery_target_time"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Recovery Target",
-      "key": "recovery_target_timeline"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Recovery Target",
-      "key": "recovery_target_xid"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Recovery",
-      "key": "wal_decode_buffer_size"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Settings",
-      "key": "commit_delay"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Settings",
-      "key": "commit_siblings"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Settings",
-      "key": "fsync"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Settings",
-      "key": "full_page_writes"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Settings",
-      "key": "synchronous_commit"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Settings",
-      "key": "wal_compression"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Settings",
-      "key": "wal_init_zero"
-    },
-    {
-      "sheet": "postgresql configuration",
       "path": "Write-Ahead Log / Settings",
       "key": "wal_level"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Settings",
-      "key": "wal_log_hints"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Settings",
-      "key": "wal_recycle"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Settings",
-      "key": "wal_skip_threshold"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Settings",
-      "key": "wal_sync_method"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Settings",
-      "key": "wal_writer_delay"
-    },
-    {
-      "sheet": "postgresql configuration",
-      "path": "Write-Ahead Log / Settings",
-      "key": "wal_writer_flush_after"
     },
     {
       "sheet": "postgresql configuration",
@@ -3522,7 +3522,7 @@
       "spec": "ansible-basic",
       "sheet": "postgresql configuration",
       "rows": 363,
-      "categories": 47
+      "categories": 9
     },
     {
       "spec": "ansible-httpd",

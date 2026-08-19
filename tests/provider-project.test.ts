@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { loadProjectMeta, paramsForSheet, checkProjectMetaSheets, compareComponentsForSheet } from "../src/providers/project";
+import { loadProjectMeta, paramsForSheet, checkProjectMetaSheets, compareComponentsForSheet, layoutForSheet, groupsByFile } from "../src/providers/project";
 import { getMetadataProvider, type MetadataContext } from "../src/metadata";
 import "../src/providers/project";
 
@@ -221,5 +221,62 @@ describe("compare_components: always", () => {
     const doc = loadProjectMeta("sheet.yml", () => "sheets:\n  s:\n    params: {}\n");
     expect(compareComponentsForSheet(doc, "s")).toBe(false);
     expect(compareComponentsForSheet(doc, "no-such-sheet")).toBe(false);
+  });
+});
+
+// What HEADS a sheet's rows. The file layout became the default when it turned
+// out that grouping by anything else can separate a row from the block it is
+// written in — a dictionary files a directive by what implements it, which has
+// nothing to do with where the directive sits — so the two grouped layouts are
+// declarations, and this is where a declaration is read or refused.
+describe("layout:", () => {
+  const load = (yaml: string) => loadProjectMeta("sheet.yml", () => yaml);
+
+  it("heads rows by their file when nothing is declared", () => {
+    expect(layoutForSheet(load("sheets:\n  s:\n    params: {}\n"), "s")).toBe("file");
+    // Also for a sheet the document never mentions: the default is the default,
+    // not a property of being written down.
+    expect(layoutForSheet(load("sheets:\n  s:\n    params: {}\n"), "other")).toBe("file");
+  });
+
+  it("reads each declared layout", () => {
+    expect(layoutForSheet(load("sheets:\n  s:\n    layout: categories\n    params: {}\n"), "s")).toBe("categories");
+    expect(layoutForSheet(load("sheets:\n  s:\n    layout: file+categories\n    params: {}\n"), "s")).toBe("file+categories");
+  });
+
+  // The flat form of this file is the single-sheet shorthand, so it has to be
+  // able to say the same things; without this the shorthand would mean
+  // something the long form does not.
+  it("reads the flat form's document-level declaration", () => {
+    expect(layoutForSheet(load("layout: categories\nparams: {}\n"), undefined)).toBe("categories");
+    expect(layoutForSheet(load("params: {}\n"), undefined)).toBe("file");
+  });
+
+  it("lets a sheet override the document", () => {
+    const doc = load("layout: categories\nsheets:\n  s:\n    layout: file+categories\n    params: {}\n  t:\n    params: {}\n");
+    expect(layoutForSheet(doc, "s")).toBe("file+categories");
+    expect(layoutForSheet(doc, "t")).toBe("categories");
+  });
+
+  // Only file grouping asks the file question; `file+categories` sub-heads that
+  // file, it does not replace it.
+  it("says which layouts head by file", () => {
+    expect(groupsByFile(load("sheets:\n  s:\n    params: {}\n"), "s")).toBe(true);
+    expect(groupsByFile(load("sheets:\n  s:\n    layout: file+categories\n    params: {}\n"), "s")).toBe(true);
+    expect(groupsByFile(load("sheets:\n  s:\n    layout: categories\n    params: {}\n"), "s")).toBe(false);
+  });
+
+  // The old key asked for what is now the default, so a spec still carrying it
+  // means the opposite of what its author wrote. Honouring it silently and
+  // ignoring it silently are both worse than saying so.
+  it("refuses group_by: file, and the message does the migration", () => {
+    expect(() => load("sheets:\n  s:\n    group_by: file\n    params: {}\n")).toThrow(
+      /"group_by: file", which no longer exists.*now the default — delete the line.*layout: file\+categories/s
+    );
+  });
+
+  it("refuses a layout it does not have, listing the ones it does", () => {
+    expect(() => load("sheets:\n  s:\n    layout: file\n    params: {}\n")).toThrow(/layout: file.*Write "categories".*"file\+categories".*omit it/s);
+    expect(() => load("layout: nonsense\nparams: {}\n")).toThrow(/layout: nonsense/);
   });
 });
