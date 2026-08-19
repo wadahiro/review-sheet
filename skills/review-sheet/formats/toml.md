@@ -16,6 +16,10 @@ Tables and array-of-tables; reorder-robust paths; scalar values only.
 
 service[name=web].replicas — array-of-tables by identity; table.key — nested
 
+## Blocks
+
+Each `[table]` level is a block, and a dotted key writes its own. An `[[array of tables]]` item is addressed by a unique id field where one exists (`service[name=web]`) and rowed by it, verbatim from the source including its quotes; otherwise by position.
+
 ## Notes
 
 - [table] headers become nested path segments.

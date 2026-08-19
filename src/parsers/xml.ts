@@ -13,6 +13,8 @@ const xmlParser: ConfigParser = {
     files: "*.xml",
     detection: "extension (.xml)",
     pathStyle: "server.connector.@port — attribute; services.service[name=web].port — element by identity",
+    containers:
+      "Every element is a block. One carrying `name`/`id`/`key` promotes it into the address (`local-cache[name=realms]`) and becomes a row valued by that attribute, whose own attribute row is then suppressed — the fact is stated once. Promotion does not depend on how many siblings the element has.",
     notes: [
       "Attribute values addressed with .@attr suffix.",
       "Repeated elements addressed by identity attribute (name/id/key) → reorder-robust.",

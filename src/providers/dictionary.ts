@@ -183,7 +183,7 @@ export const DICTIONARY_PARAM_FIELDS = [
   "provenance",
 ] as const;
 
-export const DICTIONARY_DOC_FIELDS = ["product", "version", "provenance", "coverage", "generated_by", "docs_url", "parameters"] as const;
+export const DICTIONARY_DOC_FIELDS = ["product", "version", "provenance", "coverage", "generated_by", "docs_url", "block_label", "parameters"] as const;
 
 type Empty<T extends never> = T;
 type _ParamFieldsCoverType = Empty<Exclude<keyof DictionaryParam, (typeof DICTIONARY_PARAM_FIELDS)[number]>>;
@@ -199,6 +199,9 @@ export type DictionaryDoc = {
   // httpd (hand-transcribed English, community-translated Japanese) declare
   // `{ en: official, ja: community }` ONCE instead of on every entry.
   provenance?: LangProvenance;
+  // What this format's documentation calls a block its SYNTAX leaves unnamed.
+  // See the schema for why it is document-level and why no parser supplies it.
+  block_label?: LangText;
   // Whether `parameters` is a genuine, mechanical extraction of the PRODUCT'S
   // OWN full option space (Java reflection over its option classes, a
   // `pg_settings` dump — something that enumerates, not something someone

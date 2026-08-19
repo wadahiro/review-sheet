@@ -18,6 +18,8 @@ const httpdParser: ConfigParser = {
     delimiter: "Directive args",
     comments: "#",
     pathStyle: "VirtualHost[*:80].DocumentRoot — container by label",
+    containers:
+      "Every `<Tag>` is a block. One with a unique label (`<Directory \"/var/www\">`) is addressed and rowed by it, verbatim, quotes included. A conditional container (If/IfModule/Limit…) is addressed POSITIONALLY instead and its expression is a row of its own, so editing the condition never moves the directives inside it.",
     notes: [
       "Detected by <Tag>…</Tag> container syntax.",
       "Also detected, for a *.conf with no <Tag> block at all (the RHEL conf.d/ layout — one directive-only file per module/vhost), by CamelCase `Name value` lines (no `=`) outnumbering sysctl/ini-style `key = value` lines — sensitive enough for a handful of directives, but a file that is mostly assignments with one incidental capitalized value stays sysctl/generic.",

@@ -16,6 +16,10 @@
 
 /var/log/httpd/*log.rotate — the block's patterns, then the directive
 
+## Blocks
+
+Each `pattern { … }` is a block. Its patterns ARE the opening — the grammar gives it no keyword, so the block is reported with NO NAME and the patterns are its argument, verbatim across however many lines they span. A parser does not invent a word for it: naming what the file leaves unnamed is documentation, not parsing.
+
 ## Notes
 
 - A block's path patterns identify it and become the category path; directives outside any block are filed under (global), which is what logrotate.conf's own defaults are.

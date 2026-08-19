@@ -15,6 +15,8 @@ const systemdParser: ConfigParser = {
     delimiter: "Key=Value",
     comments: "# ;",
     pathStyle: "Service.ExecStartPre[1] — Section.Key; repeated keys indexed",
+    containers:
+      "Each `[Section]` is a block. Sections take no argument, so none becomes a row. Keys written before any header belong to an ASSUMED section, which the file never writes — so it carries no line and no row can point at it.",
     notes: [
       "[Section] headings become category path segments.",
       "Repeated keys are indexed: Service.ExecStartPre[1].",

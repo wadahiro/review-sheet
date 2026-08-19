@@ -16,6 +16,8 @@ const nginxParser: ConfigParser = {
     delimiter: "directive args;",
     comments: "#",
     pathStyle: "http.server.location[/api].proxy_pass — block by label; repeats indexed",
+    containers:
+      "Every `{}` block is one. A uniquely labelled block (`location /api`) is addressed and rowed by its label; `if` is addressed positionally and its condition is a row, so editing it never moves the directives inside.",
     notes: [
       "Detected by content (block syntax), not just extension.",
       "Labeled blocks addressed by label: http.server.location[/api].proxy_pass.",

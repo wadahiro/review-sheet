@@ -33,6 +33,8 @@ const jinja2Parser: ConfigParser = {
     delimiter: "(base format, detected from the name minus .j2)",
     comments: "(base format)",
     pathStyle: "delegates to the base format; adds source.templateVar / source.conditional hints",
+    containers:
+      "Whatever the base format reports, with template tokens restored — so a block named by a variable reads as the file writes it. Character ranges are NOT carried through: masking preserves lines but not columns, the same reason edits are not delegated.",
     notes: [
       "Strips .j2 and detects the base format from the remaining name (keycloak.conf.j2 -> .conf).",
       "Each value keeps the base format's line/anchor/path; a `{{ var }}` value also records source.templateVar.",
@@ -82,13 +84,25 @@ const jinja2Parser: ConfigParser = {
       // conformance suite caught this one, because a masked chain stops being a
       // prefix of the restored path the moment a container is templated, which
       // is precisely the logrotate case the comment above describes.
-      const containers = e.containers?.map((n) => ({
-        ...n,
-        name: restore(n.name),
-        ...(n.subject === undefined ? {} : { subject: restore(n.subject) }),
-        pathSeg: restore(n.pathSeg),
-        headings: n.headings.map(restore),
-      }));
+      const containers = e.containers?.map((n) => {
+        // The RANGE cannot come along. Masking preserves lines but not columns
+        // — a placeholder is not the width of the `{{ … }}` it stands for — so
+        // an offset computed against `masked` addresses different text in the
+        // real file. This is the same reason `edit` below is not delegated,
+        // and the conformance suite caught it here the same way it caught the
+        // unrestored chain: by slicing the file and comparing.
+        //
+        // The LINE survives and is what a container's source map needs most;
+        // apply holds every container operation regardless.
+        const { subjectRange: _dropped, ...rest } = n;
+        return {
+          ...rest,
+          ...(n.name === undefined ? {} : { name: restore(n.name) }),
+          ...(n.subject === undefined ? {} : { subject: restore(n.subject) }),
+          pathSeg: restore(n.pathSeg),
+          headings: n.headings.map(restore),
+        };
+      });
       const templateVar = jinjaVariable(value);
       const conditional = e.source.line !== undefined && cond.has(e.source.line);
       if (
@@ -96,7 +110,11 @@ const jinja2Parser: ConfigParser = {
         value === e.value &&
         path === e.source.path &&
         categoryPath.every((c, i) => c === e.categoryPath[i]) &&
-        (containers ?? []).every((n, i) => n.pathSeg === e.containers?.[i].pathSeg) &&
+        // A container range must be dropped even when nothing else about the
+        // entry changed: a `{{ … }}` ANYWHERE earlier in the file shifts every
+        // offset after it, so the range is wrong regardless of whether this
+        // particular entry needed restoring.
+        !e.containers?.some((n) => n.subjectRange) &&
         !templateVar &&
         !conditional
       )

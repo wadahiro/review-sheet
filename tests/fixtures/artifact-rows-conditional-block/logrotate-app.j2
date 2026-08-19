@@ -1,0 +1,8 @@
+{{ app_log_dir }}/*.log {
+    rotate 30
+}
+{% if with_audit %}
+/var/log/audit/*.log {
+    rotate 90
+}
+{% endif %}
