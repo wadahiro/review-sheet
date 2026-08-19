@@ -1133,6 +1133,13 @@ program
       for (const m of outcome.moved) {
         console.error(`  moved: ${m.target.sheet} > ${m.target.param} — "${m.from}" is now "${m.to}"`);
       }
+      // A finding whose target is simply gone cannot be followed, so it is
+      // NAMED instead. Silence here reads exactly like "there was nothing to
+      // do", which is the one thing it never means.
+      for (const u of outcome.unresolved) {
+        const where = [u.category, u.param].filter(Boolean).join(" > ");
+        console.error(`  unresolved: ${u.sheet}${where ? ` > ${where}` : ""} — no longer in this document`);
+      }
       // Edits made in a delivered document are not this command's to write —
       // they are the recipient's record of what the system should be, applied
       // by hand — but a review file that turns out to be mostly those must not
@@ -1151,6 +1158,7 @@ program
       console.error(
         `Summary: applied ${outcome.applied}, skipped ${outcome.skipped}, held ${outcome.held}, out-of-scope ${outcome.out_of_scope}` +
           (outcome.moved.length > 0 ? `, ${outcome.moved.length} re-pointed after a category move` : "") +
+          (outcome.unresolved.length > 0 ? `, ${outcome.unresolved.length} unresolved` : "") +
           "."
       );
 

@@ -17,6 +17,7 @@ import {
   HELD_REASON_BASELINE,
   HELD_REASON_SHARED_INSTANCE,
   HELD_REASON_ADDED_ROW,
+  HELD_REASON_NO_ROW,
   HELD_REASON_STRUCK_ROW,
   HELD_REASON_DOCUMENT,
   type SheetData,
@@ -60,6 +61,15 @@ export type ApplyOutcome = {
   // re-pointed rather than dropped, and reported because a review silently
   // changing where it points is precisely what this project does not do.
   moved: { target: ReviewTarget; from: string; to: string }[];
+  // Findings whose target resolves to NOTHING in the current document — a row
+  // that was removed, or a category that no longer exists. Computed since
+  // `retargetReviews` was written and, until now, read by nobody: an orphaned
+  // finding was carried along and silently did nothing, while the `moved` case
+  // right beside it was reported. A target that stops resolving is the same
+  // class of fact as one that moved, and the sheet growing container rows —
+  // whose key changes when the block's own subject is edited — turns it from a
+  // rarity into something a normal edit produces.
+  unresolved: ReviewTarget[];
   // Values changed in the generated document itself (`status: "applied"`).
   // They are NOT written to config files: an edit records what the system is
   // supposed to be, made by someone who applies it by hand, and some of them
@@ -88,6 +98,9 @@ export function computeApply(
   // needs a fallback of its own. Applying a change to the wrong file because a
   // category was renamed is the failure this prevents.
   const retargeted = retargetReviews(reviews, data);
+  // Which findings point at nothing, so the held reason can say THAT rather
+  // than "no file mapped" — see HELD_REASON_NO_ROW.
+  const orphaned = new Set(retargeted.unresolved.map((t) => `${t.sheet}::${t.category ?? ""}::${t.param ?? ""}`));
   // Two populations arrive in the same file. A `pending` item is a REVIEW
   // finding — somebody's proposal, not yet true of anything. An `applied` item
   // is an edit already made in the sheet, by whoever maintains it; the sheet
@@ -228,7 +241,8 @@ export function computeApply(
           continue;
         }
         if (!tgt.file) {
-          results.push({ ...base, status: "held", reason: "no file mapped" });
+          const gone = orphaned.has(`${r.target.sheet}::${r.target.category ?? ""}::${r.target.param ?? ""}`);
+          results.push({ ...base, status: "held", reason: gone ? HELD_REASON_NO_ROW : "no file mapped" });
           anyHeld = true;
           continue;
         }
@@ -319,6 +333,7 @@ export function computeApply(
   return {
     results,
     moved: retargeted.moved,
+    unresolved: retargeted.unresolved,
     files,
     heldPrompt: buildPromptText(heldReviews, data),
     edits,

@@ -177,6 +177,16 @@ export const HELD_REASON_ADDED_ROW =
 export const HELD_REASON_STRUCK_ROW =
   "Cannot apply directly: this setting was marked as no longer used — decide whether its line is removed, commented out, or left to the product default";
 
+// The target names no row in this document at all — the setting was removed, or
+// renamed, since the finding was written. Deliberately NOT folded into "no file
+// mapped": that says a row exists and nothing points at a file, which is a fact
+// about the row's source map, while this says there is no row to have one. The
+// two used to read identically, so a finding against a deleted setting looked
+// like an ordinary unmapped one and the reader had no way to tell that what
+// they were being asked about is gone.
+export const HELD_REASON_NO_ROW =
+  "Cannot apply directly: no row in the current document matches this finding — the setting was removed or renamed, so decide whether the finding still applies";
+
 // A document sheet's page, rewritten. It goes back to the markdown file the
 // page was rendered from — a whole file, not a line, which no source map
 // addresses and no parser edits.
@@ -265,6 +275,26 @@ export function buildSourceIndex(data: SheetData): Map<string, ParamEntry> {
   return index;
 }
 
+// Every category a review target could legitimately name, as `sheet::path`
+// (plus `sheet::` for a sheet-level target). Built by the same walk
+// `buildSourceIndex` uses, because a category-grained target is resolved
+// against the same tree a param-grained one is — it just stops one level short.
+export function buildCategoryIndex(data: SheetData): Set<string> {
+  const out = new Set<string>();
+  const walk = (cats: CategoryData[] | undefined, sheetName: string, parentPath: string): void => {
+    for (const cat of cats ?? []) {
+      const path = parentPath ? `${parentPath}/${cat.name}` : cat.name;
+      out.add(`${sheetName}::${path}`);
+      walk(cat.categories, sheetName, path);
+    }
+  };
+  for (const sheet of data.sheets) {
+    out.add(`${sheet.name}::`);
+    walk(sheet.categories, sheet.name, "");
+  }
+  return out;
+}
+
 export type ResolvedSource = {
   source?: SourceLocation;
   file?: string;
@@ -324,12 +354,19 @@ export function retargetReviews<T extends { target: ReviewTarget }>(
   data: SheetData
 ): { reviews: T[]; moved: { target: ReviewTarget; from: string; to: string }[]; unresolved: ReviewTarget[] } {
   const index = buildSourceIndex(data);
+  const categories = buildCategoryIndex(data);
   const moved: { target: ReviewTarget; from: string; to: string }[] = [];
   const unresolved: ReviewTarget[] = [];
   const out = reviews.map((r) => {
     // A sheet- or category-level target names no param, so there is no row to
-    // follow; it is left exactly as it is.
-    if (!r.target.param) return r;
+    // follow and it is left exactly as it is — but "nothing to follow" is not
+    // "nothing to check". A comment filed against a category that no longer
+    // exists is as orphaned as a finding against a deleted row, and it used to
+    // be the one kind this function waved through in silence.
+    if (!r.target.param) {
+      if (!categories.has(`${r.target.sheet}::${r.target.category ?? ""}`)) unresolved.push(r.target);
+      return r;
+    }
     const hit = findEntry(index, r.target);
     if (!hit) {
       unresolved.push(r.target);
