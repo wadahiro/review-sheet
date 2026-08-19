@@ -1,5 +1,4 @@
 sheets:
   sso:
-    group_by: file
     under_key: { id: var, label: { ja: 変数, en: Variable } }
     params: {}

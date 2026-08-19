@@ -29,6 +29,11 @@
 
 sheets:
   keycloak configuration:
+    # Every params: entry below leans on the dictionary's own group to file it
+    # ("the dictionary's group files it correctly", repeatedly) — that is this
+    # layout, stated. Without it the rows would be headed by keycloak.conf and
+    # the categories: list under it would order nothing.
+    layout: categories
     categories: [Database, Hostname, "HTTP / TLS", Reverse proxy, Observability, Logging, Cache]
     under_key:
       id: ansible_var
@@ -69,6 +74,11 @@ sheets:
       cache-stack: {}
 
   keycloak realm:
+    # The realm's JSON is how this unit SHIPS, not what it IS: it is imported
+    # once and the realm lives in Keycloak's database afterwards, reviewed
+    # against the admin console — whose tabs these categories are. Heading 100+
+    # rows under the import file would claim the file is the thing under review.
+    layout: categories
     categories: [General, Login, "Brute force detection", Sessions, "Tokens / Access tokens", Email, Themes]
     under_key:
       id: ansible_var
@@ -146,6 +156,9 @@ sheets:
           ja: SMTP 接続を STARTTLS で暗号化するか。
 
   keycloak clients:
+    # Same as the realm above: the partial-import JSON delivers these clients
+    # once; what a reviewer checks is the client as the console shows it.
+    layout: categories
     # The console's own tabs for a client: Settings holds the endpoints and
     # flags, Keys/General the SAML signature and encryption settings, Advanced
     # the logout endpoints. Both clients file into the same set — which is the

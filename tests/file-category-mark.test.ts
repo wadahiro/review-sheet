@@ -17,7 +17,7 @@ import { describe, it, expect } from "bun:test";
 import { assembleSheets } from "../src/assemble";
 import type { Category } from "../src/types";
 
-const SHEET_YML = "sheets:\n  web:\n    group_by: file\n    params: {}\n";
+const SHEET_YML = "sheets:\n  web:\n    params: {}\n";
 const readFile = (p: string): string | null => (p === "/sheet.yml" ? SHEET_YML : null);
 
 function sheetWith(deployed: string | undefined): Category[] {

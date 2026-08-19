@@ -26,8 +26,8 @@
   {
     "file": "examples/ansible-basic/input.json",
     "parser": "json",
-    "count": 3084,
-    "sha": "c910ff60e037dcb5"
+    "count": 3085,
+    "sha": "67a8c18f09f967f4"
   },
   {
     "file": "examples/ansible-basic/inventories/production/group_vars/db.yml",
@@ -236,8 +236,8 @@
   {
     "file": "examples/ansible-httpd/input.json",
     "parser": "json",
-    "count": 302,
-    "sha": "0436ae87d4b7b9e6"
+    "count": 470,
+    "sha": "b0c655d047c04d35"
   },
   {
     "file": "examples/ansible-httpd/inventories/production/group_vars/web.yml",
@@ -338,8 +338,8 @@
   {
     "file": "examples/ansible-keycloak/input.json",
     "parser": "json",
-    "count": 2567,
-    "sha": "28b417cd66409261"
+    "count": 3299,
+    "sha": "ae1795666fbbe212"
   },
   {
     "file": "examples/ansible-keycloak/inventories/production/group_vars/keycloak.yml",
@@ -434,8 +434,8 @@
   {
     "file": "examples/ansible-keycloak/review-sheet/sheet.yml",
     "parser": "yaml",
-    "count": 67,
-    "sha": "aa20eb273bc0ec44"
+    "count": 70,
+    "sha": "3cf452c8b8bf8207"
   },
   {
     "file": "examples/ansible-keycloak/roles/keycloak/defaults/main.yml",
@@ -567,7 +567,7 @@
     "file": "examples/cdk-snapshot/input.json",
     "parser": "json",
     "count": 290,
-    "sha": "06a64eb79741bd14"
+    "sha": "4ad3f5b7e4847972"
   },
   {
     "file": "examples/cdk-snapshot/review-sheet/build.yml",
@@ -806,8 +806,8 @@
   {
     "file": "tests/fixtures/body-layout/rs/sheet.yml",
     "parser": "yaml",
-    "count": 4,
-    "sha": "7e9fea2d42ba7ca7"
+    "count": 3,
+    "sha": "3ffd2ee4a4cfe5b8"
   },
   {
     "file": "tests/fixtures/diff-demo.json",
@@ -866,8 +866,8 @@
   {
     "file": "tests/fixtures/mixed-axis/rs/sheet.yml",
     "parser": "yaml",
-    "count": 4,
-    "sha": "734288ec97809000"
+    "count": 3,
+    "sha": "96695f65a350b1c0"
   },
   {
     "file": "tests/fixtures/multi-instance.json",
@@ -968,8 +968,8 @@
   {
     "file": "tests/fixtures/scaffold-cli-sheets/.review-sheet/sheet.yml",
     "parser": "yaml",
-    "count": 3,
-    "sha": "43e060a81e5d3ef5"
+    "count": 5,
+    "sha": "4fd47ae6f8e08ae9"
   },
   {
     "file": "tests/fixtures/scaffold-cli-sheets/roles/app/defaults/main.yml",
@@ -992,8 +992,8 @@
   {
     "file": "tests/fixtures/scaffold-cli/.review-sheet/sheet.yml",
     "parser": "yaml",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
+    "count": 1,
+    "sha": "f1ff88110a0b47a0"
   },
   {
     "file": "tests/fixtures/scaffold-cli/roles/app/defaults/main.yml",

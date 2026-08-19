@@ -16,6 +16,7 @@ beforeEach(stubNonBuiltInProviders);
 // the project metadata file — see providers/project.ts. `categories:` (P7) IS
 // part of the project metadata, alongside `params:`, below.
 const PROJECT_YAML = `
+layout: categories
 categories: [Tuning]
 params:
   db_max_conn:
@@ -630,6 +631,7 @@ describe("recipe-derived component", () => {
   // the position has to be declared and can never be fallen into, which is
   // what the two tests above enforce.
   const NULL_CATEGORY_PROJECT = `
+layout: categories
 params:
   orphan_key:
     category: null
@@ -1020,7 +1022,7 @@ parameters:
 // a sheet for months ordering nothing at all.
 describe("a declared category that orders nothing", () => {
   const files2: Record<string, string> = {
-    "p.yml": `categories: [Connections, Tokens / Access tokens]\nparams:\n  max_conn: { category: Connections, description: d }\n`,
+    "p.yml": `layout: categories\ncategories: [Connections, Tokens / Access tokens]\nparams:\n  max_conn: { category: Connections, description: d }\n`,
     "meta/demodb@1.yml": DICT_YAML,
   };
 
@@ -1054,7 +1056,7 @@ describe("a declared category that orders nothing", () => {
 // for a product whose own grouping is a bad review split (httpd's dictionary
 // `group` is the Apache MODULE, so grouping by it collapses General, KeepAlive
 // and Logging into one "core" tab).
-describe("group_by: file", () => {
+describe("the default: a row is headed by the file it is written in", () => {
   const dict = `
 product: demodb
 version: "1"
@@ -1071,7 +1073,7 @@ parameters:
     group: Write-Ahead Log
 `;
   const files: Record<string, string> = {
-    "p.yml": `sheets:\n  db:\n    group_by: file\n    params: {}\n`,
+    "p.yml": `sheets:\n  db:\n    params: {}\n`,
     "meta/demodb@1.yml": dict,
   };
   const opts = (): AssembleOpts => ({
@@ -1110,8 +1112,12 @@ parameters:
     expect(categoryOf(input, "wal_level")).toBe("Write-Ahead Log");
   });
 
-  it("does nothing when the sheet does not ask for it", () => {
-    files["p.yml"] = `sheets:\n  db:\n    params: {}\n`;
+  // The other side of the default: a sheet whose file is how it SHIPS rather
+  // than what it IS — a realm seeded once from a JSON import, reviewed
+  // afterwards against the console whose tabs these groups are — says so, and
+  // gets the dictionary's grouping with no file heading at all.
+  it("gives the dictionary's grouping back to a sheet that declares layout: categories", () => {
+    files["p.yml"] = `sheets:\n  db:\n    layout: categories\n    params: {}\n`;
     const input = assembleSheets(inputs, opts());
     expect(categoryOf(input, "max_conn")).toBe("Connections");
   });
@@ -1122,7 +1128,7 @@ parameters:
 // file they END UP in. Nothing in the model can derive that — a variable does
 // not know which template interpolates it, and a materialized product default
 // has no file at all — so it is stated.
-describe("group_by: file with a declared deployed_file", () => {
+describe("the file layout with a declared deployed_file", () => {
   const dict = `
 product: demodb
 version: "1"
@@ -1139,7 +1145,7 @@ parameters:
     group: Write-Ahead Log
 `;
   const files: Record<string, string> = {
-    "p.yml": `sheets:\n  db:\n    group_by: file\n    params: {}\n`,
+    "p.yml": `sheets:\n  db:\n    params: {}\n`,
     "meta/demodb@1.yml": dict,
   };
   const opts = (): AssembleOpts => ({
@@ -1176,7 +1182,7 @@ parameters:
   });
 
   it("lets a single row say it goes somewhere else", () => {
-    files["p.yml"] = `sheets:\n  db:\n    group_by: file\n    params:\n      wal_level: { deployed_file: /etc/postgresql/wal.conf }\n`;
+    files["p.yml"] = `sheets:\n  db:\n    params:\n      wal_level: { deployed_file: /etc/postgresql/wal.conf }\n`;
     const input = assembleSheets(inputs, opts());
     expect(categoryOf(input, "max_conn")).toBe("/etc/postgresql/postgresql.conf");
     expect(categoryOf(input, "wal_level")).toBe("/etc/postgresql/wal.conf");
@@ -1194,7 +1200,7 @@ parameters:
 //
 // The level names what its parent already named, which is the same thing the
 // component level itself is dropped for on a single-component sheet.
-describe("group_by: file on a sheet whose components are files", () => {
+describe("the file layout on a sheet whose components are files", () => {
   const dict = `
 product: demoweb
 version: "1"
@@ -1204,7 +1210,7 @@ parameters:
   keepalive: { description: { en: Keep alive }, default: "On", group: core }
 `;
   const files: Record<string, string> = {
-    "p.yml": `sheets:\n  web:\n    group_by: file\n    params: {}\n`,
+    "p.yml": `sheets:\n  web:\n    params: {}\n`,
     "meta/demoweb@1.yml": dict,
   };
   const opts = (): AssembleOpts => ({
@@ -1277,9 +1283,9 @@ parameters:
   // A hand-written `category:` is never folded — the project said what it
   // meant, and silently dropping it would make the file lie about the sheet.
   it("keeps a declared category that matches the component", () => {
-    files["p.yml"] = `sheets:\n  web:\n    group_by: file\n    params:\n      ServerTokens: { category: httpd.conf }\n`;
+    files["p.yml"] = `sheets:\n  web:\n    params:\n      ServerTokens: { category: httpd.conf }\n`;
     const input = assembleSheets(inputs(), opts());
     expect(pathOf(input, "ServerTokens")).toEqual(["httpd.conf", "httpd.conf"]);
-    files["p.yml"] = `sheets:\n  web:\n    group_by: file\n    params: {}\n`;
+    files["p.yml"] = `sheets:\n  web:\n    params: {}\n`;
   });
 });

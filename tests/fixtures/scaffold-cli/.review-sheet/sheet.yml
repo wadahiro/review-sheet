@@ -1,4 +1,8 @@
 # Project metadata for tests/scaffold-cli.test.ts — deliberately starts with
 # an empty params:, mirroring the anecdote T5 formalizes: run the build
 # once against this, transcribe the exact key list the error prints.
+# The scaffold this exercises is the params: table, which only the grouped
+# layout puts on the sheet: under the default the file heads every row and
+# there is no missing category to scaffold.
+layout: categories
 params: {}

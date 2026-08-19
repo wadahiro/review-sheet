@@ -40,7 +40,7 @@ const files: Record<string, string> = {
   "meta/demo@2.yml": DICT_NEW,
 };
 
-function opts(project = "sheets:\n  upgrade:\n    params: {}\n"): AssembleOpts {
+function opts(project = "sheets:\n  upgrade:\n    layout: categories\n    params: {}\n"): AssembleOpts {
   return {
     projectPath: "project.yml",
     metadataDirs: ["meta"],
@@ -104,7 +104,7 @@ describe("categories_from", () => {
   });
 
   it("files every row where the declared component files it", () => {
-    const project = "sheets:\n  upgrade:\n    categories_from: \"2\"\n    params: {}\n";
+    const project = "sheets:\n  upgrade:\n    layout: categories\n    categories_from: \"2\"\n    params: {}\n";
     const input = assembleSheets(inputs(), opts(project));
     const paths: string[] = [];
     const walk = (cats: { name: string; params?: { key: string }[]; categories?: unknown }[], path: string[]): void => {
@@ -128,7 +128,7 @@ describe("categories_from", () => {
 // with the build still reporting ok.
 describe("categories_from names a component the sheet has", () => {
   it("fails on a name no component matches, and suggests the near one", () => {
-    const project = "sheets:\n  upgrade:\n    categories_from: \"2.0\"\n    params: {}\n";
+    const project = "sheets:\n  upgrade:\n    layout: categories\n    categories_from: \"2.0\"\n    params: {}\n";
     let err: Error | undefined;
     try {
       assembleSheets(inputs(), opts(project));
@@ -142,7 +142,7 @@ describe("categories_from names a component the sheet has", () => {
 
   it("does not silently fall back to splitting the rows", () => {
     // The failure that made this check necessary: the build used to succeed.
-    const project = "sheets:\n  upgrade:\n    categories_from: \"2.0\"\n    params: {}\n";
+    const project = "sheets:\n  upgrade:\n    layout: categories\n    categories_from: \"2.0\"\n    params: {}\n";
     expect(() => assembleSheets(inputs(), opts(project))).toThrow();
   });
 });
@@ -154,7 +154,7 @@ describe("categories_from names a component the sheet has", () => {
 // with every gate passing.
 describe("dictionaries: per_component", () => {
   it("binds each component to the dictionary of its own name", () => {
-    const project = "sheets:\n  upgrade:\n    categories_from: \"2\"\n    params: {}\n";
+    const project = "sheets:\n  upgrade:\n    layout: categories\n    categories_from: \"2\"\n    params: {}\n";
     const perComponent: AssembleOpts = {
       ...opts(project),
       dictionaries: { upgrade: [{ product: "demo", per_component: true }] },
@@ -200,13 +200,13 @@ describe("dictionaries: per_component", () => {
 
 // The same check, on a sheet that is not a comparison at all.
 //
-// `group_by: file` puts several files in one sheet, one component each. Two
+// The file layout puts several files in one sheet, one component each. Two
 // unrelated files can hold a row of the same NAME without those rows being one
 // setting seen twice: a crontab keys its jobs by position, so every one-job
 // file has a `job`, and `/etc/cron.d/logrotate` and `/etc/cron.d/netstat` each
 // have one. Neither governs the other — the question this check asks has no
 // answer here, and `categories_from` cannot supply one.
-describe("group_by: file, where two files share a row name", () => {
+describe("the file layout, where two files share a row name", () => {
   const fileInputs = (): SheetInputs[] => [
     {
       name: "os",
@@ -225,7 +225,7 @@ describe("group_by: file, where two files share a row name", () => {
   ];
   const fileOpts = (): AssembleOpts => ({
     projectPath: "project.yml",
-    readFile: (p) => (p === "project.yml" ? "sheets:\n  os:\n    group_by: file\n    params: {}\n" : null),
+    readFile: (p) => (p === "project.yml" ? "sheets:\n  os:\n    params: {}\n" : null),
     strictMetadata: false,
   });
 

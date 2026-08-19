@@ -692,15 +692,38 @@ The declared format is recorded on each row's `source.baseFormat` so that
 verify and apply read the value back with the same parser that wrote it; without
 that a presence flag would be written by one parser and looked for by another.
 
-#### `group_by: file` — one page per file, as a paper sheet has it
+#### `layout:` — what heads the rows
+
+**One page per file is the default**, as a paper sheet has it. Nothing is
+declared for it:
 
 ```yaml
 "httpd reverse proxy":
-  group_by: file
   categories: [httpd.conf, Reverse proxy, Host access]
 ```
 
-Groups a row the project does not categorise by hand by the FILE it belongs to.
+Two grouped layouts are opt-in, because grouping by anything other than the file
+can separate a row from the block it is written in — a dictionary classifies a
+directive by what IMPLEMENTS it, which is orthogonal to where it sits, so
+Apache's `Require` is filed under `mod_authz_core` while the `<Directory>` it
+lives inside is `core`. The build reports every family it split.
+
+| `layout:` | what heads the rows | when |
+| --- | --- | --- |
+| *(absent)* | the deployed file; rows in the file's own order | the default, and the only safe layout for a file with block structure |
+| `categories` | the dictionary's groups; no file heading | the file is how the unit SHIPS, not what it IS — a realm seeded once from a JSON import lives in a database afterwards and is reviewed against the console whose tabs these groups are |
+| `file+categories` | the file, sub-headed by the dictionary's groups | a flat file long enough that one table is a wall |
+
+Nothing detects which of these a sheet wants, and nothing should: a layout that
+changed because someone added one `<Directory>`, or because a dictionary was
+updated, would reorganise a page for a reason its reader cannot see. Detection
+informs the build report; it never decides the layout.
+
+`group_by: file` was the old spelling of the default. It is now an error rather
+than a no-op, because a key whose meaning inverted is worse than one that is
+gone — the build says what to write instead.
+
+The file layout groups a row the project does not categorise by hand by the FILE it belongs to.
 That is how an incumbent parameter sheet is organised — one page per
 configuration file, its settings listed as the file states them, walked down
 beside the real thing — and it is the answer for a product whose own grouping is
@@ -2008,7 +2031,8 @@ fails when one of them is missing from this section):
 | sheet | `group:` | which of `groups:` this sheet is read under |
 | sheet | `label:` | the sheet's display name, `{ ja, en }` — the name stays its identity |
 | sheet | `categories:` | top-level tab order, and the ghost-tab guard |
-| sheet | `group_by: file` | file a row the project does not categorise by the artifact it is written in |
+| document | `layout:` | the same, for the flat single-sheet shorthand |
+| sheet | `layout:` | what HEADS the rows. Absent (default): the deployed file, rows in the file's own order. `categories`: the dictionary's groups, no file heading — for a unit whose file is how it SHIPS rather than what it IS. `file+categories`: the file, sub-headed by those groups. Both grouped layouts can separate a row from the block it is written in, so both are opt-in and the build reports what each one split. `group_by: file` was the old spelling of the default and is now an error, not a no-op |
 | sheet | `under_key:` | the provenance sub-line column — `id` + bilingual label |
 | sheet | `compare_components:` | this sheet's components are comparable side by side — `true` for a toggle, `always` to open that way with no toggle |
 | sheet | `categories_from:` | which component's dictionary decides where every row is filed, when the components disagree (two releases of one product); required on such a sheet — see "A sheet that exists only to compare" |

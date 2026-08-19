@@ -18,7 +18,12 @@ import type { InstanceParameter, SimpleParameter } from "../src/types";
 // don't depend on cross-file test execution order.
 beforeEach(stubNonBuiltInProviders);
 
+// This fixture's whole subject is which CATEGORY the project declares for each
+// key, so it declares the layout that puts those categories on the sheet. Under
+// the default the file would head every row and the declarations would order
+// nothing — a different test than the one written here.
 const PROJECT_YAML = `
+layout: categories
 params:
   db_host:
     category: Database
@@ -627,9 +632,11 @@ parameters:
   // field (see opts() below); `categories:` (P7) is now part of the project
   // metadata file itself, so each test below states its own via
   // `projectYaml()`.
-  const PROJECT_YAML_NO_CATEGORY = ``;
+  const PROJECT_YAML_NO_CATEGORY = `layout: categories\n`;
+  // These cases are about which DICTIONARY GROUP a row falls back to, which is
+  // what `layout: categories` asks for now that the file layout is the default.
   const projectYaml = (categories: string[] | undefined, extra = ""): string =>
-    (categories ? `categories: [${categories.join(", ")}]\n` : "") + (extra || "params: {}\n");
+    "layout: categories\n" + (categories ? `categories: [${categories.join(", ")}]\n` : "") + (extra || "params: {}\n");
   const files: Record<string, string> = {
     "project.yml": PROJECT_YAML_NO_CATEGORY,
     "meta/widget@1.yml": DICT_YAML,
@@ -915,6 +922,7 @@ describe("scaffold: paste-able params: snippet on a strict failure", () => {
   it("round-trips: pasting the generated snippet for a no-category/no-binding failure lets the build pass", () => {
     const scaffoldFiles: Record<string, string> = {
       "scaffold-project.yml": `
+layout: categories
 params: {}
 `,
     };
@@ -980,7 +988,7 @@ params: {}
     // both at the sheet level repeats the same map key — YAML rejects that
     // outright, and the reader is handed a fragment they cannot paste. It is
     // also two different parameters: one description cannot be true of both.
-    const scaffoldFiles: Record<string, string> = { "p.yml": `sheets:\n  demo:\n    params: {}\n` };
+    const scaffoldFiles: Record<string, string> = { "p.yml": `sheets:\n  demo:\n    layout: categories\n    params: {}\n` };
     const scaffoldOpts = (): AssembleOpts => ({ projectPath: "p.yml", readFile: (f) => scaffoldFiles[f] ?? null });
     const inputs: SheetInputs[] = [
       {
@@ -1142,11 +1150,13 @@ params:
       "sheeted.yml": `
 sheets:
   "sheet a":
+    layout: categories
     params:
       shared_key:
         category: General
         description: declared for sheet a
   "sheet b":
+    layout: categories
     params: {}
 `,
     };
@@ -1182,11 +1192,13 @@ sheets:
       "sheeted.yml": `
 sheets:
   "sheet a":
+    layout: categories
     params:
       shared_key:
         category: A-category
         description: meaning in sheet a
   "sheet b":
+    layout: categories
     params:
       shared_key:
         category: B-category
@@ -1211,11 +1223,13 @@ sheets:
       "sheeted.yml": `
 sheets:
   "sheet a":
+    layout: categories
     params:
       only_in_a:
         category: General
         description: declared here, but sheet a never produces it
   "sheet b":
+    layout: categories
     params:
       only_in_a:
         category: Other

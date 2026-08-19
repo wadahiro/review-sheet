@@ -201,7 +201,7 @@ describe("emitting a row for a block", () => {
   // they sit together. Outside it the parser's own headings organise the sheet
   // and a block's row lands one level above its contents, which is where the
   // shipped expression-container rows already land.
-  const SHEET_YML = "sheets:\n  web:\n    group_by: file\n    params: {}\n";
+  const SHEET_YML = "sheets:\n  web:\n    params: {}\n";
   const io = { readFile: (p: string) => (p === "/sheet.yml" ? SHEET_YML : null), instances: [], projectPath: "/sheet.yml" };
   const inputs = (containers: unknown[]) => [
     {
@@ -283,7 +283,7 @@ describe("emitting a row for a block", () => {
 // in every environment" is a worse error than no row at all.
 describe("a block inside a conditional", () => {
   const DIR = resolve(import.meta.dir, "fixtures/artifact-rows-conditional-block");
-  const SHEET_YML = "sheets:\n  os:\n    group_by: file\n    params: {}\n";
+  const SHEET_YML = "sheets:\n  os:\n    params: {}\n";
   const rf = (p: string): string | null => {
     if (p === "/sheet.yml") return SHEET_YML;
     try { return readFileSync(p, "utf-8"); } catch { return null; }

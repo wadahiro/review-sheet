@@ -34,7 +34,7 @@ import {
   groupForSheet,
   compareComponentsForSheet,
   declaredComponentsForSheet,
-  groupByForSheet,
+  groupsByFile,
   sheetGroups,
   checkProjectMetaSheets,
   type ProjectMetaDoc,
@@ -1943,10 +1943,22 @@ function fileDrafts(
     for (const [name, exampleKey] of firstDictFallbackExample) {
       if (declaredSet.has(name)) continue;
       if (firstProjectCategoryExample.has(name)) continue; // already reported as an error above
+      // WHERE the category came from, not a guess at it. The two sources read
+      // as the same undeclared tab and want opposite fixes: a dictionary group
+      // belongs in `categories:`, while a file heading means this sheet is on
+      // the default layout and the declared list is describing a grouping
+      // nobody asked for. Saying "from a bound dictionary's group" over a file
+      // path was a report stating something it had not checked.
+      const from = derivedFileMarks.has(name)
+        ? "the file this row is written in"
+        : "a bound dictionary's group";
       categoryWarnings.push(
-        `${sheetName} > ${exampleKey}: category "${name}" (from a bound dictionary's group) is not in this sheet's ` +
+        `${sheetName} > ${exampleKey}: category "${name}" (from ${from}) is not in this sheet's ` +
           `declared categories (${declaredCategories.join(", ")}) — it will appear as an extra tab; add it to ` +
-          `categories: to control where it lands`
+          `categories: to control where it lands` +
+          (derivedFileMarks.has(name)
+            ? `, or declare "layout: categories" if this sheet's rows should be headed by the product's groups instead of by their file`
+            : "")
       );
     }
   }
@@ -2470,7 +2482,7 @@ export function assembleSheetsWithReport(
       draftBindings,
       projectMeta,
       declaredCategories,
-      groupByForSheet(projectMeta, si.name) === "file",
+      groupsByFile(projectMeta, si.name),
       si.filePath,
       si.sourceFile,
       missingCategory,
@@ -2568,6 +2580,25 @@ export function assembleSheetsWithReport(
     throw new Error(
       `assemble: ${bindErrors.length} parameter(s) bound ambiguously against a product dictionary:\n` +
         bindErrors.map((m) => `  ${m}`).join("\n")
+    );
+  }
+
+  // A project metadata path that names nothing is a typo, and it used to be
+  // caught only in passing: with no file there were no categories, so the
+  // missing-category error fired and carried the path. Heading rows by their
+  // file gives every row with a source a category, so that error stopped firing
+  // and the typo became silent — the build read a sheet.yml that was not there
+  // and said nothing. Reported on its own footing now, which is where it
+  // belonged: whether a declared file exists has nothing to do with whether the
+  // rows happened to need it.
+  if (missingProjectPath !== undefined && missingCategory.length === 0) {
+    throw new ScaffoldableBuildError(
+      `assemble: the declared project metadata "${missingProjectPath}" does not exist. ` +
+        `Create it, or drop the declaration — a path that names nothing documents nothing.`,
+      missingCategoryEntries,
+      scaffoldShape,
+      missingProjectPath,
+      {}
     );
   }
 

@@ -74,8 +74,30 @@ export type ProjectMetaSheetDoc = {
   // `"always"` additionally means the sheet opens that way and offers no toggle:
   // a sheet that exists only to compare has no stacked reading to go back to.
   compare_components?: boolean | "always";
-  // Group rows the project does not categorise by the file they are written
-  // in — see groupByForSheet.
+  // How this sheet's rows are HEADED. Absent is the default and the safe one:
+  // one category per deployed file, rows in the file's own order.
+  //
+  //   absent            the file is the heading; the file's own structure is
+  //                     the only thing that reorders rows, so a block and its
+  //                     contents stay together
+  //   categories        the dictionary's groups are the headings, no file
+  //                     heading. For a unit whose file is how it SHIPS rather
+  //                     than what it IS — a realm imported once from a JSON
+  //                     seed lives in a database afterwards, and is reviewed
+  //                     against the admin console whose tabs these groups are.
+  //                     Underivable: no tool can tell a living config from a
+  //                     one-shot import by looking at the file or its format.
+  //   file+categories   the file heads, the dictionary's groups sub-head it.
+  //                     For a flat file long enough that one table is a wall.
+  //
+  // Grouping by anything other than the file can separate a row from the block
+  // it is written in — the dictionary classifies a directive by what implements
+  // it, which is orthogonal to where it sits — so both grouped layouts are
+  // opt-in and the build reports what each one cost.
+  layout?: "categories" | "file+categories";
+  // Kept ONLY so a sheet still declaring it fails loudly: its meaning inverted
+  // when the file layout became the default, and a key that silently means the
+  // opposite of what its author intended is worse than one that is gone.
   group_by?: "file";
   // Which component's view of the product decides where a row is FILED, when
   // the components do not agree.
@@ -132,6 +154,12 @@ export type ProjectMetaDoc = {
   categories?: string[];
   under_key?: UnderKeyMeta;
   label?: LangText;
+  // The flat form of this file is the single-sheet shorthand for `sheets:`, so
+  // it declares the same layout the same way — see ProjectMetaSheetDoc.layout.
+  // Without this a project using the shorthand had no way to ask for either
+  // grouped layout at all, which would have made the shorthand mean something
+  // the long form does not.
+  layout?: "categories" | "file+categories";
   params?: Record<string, ProjectMetaParam>;
   sheets?: Record<string, ProjectMetaSheetDoc>;
   // The sheet groups this document uses, IN READING ORDER (types.ts's
@@ -171,6 +199,30 @@ function checkCategoryPaths(params: Record<string, ProjectMetaParam> | undefined
   }
 }
 
+// `group_by: file` asked for the layout that is now the default, so a spec
+// still carrying it means the opposite of what its author wrote. Kept as a
+// loud failure rather than quietly honoured or quietly ignored — a
+// silently-ignored declaration once erased environment differences here, and
+// the message does the migration rather than describing it.
+function checkLayout(name: string, s: Partial<ProjectMetaSheetDoc> | undefined, path: string): void {
+  if (s?.group_by !== undefined) {
+    throw new Error(
+      `project metadata ${path}: sheet "${name}" declares "group_by: ${String(s.group_by)}", which no longer exists. ` +
+        `Heading rows by the file they are written in is now the default — delete the line. ` +
+        `To sub-head that file by the dictionary's groups, write "layout: file+categories" instead.`
+    );
+  }
+  const layout = s?.layout;
+  if (layout !== undefined && layout !== "categories" && layout !== "file+categories") {
+    throw new Error(
+      `project metadata ${path}: sheet "${name}" has "layout: ${String(layout)}". ` +
+        `Write "categories" (the dictionary's groups head the rows, no file heading), ` +
+        `"file+categories" (the file heads, its groups sub-head), or omit it for the default ` +
+        `(one category per file, rows in the file's own order).`
+    );
+  }
+}
+
 export function loadProjectMeta(path: string, readFile: (path: string) => string | null): ProjectMetaDoc {
   const content = readFile(path);
   if (content === null) throw new Error("project metadata not found: " + path);
@@ -183,9 +235,11 @@ export function loadProjectMeta(path: string, readFile: (path: string) => string
     );
   }
   if (doc.sheets) {
+    checkLayout("(top level)", doc as Partial<ProjectMetaSheetDoc>, path);
     const sheets: Record<string, ProjectMetaSheetDoc> = {};
     for (const [name, s] of Object.entries(doc.sheets)) {
       checkCategoryPaths(s?.params, `sheet "${name}" param `, path);
+      checkLayout(name, s, path);
       for (const [component, c] of Object.entries(s?.components ?? {})) {
         checkCategoryPaths(c?.params, `sheet "${name}" component "${component}" param `, path);
       }
@@ -196,20 +250,26 @@ export function loadProjectMeta(path: string, readFile: (path: string) => string
         ...(s?.label ? { label: s.label } : {}),
         ...(s?.group ? { group: s.group } : {}),
         ...(s?.compare_components ? { compare_components: s.compare_components === "always" ? ("always" as const) : true } : {}),
-        ...(s?.group_by ? { group_by: s.group_by } : {}),
+        ...(s?.layout ? { layout: s.layout } : {}),
         ...(s?.categories_from ? { categories_from: s.categories_from } : {}),
         ...(s?.components ? { components: s.components } : {}),
       };
     }
-    return { sheets, ...(doc.groups ? { groups: doc.groups } : {}) };
+    // A document-level `layout:` beside `sheets:` is the whole document's
+    // default — a project whose sheets all want one layout says it once. Carried
+    // rather than dropped: a declaration this loader silently discarded would be
+    // a line the author wrote, the build read, and nobody honoured.
+    return { sheets, ...(doc.groups ? { groups: doc.groups } : {}), ...(doc.layout ? { layout: doc.layout } : {}) };
   }
   checkCategoryPaths(doc.params, "param ", path);
+  checkLayout("(top level)", doc as Partial<ProjectMetaSheetDoc>, path);
   return {
     params: doc.params ?? {},
     ...(doc.groups ? { groups: doc.groups } : {}),
     ...(doc.categories ? { categories: doc.categories } : {}),
     ...(doc.under_key ? { under_key: doc.under_key } : {}),
     ...(doc.label ? { label: doc.label } : {}),
+    ...(doc.layout ? { layout: doc.layout } : {}),
   };
 }
 
@@ -270,9 +330,16 @@ export function componentParamsForSheet(
 //
 // Only rows that HAVE a file are affected. A product default nobody set is
 // written nowhere, so it keeps the fallback it already had.
-export function groupByForSheet(doc: ProjectMetaDoc, sheet: string | undefined): "file" | undefined {
-  if (!doc.sheets || sheet === undefined) return undefined;
-  return doc.sheets[sheet]?.group_by;
+export function layoutForSheet(doc: ProjectMetaDoc, sheet: string | undefined): "file" | "categories" | "file+categories" {
+  if (!doc.sheets || sheet === undefined) return doc.layout ?? "file";
+  return doc.sheets[sheet]?.layout ?? doc.layout ?? "file";
+}
+
+// Whether this sheet heads its rows by the file they are written in. True for
+// the default and for `file+categories`; the dictionary's groups sub-head the
+// latter, they do not replace the file.
+export function groupsByFile(doc: ProjectMetaDoc, sheet: string | undefined): boolean {
+  return layoutForSheet(doc, sheet) !== "categories";
 }
 
 // The components this sheet's metadata declares a block for. Compared against
