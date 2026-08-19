@@ -1,0 +1,5 @@
+MAILTO=""
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+
+10 4 * * * root /usr/sbin/logrotate /etc/logrotate.conf >/dev/null 2>&1
+*/5 * * * * root /usr/local/bin/collect-metrics
