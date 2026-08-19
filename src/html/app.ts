@@ -2262,8 +2262,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   // for one file's settings. So each row says which file it is a line of,
   // exactly where the mixture is, rather than the mixture being reported once
   // at build time to somebody who is not the reader.
-  const fileOfRow = (p: ParamData): string | undefined =>
-    p.source?.file ?? p.instances?.find((i) => i.source?.file)?.source?.file;
+  const fileOfRow = (p: ParamData): string | undefined => p.deployed_file;
   const mixedFiles = new Set(shown.map(fileOfRow).filter((f): f is string => f !== undefined)).size > 1;
 
   const subKey = (p: ParamData): string => (p.sub_category ?? []).join(" / ");

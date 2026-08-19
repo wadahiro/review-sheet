@@ -98,7 +98,7 @@ describe("splitContainerFamilies", () => {
 });
 
 describe("mixedFileCategories", () => {
-  const row = (key: string, file?: string) => ({ key, value: "v", ...(file ? { source: { file, line: 1 } } : {}) });
+  const row = (key: string, file?: string) => ({ key, value: "v", ...(file ? { deployed_file: file } : {}) });
 
   // A realm delivered across two import files is still one realm, and its
   // General group legitimately holds rows from both — the note is not an

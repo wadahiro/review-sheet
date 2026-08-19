@@ -1448,8 +1448,12 @@ export function mixedFileCategories(sheet: { name: string; categories?: Category
       const path = [...trail, c.name];
       const files = new Set<string>();
       for (const p of c.params ?? []) {
-        const f = ownFileOf(p);
-        if (f !== undefined) files.add(f);
+        // The file the row is a LINE of, which the row carries only on a sheet
+        // the files do not head — see the stamp in fileDrafts. Reading
+        // `source.file` here instead would count a variable's definition site
+        // as a file of its own, and report every Ansible sheet as mixed.
+        const f = "deployed_file" in p ? p.deployed_file : undefined;
+        if (typeof f === "string") files.add(f);
       }
       if (files.size > 1) out.push({ heading: path.join(" > "), files: [...files] });
       walk(c.categories, path);
@@ -1789,8 +1793,29 @@ function fileDrafts(
   for (const d of drafts) {
     // Which file this row belongs to, recorded on every row regardless of how
     // the sheet is grouped — a fact about the deployment, not a display mode.
-    // Nothing reads it yet; see Draft.structure.
     d.structure = rawFileOf(d);
+    // Carried to the row itself only where the sheet is NOT headed by files:
+    // there the heading already answers it, and a per-row repeat would be the
+    // same path on every line. Where the product's grouping heads the rows,
+    // two files' settings can land under one heading with nothing saying so,
+    // and this is what the viewer marks them with.
+    //
+    // The DEPLOYED file, never the row's `source.file`: a value written in
+    // `defaults/main.yml` and interpolated into a template is a line of the
+    // template, and marking it by where it is defined would report every
+    // ordinary Ansible sheet as a mixture of three files.
+    // Only where the project STATED it. Derived attribution answers a different
+    // question well enough to head a table by — it is the file a row is written
+    // in — but a mark on a row is a claim about where the setting lives on the
+    // host, and for a row set per environment the derived answer is whichever
+    // overlay file happened to supply the value. Marking two rows of one realm
+    // as "different files" because one was overridden in local.env would be the
+    // mark inventing a difference the deployment does not have.
+    const declaredFile =
+      paramForRow(projectMeta, sheetName, d.component, d.key)?.deployed_file ??
+      deployedFiles?.get(d.component ?? "") ??
+      deployedFiles?.get("");
+    if (!groupByFile && declaredFile !== undefined) d.param.deployed_file = declaredFile;
     // Component-first, then the sheet-wide table (providers/project.ts's
     // paramForRow): two components of one product share their field NAMES, so
     // a flat table would hand one component's remarks to the other.

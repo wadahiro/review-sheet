@@ -445,6 +445,13 @@ export type ParameterBase = {
   // `sheet :: category :: key` with the file as the category, so switching the
   // layout moves no review target, no apply target and no diff key.
   sub_category?: string[];
+  // The file this row is a line of, carried only on a sheet whose headings are
+  // NOT files — there the heading already answers it. Display only: it marks a
+  // heading that holds rows from more than one file, so a reader does not take
+  // two files' settings for one file's. Always the DEPLOYED file, never the
+  // row's source: a value defined in a vars file and interpolated into a
+  // template is a line of the template.
+  deployed_file?: string;
   // What the PRODUCT calls it where a human meets it — a Keycloak admin-console
   // label. Display only, filled by enrich from the bound dictionary, and never
   // a substitute for the key: a reviewer needs both, one to recognise the
