@@ -1,0 +1,13 @@
+[Unit]
+Description=Example service
+After=network.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/true
+ExecStartPre=/usr/bin/echo second
+ExecStart=/usr/bin/example --port 8080
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

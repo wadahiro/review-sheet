@@ -1,0 +1,14 @@
+<infinispan>
+  <cache-container name="keycloak">
+    <local-cache name="realms">
+      <memory max-count="10000"/>
+      <expiration lifespan="-1"/>
+    </local-cache>
+    <local-cache name="users">
+      <memory max-count="10000"/>
+    </local-cache>
+    <distributed-cache name="sessions" owners="2">
+      <expiration lifespan="-1"/>
+    </distributed-cache>
+  </cache-container>
+</infinispan>
