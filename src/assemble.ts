@@ -1422,17 +1422,48 @@ function materializeDrafts(
 //                                               never reaches the artifact.
 // Returns the PATH, not the display name. Which part of it a reader needs
 // cannot be decided one row at a time — see shortestUniqueNames.
+// WHICH FILE does this row belong to — the artifact this sheet delivers, some
+// other file entirely, or nothing that can be named?
+//
+// The question the whole file axis turns on. `keycloak_dist_src` tells a role
+// where to download a distribution: it is a parameter of DELIVERING the
+// artifact, not a parameter OF it, and filing it under the artifact makes the
+// sheet claim something false about that file. A row with no source of its own
+// is the artifact's (a product default has no file), and so is one backed by a
+// variable the artifact interpolates.
+//
+// Exported as the FILE, never as a yes/no. A boolean answers "is this a line of
+// this sheet's artifact", which reads as "is this delivery machinery" and is
+// not the same question: on a sheet covering several files, every other file's
+// rows come back false too. Measuring with the boolean put lines of a realm
+// definition in the same bucket as a distribution checksum, and the two want
+// opposite treatment — one belongs to another structural unit, the other
+// belongs above the tabs entirely.
+export function attributedFile(
+  param: Parameter,
+  artifact: string | undefined,
+  templateSource: string | undefined,
+  hasVariable: boolean
+): string | undefined {
+  const own = ownFileOf(param);
+  const partOfArtifact = own === undefined || hasVariable || (templateSource !== undefined && own === templateSource);
+  return partOfArtifact ? (artifact ?? own) : own;
+}
+
+export function ownFileOf(param: Parameter): string | undefined {
+  return (
+    ("source" in param ? param.source?.file : undefined) ??
+    ("instances" in param ? param.instances?.find((i) => i.source?.file)?.source?.file : undefined)
+  );
+}
+
 function fileCategory(
   param: Parameter,
   artifact: string | undefined,
   templateSource: string | undefined,
   hasVariable: boolean
 ): string | undefined {
-  const own =
-    ("source" in param ? param.source?.file : undefined) ??
-    ("instances" in param ? param.instances?.find((i) => i.source?.file)?.source?.file : undefined);
-  const partOfArtifact = own === undefined || hasVariable || (templateSource !== undefined && own === templateSource);
-  const file = partOfArtifact ? (artifact ?? own) : own;
+  const file = attributedFile(param, artifact, templateSource, hasVariable);
   return file === undefined ? undefined : baseFileName(file);
 }
 
