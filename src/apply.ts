@@ -18,6 +18,7 @@ import {
   HELD_REASON_SHARED_INSTANCE,
   HELD_REASON_ADDED_ROW,
   HELD_REASON_NO_ROW,
+  HELD_REASON_CONTAINER_SUBJECT,
   HELD_REASON_STRUCK_ROW,
   HELD_REASON_DOCUMENT,
   type SheetData,
@@ -194,6 +195,22 @@ export function computeApply(
       // rewrite) — the vendor shipped this key and this deliverable does not
       // have it — with its own held reason so the AI prompt says which of the
       // two facts it is.
+      // A block's own identity. Checked before the per-target loop for the
+      // same reason the two below are: it is a fact about the ROW, not about
+      // any one of its definition sites.
+      if (entry?.param.container) {
+        results.push({
+          target: r.target,
+          file: entry.fileFallback,
+          status: "held",
+          reason: HELD_REASON_CONTAINER_SUBJECT,
+          current,
+          suggested: c.suggested,
+        });
+        heldChanges.push(c);
+        continue;
+      }
+
       if (entry?.param.origin === "default" || entry?.param.origin === "baseline") {
         results.push({
           target: r.target,
@@ -308,7 +325,7 @@ export function computeApply(
   // prompt, which is what it is for.
   const REASONS = { added: HELD_REASON_ADDED_ROW, struck: HELD_REASON_STRUCK_ROW, document: HELD_REASON_DOCUMENT };
   heldReviews.push(
-    ...promptItemsFromPlan({ changes: [], added: plan.added, struck: plan.struck, documents: plan.documents }, REASONS)
+    ...promptItemsFromPlan({ changes: [], added: plan.added, struck: plan.struck, documents: plan.documents }, REASONS, data.sheets)
   );
   for (const r of plan.added) {
     results.push({ target: r.target, status: "held", reason: REASONS.added, current: "", suggested: r.changes?.find((c) => c.field === "value")?.suggested ?? "" });

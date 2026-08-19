@@ -95,6 +95,22 @@ import { findDictionary, resolveVariantDefaults, type DictionaryDoc, type Dictio
 //                matches exactly.
 export type BindMethod = "alias" | "exact" | "aka" | "repeat" | "prefix" | "derived" | "derived-default" | "leaf" | "normalized";
 
+// The tiers a CONTAINER row may legitimately reach.
+//
+// Passing the noun instead of the key already makes `leaf` and `repeat` inert,
+// but construction alone does not cover the rest: a project's `key_prefix` or
+// `key_steps` are written for row keys and can mangle a bare noun into a match
+// that means nothing. So the tier a container actually reached is checked
+// against this, per build, against the project's OWN dictionaries — because
+// whether a wrong match exists at all depends on a dictionary this repository
+// does not ship, which is exactly why a unit test on today's data could not be
+// the guard.
+//
+// `normalized` is allowed on purpose: a casefolded noun finding the
+// dictionary's own spelling is the same inference that lets `httpd_timeout`
+// find `TimeOut`, and it is inference over vocabulary, not over an address.
+export const CONTAINER_BIND_METHODS: readonly BindMethod[] = ["alias", "exact", "aka", "normalized"];
+
 // A resolved binding. `entry` is the dictionary's own DictionaryParam,
 // unfiltered — including `kind: "container"` entries. A container (Apache's
 // `<IfModule>`, a syntax element with no default value of its own) is a
@@ -241,6 +257,34 @@ export function normalizeKey(key: string): string {
 // scanner, which is also the right outcome here — it carries no identity
 // beyond "which container", and dropping it still leaves the real leaf
 // (`listen`) as the last key step.
+// What a row is matched against a dictionary BY.
+//
+// A container row's key is an address segment, and the tiers below read those
+// with `parseSteps` — right for a row key, which is what they were written for,
+// and wrong for a container's: a quoted bracket parses as a map key, so
+// `Directory["/var/www"]` yields the argument rather than the directive, and a
+// logrotate pattern contains the step separator, so it splits mid-path. Neither
+// fails loudly. Both would bind a block to whatever entry happens to carry that
+// name (tests/container-key-binding.test.ts records exactly what each shape
+// does today).
+//
+// So a container is matched by its NOUN, which carries no address syntax at
+// all — `leaf` and `repeat` return undefined when their candidate equals the
+// key, so the dangerous tiers go inert by construction rather than by anyone
+// remembering to skip them.
+//
+// Derived HERE and nowhere else. There are two doors into binding — the
+// assembler's single pass, and enrich's own for the `import -f` path — and two
+// copies of this rule would eventually disagree about which rows are containers.
+export function bindableKey(key: string, container?: { name?: string }): string | undefined {
+  // A block the grammar gives no keyword has nothing to match a dictionary by —
+  // its address is a deployment path, and matching by that is how a container
+  // binds to an unrelated entry. Undefined means "do not bind", which is the
+  // honest answer and not a failure.
+  if (container) return container.name;
+  return key;
+}
+
 export function leafKey(key: string): string {
   const steps = parseSteps(key);
   for (let i = steps.length - 1; i >= 0; i--) {
