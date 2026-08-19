@@ -1,0 +1,5 @@
+<IfModule mpm_event_module>
+    StartServers {{ web_start_servers }}
+    MaxRequestWorkers {{ web_max_workers }}
+    ThreadsPerChild {{ web_threads_per_child }}
+</IfModule>

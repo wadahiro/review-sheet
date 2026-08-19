@@ -1,0 +1,3 @@
+sso_http_port: 8080
+sso_hostname: sso.example.invalid
+sso_db: postgres

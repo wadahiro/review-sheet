@@ -1,0 +1,16 @@
+version: 1
+instances: [production]
+metadata: { project: body-layout, version: "1" }
+enrich: { project: ./sheet.yml, strict: false }
+sheets:
+  - name: httpd
+    recipe: ansible
+    rows: artifact
+    defaults: ../roles/web/defaults/main.yml
+    templates:
+      - path: ../roles/web/templates/httpd.conf.j2
+        component: /etc/httpd/conf/httpd.conf
+        deployed_path: /etc/httpd/conf/httpd.conf
+      - path: ../roles/web/templates/mpm.conf.j2
+        component: /etc/httpd/conf.modules.d/mpm.conf
+        deployed_path: /etc/httpd/conf.modules.d/mpm.conf
