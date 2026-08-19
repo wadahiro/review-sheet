@@ -1,4 +1,5 @@
 // Apache HTTP Server (httpd) config: httpd.conf, apache2.conf, .htaccess,
+import type { ContainerNode } from "./types.js";
 // sites/*.conf. Directives are one per line `Name arg1 arg2` (no terminator);
 // containers are `<Tag args> ... </Tag>`. We scan it line by line into a block
 // tree with source ranges, then walk it like the nginx/XML adapters: containers
@@ -9,7 +10,7 @@
 // Scope: standard line syntax with `#` full-line comments. Line-continued (`\`)
 // directives are skipped.
 
-export type HttpdEntry = { categoryPath: string[]; key: string; value: string; line: number; range: [number, number]; path: string };
+export type HttpdEntry = { categoryPath: string[]; key: string; value: string; line: number; range: [number, number]; path: string; containers: ContainerNode[] };
 
 type Dir = { name: string; value: string; range: [number, number]; line: number };
 // `labelRange` is the absolute offset span of the raw label text inside the
@@ -149,19 +150,20 @@ function scan(content: string): Block {
   return root;
 }
 
-type Seg = { path: string; cat: string };
+const nodePath = (nodes: ContainerNode[]): string => nodes.map((n) => n.pathSeg).join(".");
+const nodeCats = (nodes: ContainerNode[]): string[] => nodes.flatMap((n) => n.headings);
 
 export function httpdIndex(content: string): HttpdEntry[] {
   const root = scan(content);
   const out: HttpdEntry[] = [];
 
-  const walk = (block: Block, segs: Seg[]): void => {
+  const walk = (block: Block, nodes: ContainerNode[]): void => {
     const dirGroups = new Map<string, Dir[]>();
     for (const d of block.dirs) { const g = dirGroups.get(d.name); if (g) g.push(d); else dirGroups.set(d.name, [d]); }
     for (const [name, group] of dirGroups) {
       group.forEach((d, i) => {
         const key = group.length > 1 ? `${name}[${i}]` : name;
-        out.push({ categoryPath: segs.map((s) => s.cat), key, value: d.value, line: d.line, range: d.range, path: [...segs.map((s) => s.path), key].join(".") });
+        out.push({ categoryPath: nodeCats(nodes), key, value: d.value, line: d.line, range: d.range, path: [...nodes.map((n) => n.pathSeg), key].join("."), containers: nodes });
       });
     }
     const blkGroups = new Map<string, Block[]>();
@@ -171,10 +173,16 @@ export function httpdIndex(content: string): HttpdEntry[] {
       const labels = group.map((b) => b.label);
       const useLabel = !expr && labels.every((l) => l !== "") && new Set(labels).size === labels.length;
       group.forEach((b, i) => {
-        let seg: Seg;
+        let node: ContainerNode;
         if (expr) {
-          // Positional identity, never the expression text (see EXPR_CONTAINERS).
-          seg = group.length > 1 ? { path: `${name}[${i}]`, cat: `${name}[${i}]` } : { path: name, cat: name };
+          // Positional identity, never the expression text (see EXPR_CONTAINERS)
+          // — so the label is NOT a subject here, however much it looks like
+          // one: it is an editable value the block happens to carry, and the
+          // address must not move when somebody edits it.
+          node =
+            group.length > 1
+              ? { name, index: i, pathSeg: `${name}[${i}]`, headings: [`${name}[${i}]`], line: b.line }
+              : { name, pathSeg: name, headings: [name], line: b.line };
           // The expression itself becomes a synthetic row — the block's own
           // "value" — filed in the ENCLOSING category (same level as sibling
           // directives), one level above where the block's own children land.
@@ -183,18 +191,26 @@ export function httpdIndex(content: string): HttpdEntry[] {
           if (b.labelRange) {
             const key = group.length > 1 ? `${name}[${i}]` : name;
             out.push({
-              categoryPath: segs.map((s) => s.cat),
+              categoryPath: nodeCats(nodes),
               key,
               value: b.label,
               line: b.line,
               range: b.labelRange,
-              path: [...segs.map((s) => s.path), key].join("."),
+              path: [...nodes.map((n) => n.pathSeg), key].join("."),
+              // Filed in the ENCLOSING category, so the block it describes is
+              // not among its own containers.
+              containers: nodes,
             });
           }
-        } else if (group.length === 1 && b.label === "") seg = { path: name, cat: name };
-        else if (useLabel) seg = { path: `${name}[${b.label}]`, cat: `${name} ${b.label}` };
-        else seg = { path: `${name}[${i}]`, cat: `${name}[${i}]` };
-        walk(b, [...segs, seg]);
+        } else if (group.length === 1 && b.label === "") node = { name, pathSeg: name, headings: [name], line: b.line };
+        // The label IS the block's subject — the directory a `<Directory>`
+        // governs — so it goes in the address and, later, in the row's value.
+        // httpd folds it into ONE heading name where XML splits it into two;
+        // that difference is exactly why the flattening is recorded per node
+        // rather than derived from a rule.
+        else if (useLabel) node = { name, subject: b.label, pathSeg: `${name}[${b.label}]`, headings: [`${name} ${b.label}`], line: b.line };
+        else node = { name, index: i, pathSeg: `${name}[${i}]`, headings: [`${name}[${i}]`], line: b.line };
+        walk(b, [...nodes, node]);
       });
     }
   };

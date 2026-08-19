@@ -28,16 +28,6 @@ type XNode = {
 };
 
 
-// What this element contributes to `categoryPath`. Two entries when it carries
-// a subject or a position, one otherwise: the legacy per-step grain, preserved
-// exactly, because it is what every existing heading and every committed model
-// was built from.
-function catNames(n: ContainerNode): string[] {
-  if (n.subject !== undefined) return [n.name, n.subject];
-  if (n.index !== undefined) return [n.name, `[${n.index}]`];
-  return [n.name];
-}
-
 const nodePath = (nodes: ContainerNode[]): string => nodes.map((n) => n.pathSeg).join(".");
 
 function quoteSeg(v: string): string {
@@ -131,7 +121,7 @@ export function xmlIndex(content: string): XmlIndexEntry[] {
     // Every name this chain puts on screen, flattened. Sliced rather than
     // indexed by NODE below, because an element can contribute two of them and
     // the text-leaf row is keyed by the last NAME, not the last element.
-    const names = nodes.flatMap(catNames);
+    const names = nodes.flatMap((n) => n.headings);
     for (const a of node.attrs) {
       // The subject is already in the address; a row for it would state the
       // same fact a second time, in a second place, free to disagree.
@@ -154,11 +144,14 @@ export function xmlIndex(content: string): XmlIndexEntry[] {
         const index = group.length > 1 && !idf ? i : undefined;
         const pathSeg =
           subject !== undefined ? `${name}[${idf}=${quoteSeg(subject)}]` : index !== undefined ? `${name}[${index}]` : name;
-        walk(child, [...nodes, { name, ...(subject !== undefined ? { subject, subjectField: idf! } : {}), ...(index !== undefined ? { index } : {}), pathSeg, line: child.line }]);
+        // XML's flattening splits a promoted element in two — the legacy
+        // per-step grain, kept exactly.
+        const headings = subject !== undefined ? [name, subject] : index !== undefined ? [name, `[${index}]`] : [name];
+        walk(child, [...nodes, { name, ...(subject !== undefined ? { subject, subjectField: idf! } : {}), ...(index !== undefined ? { index } : {}), pathSeg, headings, line: child.line }]);
       });
     }
   };
-  walk(root, [{ name: root.name, pathSeg: root.name, line: root.line }]);
+  walk(root, [{ name: root.name, pathSeg: root.name, headings: [root.name], line: root.line }]);
   return out;
 }
 
