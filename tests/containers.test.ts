@@ -28,7 +28,11 @@ import type { Entry } from "../src/parser";
 // changes only when somebody means it to: a parser silently ceasing to emit a
 // chain would otherwise just make this suite quieter, which is the failure mode
 // the whole design exists to avoid.
-const EMITTING = ["xml"];
+// `jinja2` is here without a line of its own having changed: it masks the
+// template and hands the text to the declared base format, so it inherits
+// whatever that parser reports — which is the point of wrapping rather than
+// reimplementing, and worth asserting so the delegation cannot quietly stop.
+const EMITTING = ["xml", "httpd", "jinja2"];
 
 type Emitted = { file: string; parser: string; entries: Entry[] };
 

@@ -517,6 +517,15 @@ export type ContainerNode = {
   index?: number;
   // This element's contribution to `source.path`, brackets included.
   pathSeg: string;
+  // This element's contribution to `categoryPath` — the LEGACY display
+  // flattening, carried verbatim so headings built before any of this stay
+  // exactly what they were. Per-element and not derivable from the fields
+  // above, because parsers flatten differently and always have: XML splits a
+  // promoted element into two names (`local-cache`, `realms`) while httpd folds
+  // the label into one (`Directory "/var/www"`). A container ROW ignores this
+  // and uses `name`/`subject`, which is the same shape everywhere — this exists
+  // only so the old spelling cannot drift while both are on screen.
+  headings: string[];
   // The opening tag's line — a container row's own definition site.
   line: number;
 };
