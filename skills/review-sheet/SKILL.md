@@ -1716,7 +1716,7 @@ required for `space`, which has no dedicated extension).
 | `yaml` | Nested leaves get a structural path; list-of-maps addressed by identity. | [details](formats/yaml.md) |
 | `dotenv` | .env KEY=value files; export prefix stripped; quotes KEPT; # comments. | [details](formats/dotenv.md) |
 | `ini` | INI/CFG [section] files; sections become categories. | [details](formats/ini.md) |
-| `properties` | Java .properties key=value files; # and ! comments; category is Parameters. | [details](formats/properties.md) |
+| `properties` | Java .properties key=value files; # and ! comments; no sections, so no category of its own. | [details](formats/properties.md) |
 | `sysctl` | sysctl-style key = value .conf files; # and ; comments. | [details](formats/sysctl.md) |
 | `space` | Whitespace-delimited files (e.g. sshd_config); force-only, not auto-detected. | [details](formats/space.md) |
 | `generic` | Last-resort fallback; tries = then : as delimiter; always matches. | [details](formats/generic.md) |

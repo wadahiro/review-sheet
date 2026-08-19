@@ -1,7 +1,7 @@
 version: 1
 instances: [production]
 metadata: { project: mixed-axis, version: "1" }
-enrich: { project: ./sheet.yml, strict: false }
+enrich: { project: ./sheet.yml, metadata_dirs: [./metadata], strict: false }
 sheets:
   - name: sso
     recipe: ansible
@@ -16,4 +16,8 @@ sheets:
       # there is no path on the host this ends up at, which is the whole point
       # of the fixture.
       - path: ../roles/sso/files/realm-poc.json
+        component: realm poc
+    dictionaries:
+      - product: realm
+        version: "1"
         component: realm poc

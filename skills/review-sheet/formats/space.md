@@ -14,7 +14,7 @@ Whitespace-delimited files (e.g. sshd_config); force-only, not auto-detected.
 
 ## Path style
 
-flat key (category always Parameters)
+flat key; the format has no sections, so a row reports no category and one is decided elsewhere
 
 ## Notes
 

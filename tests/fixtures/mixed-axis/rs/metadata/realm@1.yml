@@ -1,0 +1,30 @@
+# A stand-in for a product's own dictionary: what matters to the fixture is
+# that it carries `group`, because that is what gives a unit with no deployed
+# file its categories. Without one, nothing supplies them and the file axis
+# fills the gap with the name of the file the rows were READ from -- which is
+# not where anything is deployed, and means nothing to a reader.
+product: realm
+version: "1"
+provenance: community
+coverage: partial
+parameters:
+  realm:
+    group: General
+    description:
+      en: The realm's name, which appears in its endpoints.
+  enabled:
+    group: General
+    description:
+      en: Whether the realm accepts requests at all.
+  sslRequired:
+    group: Login
+    description:
+      en: Which requests must arrive over HTTPS.
+  loginTheme:
+    group: Login
+    description:
+      en: The theme used for this realm's login pages.
+  accessTokenLifespan:
+    group: Tokens
+    description:
+      en: How long an access token stays valid.
