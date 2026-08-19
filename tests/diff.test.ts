@@ -379,3 +379,81 @@ describe("diffSheets — a moved default with and without a value under it", () 
     expect(kindsOf(from, to)).toEqual(["doc"]);
   });
 });
+
+// Two deployment forms of one product do not share a structure. The same
+// Keycloak settings live in one keycloak.conf on a host and in a Dockerfile
+// plus a task definition in a container: neither the files nor the headings
+// line up, and matching by category name only ever worked because both projects
+// had hand-written the same category list — a machine check whose result
+// depended on two humans agreeing about display text.
+//
+// What IS the same is the setting. `db-url` is one product's parameter however
+// it is delivered, which is what the dictionary key already states.
+describe("diffSheets — crossCategory", () => {
+  const sheet = (cats: { name: string; params: Record<string, unknown>[] }[]): Sheets =>
+    [{ name: "S", categories: cats as never }];
+
+  it("compares a row against its counterpart under a different heading", () => {
+    const from = sheet([{ name: "/opt/keycloak/conf/keycloak.conf", params: [{ key: "db-url", value: "jdbc:x" }] }]);
+    const to = sheet([{ name: "Database", params: [{ key: "db-url", value: "jdbc:x" }] }]);
+
+    // Without it the two sides share no heading, so one row reads as removed
+    // and the other as added — a false difference about a value that agrees.
+    expect(diffSheets(from, to).summary).toMatchObject({ unchanged: 0, added: 1, removed: 1 });
+    expect(diffSheets(from, to, { crossCategory: true }).summary).toMatchObject({ unchanged: 1, added: 0, removed: 0 });
+  });
+
+  it("reads the result in the baseline's organisation", () => {
+    const from = sheet([{ name: "/etc/app.conf", params: [{ key: "a", value: "1" }] }]);
+    const to = sheet([{ name: "Tuning", params: [{ key: "a", value: "2" }] }]);
+    const d = diffSheets(from, to, { crossCategory: true });
+    expect(d.sheets[0].categories.map((c) => c.name)).toEqual(["/etc/app.conf"]);
+    expect(d.sheets[0].categories[0].params[0]).toMatchObject({ key: "a", status: "changed" });
+  });
+
+  // A row the baseline does not have has no counterpart to be filed beside, so
+  // it stays where the other side put it and comes out added — which is the
+  // honest answer for a setting one platform simply has and the other does not.
+  it("leaves a row with no counterpart where its own side filed it", () => {
+    const from = sheet([{ name: "Files", params: [{ key: "a", value: "1" }] }]);
+    const to = sheet([
+      { name: "Files", params: [{ key: "a", value: "1" }] },
+      { name: "ECS only", params: [{ key: "task-role", value: "arn:…" }] },
+    ]);
+    const d = diffSheets(from, to, { crossCategory: true });
+    expect(d.summary).toMatchObject({ unchanged: 1, added: 1 });
+    expect(d.sheets[0].categories.map((c) => c.name).sort()).toEqual(["ECS only", "Files"]);
+  });
+
+  // Picking one of them would report a difference against a row nobody chose.
+  it("refuses to join a key one side files in two places, and says which", () => {
+    const from = sheet([
+      { name: "A", params: [{ key: "dup", value: "1" }] },
+      { name: "B", params: [{ key: "dup", value: "1" }] },
+    ]);
+    const to = sheet([{ name: "Elsewhere", params: [{ key: "dup", value: "1" }] }]);
+    const d = diffSheets(from, to, { crossCategory: true });
+    expect(d.ambiguousKeys).toEqual([{ sheet: "S", key: "dup", categories: ["A", "B"] }]);
+    // Reported, and then left alone: the row stays under its own heading and
+    // reads as added/removed rather than being matched to a guess.
+    expect(d.summary).toMatchObject({ unchanged: 0 });
+  });
+
+  it("says nothing about keys it joined cleanly", () => {
+    const from = sheet([{ name: "A", params: [{ key: "a", value: "1" }] }]);
+    const to = sheet([{ name: "B", params: [{ key: "a", value: "1" }] }]);
+    expect(diffSheets(from, to, { crossCategory: true }).ambiguousKeys).toEqual([]);
+  });
+
+  // Nested headings: a row is filed at the baseline's full path, not at its
+  // first segment.
+  it("files a moved row at the baseline's whole path", () => {
+    const from = [
+      { name: "S", categories: [{ name: "component", categories: [{ name: "deep", params: [{ key: "a", value: "1" }] }] }] },
+    ] as unknown as Sheets;
+    const to = sheet([{ name: "Flat", params: [{ key: "a", value: "2" }] }]);
+    const d = diffSheets(from, to, { crossCategory: true });
+    expect(d.sheets[0].categories[0].name).toBe("component");
+    expect(d.sheets[0].categories[0].categories[0].params[0]).toMatchObject({ key: "a", status: "changed" });
+  });
+});
