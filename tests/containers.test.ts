@@ -128,6 +128,78 @@ describe("container chain conformance", () => {
     expect(bad).toEqual([]);
   });
 
+  // `subject` is FILE TEXT and `subjectRange` is where it is written. Checked
+  // by slicing rather than trusted, because every attempt in this design to
+  // improve on the file's own spelling has been walked back by a measurement:
+  // HCL's labels were stripped of quotes and re-joined with single spaces,
+  // producing a string in no file anywhere, while httpd had been recording its
+  // label with the quotes on the whole time.
+  it("a subject is exactly the text at its range", () => {
+    const bad: string[] = [];
+    for (const { file, entries } of emitted()) {
+      const text = readFileSync(file, "utf-8");
+      for (const e of entries) {
+        for (const n of e.containers ?? []) {
+          if (n.subject === undefined) { if (n.subjectRange) bad.push(`${file}: ${n.name} has a range but no subject`); continue; }
+          // A range is not always available: a template parser masks its file
+          // before delegating, and masking preserves lines but not columns, so
+          // an offset computed against the masked text addresses different
+          // characters in the real one. It drops the range rather than passing
+          // on one that resolves to the wrong place — the same reason its
+          // `edit` is not delegated either.
+          if (!n.subjectRange) continue;
+          const at = text.slice(n.subjectRange[0], n.subjectRange[1]);
+          if (at !== n.subject) bad.push(`${file}: ${n.name} — range holds ${JSON.stringify(at)}, subject says ${JSON.stringify(n.subject)}`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  // A subject IS text in the file, so something wrote it — and a container row
+  // made for it needs somewhere to point. The converse is the honest half: a
+  // container the file never writes (systemd's assumed section, toml's implicit
+  // parent) has no line, and must therefore claim no subject either.
+  it("a subject always comes with a line", () => {
+    // One direction only. A container written in the file with no argument —
+    // `[Unit]`, `<memory>`, nginx's `http` — has a line and no subject, which
+    // is the ordinary shape of pure structure, not a violation.
+    const bad: string[] = [];
+    for (const { file, entries } of emitted())
+      for (const e of entries)
+        for (const n of e.containers ?? [])
+          if (n.subject !== undefined && n.line === undefined) bad.push(`${file}: ${n.name} has a subject and no line`);
+    expect([...new Set(bad)]).toEqual([]);
+  });
+
+  // `name` is format VOCABULARY, not file text — which is what lets logrotate
+  // name a block that its grammar opens with nothing but patterns. That freedom
+  // is exactly what needs a bound: with the pattern as the noun, nouns grew
+  // with every config anybody wrote, and the property that makes documenting
+  // containers affordable (the bill scales with grammar, not with deployments)
+  // was gone.
+  //
+  // A declared list per parser cannot be the bound, because most of these
+  // grammars are open — any XML element name, any systemd section, any TOML
+  // table is legal. So the check targets the thing that actually needs
+  // bounding: a noun the file does NOT contain is fabricated, and every
+  // fabricated noun must be written down here.
+  it("a name the file does not contain says it came from the format's docs", () => {
+    // The flag IS the declaration, so there is no list here to keep in step
+    // with the parsers. A name absent from the file and unmarked is a word
+    // somebody coined, which is the thing being ruled out.
+    const bad: string[] = [];
+    for (const { file, entries } of emitted()) {
+      const text = readFileSync(file, "utf-8");
+      for (const e of entries)
+        for (const n of e.containers ?? []) {
+          if (n.name === undefined || n.nameFromDocs) continue;
+          if (!text.includes(n.name)) bad.push(`${file}: "${n.name}" is in no file and not marked as the format's own term`);
+        }
+    }
+    expect([...new Set(bad)]).toEqual([]);
+  });
+
   // The subject is promoted INTO the address, so the attribute it came from
   // must not also be a row: two statements of one fact, free to disagree.
   it("a promoted subject leaves no row of its own", () => {

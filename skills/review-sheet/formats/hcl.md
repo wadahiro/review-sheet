@@ -16,6 +16,10 @@ Blocks by label (resource type+name); scalar attributes only; expressions/lists/
 
 resource.aws_instance.web.instance_type — blocks by label; scalar attributes only
 
+## Blocks
+
+Each `name label… { }` is a block. A uniquely labelled one is addressed by name plus labels and rowed by the labels as written, quotes and spacing included.
+
 ## Notes
 
 - Block segments combine the block name and its labels: `resource "aws_instance" "web" {}` → path prefix `resource.aws_instance.web`.

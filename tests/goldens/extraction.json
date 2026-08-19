@@ -600,6 +600,30 @@
     "sha": "475f4fe23273ada8"
   },
   {
+    "file": "tests/fixtures/artifact-rows-conditional-block/defaults.yml",
+    "parser": "yaml",
+    "count": 2,
+    "sha": "4e9b55d557fad2fc"
+  },
+  {
+    "file": "tests/fixtures/artifact-rows-conditional-block/logrotate-app.j2",
+    "parser": "jinja2",
+    "count": 2,
+    "sha": "b2a0abb65b443659"
+  },
+  {
+    "file": "tests/fixtures/artifact-rows-conditional-block/prod.yml",
+    "parser": "yaml",
+    "count": 1,
+    "sha": "0f411d39fb73cfd8"
+  },
+  {
+    "file": "tests/fixtures/artifact-rows-conditional-block/stg.yml",
+    "parser": "yaml",
+    "count": 1,
+    "sha": "e8121914ab017635"
+  },
+  {
     "file": "tests/fixtures/artifact-rows-conditional/app.service.j2",
     "parser": "jinja2",
     "count": 5,
@@ -824,14 +848,20 @@
   {
     "file": "tests/fixtures/parsers/infinispan.xml",
     "parser": "xml",
-    "count": 7,
-    "sha": "dffc39815b74390c"
+    "count": 5,
+    "sha": "847599bcf675528a"
   },
   {
     "file": "tests/fixtures/parsers/nginx.conf",
     "parser": "nginx",
     "count": 7,
     "sha": "a7d3dc505866b06d"
+  },
+  {
+    "file": "tests/fixtures/parsers/vhost.conf.j2",
+    "parser": "jinja2",
+    "count": 4,
+    "sha": "ba19de98fda4529d"
   },
   {
     "file": "tests/fixtures/parsers/wrapper.sh",

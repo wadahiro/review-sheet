@@ -16,6 +16,8 @@ const hclParser: ConfigParser = {
     delimiter: "key = value (+ {} blocks)",
     comments: "# // /* */",
     pathStyle: "resource.aws_instance.web.instance_type — blocks by label; scalar attributes only",
+    containers:
+      "Each `name label… { }` is a block. A uniquely labelled one is addressed by name plus labels and rowed by the labels as written, quotes and spacing included.",
     notes: [
       "Block segments combine the block name and its labels: `resource \"aws_instance\" \"web\" {}` → path prefix `resource.aws_instance.web`.",
       "Repeated unlabeled blocks (e.g. ingress {}) are indexed: ingress[0], ingress[1].",

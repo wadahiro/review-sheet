@@ -34,6 +34,10 @@
     "docs_url": {
       "$ref": "#/definitions/url"
     },
+    "block_label": {
+      "description": "What this format's own documentation calls a block its SYNTAX leaves unnamed — logrotate(8) says \"log file definition\" for `/var/log/x { … }`, which opens with its patterns and no keyword. A document-level fact, because it is one word for every such block in the format, not a per-entry one. Absent for a format whose blocks name themselves (httpd writes `Directory`), which is most of them. The parser never supplies this: a word for a thing the file does not name is documentation, and the sheet marks it so a reader never mistakes it for their own text.",
+      "$ref": "#/definitions/langText"
+    },
     "parameters": {
       "type": "object",
       "minProperties": 1,

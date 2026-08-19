@@ -16,6 +16,10 @@ Directives and {} blocks; labeled blocks by label; repeats indexed.
 
 http.server.location[/api].proxy_pass — block by label; repeats indexed
 
+## Blocks
+
+Every `{}` block is one. A uniquely labelled block (`location /api`) is addressed and rowed by its label; `if` is addressed positionally and its condition is a row, so editing it never moves the directives inside.
+
 ## Notes
 
 - Detected by content (block syntax), not just extension.

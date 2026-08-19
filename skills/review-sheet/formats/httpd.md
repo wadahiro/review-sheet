@@ -16,6 +16,10 @@ Apache directives and <Tag> containers by label; repeats indexed.
 
 VirtualHost[*:80].DocumentRoot — container by label
 
+## Blocks
+
+Every `<Tag>` is a block. One with a unique label (`<Directory "/var/www">`) is addressed and rowed by it, verbatim, quotes included. A conditional container (If/IfModule/Limit…) is addressed POSITIONALLY instead and its expression is a row of its own, so editing the condition never moves the directives inside it.
+
 ## Notes
 
 - Detected by <Tag>…</Tag> container syntax.

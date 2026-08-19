@@ -1,0 +1,12 @@
+{# A templated block-structured file: the container's own argument is a
+   variable, which is what makes the delegating parser's mask restoration
+   load-bearing rather than incidental. #}
+<VirtualHost *:{{ listen_port }}>
+    ServerName {{ server_name }}
+    DocumentRoot {{ document_root }}
+
+    <Directory "{{ document_root }}">
+        AllowOverride None
+        Require all granted
+    </Directory>
+</VirtualHost>

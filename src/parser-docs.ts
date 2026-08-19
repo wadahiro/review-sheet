@@ -29,6 +29,12 @@ export function renderParserPage(p: ConfigParser): string {
     lines.push("");
     lines.push(m.pathStyle);
   }
+  if (m.containers !== undefined) {
+    lines.push("");
+    lines.push("## Blocks");
+    lines.push("");
+    lines.push(m.containers);
+  }
   if (m.notes && m.notes.length > 0) {
     lines.push("");
     lines.push("## Notes");

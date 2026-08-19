@@ -16,6 +16,8 @@ const haproxyParser: ConfigParser = {
     delimiter: "key value (space-separated under section)",
     comments: "#",
     pathStyle: "backend[app].server[web1] — named section + directive by 1st arg",
+    containers:
+      "Each section is a block; a labelled one (`backend app`) is addressed and rowed by its label.",
     notes: [
       "Detected by haproxy section keywords (frontend/backend/global/defaults).",
       "Named sections: frontend[http-in], backend[app].",

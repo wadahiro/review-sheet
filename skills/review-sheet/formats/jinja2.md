@@ -16,6 +16,10 @@ Templates (.j2): base-format structure + the {{ variable }} behind each value (e
 
 delegates to the base format; adds source.templateVar / source.conditional hints
 
+## Blocks
+
+Whatever the base format reports, with template tokens restored — so a block named by a variable reads as the file writes it. Character ranges are NOT carried through: masking preserves lines but not columns, the same reason edits are not delegated.
+
 ## Notes
 
 - Strips .j2 and detects the base format from the remaining name (keycloak.conf.j2 -> .conf).
