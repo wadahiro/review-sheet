@@ -14,13 +14,13 @@ sysctl-style key = value .conf files; # and ; comments.
 
 ## Path style
 
-flat key (category always Parameters)
+flat key; the format has no sections, so a row reports no category and one is decided elsewhere
 
 ## Notes
 
 - Lower priority than nginx/httpd/haproxy for .conf files.
 - # and ; start comment lines.
-- All keys in the Parameters category.
+- No sections, so no row carries a category of its own — see the properties parser.
 
 ## Examples
 

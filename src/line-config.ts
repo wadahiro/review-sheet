@@ -40,7 +40,19 @@ export type LineConfig = {
   bareFlag?: string;
 };
 
-const DEFAULT_CATEGORY = "Parameters";
+// No invented fallback here. A format with no sections reports NO category, and
+// what to call such a row is then answered where category is decided — a
+// project's own `category:`, a bound dictionary's group, the file it belongs
+// to — or not at all, which is an error naming the row.
+//
+// It used to stamp every one of them with the constant "Parameters": a word in
+// no file, needed by nothing that parses, existing only to be shown. That is
+// the same thing a logrotate block's noun was, removed for the same reason —
+// a parser carries the vocabulary it needs to READ a format, and a display
+// label is not that. Sitting in the resolution chain's last slot, its only
+// possible effect was to turn "this row has no category" into a meaningless
+// tab instead of the declaration this project asks for by name. Measured
+// before removing: zero occurrences across every example and one real project.
 
 export const LINE_CONFIGS: Record<"properties" | "dotenv" | "sysctl" | "ini" | "space" | "generic", LineConfig> = {
   properties: { delims: ["=", ":"], comments: ["#", "!"], sections: false, space: false, exportPrefix: false },
@@ -110,7 +122,7 @@ export function extractLines(content: string, cfg: LineConfig): Entry[] {
 
     if (key === undefined || value === undefined || value === "") continue;
     out.push({
-      categoryPath: section ? [section] : [DEFAULT_CATEGORY],
+      categoryPath: section ? [section] : [],
       key,
       value,
       source: { line: i + 1, anchor },

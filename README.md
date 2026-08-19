@@ -147,7 +147,7 @@ Supported formats (inferred per file extension, or forced with `--format`):
 | `yaml` | *.yaml *.yml | Nested leaves get a structural path; list-of-maps addressed by identity. |
 | `dotenv` | *.env | .env KEY=value files; export prefix stripped; quotes KEPT; # comments. |
 | `ini` | *.ini *.cfg | INI/CFG [section] files; sections become categories. |
-| `properties` | *.properties | Java .properties key=value files; # and ! comments; category is Parameters. |
+| `properties` | *.properties | Java .properties key=value files; # and ! comments; no sections, so no category of its own. |
 | `sysctl` | *.conf (lower priority than nginx/httpd/haproxy) | sysctl-style key = value .conf files; # and ; comments. |
 | `space` | (force only — no dedicated extension) | Whitespace-delimited files (e.g. sshd_config); force-only, not auto-detected. |
 | `generic` | anything else (fallback) | Last-resort fallback; tries = then : as delimiter; always matches. |
