@@ -11,7 +11,7 @@
 import "./providers/index.js";
 import { resolveMetadata, type MetadataContext, type MetadataProvider, type DictionaryBinding, type LangProvenance } from "./metadata.js";
 import { loadProjectMeta, paramsForSheet, checkProjectMetaSheets, type ProjectMetaDoc } from "./providers/project.js";
-import { bindKey, isBindError, loadBindSources, type Binding, type BindSource } from "./bind.js";
+import { bindKey, isBindError, loadBindSources, type Binding, type BindSource, bindableKey } from "./bind.js";
 import { pickLang, type ParameterSheetInput, type Category, type Parameter } from "./types.js";
 
 export type EnrichOptions = {
@@ -361,11 +361,11 @@ function fillSecretOnly(
   categoryPath: string[],
   ctx: MetadataContext,
   providers: MetadataProvider[] | undefined,
-  resolveBinding: (sheet: string, key: string, categoryPath: string[]) => Binding | undefined,
+  resolveBinding: (sheet: string, key: string, categoryPath: string[], container?: { name?: string }) => Binding | undefined,
   resolveVariable: (sheet: string, key: string) => string | undefined
 ): void {
   if (param.secret !== undefined) return;
-  const binding = resolveBinding(sheet, param.key, categoryPath);
+  const binding = resolveBinding(sheet, param.key, categoryPath, param.container);
   const variable = resolveVariable(sheet, param.key);
   const resolved = resolveMetadata({ key: param.key, sheet, categoryPath, binding, variable }, ctx, providers);
   if (resolved?.secret !== undefined) param.secret = resolved.secret;
@@ -378,11 +378,11 @@ function enrichParam(
   ctx: MetadataContext,
   providers: MetadataProvider[] | undefined,
   byProvider: Record<string, number>,
-  resolveBinding: (sheet: string, key: string, categoryPath: string[]) => Binding | undefined,
+  resolveBinding: (sheet: string, key: string, categoryPath: string[], container?: { name?: string }) => Binding | undefined,
   resolveVariable: (sheet: string, key: string) => string | undefined
 ): boolean {
   const file = "source" in param ? param.source?.file : undefined;
-  const binding = resolveBinding(sheet, param.key, categoryPath);
+  const binding = resolveBinding(sheet, param.key, categoryPath, param.container);
   const variable = resolveVariable(sheet, param.key);
   const query = { key: param.key, sheet, categoryPath, file, binding, variable };
   const resolved = resolveMetadata(query, ctx, providers);
@@ -451,7 +451,7 @@ function walkCategories(
   ctx: MetadataContext,
   providers: MetadataProvider[] | undefined,
   report: EnrichReport,
-  resolveBinding: (sheet: string, key: string, categoryPath: string[]) => Binding | undefined,
+  resolveBinding: (sheet: string, key: string, categoryPath: string[], container?: { name?: string }) => Binding | undefined,
   resolveVariable: (sheet: string, key: string) => string | undefined
 ): void {
   for (const category of categories) {
@@ -544,11 +544,17 @@ export function enrich(
     : loadBindSources(dictionaries, opts.metadataDirs ?? [], opts.readFile);
   const bindErrors: string[] = [];
 
-  function resolveBinding(sheet: string, key: string, categoryPath: string[]): Binding | undefined {
+  // `container` is the row's own, when it has one: a block is matched by its
+  // noun, never by its key. Threaded as an argument rather than looked up here,
+  // because this function is also the shim over `opts.bindings`, and the
+  // assembler's pass has already applied the same rule on that side.
+  function resolveBinding(sheet: string, key: string, categoryPath: string[], container?: { name?: string }): Binding | undefined {
     if (opts.bindings) return opts.bindings(sheet, key, categoryPath);
     if (bindSources.length === 0) return undefined;
     const dictKey = projectMeta ? paramsForSheet(projectMeta, sheet)[key]?.dict_key : undefined;
-    const result = bindKey(key, dictKey, bindSources);
+    const matchKey = bindableKey(key, container);
+    if (matchKey === undefined) return undefined;
+    const result = bindKey(matchKey, dictKey, bindSources);
     if (result === undefined) return undefined;
     if (isBindError(result)) {
       bindErrors.push(`${sheet} > ${key}: ${result.message}`);

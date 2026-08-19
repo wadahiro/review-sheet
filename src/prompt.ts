@@ -42,6 +42,12 @@ export type SourceLocation = {
 
 export type ParamData = {
   key: string;
+  // This row IS a block rather than a setting inside one, and the chain of
+  // blocks enclosing it — see `ParameterBase.container`/`container_path`, which
+  // these mirror. Carried here because both the viewer and the CLI read this
+  // shape, and a container is not a fact either of them may guess at.
+  container?: { name?: string; nameFromDocs?: boolean };
+  container_path?: { path: string; name?: string }[];
   // The product's own display name — LangText in a built model, resolved to a
   // string by the viewer's localizeParam. Display only; `key` is identity.
   label?: LangText | string;
@@ -186,6 +192,24 @@ export const HELD_REASON_STRUCK_ROW =
 // they were being asked about is gone.
 export const HELD_REASON_NO_ROW =
   "Cannot apply directly: no row in the current document matches this finding — the setting was removed or renamed, so decide whether the finding still applies";
+
+// A container row: the block's own identity, not a setting inside it.
+//
+// Held for a reason no other row has. The block's subject is part of the
+// ADDRESS of everything inside it — `Directory["/var/www"].AllowOverride` — so
+// rewriting it mechanically would leave every child row of that block pointing
+// at a block that no longer exists, and every sibling edit in the same batch
+// applied against stale addresses. Which of those follow the rename and which
+// were meant as they stand is a judgement about the file, and the batch's
+// outcome would otherwise depend on the order the edits happened to be applied
+// in.
+//
+// The mirror of `EXPR_CONTAINERS` in the parsers: an expression container
+// trades label identity for editability (it is addressed positionally, so its
+// condition is a value apply may rewrite), and a subject container trades the
+// reverse. Same invariant, both halves.
+export const HELD_REASON_CONTAINER_SUBJECT =
+  "Cannot apply directly: this is a block's own identity, and every setting inside it is addressed through it — renaming it moves those rows, so decide the block and its contents together";
 
 // A document sheet's page, rewritten. It goes back to the markdown file the
 // page was rendered from — a whole file, not a line, which no source map

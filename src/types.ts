@@ -405,6 +405,35 @@ export type ParameterBase = {
   // IDENTITY. verify/apply resolve a row by it, every review target names it,
   // and it is what the configuration file actually calls this setting.
   key: string;
+  // Set when this row IS a block rather than a setting inside one —
+  // `<Directory "/var/www">`, a logrotate policy, an Infinispan cache.
+  //
+  // A container row exists because the block's identity is a decision somebody
+  // made and reviewers need somewhere to say so; its `value` is the block's own
+  // subject, verbatim. Two things follow from it being a container and not a
+  // setting, and both are enforced elsewhere rather than described here:
+  // `bind.ts` resolves it by this `name` and never by its key (an address
+  // segment read as a key binds to nonsense — see tests/container-key-binding),
+  // and apply HOLDS it, because rewriting the block's own identity re-keys
+  // every row inside it and would poison the rest of the batch.
+  container?: { name?: string; nameFromDocs?: boolean };
+  // The blocks enclosing this row, innermost LAST — each with its cumulative
+  // address and what kind of block it is.
+  //
+  // An ARRAY rather than one joined string, because every consumer needs the
+  // parts and none can recover them by splitting: a logrotate pattern contains
+  // the separator, and a promoted XML element renders two steps in one segment.
+  // So the length is the row's indent depth, the last entry is the block
+  // directly above it, and any entry is an ancestor to keep on screen when a
+  // filter would otherwise leave a row hanging under nothing.
+  //
+  // `name` is here because a block with no argument gets no row of its own —
+  // only a block whose opening carries one is a decision worth reviewing — and
+  // its level would otherwise be an indent step with nothing to explain it. The
+  // viewer draws those from this, which is also why they are not rows: nothing
+  // is keyed by them, no dictionary owes them a description, and they carry no
+  // review target or diff presence.
+  container_path?: { path: string; name?: string }[];
   // What the PRODUCT calls it where a human meets it — a Keycloak admin-console
   // label. Display only, filled by enrich from the bound dictionary, and never
   // a substitute for the key: a reviewer needs both, one to recognise the
@@ -504,11 +533,56 @@ export type Instance = {
 // `pathSeg` and the category contribution are both computed FROM this, in one
 // walk, so they cannot disagree without the walk disagreeing with itself.
 export type ContainerNode = {
-  // The element name — the noun a dictionary would document.
-  name: string;
-  // The identity attribute's value, where one was promoted into the address:
-  // the block's own reviewable value (`realms` of `local-cache[name=realms]`).
+  // What the file CALLS this kind of block — `Directory`, `local-cache`,
+  // `[Service]`. The noun a dictionary would document.
+  //
+  // Optional because not every grammar has one. A logrotate block opens with
+  // its patterns and nothing else, so there is nothing in the file to read.
+  name?: string;
+  // Set when `name` is what the FORMAT'S OWN DOCUMENTATION calls this kind of
+  // block rather than a word the file contains — logrotate(8) says "log file
+  // definition" for a block its syntax leaves unnamed.
+  //
+  // A parser may not simply invent one. The word must be the format's, and this
+  // flag is what says so — which is also what makes the rule checkable: a name
+  // absent from the file and NOT marked this way is a fabrication, and the
+  // conformance suite fails on it. (The first attempt was a coined "logfiles",
+  // the only piece of vocabulary in any parser that existed purely to be shown
+  // to a human — everything else a parser knows, a directive list, which
+  // containers are addressed positionally, which attributes identify an
+  // element, is needed to PARSE.)
+  //
+  // The viewer marks such a name so it never reads as text from the file.
+  nameFromDocs?: boolean;
+  // The subject is ASSEMBLED by a template from variables, so no single place
+  // in any file holds the result: the template writes `{{ dir }}/*.log` and the
+  // deployed file will say `/var/log/app/*.log`, and neither contains the
+  // other. The block still HAS a line — it is right there in the template — so
+  // this is not the same as having none, and conflating the two cost the block
+  // its way into the preview as well as its source map.
+  subjectAssembled?: boolean;
+  // The identity written in the block's own opening, VERBATIM — the text a
+  // container row shows as its value and a reviewer judges.
+  //
+  // Two rules keep this honest, and they are different rules. `name` is format
+  // VOCABULARY: what kind of node this is, in the grammar's own terms, which a
+  // parser may state even where the file writes no such word (logrotate opens a
+  // block with nothing but its patterns). `subject` is FILE TEXT: a parser may
+  // never fabricate or tidy it. Stripping quotes and re-joining HCL's labels
+  // with single spaces produced `aws_lb this`, a string appearing nowhere in
+  // any file, while httpd had been recording its label with the quotes on all
+  // along — one design, two spellings, caught only by counting.
+  //
+  // Always accompanied by `subjectRange`, which is what makes the rule
+  // checkable rather than merely stated.
   subject?: string;
+  // Where `subject` is written, as absolute offsets — the container row's own
+  // definition site, and the range an edit to it would rewrite.
+  //
+  // Present exactly when `subject` is, so `content.slice(...) === subject` is
+  // an assertion the conformance suite can run rather than a promise in a
+  // comment.
+  subjectRange?: [number, number];
   // Which attribute the subject came from, so the attribute's own row can be
   // suppressed — it would otherwise state the same fact twice.
   subjectField?: string;
@@ -526,6 +600,11 @@ export type ContainerNode = {
   // and uses `name`/`subject`, which is the same shape everywhere — this exists
   // only so the old spelling cannot drift while both are on screen.
   headings: string[];
+  // Which file the opening is IN. Set by whoever knows — a template-driven row
+  // is sourced at the VARIABLE that fills it, in another file entirely, while
+  // the block's own opening is a line of the template; taking the row's file
+  // would point a block at a variable definition that does not contain it.
+  file?: string;
   // The opening tag/header's line — a container row's own definition site.
   //
   // Optional because a container is not always written down: a systemd file may
@@ -533,6 +612,14 @@ export type ContainerNode = {
   // then an assumption the parser makes, not a line anybody typed. Pointing a
   // row's source map at a line chosen to fill this in would be a false claim
   // about the file, which is worse than having no line to offer.
+  //
+  // An absent line therefore means the file never writes this container at all,
+  // and any row later made for it carries no source — which is a shape the
+  // model already has (a documented default is exactly that) and which apply
+  // already holds for every container operation regardless.
+  //
+  // A container with a `subject` always has one: the subject IS text in the
+  // file, so something wrote it.
   line?: number;
 };
 

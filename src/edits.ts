@@ -141,17 +141,29 @@ function indexEdits(reviews: ReviewItem[], lang: Lang): EditIndex {
 // Rewrite the sheet tree so every cell shows its current value. Returns the
 // input untouched (same object) when nothing was edited, so a document that
 // nobody has edited costs nothing and behaves exactly as before.
-// Whether each row is currently struck through. Both directions are recorded,
-// so this is a FOLD over the chain, not a set of deleted keys: the newest entry
-// that states either one wins, and a row deleted and later restored ends up
-// present with both decisions still on record.
-function indexDeletions(reviews: ReviewItem[]): Map<string, boolean> {
-  const out = new Map<string, boolean>();
+// The newest entry that struck each row through or put it back.
+//
+// Both directions are recorded, so this is a FOLD over the chain rather than a
+// set of deleted keys: striking a row out and restoring it months later are two
+// decisions, and the second is not a correction of the first.
+//
+// ONE fold, read by everything. There were three — the sheet rendering, the
+// per-row history, and the AI prompt each walked the same items their own way —
+// which was harmless only while they all meant exactly the same thing by
+// "deleted". They stop meaning the same thing the moment deletion applies to a
+// block: strike a container and its contents go with it, and a fold that knows
+// about ancestors in the viewer but not in the prompt would show a struck
+// subtree on screen while telling the AI to remove one line.
+function latestDeletions(reviews: ReviewItem[]): Map<string, ReviewItem> {
+  const out = new Map<string, ReviewItem>();
   for (const r of sortEdits(reviews.filter((r) => isEdit(r) && r.deletes !== undefined))) {
-    out.set(targetKey({ ...r.target, instance: undefined }), r.deletes === true);
+    out.set(targetKey({ ...r.target, instance: undefined }), r);
   }
   return out;
 }
+
+const indexDeletions = (reviews: ReviewItem[]): Map<string, boolean> =>
+  new Map([...latestDeletions(reviews)].map(([k, r]) => [k, r.deletes === true]));
 
 // Every entry that struck this row through or put it back, oldest first.
 export function deletionHistory(reviews: ReviewItem[], t: ReviewItem["target"]): ReviewItem[] {
@@ -160,8 +172,7 @@ export function deletionHistory(reviews: ReviewItem[], t: ReviewItem["target"]):
 }
 
 export function isDeleted(reviews: ReviewItem[], t: ReviewItem["target"]): boolean {
-  const chain = deletionHistory(reviews, t);
-  return chain.length > 0 && chain[chain.length - 1].deletes === true;
+  return latestDeletions(reviews).get(targetKey({ ...t, instance: undefined }))?.deletes === true;
 }
 
 // Rows the recipient wrote, grouped by the category that must hold them.
@@ -201,7 +212,16 @@ export function applyEdits(sheets: SheetData["sheets"], reviews: ReviewItem[], l
 
     // Struck through, never removed. A row that vanishes takes its history and
     // its source map with it, and leaves no way to ask what used to be here.
-    const struck = deletions.get(targetKey(base));
+    //
+    // A row inside a struck BLOCK is struck too, derived here rather than
+    // written down: one decision stays one entry, restoring the block is one
+    // action, and a child struck on its own merits keeps that state when the
+    // block comes back, because its own entry is its own. Writing an entry per
+    // descendant instead would make restoring a six-item undo and would let
+    // half-restored states exist that nobody decided.
+    const own = deletions.get(targetKey(base));
+    const inStruckBlock = (p.container_path ?? []).some((c) => deletions.get(targetKey({ ...base, param: c.path })) === true);
+    const struck = own === true || inStruckBlock ? true : own;
     if (struck !== undefined && struck !== (p.deleted === true)) next = { ...p, deleted: struck };
 
     const value = take("value", p.value ?? "");
@@ -383,31 +403,74 @@ export function planFromEdits(reviews: ReviewItem[]): EditPlan {
 }
 
 // Rows whose newest delete/restore entry says "no longer set".
-function deletionTargets(reviews: ReviewItem[]): ReviewItem[] {
-  const latest = new Map<string, ReviewItem>();
-  for (const r of sortEdits(reviews.filter((r) => isEdit(r) && r.deletes !== undefined))) {
-    latest.set(targetKey({ ...r.target, instance: undefined }), r);
-  }
-  return [...latest.values()].filter((r) => r.deletes === true);
-}
+const deletionTargets = (reviews: ReviewItem[]): ReviewItem[] =>
+  [...latestDeletions(reviews).values()].filter((r) => r.deletes === true);
 
 // Shape an edit plan as the pending-style items the AI prompt is built from.
 // Shared so the CLI and the viewer cannot describe the same change
 // differently: the reason a row could not be applied deterministically is what
 // tells the AI what kind of judgement it is being asked for.
+// Every row of a struck BLOCK, and every struck target that is itself a block,
+// resolved against the sheets as they are NOW.
+//
+// The extent is never stored on the review item. A frozen list of keys would go
+// stale the moment a regeneration adds a setting to the block, and "remove this
+// block" would then quietly mean "remove what it used to contain" — so it is
+// derived, and deleting a block always means what it now holds.
+function blockDeletions(
+  sheets: SheetData["sheets"],
+  struck: ReviewItem[]
+): { extent: Map<string, ParamData[]>; covered: Set<string> } {
+  const extent = new Map<string, ParamData[]>();
+  const covered = new Set<string>();
+  const blocks = new Map<string, ReviewItem>();
+  for (const r of struck) if (r.target.param) blocks.set(targetKey({ ...r.target, instance: undefined }), r);
+  if (blocks.size === 0) return { extent, covered };
+  const walk = (sheet: string, cats: CategoryData[] | undefined, path: string): void => {
+    for (const cat of cats ?? []) {
+      const here = path ? `${path}/${cat.name}` : cat.name;
+      for (const p of cat.params ?? []) {
+        for (const anc of p.container_path ?? []) {
+          const k = targetKey({ sheet, category: here, param: anc.path });
+          if (!blocks.has(k)) continue;
+          (extent.get(k) ?? extent.set(k, []).get(k)!).push(p);
+          // Its own item, if it has one, is the block's decision restated.
+          covered.add(targetKey({ sheet, category: here, param: p.key }));
+        }
+      }
+      walk(sheet, cat.categories, here);
+    }
+  };
+  for (const sheet of sheets) walk(sheet.name, sheet.categories, "");
+  return { extent, covered };
+}
+
 export function promptItemsFromPlan(
   plan: EditPlan,
-  reasons: { added: string; struck: string; document: string }
+  reasons: { added: string; struck: string; document: string },
+  // The current sheets, when the caller has them. Without them a struck block
+  // reads as one deleted line, which is a different statement: an emptied
+  // grouper is not an absent one, and only the second is what was asked for.
+  sheets?: SheetData["sheets"]
 ): ReviewItem[] {
   const withReason = (r: ReviewItem, reason: string): ReviewItem => ({
     ...r,
     status: "pending",
     comment: [r.comment, reason].filter(Boolean).join(" \u2014 "),
   });
-  return [
-    ...plan.changes,
-    ...plan.added.map((r) => withReason(r, reasons.added)),
-    ...plan.struck.map((r) => withReason(r, reasons.struck)),
-    ...plan.documents.map((r) => withReason(r, reasons.document)),
-  ];
+  const { extent, covered } = sheets ? blockDeletions(sheets, plan.struck) : { extent: new Map<string, ParamData[]>(), covered: new Set<string>() };
+  const struck = plan.struck
+    // A row inside a struck block is not its own decision — the block's item
+    // already says it, and repeating it per row loses the fact that a STRUCTURE
+    // was removed rather than a handful of settings.
+    .filter((r) => !covered.has(targetKey({ ...r.target, instance: undefined })))
+    .map((r) => {
+      const inside = extent.get(targetKey({ ...r.target, instance: undefined }));
+      if (!inside?.length) return withReason(r, reasons.struck);
+      return withReason(
+        { ...r, comment: [r.comment, `this block and everything in it (${inside.map((p) => p.key).join(", ")})`].filter(Boolean).join(" \u2014 ") },
+        reasons.struck
+      );
+    });
+  return [...plan.changes, ...plan.added.map((r) => withReason(r, reasons.added)), ...struck, ...plan.documents.map((r) => withReason(r, reasons.document))];
 }
