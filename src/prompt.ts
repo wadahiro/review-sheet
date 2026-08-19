@@ -52,6 +52,8 @@ export type ParamData = {
   // see `ParameterBase.sub_category`. Display only; the row's identity is its
   // category and key, and neither moves when the layout does.
   sub_category?: string[];
+  // The file this row is a line of — see `ParameterBase.deployed_file`.
+  deployed_file?: string;
   // The product's own display name — LangText in a built model, resolved to a
   // string by the viewer's localizeParam. Display only; `key` is identity.
   label?: LangText | string;

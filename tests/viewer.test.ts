@@ -2420,7 +2420,10 @@ describe("a group holding rows from more than one file", () => {
     key,
     value: "v",
     description: { ja: "d" },
-    ...(file ? { source: { file, line: 1 } } : {}),
+    // The DEPLOYED file, which is what the mark is about — a row's source is
+    // where its value is written, and two rows of one file routinely have
+    // different ones (a template and the vars file feeding it).
+    ...(file ? { deployed_file: file, source: { file: "vars.yml", line: 1 } } : {}),
   });
 
   function mountFiles(params: ReturnType<typeof row>[]): HTMLElement {

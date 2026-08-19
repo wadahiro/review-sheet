@@ -339,7 +339,7 @@
     "file": "examples/ansible-keycloak/input.json",
     "parser": "json",
     "count": 3299,
-    "sha": "ae1795666fbbe212"
+    "sha": "7e811eebd7c3ab84"
   },
   {
     "file": "examples/ansible-keycloak/inventories/production/group_vars/keycloak.yml",
