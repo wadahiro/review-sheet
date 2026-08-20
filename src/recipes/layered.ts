@@ -603,6 +603,10 @@ export function buildMapFromSources(
       out.set(key, {
         value: membership ? PRESENCE_VALUE : e.value,
         source: { ...e.source, file, ...(membership ? { member: e.value } : {}) },
+        // Membership is one way a file records presence; a bare flag is the
+        // other, and the parser states that one itself. Both reach the row as
+        // the same declared fact.
+        ...(membership || e.presence ? { presence: true as const } : {}),
         ...(componentId ? { component: componentId } : {}),
       });
     }

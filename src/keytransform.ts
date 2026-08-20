@@ -23,6 +23,11 @@
 // reported back to the caller to warn about — the single most likely way a
 // hand-written pattern quietly empties a sheet.
 
+// One spelling of presence for the whole model — see types.ts. Re-exported
+// here because a value-keyed row is where a membership row is born, and the
+// reader of this file should not have to know it lives elsewhere.
+export { PRESENCE_VALUE } from "./types.js";
+
 // A regex step is a plain JS String.replace(pattern, replace) — it only
 // rewrites the MATCHED substring, leaving anything outside the match
 // untouched. That is exactly right for a normalization step meant to touch
@@ -181,11 +186,6 @@ export type KeyTransformer = {
 
 // Whether a transform declaring `at:` covers this entry. Segment-aware, so a
 // prefix cannot half-match a longer sibling name.
-// What a membership row HOLDS. Presence, in the spelling a bare flag already
-// gets from line-config.ts, so one reading covers both ways a file records that
-// something is simply switched on.
-export const PRESENCE_VALUE = "true";
-
 export function transformCovers(at: string | undefined, key: string, path: string | undefined): boolean {
   if (at === undefined) return true;
   const addr = path ?? key;

@@ -148,6 +148,12 @@ export type MetadataResult = {
   // setting, and interleaving two providers' lists would produce a set of
   // choices neither of them describes.
   options?: ParamOption[];
+  // The product's own word for "it is there", when this setting is recorded by
+  // presence — see DictionaryParam.presence. Carried as the WORD alone: whether
+  // a row IS presence is decided at extraction (a fact about the format), and a
+  // dictionary that could change that would make verify depend on which
+  // dictionaries happen to be on disk.
+  presence_label?: LangText;
   // Whether this value is a credential — see types.ts's ParameterBase.secret.
   secret?: boolean;
   out_of_scope?: { reason: LangText; owner?: string };
@@ -219,6 +225,8 @@ export type ResolvedMetadata = {
   type?: string;
   scope?: string;
   options?: ParamOption[];
+  // The product's word for presence — see MetadataEntry.presence_label.
+  presence_label?: LangText;
   secret?: boolean;
   out_of_scope?: { reason: LangText; owner?: string };
   provenance?: LangProvenance;
@@ -228,7 +236,7 @@ export type ResolvedMetadata = {
 // Fields merged whole, field-level first-wins: the first (highest-priority)
 // provider to supply a defined value for the field claims it outright, same
 // as before this module gained per-language merging.
-const PLAIN_MERGE_FIELDS = ["default", "docs_url", "type", "scope", "options", "secret", "out_of_scope"] as const;
+const PLAIN_MERGE_FIELDS = ["default", "docs_url", "type", "scope", "options", "presence_label", "secret", "out_of_scope"] as const;
 
 // LangText fields merged per language KEY rather than as a whole (see below)
 // — the reason this module exists: a project's own metadata file may now

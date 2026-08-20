@@ -584,8 +584,8 @@ Such a row is about MEMBERSHIP, and holds three things:
 | apply | held: removing a member is a structural edit to a list, not a value one |
 
 `verify` confirms the MEMBER at the location, by both locate paths — `true`
-appears in the file nowhere. Give the dictionary an `options:` entry for `true`
-(`permitted` / `許可`) and the value column reads as what presence means here.
+appears in the file nowhere. Declare `presence:` in the dictionary and the value
+column reads as what presence means here (see "Settings with no value").
 
 The alternative — keeping the element's text as the value — states one fact in
 two slots: the key and the value read the same string and the value column says
@@ -2621,6 +2621,42 @@ parameters:               # required
 
 Everything except `product`, `version` and `parameters` is optional, and a
 parameter whose description is all you have is a perfectly good entry.
+
+##### Settings with no value
+
+Some settings have no value: a logrotate policy says `missingok`, a firewall
+permits a service by listing it. What the file records is that the thing is
+THERE, and the row's value is that fact.
+
+```yaml
+ssh:
+  label: { en: SSH }
+  description: { en: "Secure Shell (SSH) … Opens 22/tcp." }
+  presence: { label: { en: permitted, ja: 許可 } }   # or just `presence: true`
+  default: present                                   # `present` / `absent` only
+```
+
+Three owners, one fact each:
+
+| | states |
+| --- | --- |
+| the format | how presence is WRITTEN (a bare flag, a list member) — read by the parser, carried on the row |
+| the tool | how presence is SPELLED internally — one constant, never in a dictionary |
+| the product | that a setting IS presence, and its own word for it |
+
+`presence: true` alone declares the mode; the object adds the word. Without a
+word the sheet shows a neutral one (`あり` / `present`), because a dictionary
+must never have to invent wording.
+
+`presence` and `options` are mutually exclusive, and the schema enforces it.
+`options` maps a value the PRODUCT stores to the name the PRODUCT gives it;
+presence is spelled by this tool, so an options entry for it would be a product
+document quoting a tool internal — silently wrong the day the internal changes,
+and uncatchable, since `"true"` in an options list is indistinguishable from a
+product's own boolean. For the same reason `default:` on such an entry takes
+only `present` / `absent`: a dictionary writing the tool's spelling fails
+validation, which is the whole difference between a schema keyword and a magic
+string.
 
 **The file is schema-validated** (`src/schema/dictionary.schema.json`) when it
 is loaded, so the fields above are the whole vocabulary: an unknown one is a

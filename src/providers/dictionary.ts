@@ -72,6 +72,23 @@ export type DictionaryParam = {
   // fact: an overlay may not set it, because a community guess at which
   // values are legal would be indistinguishable from the product's own list.
   options?: ParamOption[];
+  // This setting is recorded by PRESENCE: the product's file says it by having
+  // the thing there, not by writing a value beside a name — a logrotate
+  // `missingok`, a service listed in a firewall zone.
+  //
+  // `true` states the mode. The object adds the product's own word for it
+  // ("permitted"), which a sheet shows instead of the tool's spelling; a
+  // product with no word for it writes the bare `true` and the viewer supplies
+  // a neutral one, because a dictionary must never have to invent wording.
+  //
+  // Deliberately NOT expressed as `options: [{ value: "true", … }]`, which was
+  // the first attempt: `options` maps a value the PRODUCT stores to the name
+  // the PRODUCT gives it, and `true` here is this tool's spelling. A dictionary
+  // quoting a tool internal goes wrong silently the day the internal changes,
+  // and no schema can catch it — `"true"` in an options list is
+  // indistinguishable from a product's own boolean. The two are mutually
+  // exclusive on one entry, which the schema enforces.
+  presence?: true | { label: LangText };
   // The product declares this value a credential. Only some registries have
   // the notion — a Keycloak component's ProviderConfigProperty does, its
   // SERVER option registry does not — so its absence is not a claim that a
@@ -178,6 +195,7 @@ export const DICTIONARY_PARAM_FIELDS = [
   "kind",
   "ui",
   "options",
+  "presence",
   "secret",
   "docs_url",
   "provenance",
@@ -701,6 +719,10 @@ const dictionaryProvider: MetadataProvider = {
       type: entry.type,
       scope: entry.scope,
       options: entry.options,
+      // Only the word travels. Whether the row IS presence was decided when the
+      // file was read; a dictionary that could decide it would make the same
+      // model verify differently depending on which dictionaries are on disk.
+      presence_label: typeof entry.presence === "object" ? entry.presence.label : undefined,
       secret: entry.secret,
       docs_url: entry.docs_url,
       // provenanceFor always resolves to a defined Provenance per language

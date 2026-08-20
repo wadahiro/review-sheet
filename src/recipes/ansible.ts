@@ -899,9 +899,9 @@ export const ansibleRecipe: SheetRecipe = {
               const varies =
                 onlyIn !== undefined || perInstance.some((i) => i.value !== perInstance[0]?.value);
               if (varies && perInstance.length > 0) {
-                embedded.push({ key, value: text, source, component: spec.component, categoryPath, containers, instances: perInstance });
+                embedded.push({ key, value: text, source, component: spec.component, categoryPath, containers, instances: perInstance, ...(entry.presence ? { presence: true as const } : {}) });
               } else {
-                embedded.push({ key, value: text, source, component: spec.component, categoryPath, containers });
+                embedded.push({ key, value: text, source, component: spec.component, categoryPath, containers, ...(entry.presence ? { presence: true as const } : {}) });
               }
             } else {
               bound.set(key, { value: text, source });
@@ -977,7 +977,7 @@ export const ansibleRecipe: SheetRecipe = {
             // base layer rather than interleaved at their template position,
             // so within a component the variables come first. Grouping by
             // component reorders them anyway.
-            embedded.push({ key: literalKey, value: entry.value, source, component: spec.component, categoryPath: entry.categoryPath, containers: entry.containers });
+            embedded.push({ key: literalKey, value: entry.value, source, component: spec.component, categoryPath: entry.categoryPath, containers: entry.containers, ...(entry.presence ? { presence: true as const } : {}) });
             rowAtLine(spec.path, entry.source.line, literalKey);
             continue;
           }
