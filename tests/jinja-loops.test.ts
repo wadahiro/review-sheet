@@ -221,3 +221,115 @@ describe("ansible recipe: a {% for %} over a list of maps", () => {
     expect(base.filter((k) => k.startsWith("secrets["))).toEqual([]);
   });
 });
+
+// What the preview CLAIMS about a file, checked against how Jinja actually
+// writes it. Each of these was measured wrong first, by rendering a real
+// template with the real toolchain and diffing.
+describe("preview: a loop block, and the condition around it", () => {
+  const FILES: Record<string, string> = {
+    // Two fields per element on purpose: a list of maps whose elements carry
+    // ONLY their identifying field yields no entries at all — the address is
+    // where that field went — and such a list is one this sheet genuinely
+    // reads no elements of.
+    "/vars.yml": "items:\n  - name: one\n    mode: a\n  - name: two\n    mode: b\n",
+    // A body of SEVERAL lines, which is what tells the two orders apart.
+    "/app.conf.j2": "head\n{% if items %}\nbefore the loop\n{% for v in items %}\nopen {{ v.name }}\nclose {{ v.name }}\n{% endfor %}\n{% endif %}\ntail\n",
+  };
+  const run = (files: Record<string, string>, instances: string[] = []) =>
+    getRecipe("ansible")!.load(
+      {
+        name: "s",
+        recipe: "ansible",
+        rows: "artifact",
+        defaults: [{ path: "/vars.yml", key: { from: "path" } }],
+        templates: [{ path: "/app.conf.j2", component: "app", deployed_path: "/etc/app.conf", format: "space" }],
+      } as never,
+      { readFile: (p: string) => files[p] ?? null, specDir: "/", resolve: (p: string) => p, instances }
+    );
+  const texts = (files = FILES) => (run(files).artifacts ?? [])[0].lines.map((l) => `${l.kind[0]} ${l.text}`);
+
+  // Jinja repeats the BODY: element one's whole block, then element two's. A
+  // renderer that only knew "which loop is this line in" emitted every copy of
+  // line 1, then every copy of line 2 — invisible until a body had two lines.
+  it("repeats the whole body per element, in the order the file has", () => {
+    expect(texts()).toEqual([
+      "v head",
+      "v before the loop",
+      "s open one",
+      "s close one",
+      "s open two",
+      "s close two",
+      "v tail",
+      "v ",
+    ]);
+  });
+
+  // `{% if items %}` over a LIST. It has no scalar value, so asking for one
+  // answered undefined and the block was struck through as absent — while the
+  // loop inside it rendered from the very elements the condition could not
+  // see. The preview asserted the block was both taken and not taken.
+  it("reads a list with elements as true", () => {
+    expect(texts()).toContain("v before the loop");
+  });
+
+  // `absent` is a positive claim that the deployed file does not contain the
+  // line, and for a name this sheet cannot read there is no evidence for it:
+  // "the deployment leaves it unset" and "the sheet was never pointed at the
+  // file that sets it" are indistinguishable, and only the first makes the line
+  // absent.
+  it("says it does not know, rather than claiming absent, when it cannot read the condition at all", () => {
+    const files = { ...FILES, "/app.conf.j2": "head\n{% if nothing_reads_this %}\ninside\n{% endif %}\ntail\n" };
+    const line = (run(files).artifacts ?? [])[0].lines.find((l) => l.text === "inside")!;
+    expect(line.kind).toBe("unrendered");
+    expect(line.cause).toBe("engine");
+    expect(line.reason).toContain("nothing_reads_this");
+    expect(line.reason).toContain("reads no value for it");
+  });
+
+  // A readable variable that IS falsy keeps its absent — that outcome is a real
+  // per-environment difference and the common case.
+  it("still marks a line absent when the condition is readable and false", () => {
+    const files = {
+      "/vars.yml": "items:\n  - name: one\n    mode: a\nflag: false\n",
+      "/app.conf.j2": "head\n{% if flag %}\ninside\n{% endif %}\ntail\n",
+    };
+    const line = (run(files).artifacts ?? [])[0].lines.find((l) => l.text === "inside")!;
+    expect(line.kind).toBe("absent");
+  });
+});
+
+// The same question on the ROW side. A row inside `{% if the_list %}` was
+// dropped and the list reported as a variable the sheet does not read — while
+// the `{% for the_list %}` in the same block was producing rows from its
+// elements.
+describe("rows: a {% if %} on a list the sheet reads through its elements", () => {
+  const FILES: Record<string, string> = {
+    "/vars.yml": "items:\n  - name: one\n    mode: a\n  - name: two\n    mode: b\n",
+    "/app.conf.j2": "head x\n{% if items %}\nguard on\n{% for v in items %}\nopen {{ v.mode }}\n{% endfor %}\n{% endif %}\n",
+  };
+  const load = () =>
+    getRecipe("ansible")!.load(
+      {
+        name: "s",
+        recipe: "ansible",
+        rows: "artifact",
+        defaults: [{ path: "/vars.yml", key: { from: "path" } }],
+        templates: [{ path: "/app.conf.j2", component: "app", deployed_path: "/etc/app.conf", format: "space" }],
+      } as never,
+      { readFile: (p: string) => FILES[p] ?? null, specDir: "/", resolve: (p: string) => p, instances: [] }
+    );
+
+  it("keeps the row the block guards, and says nothing about the list", () => {
+    const warn: string[] = [];
+    const orig = console.warn;
+    console.warn = (...a: unknown[]) => void warn.push(String(a[0]));
+    let keys: string[];
+    try {
+      keys = (load().embedded ?? []).map((e) => e.key);
+    } finally {
+      console.warn = orig;
+    }
+    expect(keys).toContain("guard");
+    expect(warn.filter((w) => w.includes("which this sheet does not read"))).toEqual([]);
+  });
+});

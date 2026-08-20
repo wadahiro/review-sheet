@@ -178,3 +178,74 @@ describe("substituteJinja: a string literal", () => {
     expect(r.unresolved).toEqual(["{{ missing }}"]);
   });
 });
+
+// The conditional expression, which is how a template writes a difference too
+// small for a `{% if %}` block: one argument that is there in one environment
+// and absent in the others. Before this the whole line was reported as
+// uncomputable, and the preview showed the template where it promises the
+// deployed file.
+describe("substituteJinja: the conditional expression", () => {
+  const vars: Record<string, string | undefined> = {
+    url: "http://floci:4566",
+    empty: "",
+    name: "Corp",
+  };
+  const sub = (t: string) => substituteJinja(t, (n) => vars[n]);
+
+  it("takes the first arm when the condition is truthy, and concatenates with ~", () => {
+    const r = sub("{{ '--endpoint-url ' ~ url if url else '' }}");
+    expect(r.text).toBe("--endpoint-url http://floci:4566");
+    expect(r.unresolved).toEqual([]);
+  });
+
+  // The environments where the override is empty: the argument is simply not
+  // on the command line, which is the fact the row exists to show.
+  it("takes the else arm when it is falsy, empty string and all", () => {
+    expect(sub("{{ '--endpoint-url ' ~ empty if empty else '' }}").text).toBe("");
+  });
+
+  it("reads `not`, with the same truthiness {% if %} uses", () => {
+    expect(sub("{{ 'a' if not empty else 'b' }}").text).toBe("a");
+    expect(sub("{{ 'a' if not url else 'b' }}").text).toBe("b");
+  });
+
+  // The rule that keeps this safe. Jinja would call the undefined name falsy
+  // and render the else arm; doing that here would make a sheet that was never
+  // pointed at a variable look exactly like one where the variable is unset.
+  it("reports the whole expression when a name does not resolve, even in the branch not taken", () => {
+    const r = sub("{{ '--x ' ~ missing if empty else '' }}");
+    expect(r.text).toBe("{{ '--x ' ~ missing if empty else '' }}");
+    expect(r.unresolved).toEqual(["{{ '--x ' ~ missing if empty else '' }}"]);
+  });
+
+  it("reports a condition it cannot read", () => {
+    expect(sub("{{ 'a' if unknown else 'b' }}").unresolved).toHaveLength(1);
+  });
+
+  // Everything outside the named grammar is still left as written: the point
+  // is a small evaluator whose limits are stated, not a Jinja implementation.
+  it("still refuses arithmetic, a comparison and an unknown filter", () => {
+    expect(sub("{{ a + b }}").unresolved).toEqual(["{{ a + b }}"]);
+    expect(sub("{{ 'a' if name == 'Corp' else 'b' }}").unresolved).toHaveLength(1);
+    expect(sub("{{ name | reverse }}").unresolved).toEqual(["{{ name | reverse }}"]);
+    expect(sub("{{ 'a' if name }}").unresolved).toEqual(["{{ 'a' if name }}"]);
+  });
+
+  it("applies a pure filter inside an arm", () => {
+    expect(sub("{{ name | lower if name else '' }}").text).toBe("corp");
+  });
+
+  // A `}}` inside a quoted string does not end the expression — the scanner
+  // walks the quotes, where a non-greedy match would stop inside the literal.
+  it("finds the end of an expression whose literal contains braces", () => {
+    const r = sub("# {{ '{{ var }}' }} values are the reviewable ones");
+    expect(r.text).toBe("# {{ var }} values are the reviewable ones");
+    expect(r.unresolved).toEqual([]);
+  });
+
+  it("leaves an unterminated {{ alone", () => {
+    const r = sub("x {{ name");
+    expect(r.text).toBe("x {{ name");
+    expect(r.unresolved).toEqual([]);
+  });
+});

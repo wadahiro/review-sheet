@@ -397,15 +397,33 @@ export const ansibleRecipe: SheetRecipe = {
     const valueIn = (instance: string | undefined, nm: string): string | undefined =>
       ((instance === undefined ? undefined : overlayLayers.find((l) => l.instance === instance))?.entries.get(nm) ??
         defaultsMap.get(nm))?.value;
-    // Does the `{% if %}` around a line hold for this instance? An unsupported
-    // condition never holds — the caller reports it and leaves the line out,
-    // rather than guessing at a comparison or a loop.
+    // Does the `{% if %}` around a line hold for this instance? THREE answers,
+    // not two — see the same function in preview.ts, which decides what a
+    // preview line CLAIMS and carries the reasoning in full.
+    //
+    // "unknown" is a name this sheet can read no value for, and it used to be
+    // spelled false: the row simply did not exist, for a reason that has
+    // nothing to do with the template. A list is read through its elements,
+    // because a list has no scalar value and the sheet demonstrably knows what
+    // is in it — that is what the `{% for %}` in the same block renders from.
+    const condState = (
+      cond: Extract<LineCondition, { supported: true }>,
+      instance: string | undefined
+    ): "holds" | "fails" | "unknown" => {
+      for (const t of cond.tests) {
+        const scalar = valueIn(instance, t.variable);
+        const truth =
+          scalar !== undefined ? truthyJinja(scalar) : loopMembers(t.variable, instance).length > 0 ? true : undefined;
+        if (truth === undefined) return "unknown";
+        if (truth === t.negated) return "fails";
+      }
+      return "holds";
+    };
+    // An unsupported condition never holds — the caller reports it and leaves
+    // the line out, rather than guessing at a comparison or a loop. Nor does an
+    // unknown one, and the caller reports that too.
     const holds = (cond: LineCondition | undefined, instance: string | undefined): boolean =>
-      cond === undefined
-        ? true
-        : cond.supported
-          ? cond.tests.every((t) => truthyJinja(valueIn(instance, t.variable)) !== t.negated)
-          : false;
+      cond === undefined ? true : cond.supported ? condState(cond, instance) === "holds" : false;
     const conditionOf = (entry: Entry, conditions: Map<number, LineCondition>): LineCondition | undefined =>
       entry.source.conditional && entry.source.line !== undefined ? conditions.get(entry.source.line) : undefined;
     const loopOf = (entry: Entry, loops: Map<number, LineLoop>): LineLoop | undefined =>
@@ -1015,7 +1033,16 @@ export const ansibleRecipe: SheetRecipe = {
             // vanished row into a one-line fix.
             const blind = cond.tests
               .map((t) => t.variable)
-              .filter((v) => (io.instances.length > 0 ? io.instances : [undefined]).every((i) => valueIn(i, v) === undefined));
+              // A LIST has no scalar value and is not blind for that: the sheet
+              // reads it through its elements, which is what the `{% for %}` in
+              // the same block renders from. Asking only for a scalar reported
+              // a variable the sheet demonstrably knows, and dropped every row
+              // inside `{% if the_list %}`.
+              .filter((v) =>
+                (io.instances.length > 0 ? io.instances : [undefined]).every(
+                  (i) => valueIn(i, v) === undefined && loopMembers(v, i).length === 0
+                )
+              );
             if (blind.length > 0) {
               console.warn(
                 `ansible recipe: sheet "${name}": ${entry.key} is inside {% if %} on ${blind.join(", ")}, which this ` +
