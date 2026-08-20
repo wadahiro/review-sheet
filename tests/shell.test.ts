@@ -146,3 +146,29 @@ describe("isShell / parser registration", () => {
     ]);
   });
 });
+
+// This module's doc says a `--secret-id {{ kc_db_secret_name }}` argument
+// records its templateVar — the recipe parses TEMPLATES with this parser, and
+// a `.j2` writes its expressions spaced. Tokenizing on those spaces made every
+// such value the two opening braces.
+describe("a Jinja expression is one word", () => {
+  it("keeps a spaced {{ ... }} whole as an option's value", () => {
+    const t = "#!/bin/sh\naws secretsmanager get-secret-value --secret-id {{ kc_db_secret_name }} --region {{ r }}\n";
+    const got = shellIndex(t).map((e) => [e.key, e.value]);
+    expect(got).toEqual([
+      ["--secret-id", "{{ kc_db_secret_name }}"],
+      ["--region", "{{ r }}"],
+    ]);
+  });
+
+  it("keeps one whole when it is part of a larger word", () => {
+    const t = "#!/bin/sh\ncp x --out /run/vault/{{ v.realm }}_{{ v.key }}\n";
+    expect(shellIndex(t).map((e) => e.value)).toEqual(["/run/vault/{{ v.realm }}_{{ v.key }}"]);
+  });
+
+  // An unterminated brace pair is not an expression, and treating it as one
+  // would swallow the rest of the line.
+  it("leaves an unclosed brace alone", () => {
+    expect(shellIndex("#!/bin/sh\nx --opt {{ oops\n").map((e) => e.value)).toEqual(["{{"]);
+  });
+});

@@ -91,7 +91,7 @@
 import { extractFile } from "../extract.js";
 import { resolveParser, getParser, listParsers } from "../parser.js";
 import type { Entry } from "../parser.js";
-import { structuredFormat, STRUCTURED_FORMATS } from "../structural.js";
+import { structuredFormat, STRUCTURED_FORMATS, parseSteps } from "../structural.js";
 import {
   baseFileName,
   jinjaVariables,
@@ -422,12 +422,67 @@ export const ansibleRecipe: SheetRecipe = {
     // all: the line `server {{ s }} iburst` exists once in the template, but
     // the row it renders to belongs to one element of one vars file, and that
     // is where a reviewer edits it.
-    const loopMembers = (list: string, instance: string | undefined): { value: string; source: SourceLocation }[] => {
-      const out: { value: string; source: SourceLocation }[] = [];
+    //
+    // A member is a SCALAR or a MAP, because a vars file writes both and the
+    // template says which it expects: `{{ s }}` for a list of hostnames,
+    // `{{ v.secret_name }}` for a list of maps. A map's fields arrive as their
+    // own entries (`kc_vault_secrets[key=corp-ldap-bind].secret_name`), so the
+    // member is the set of them and the loop variable resolves per field.
+    type LoopMember = {
+      // The whole member, when it IS one value. Absent for a map.
+      value?: string;
+      // field name -> that field's own entry. Absent for a scalar.
+      fields?: Map<string, { value: string; source: SourceLocation }>;
+      // The field the FORMAT folded into the element's address to identify it
+      // (`secrets[name=app/corp]` -> name = app/corp). It has no entry of its
+      // own — the address is where it went — so it resolves for rendering and
+      // can never be a row's site: there is no line to point at, and inventing
+      // one is the thing this module refuses everywhere else.
+      identifier?: { field: string; value: string };
+      // Where the member is written. A scalar has one site; a map has one per
+      // field, and which of them a row points at depends on which the line
+      // consumed — see the expansion below.
+      source: SourceLocation;
+    };
+    const loopMembers = (list: string, instance: string | undefined): LoopMember[] => {
+      const read = (nm: string) => (instance === undefined ? defaultsMap.get(nm) : overlayEntryFor(instance, nm));
+      const out: LoopMember[] = [];
       for (let i = 0; ; i++) {
-        const hit = instance === undefined ? defaultsMap.get(`${list}[${i}]`) : overlayEntryFor(instance, `${list}[${i}]`);
+        const hit = read(`${list}[${i}]`);
         if (hit === undefined) break;
         out.push({ value: hit.value, source: hit.source });
+      }
+      if (out.length > 0) return out;
+      // Map elements. Their addresses are the parser's, not this module's — a
+      // YAML list of maps is keyed by an identifying field where the format has
+      // one (`[key=corp-ldap-bind]`) and by index otherwise — so they are read
+      // off the map in file order rather than counted up from 0. Grouped by the
+      // element's own address, which is everything before the first `.` after
+      // the bracket.
+      const byElement = new Map<string, Map<string, { value: string; source: SourceLocation }>>();
+      const head = new RegExp(`^(${list.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\[[^\\]]*\\])\\.(.+)$`);
+      const names = instance === undefined ? [...defaultsMap.keys()] : [...new Set([...defaultsMap.keys(), ...(overlayLayers.find((l) => l.instance === instance)?.entries.keys() ?? [])])];
+      for (const nm of names) {
+        const m = head.exec(nm);
+        if (!m) continue;
+        const hit = read(nm);
+        if (hit === undefined) continue;
+        const fields = byElement.get(m[1]) ?? new Map<string, { value: string; source: SourceLocation }>();
+        // Only a member's OWN fields, never a nested map's: `v.a.b` is a shape
+        // the substitution below does not resolve, and admitting it here would
+        // make the member look complete when a line using it cannot render.
+        if (!m[2].includes(".")) fields.set(m[2], { value: hit.value, source: hit.source });
+        byElement.set(m[1], fields);
+      }
+      for (const [addr, fields] of byElement) {
+        const first = [...fields.values()][0];
+        if (first === undefined) continue;
+        const last = parseSteps(addr).at(-1);
+        out.push({
+          fields,
+          ...(last?.kind === "filter" ? { identifier: { field: last.field, value: last.value } } : {}),
+          source: first.source,
+        });
       }
       return out;
     };
@@ -801,19 +856,89 @@ export const ansibleRecipe: SheetRecipe = {
           // one under the file it renders into and one under the variable it is
           // written as — which is the duplication the artifact axis exists to
           // avoid.
-          members.forEach((_m, i) => consumedVars.add(`${loop.list}[${i}]`));
+          members.forEach((m, i) => {
+            if (m.fields === undefined) consumedVars.add(`${loop.list}[${i}]`);
+            // A map member's fields are its rows-that-would-have-been, each
+            // under its own address, so every one of them has to be spoken for.
+            else for (const f of m.fields.values()) if (f.source.path !== undefined) consumedVars.add(f.source.path);
+          });
           members.forEach((m, i) => {
             // The loop variable resolves to THIS member; everything else keeps
             // resolving as it did. Substituted into the key as well as the
             // value, because a templated directive addresses the rendered line
             // by a name that only exists after substitution.
+            // What each name in the template resolves to. The loop variable
+            // itself for a scalar member; one of the member's fields for a map;
+            // the field the format folded into the element's ADDRESS to
+            // identify it (which renders and has no site of its own, the
+            // address being where it went); and anything else the way every
+            // other line resolves it.
+            const memberSite = (nm: string): SourceLocation | undefined => {
+              if (nm === loop.variable) return m.source;
+              if (m.fields !== undefined && nm.startsWith(`${loop.variable}.`)) {
+                return m.fields.get(nm.slice(loop.variable.length + 1))?.source;
+              }
+              return defaultsMap.get(nm)?.source;
+            };
             const bind = (t: string): string =>
-              substituteJinja(t, (nm) => (nm === loop.variable ? m.value : defaultsMap.get(nm)?.value)).text;
+              substituteJinja(t, (nm) => {
+                if (nm === loop.variable) return m.value;
+                if (m.fields !== undefined && nm.startsWith(`${loop.variable}.`)) {
+                  const field = nm.slice(loop.variable.length + 1);
+                  const f = m.fields.get(field);
+                  if (f !== undefined) return f.value;
+                  return m.identifier?.field === field ? m.identifier.value : undefined;
+                }
+                return defaultsMap.get(nm)?.value;
+              }).text;
+            const boundKey = bind(entry.key);
+            const boundCategories = entry.categoryPath.map(bind);
+            const boundValue = bind(entry.value);
+            // The site the row POINTS AT: the first thing its VALUE
+            // interpolated that has a definition site. Deterministic, and the
+            // same rule the ordinary path uses a few hundred lines below for a
+            // line composed of several variables — which is what a loop line
+            // is too, once the member's fields are among them.
+            //
+            // Not the template line. The row's value is the RENDERED line and
+            // the template holds `{{ … }}`, so verify would search rendered
+            // text in an unrendered file and every such row would fail. Only a
+            // line that interpolated nothing resolvable keeps it, and such a
+            // line is literal, so the check holds.
+            // A loop line is rendered from the DEFAULTS, members and ordinary
+            // variables alike — the same choice the member count already makes
+            // ("the list as the defaults see it decides how many rows there
+            // are"). An overlay that overrides one of those variables is then a
+            // difference the row does not show, so it is said out loud rather
+            // than left to be discovered by reading the host.
+            for (const nm of jinjaVariables(entry.value)) {
+              if (nm === loop.variable || nm.startsWith(`${loop.variable}.`)) continue;
+              const base = defaultsMap.get(nm)?.value;
+              const differs = io.instances.filter((inst) => overlayEntryFor(inst, nm)?.value !== base);
+              if (differs.length > 0 && i === 0) {
+                console.warn(
+                  `ansible recipe: sheet "${name}": ${boundKey} repeats over ${loop.list} and interpolates ${nm}, ` +
+                    `which ${differs.join("/")} override(s) — a line inside a loop is rendered from the defaults, so ` +
+                    `the row shows ${JSON.stringify(base)} for every environment`
+                );
+              }
+            }
+            const siteOf = jinjaVariables(entry.value).map(memberSite).find((x) => x !== undefined);
+            const site =
+              siteOf === undefined
+                ? entry.source
+                : {
+                    ...siteOf,
+                    // The row's value is the whole rendered line and this site
+                    // holds only the member inside it — the relation the model
+                    // already has for a value substituted into a template's text.
+                    substituted: true,
+                  };
             const made: Entry = {
               ...entry,
-              key: bind(entry.key),
-              value: bind(entry.value),
-              categoryPath: entry.categoryPath.map(bind),
+              key: boundKey,
+              value: boundValue,
+              categoryPath: boundCategories,
               // The member's own definition site. The template line is where
               // the STRUCTURE is; this is where the value a reviewer would
               // change lives, which is what verify reads back and apply writes.
@@ -827,15 +952,20 @@ export const ansibleRecipe: SheetRecipe = {
               // so `common_ntp_servers[0]` is how verify reaches the element at
               // all. What it must not become is the row's own name — see
               // `expandedFromLoop` at the key below.
-              source: {
-                ...m.source,
-                // The row's value is the whole rendered line and this site
-                // holds only the member inside it — the relation the model
-                // already has for a value substituted into a template's text.
-                substituted: true,
-              },
+              source: site,
               // Its own address, so two members of one list are two rows.
-              ...(i === 0 ? {} : { key: `${bind(entry.key)}[${i}]` }),
+              //
+              // By the member's IDENTIFIER where the element has one, because a
+              // row's key is what a review, an apply target and a diff hang
+              // off: keyed by ordinal, adding a secret in the middle of the
+              // list renames every row after it and orphans their reviews. A
+              // list of scalars has no identifier and keeps the ordinal, which
+              // is the only identity it offers.
+              ...(m.identifier !== undefined
+                ? { key: `${boundKey}[${m.identifier.field}=${m.identifier.value}]` }
+                : i === 0
+                  ? {}
+                  : { key: `${boundKey}[${i}]` }),
             };
             expandedFromLoop.add(made);
             expandedAtLine.set(made, entry.source.line);
@@ -856,7 +986,15 @@ export const ansibleRecipe: SheetRecipe = {
           // does not depend on any `{% if %}`, and whose value would be the
           // same row twice if a conditional line also claimed it. Unchanged
           // there: the line is skipped, as it always has been.
-          const cond = conditionOf(entry, conditions);
+          // A row the loop MADE is not a row the loop conditions: its existence
+          // was already decided, one row per element. Without this a row that
+          // fell back to the template line as its source — the line sits inside
+          // the `{% for %}`, so it is marked conditional — read as "presence
+          // depends on {% for %}, which is not a plain {% if variable %}" and
+          // was dropped. Rows sourced at their member never reached here
+          // either, for the accidental reason that a vars file line carries no
+          // such mark; this says it on purpose.
+          const cond = expandedFromLoop.has(entry) ? undefined : conditionOf(entry, conditions);
           if (!rowsArtifact) {
             if (cond !== undefined) {
               console.warn(`skipped (conditional — presence depends on a {% ... %} block): ${entry.key}`);
@@ -1329,7 +1467,17 @@ export const ansibleRecipe: SheetRecipe = {
             (instance, n) => (n === "ansible_managed" ? ansibleManaged : valueIn(instance, n)),
             keys,
             DEPLOY_TIME_VARS,
-            warn
+            warn,
+            // The SAME walk the row expansion used. Two walks that must agree
+            // are two walks that drift: the preview counted `list[0]`, `list[1]`
+            // upward, so a list of maps read as empty and it declared the loop
+            // uncomputable while the rows it produced sat on the sheet.
+            (list, instance) =>
+              loopMembers(list, instance).map((m) => ({
+                ...(m.value !== undefined ? { value: m.value } : {}),
+                ...(m.fields !== undefined ? { fields: new Map([...m.fields].map(([k, v]) => [k, v.value])) } : {}),
+                ...(m.identifier !== undefined ? { identifier: m.identifier } : {}),
+              }))
           )
         );
       }

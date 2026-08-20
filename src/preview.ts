@@ -143,12 +143,29 @@ function holds(
 // it IS the deployed line, by identity, which is what makes this cheap and
 // what makes it honest: every comment and every blank line comes through
 // untouched.
+// One element of a `{% for %}`'s list, as the CALLER already understands it.
+// A scalar member is its value; a map member is its fields, plus the field the
+// format folded into the element's address to identify it (which renders and
+// has no site of its own).
+//
+// Passed in rather than walked here: the recipe that renders a template already
+// resolves these to build the ROWS, and two walks that must agree are two walks
+// that drift. Without it this file could only count `list[0]`, `list[1]`, … up
+// from zero, so a list of maps read as an empty list and the preview declared
+// the whole loop uncomputable while the rows for it sat on the sheet.
+export type LoopMemberView = {
+  value?: string;
+  fields?: ReadonlyMap<string, string>;
+  identifier?: { field: string; value: string };
+};
+
 function renderLines(
   templateText: string,
   instance: string | undefined,
   keys: LineKeys,
   resolve: (instance: string | undefined, name: string) => string | undefined,
-  deployTimeVars: ReadonlySet<string>
+  deployTimeVars: ReadonlySet<string>,
+  listMembers: ((list: string, instance: string | undefined) => LoopMemberView[]) | undefined
 ): ArtifactLine[] {
   const conditions = jinjaConditions(templateText);
   const loops = jinjaLoops(templateText);
@@ -162,14 +179,23 @@ function renderLines(
   // it once left `server {{ s }} iburst` on screen: the loop variable resolves
   // from no vars file, so the preview showed the template where it promises the
   // file. The members come from the same walk the recipe's expansion uses.
-  const membersOf = (list: string): string[] => {
-    const out: string[] = [];
+  const membersOf = (list: string): LoopMemberView[] => {
+    if (listMembers !== undefined) return listMembers(list, instance);
+    const out: LoopMemberView[] = [];
     for (let i = 0; ; i++) {
       const v = resolve(instance, `${list}[${i}]`);
       if (v === undefined) break;
-      out.push(v);
+      out.push({ value: v });
     }
     return out;
+  };
+  // The loop variable resolves to THIS member: the whole of it for a scalar,
+  // one field for a map, and the identifier where the address holds it.
+  const inMember = (m: LoopMemberView, nm: string, variable: string): string | undefined => {
+    if (nm === variable) return m.value;
+    if (!nm.startsWith(`${variable}.`)) return resolve(instance, nm);
+    const field = nm.slice(variable.length + 1);
+    return m.fields?.get(field) ?? (m.identifier?.field === field ? m.identifier.value : undefined);
   };
   templateText.split("\n").forEach((line, i) => {
     // The `{% ... %}` tag line itself produces no output line.
@@ -182,7 +208,7 @@ function renderLines(
         return;
       }
       members.forEach((m, n) => {
-        const { text, unresolved } = substituteJinja(line, (nm) => (nm === loop.variable ? m : resolve(instance, nm)));
+        const { text, unresolved } = substituteJinja(line, (nm) => inMember(m, nm, loop.variable));
         out.push(
           unresolved.length === 0
             ? { text, kind: "substituted", ...(n === 0 ? keyOf(i + 1) : {}) }
@@ -241,7 +267,11 @@ export function previewRendered(
   resolve: (instance: string | undefined, name: string) => string | undefined,
   keys: LineKeys,
   deployTimeVars: ReadonlySet<string>,
-  warn: (m: string) => void
+  warn: (m: string) => void,
+  // How to enumerate a `{% for %}`'s elements — see LoopMemberView. Omitted
+  // means "count list[0], list[1], … up from zero", which covers a list of
+  // scalars and nothing else.
+  listMembers?: (list: string, instance: string | undefined) => LoopMemberView[]
 ): ArtifactPreview[] {
   if (templateText.length > MAX_PREVIEW_BYTES) {
     warn(sizeGateWarning(src.source_file, templateText.length));
@@ -250,7 +280,7 @@ export function previewRendered(
   const names = instances.length > 0 ? instances : [undefined];
   const byText = new Map<string, { lines: ArtifactLine[]; instances: string[] }>();
   for (const instance of names) {
-    const lines = renderLines(templateText, instance, keys, resolve, deployTimeVars);
+    const lines = renderLines(templateText, instance, keys, resolve, deployTimeVars, listMembers);
     const sig = JSON.stringify(lines);
     const hit = byText.get(sig);
     if (hit) {
