@@ -105,6 +105,20 @@ function localizeParam(p: ParamData, lang: Lang): ParamData {
 // dictionary version does not list, or one carrying a placeholder — and that
 // silence is deliberate: the cell falls back to showing the raw value alone,
 // which is what it always showed.
+// What a value cell SHOWS instead of the stored string, when the two are not
+// the same thing to a reader.
+//
+// A presence row holds this tool's spelling of "it is there" — a string written
+// nowhere in the file being reviewed. The annotation rule that puts a product's
+// name for a value beside the value (`1` shown as `1 One Level`) exists because
+// `value` is what the review dialog opens with, the copy button yields and
+// apply writes back; for presence none of those hold — apply refuses such a
+// row, and copying `true` gives a string the file does not contain. So the word
+// stands alone, and `value` stays the identity underneath, as `display` is for.
+function presenceDisplay(param: ParamData, value: string, t: Messages): string | undefined {
+  return param.presence === true && value === PRESENCE_VALUE ? optionLabel(param, value, t) : undefined;
+}
+
 function optionLabel(param: ParamData, value: string, t?: Messages): string | undefined {
   // A row recorded by PRESENCE holds this tool's spelling of "it is there",
   // which is written nowhere in the file the reviewer is checking. What belongs
@@ -2028,7 +2042,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   // the parameter as the other axis. "values" expands to one column per instance
   // (Pattern B) or a single "value" column (Pattern A).
   type CellSpec =
-    | { kind: "review"; value: string; target: ReviewItem["target"]; field: string; className: string; isCode: boolean; copyable: boolean; unsetLabel?: string; valueLabel?: string; sharedRow?: boolean }
+    | { kind: "review"; value: string; target: ReviewItem["target"]; field: string; className: string; isCode: boolean; copyable: boolean; unsetLabel?: string; valueLabel?: string; display?: string; sharedRow?: boolean }
     | { kind: "plain"; content: string | VNode; className: string; style: string };
 
   type TableLine = {
@@ -2074,7 +2088,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     // answers it wrongly.
     cell: (param) => {
       const shown = param.baseline ?? param.default ?? "-";
-      return { kind: "review", value: shown, target: baseTarget(param), field: "default", className: "rs-col-default", isCode: true, copyable: false, valueLabel: optionLabel(param, shown, t) };
+      return { kind: "review", value: shown, target: baseTarget(param), field: "default", className: "rs-col-default", isCode: true, copyable: false, display: presenceDisplay(param, shown, t), valueLabel: presenceDisplay(param, shown, t) === undefined ? optionLabel(param, shown, t) : undefined };
     },
   });
 
@@ -2105,7 +2119,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
             // Equals the default AND empty → the environment leaves it at the
             // (empty) default: render as unset "—" rather than a blank cell.
             const cls = isSameAsDefault ? (value === "" ? "rs-cell-unset" : "rs-same-as-default") : "rs-changed";
-            return { kind: "review", value, target: { ...baseTarget(param), instance: name }, field: "value", className: `rs-col-value ${cls} ${diffCls}`, isCode: true, copyable: value.length > 0, unsetLabel: t.usesDefault, valueLabel: optionLabel(param, value, t) };
+            return { kind: "review", value, target: { ...baseTarget(param), instance: name }, field: "value", className: `rs-col-value ${cls} ${diffCls}`, isCode: true, copyable: value.length > 0, unsetLabel: t.usesDefault, display: presenceDisplay(param, value, t), valueLabel: presenceDisplay(param, value, t) === undefined ? optionLabel(param, value, t) : undefined };
           }
           // Pattern A: one stored value, shown in every environment column. The
           // cell still targets ITS environment, because a review here is a
@@ -2116,7 +2130,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
           const common = param.value ?? "";
           if (rowOutOfScope(param)) {
             // e.g. a secret — shown read-only; the out-of-scope row styling wins.
-            return { kind: "review", value: common, target: { ...baseTarget(param), instance: name }, field: "value", className: "rs-col-value rs-same-as-default", isCode: true, copyable: false, sharedRow: true, valueLabel: optionLabel(param, common, t) };
+            return { kind: "review", value: common, target: { ...baseTarget(param), instance: name }, field: "value", display: presenceDisplay(param, common, t), className: "rs-col-value rs-same-as-default", isCode: true, copyable: false, sharedRow: true, valueLabel: presenceDisplay(param, common, t) === undefined ? optionLabel(param, common, t) : undefined };
           }
           // "Nothing is set here" and "what is set equals the default" are two
           // different facts, and only the first one is `usesDefault`. This used
@@ -2143,7 +2157,8 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
             isCode: true,
             copyable: !isUnset,
             unsetLabel: baselineAbsent ? t.originBaselineDisabled : t.usesDefault,
-            valueLabel: isUnset ? undefined : optionLabel(param, common, t),
+            display: isUnset ? undefined : presenceDisplay(param, common, t),
+            valueLabel: isUnset || presenceDisplay(param, common, t) !== undefined ? undefined : optionLabel(param, common, t),
             sharedRow: true,
           };
         },
@@ -2166,7 +2181,8 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
             isCode: true,
             copyable: !baselineAbsent,
             unsetLabel: baselineAbsent ? t.originBaselineDisabled : undefined,
-            valueLabel: optionLabel(param, value, t),
+            display: presenceDisplay(param, value, t),
+            valueLabel: presenceDisplay(param, value, t) === undefined ? optionLabel(param, value, t) : undefined,
           };
         },
       }];
@@ -2205,7 +2221,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
           reviews=${reviews} reviewEnabled=${reviewEnabled} editEnabled=${editEnabled}
           onOpenReview=${onOpenReview} onOpenEdit=${onOpenEdit}
           className=${spec.className} isCode=${spec.isCode} copyable=${spec.copyable}
-          unsetLabel=${spec.unsetLabel} valueLabel=${spec.valueLabel} sharedRow=${spec.sharedRow} t=${t} />`
+          unsetLabel=${spec.unsetLabel} valueLabel=${spec.valueLabel} display=${spec.display} sharedRow=${spec.sharedRow} t=${t} />`
       : html`<td key=${cellKey} class=${spec.className} style=${spec.style}>${spec.content}</td>`;
 
   // Freeze boundary (normal view): pin icons in the leading-column headers.
