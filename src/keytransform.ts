@@ -124,10 +124,45 @@ export type NestedSplit = {
 
 export type KeyTransform = {
   // Where the untransformed key comes from: the extracted leaf key (default,
-  // matches every recipe's historical behaviour) or the full structural
-  // address (Entry.source.path, falling back to the leaf key when the format
-  // has none — e.g. a flat tfvars file, where they are identical anyway).
-  from?: "key" | "path";
+  // matches every recipe's historical behaviour), the full structural address
+  // (Entry.source.path, falling back to the leaf key when the format has none
+  // — e.g. a flat tfvars file, where they are identical anyway), or the
+  // entry's own VALUE.
+  //
+  // `value` is for a list whose elements ARE their identity: a firewall's
+  // permitted services, a set of enabled modules, any `[a, b, c]` where the
+  // strings are the settings rather than values OF a setting. Addressed by
+  // position such a list keys as `services[0]`, which names nothing a product
+  // knows and makes removing one member read as a value CHANGE of the row that
+  // held it — where the honest reading is that one member left the set and
+  // another joined. Keyed by value, membership changes read as membership
+  // changes, and each row binds to the dictionary entry describing that member.
+  //
+  // The scalar counterpart of `split` below, which does the same job for a list
+  // of OBJECTS carrying an identity field. Two entries reaching the same key is
+  // already an error (see the in-file collision check), so a list with a
+  // repeated element fails loudly rather than merging two rows into one.
+  //
+  // Such a row is about MEMBERSHIP: its value is presence, and the site holds
+  // the member's own text (SourceLocation.member). Keeping the element's text
+  // as the value instead would state one fact in two slots — the key and the
+  // value would read the same string, and the value column would say nothing.
+  from?: "key" | "path" | "value";
+  // Apply this transform only to entries UNDER a structural path; everything
+  // else in the same file keeps the key it would have had.
+  //
+  // `from`/`steps` describe a source as a whole, which is right when one file
+  // is one kind of thing. A role's `defaults/main.yml` is not: it holds two
+  // dozen scalars that want their own names and one list whose elements ARE
+  // their names, and there is no single answer for the file. Declaring where a
+  // transform applies keeps the two apart without splitting a project's file to
+  // suit this tool.
+  //
+  // A prefix over the address grammar, matched at a segment boundary: `services`
+  // covers `services[0]` and `services.a` and never `services_extra`. An `at:`
+  // that matches nothing in the file is an error — a transform applying to
+  // nothing is the silent-no-op this codebase refuses everywhere else.
+  at?: string;
   // Optional: `{ from: path }` alone means "key by the structural address,
   // verbatim", which used to have to be spelled as a no-op `^(.*)$ -> $1`.
   steps?: KeyTransformStep[];
@@ -144,9 +179,29 @@ export type KeyTransformer = {
   unmatchedDropPatterns: () => string[];
 };
 
-export function selectKeySource(from: KeyTransform["from"], key: string, path: string | undefined): string {
+// Whether a transform declaring `at:` covers this entry. Segment-aware, so a
+// prefix cannot half-match a longer sibling name.
+// What a membership row HOLDS. Presence, in the spelling a bare flag already
+// gets from line-config.ts, so one reading covers both ways a file records that
+// something is simply switched on.
+export const PRESENCE_VALUE = "true";
+
+export function transformCovers(at: string | undefined, key: string, path: string | undefined): boolean {
+  if (at === undefined) return true;
+  const addr = path ?? key;
+  return addr === at || addr.startsWith(`${at}.`) || addr.startsWith(`${at}[`);
+}
+
+export function selectKeySource(
+  from: KeyTransform["from"],
+  key: string,
+  path: string | undefined,
+  value?: string
+): string {
+  if (from === "value") return value ?? key;
   return from === "path" ? (path ?? key) : key;
 }
+
 
 // A member of a split list: what it is called here, and how to recognise it.
 export type SplitMember = {
@@ -365,7 +420,8 @@ export function makeKeyTransformer(transform: KeyTransform): KeyTransformer {
 export const keyTransformSchema = {
   type: "object",
   properties: {
-    from: { enum: ["key", "path"] },
+    from: { enum: ["key", "path", "value"] },
+    at: { type: "string" },
     steps: {
       type: "array",
       minItems: 1,

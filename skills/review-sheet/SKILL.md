@@ -559,6 +559,50 @@ The collision error itself proposes a block shaped exactly like this
 whenever the colliding entries' structural paths share a distinguishable
 prefix — paste it in as the source's own `key:` field.
 
+#### `from: value` — a list whose elements ARE the settings
+
+```yaml
+defaults:
+  path: ../../roles/common/defaults/main.yml
+  key: { from: value }
+```
+
+For `[ssh, http]` — a firewall's permitted services, a set of enabled modules,
+any list where the strings are settings rather than values *of* one. Keyed by
+position such a list becomes `services[0]`, a name no product knows: removing a
+member then reads as a value CHANGE of the row that held it, where what happened
+is that one member left the set and another joined. Keyed by value, each row is
+named after the member — so membership changes read as membership changes, and
+each row binds to the dictionary entry describing that member.
+
+Such a row is about MEMBERSHIP, and holds three things:
+
+| | |
+| --- | --- |
+| value | `true` — presence, the spelling a bare flag already gets |
+| `source.member` | the member's own text (`ssh`), which is what the file says there |
+| apply | held: removing a member is a structural edit to a list, not a value one |
+
+`verify` confirms the MEMBER at the location, by both locate paths — `true`
+appears in the file nowhere. Give the dictionary an `options:` entry for `true`
+(`permitted` / `許可`) and the value column reads as what presence means here.
+
+The alternative — keeping the element's text as the value — states one fact in
+two slots: the key and the value read the same string and the value column says
+nothing. When a row's key and value are the same string, the model has not yet
+named the second fact, and the second fact is what belongs in the value column.
+
+A repeated member fails the build, through the ordinary in-file collision
+check.
+
+`at:` scopes the transform to part of a file: a role's `defaults/main.yml` holds
+scalars that want their own names and one list whose elements ARE their names,
+and there is no single answer for the file. An `at:` matching nothing is an
+error, like every other declaration here that matches nothing.
+
+This is the scalar counterpart of `split:`, which does the same job for a list
+of OBJECTS carrying an identity field.
+
 #### `component: { map: ... }` — assigning a row that no transform can reach
 
 ```yaml

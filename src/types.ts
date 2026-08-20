@@ -674,6 +674,21 @@ export type SourceLocation = {
   // `additional_sources` on `ParameterBase`). Meaningful only on an
   // `additional_sources` entry, never on a parameter's primary `source`.
   ref?: string;
+  // The text at this site whose PRESENCE is the row's value.
+  //
+  // A firewall's permitted services are a list, and `- ssh` is how the file
+  // writes "ssh is permitted". The row is about membership: its value is
+  // presence (`true`, the spelling a bare flag already gets — see
+  // line-config.ts), and the site holds the member's own text instead.
+  //
+  // So this is a third relation between a row and its site, beside `ref` and
+  // `substituted`: verify confirms the MEMBER at the location rather than the
+  // row's value, and apply holds — removing a member is a structural change to
+  // a list, not a scalar edit, and writing `true` over `ssh` would corrupt the
+  // file. Without it a value-keyed row could only hold the same string as its
+  // own key, which states one fact in two slots and leaves the value column
+  // saying nothing.
+  member?: string;
   // This row's value is the ARTIFACT's line, composed by substituting the
   // value at this site into a template's text — `CustomLog "{{ x }}" proxied`
   // becomes `CustomLog "/var/log/httpd/access_log" proxied`, of which this site

@@ -1027,3 +1027,86 @@ describe("layered recipe: component map", () => {
     expect(warnings.join("\n")).toContain("component map names 1 key(s) no row produced: GONE");
   });
 });
+
+// `key: { from: value }` end to end: a scalar list becomes one row per member,
+// named by the member, valued by its presence — and a repeated member fails the
+// build rather than merging two rows into one.
+describe("layered recipe: a list keyed by its own values", () => {
+  const io = (files: Record<string, string>): RecipeIO => ({
+    readFile: (p) => files[p] ?? null,
+    specDir: "/spec",
+    resolve: (p) => p,
+    instances: [],
+  });
+
+  const load = (yaml: string, key?: unknown) => {
+    const r = getRecipe("layered")!;
+    return r.load(
+      { name: "s", recipe: "layered", defaults: [{ path: "/vars.yml", ...(key ? { key } : {}) }] } as never,
+      io({ "/vars.yml": yaml })
+    );
+  };
+
+  it("names each row after the member, not after its position", () => {
+    const out = load("services:\n  - ssh\n  - http\n", { from: "value" });
+    const keys = [...(out.layers[0].entries as Map<string, unknown>).keys()];
+    expect(keys).toEqual(["ssh", "http"]);
+  });
+
+  // The row is about MEMBERSHIP: `- ssh` is how the file writes "ssh is
+  // permitted", so the value is presence and the SITE keeps the member's own
+  // text — which is what verify confirms there and what stops the key and the
+  // value from being one string in two slots.
+  it("holds presence, and keeps the member on the source", () => {
+    const out = load("services:\n  - ssh\n", { from: "value" });
+    const row = (out.layers[0].entries as Map<string, { value: string; source: { member?: string } }>).get("ssh")!;
+    expect(row.value).toBe("true");
+    expect(row.source.member).toBe("ssh");
+  });
+
+  // Without it, the same list keys by position and a member's identity is
+  // wherever it happens to sit.
+  it("keys by position when nothing asks otherwise", () => {
+    const out = load("services:\n  - ssh\n  - http\n");
+    const keys = [...(out.layers[0].entries as Map<string, unknown>).keys()];
+    expect(keys).not.toEqual(["ssh", "http"]);
+  });
+
+  // Two members with one name is a list that cannot be keyed this way, and
+  // silently keeping one of them would drop a row nobody was told about.
+  it("refuses a list with a repeated member", () => {
+    expect(() => load("services:\n  - ssh\n  - ssh\n", { from: "value" })).toThrow(/ssh/);
+  });
+});
+
+// `at:` end to end: one file, two kinds of thing, one source declaration.
+describe("layered recipe: a transform scoped to part of a file", () => {
+  const io = (files: Record<string, string>): RecipeIO => ({
+    readFile: (p) => files[p] ?? null,
+    specDir: "/spec",
+    resolve: (p) => p,
+    instances: [],
+  });
+  const YAML = "mode: enforcing\nservices:\n  - ssh\n  - http\n";
+  const load = (key: unknown, yaml = YAML) => {
+    const r = getRecipe("layered")!;
+    return r.load({ name: "s", recipe: "layered", defaults: [{ path: "/vars.yml", key }] } as never, io({ "/vars.yml": yaml }));
+  };
+  const keysOf = (out: { layers: { entries: Map<string, { value: string }> }[] }) => [...out.layers[0].entries.entries()].map(([k, v]) => `${k}=${v.value}`);
+
+  it("keys the named list by value and leaves the rest alone", () => {
+    expect(keysOf(load({ from: "value", at: "services" }) as never)).toEqual(["mode=enforcing", "ssh=true", "http=true"]);
+  });
+
+  // Without it the whole file is keyed by value, and a scalar's own name is
+  // replaced by whatever it happens to be set to.
+  it("would rename every scalar without it", () => {
+    expect(keysOf(load({ from: "value" }) as never)).toEqual(["enforcing=true", "ssh=true", "http=true"]);
+  });
+
+  // A transform applying to nothing renames nothing, and a silent no-op is how
+  // a sheet quietly comes up short.
+  it("refuses an at: that matches nothing in the file", () => {
+    expect(() => load({ from: "value", at: "nosuchlist" })).toThrow(/no entry in the file sits under that address/);
+  });
+});

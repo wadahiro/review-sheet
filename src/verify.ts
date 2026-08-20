@@ -213,7 +213,13 @@ export function verifySources(data: SheetData, readFile: ReadFile, opts?: Extrac
       // A ref site's `entry.value` is the reference text (see collectValues),
       // passed here as `expected` so a parser's line/anchor fallback confirms
       // the right line the same way it does for an ordinary value.
-      const loc = parser.locate(raw, entry.source ?? {}, entry.value, picked.opts);
+      // A membership row's value is presence, and the site holds the MEMBER —
+      // `- ssh` is how a list writes "ssh is permitted". So the text to confirm
+      // at the location is the member, not the row's `true`, which appears in
+      // the file nowhere. See SourceLocation.member.
+      const member = entry.source?.member;
+      const expected = member ?? entry.value;
+      const loc = parser.locate(raw, entry.source ?? {}, expected, picked.opts);
       const isRef = entry.source?.ref !== undefined;
       if ("value" in loc) {
         // Equality is the whole-value special case of containment: a
@@ -228,11 +234,17 @@ export function verifySources(data: SheetData, readFile: ReadFile, opts?: Extrac
         // site holds a PART of the row (the variable's value inside a rendered
         // line), so the site's text must appear in the row. Otherwise: equal.
         const isSubstituted = entry.source?.substituted === true;
-        const matched = isRef
-          ? loc.value.includes(entry.value)
-          : isSubstituted
-            ? entry.value.includes(loc.value)
-            : loc.value === entry.value;
+        const matched =
+          member !== undefined
+            ? // Equality where the locate returned the member itself, containment
+              // where it returned the line holding it — the same two-path rule the
+              // ref case uses, applied to the member rather than to the value.
+              loc.value === member || loc.value.includes(member)
+            : isRef
+              ? loc.value.includes(entry.value)
+              : isSubstituted
+                ? entry.value.includes(loc.value)
+                : loc.value === entry.value;
         if (matched) {
           checks.push(
             loc.fallback === undefined
@@ -245,6 +257,13 @@ export function verifySources(data: SheetData, readFile: ReadFile, opts?: Extrac
             file,
             status: "error",
             message: `"${loc.value}" is no longer part of the rendered line "${entry.value}" — variable renamed, or the template changed around it?`,
+          });
+        } else if (member !== undefined) {
+          checks.push({
+            target: entry.target,
+            file,
+            status: "error",
+            message: `"${member}" is no longer a member here — removed from the list, or renamed?`,
           });
         } else if (isRef) {
           checks.push({ target: entry.target, file, status: "error", message: `reference "${entry.value}" no longer present — value hardcoded or wiring changed?` });
