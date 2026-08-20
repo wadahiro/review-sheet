@@ -48,6 +48,16 @@ function tokenize(line: string, base: number): Token[] {
         continue;
       }
       if (c === "'" || c === '"') { quote = c; i++; continue; }
+      // A `{{ ... }}` expression is ONE word, spaces and all. This module's own
+      // doc says a `--secret-id {{ kc_db_secret_name }}` argument records its
+      // templateVar — the recipe parses TEMPLATES with this parser, and a `.j2`
+      // writes its expressions spaced — and splitting on those spaces made the
+      // value the two braces. `{%` is not here on purpose: a control tag is a
+      // line of its own, read by the recipe, never an argument.
+      if (c === "{" && line[i + 1] === "{") {
+        const close = line.indexOf("}}", i + 2);
+        if (close !== -1) { i = close + 2; continue; }
+      }
       if (/\s/.test(c)) break;
       if (c === "\\" && i + 1 < line.length) { i += 2; continue; }
       i++;
