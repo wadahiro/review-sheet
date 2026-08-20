@@ -103,7 +103,16 @@ export type ArtifactLine = {
   kind: ArtifactLineKind;
   // The row this line IS, when it is one. Gives the viewer both directions —
   // row to its place in the file, and a line back to the row that reviews it.
+  //
+  // One line can be SEVERAL rows: `--query SecretString --output text` is two
+  // settings a script writes together. `key` is the one a click on the line
+  // jumps back to — one line cannot jump to two rows, and the last is the one
+  // nearest what a reader sees there — and `keys` below names all of them, so
+  // the other rows still find their place in the file.
   key?: string;
+  // Every row this line is, when it is more than one. Absent for the ordinary
+  // line, which is one row or none.
+  keys?: string[];
   // Why `unrendered`/`absent`, in the tool's own words (the unresolved
   // variables, or the condition that did not hold).
   reason?: string;

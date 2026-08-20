@@ -3782,7 +3782,7 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, t }: {
       </div>
       <div class="rs-artifact-body" ref=${bodyRef}>
         ${shown.lines.map((line, i) => {
-          const here = line.key !== undefined && line.key === target.key;
+          const here = (line.keys ?? (line.key === undefined ? [] : [line.key])).includes(target.key ?? "");
           const title =
             line.kind === "absent"
               ? t.artifactKindAbsent.replace("{reason}", line.reason ?? "")
@@ -4488,8 +4488,11 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
     const out = new Map<string, string>();
     for (const a of artifacts ?? []) {
       for (const line of a.lines) {
-        if (line.key === undefined) continue;
-        out.set(`${a.sheet}\u0000${a.component ?? ""}\u0000${line.key}`, a.id);
+        // Every row the line IS, not only the one it jumps back to: a line
+        // holding two settings is two rows, and both want the button.
+        for (const k of line.keys ?? (line.key === undefined ? [] : [line.key])) {
+          out.set(`${a.sheet}\u0000${a.component ?? ""}\u0000${k}`, a.id);
+        }
       }
     }
     return out;
