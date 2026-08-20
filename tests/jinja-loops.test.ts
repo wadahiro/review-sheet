@@ -117,11 +117,33 @@ describe("ansible recipe: a {% for %} over a list of maps", () => {
     expect(rows.map((e) => e.value)).toEqual(["app/corp", "app/partner"]);
   });
 
-  // A row's key is what a review, an apply target and a diff hang off. Keyed by
-  // ordinal, adding a secret in the middle renames every row after it.
-  it("names each row after the element's own identifier, not its position", () => {
+  // The key names a place in the RENDERED file, so it has to be a key that
+  // file's own parse can produce: three `--secret-id` occurrences after
+  // rendering are [0], [1], [2]. Keying by the element instead — which is
+  // stabler, and tempting for exactly that reason — re-bases the row's identity
+  // onto the vars file, and no parse of the artifact under review can yield it.
+  // The element's stable identity is the row's SOURCE, checked just below.
+  it("continues the occurrence numbering the rendered file has", () => {
     const rows = embedded().filter((e) => e.key.startsWith("--secret-id"));
-    expect(rows.map((e) => e.key)).toEqual(["--secret-id[key=corp]", "--secret-id[key=partner]"]);
+    expect(rows.map((e) => e.key)).toEqual(["--secret-id", "--secret-id[1]"]);
+  });
+
+  // KNOWN GAP, pinned rather than described: the numbering continues the
+  // TEMPLATE's, and a key the template holds once carries no number to
+  // continue. Rendered, that key repeats — and a parser that indexes repeats
+  // (shell does; the space format does not index them at all) then addresses
+  // the first copy `--secret-id[0]` where the sheet says `--secret-id`.
+  //
+  // It bites only when a key occurs exactly once in the template AND lands
+  // inside a loop; two occurrences, which is the shape that raised all this,
+  // line up exactly (checked just below). Closing it properly means deriving an
+  // artifact row's key from a parse of the RENDERED text rather than the
+  // template's — which is the honest form of "addressed the way the file
+  // addresses it" and is a change to every artifact sheet, not to loops.
+  it("does not yet index the first copy when the template held the key only once", () => {
+    const rows = embedded().filter((e) => e.key.startsWith("--secret-id"));
+    expect(rows[0].key).toBe("--secret-id");
+    expect(rows[0].key).not.toBe("--secret-id[0]");
   });
 
   // The whole point of expanding: the value a reviewer would change is the
@@ -331,5 +353,37 @@ describe("rows: a {% if %} on a list the sheet reads through its elements", () =
     }
     expect(keys).toContain("guard");
     expect(warn.filter((w) => w.includes("which this sheet does not read"))).toEqual([]);
+  });
+});
+
+
+// Numbering a repeated key the way the RENDERED file does, which is what lets
+// the project-level check ("every row key equals a key parsed from the file the
+// toolchain really wrote") hold over a template with a loop in it.
+describe("rows: occurrence numbers a loop multiplied", () => {
+  const FILES: Record<string, string> = {
+    "/vars.yml": "items:\n  - name: one\n    mode: a\n  - name: two\n    mode: b\n",
+    // `--opt` occurs three times in the TEMPLATE: before the loop, inside it,
+    // and after. Rendered, that is four — the loop contributes two.
+    "/app.sh.j2":
+      "#!/bin/sh\nx --opt first\n{% for v in items %}\nx --opt {{ v.mode }}\n{% endfor %}\nx --opt last\n",
+  };
+  const keys = () =>
+    (getRecipe("ansible")!.load(
+      {
+        name: "s",
+        recipe: "ansible",
+        rows: "artifact",
+        defaults: [{ path: "/vars.yml", key: { from: "path" } }],
+        templates: [{ path: "/app.sh.j2", component: "app", deployed_path: "/usr/local/bin/app.sh" }],
+      } as never,
+      { readFile: (p: string) => FILES[p] ?? null, specDir: "/", resolve: (p: string) => p, instances: [] }
+    ).embedded ?? []).map((e) => e.key);
+
+  // The shape that raised this, and the one a real template has: the key is
+  // already repeated, so the parser numbered it and the loop continues that
+  // numbering — every key here is one the rendered file's own parse yields.
+  it("numbers the copies in file order and moves what follows them along", () => {
+    expect(keys()).toEqual(["--opt[0]", "--opt[1]", "--opt[2]", "--opt[3]"]);
   });
 });
