@@ -941,6 +941,38 @@ recipe; the results become one sheet.
 With `group_by: file` on the sheet (sheet.yml), that reads as one tab with a
 section per file — which is the layout being reproduced.
 
+**`defaults:` is a file the part is answerable for, not a lookup table.** Each
+part above is given the small defaults belonging to what it deploys. Point one
+at a ROLE-WIDE defaults instead — the file every template of that role shares —
+and every variable in it that this part's templates never reference becomes a
+row of its own, under its own name. Under `rows: artifact` too: the mode decides
+what a row IS for the lines it renders, and does not narrow which variables the
+part is answerable for.
+
+That is deliberate, and it is the "never lose a row" rule: a variable in a file
+you pointed the sheet at, that nothing here uses, is indistinguishable from a
+template this part forgot to list. Silence would make the second look like the
+first. What it costs is a pile of description-less rows the moment a part reads
+a file it only needs part of.
+
+Say so, and the noise goes away:
+
+```yaml
+    - recipe: ansible
+      rows: artifact
+      defaults: ../roles/big_role/defaults/main.yml   # shared with other sheets
+      exclude: ["**"]        # no variable of this file is a row of THIS part —
+                             # its templates are all fixed-value, and the role's
+                             # variables are reviewed on the sheet that uses them
+      templates: [ ... ]
+```
+
+`exclude: ["**"]`, not `include:` with a pattern chosen to match nothing: a
+filter that selects nothing is itself reported ("pattern matched nothing"), so
+that spelling trades a pile of rows for a permanent warning. `**` rather than
+`*` because `*` stops at a `.`, and a key transform (`key: { from: path }`) puts
+dots in the names.
+
 **Scope each part to its own component.** That is what makes the merge safe:
 rows are unique within a component, so two parts can only collide by both
 claiming one, and a collision is an ERROR naming both parts rather than one
