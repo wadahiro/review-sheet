@@ -20,13 +20,19 @@ export type BakedSecret = { sheet: string; category: string; key: string; instan
 
 // A value that POINTS somewhere rather than being the thing itself. Both
 // spellings appear in the configuration this tool reads: `${...}` is the shell
-// and Keycloak vault form, `{{ ... }}` the Jinja/Ansible one, and a row whose
-// value survived substitution with either intact is still a reference at rest.
+// and Keycloak vault form, `{{ ... }}` the Jinja/Ansible one, `$(...)` the
+// parenthesised environment lookup — and a row whose value survived
+// substitution with any of them intact is still a reference at rest.
 //
 // Deliberately shape-based and nothing else. A denylist of known-bad values
 // ("changeme", "password") would call a real secret safe the moment it looked
 // unusual, which is the wrong way round for a check like this.
-const REFERENCE = /\$\{[^}]*\}|\{\{[^}]*\}\}/;
+// `${...}` is the shell and Keycloak vault form, `{{ ... }}` the Jinja/Ansible
+// one, and `$(...)` the parenthesised environment lookup a Keycloak provider
+// config uses. Three spellings of one fact: the value at rest is a pointer, not
+// the credential. Missing the third reported a reference as a baked secret,
+// which sends a reader looking for something that is not in the file.
+const REFERENCE = /\$\{[^}]*\}|\{\{[^}]*\}\}|\$\([^)]*\)/;
 
 const isLiteral = (value: string | undefined): boolean => value !== undefined && value !== "" && !REFERENCE.test(value);
 
@@ -74,6 +80,6 @@ export function formatBakedSecrets(found: BakedSecret[]): string {
     `${found.length} value(s) declared secret are written into the sheet as literals, and a generated sheet carries every ` +
       `value it shows:`,
     ...found.map((f) => `  ${f.version ? `${f.version}: ` : ""}${f.sheet} > ${f.category} > ${f.key}${f.instance ? ` [${f.instance}]` : ""}`),
-    `A reference (\${...} or {{ ... }}) is not reported — only a value that IS the credential.`,
+    `A reference (\${...}, {{ ... }} or \$(...)) is not reported — only a value that IS the credential.`,
   ].join("\n");
 }
