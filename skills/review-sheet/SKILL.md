@@ -493,6 +493,25 @@ in `defaults`'s own order.
 `under_key` (sheet.yml) is required the moment ANY row in the sheet resolves
 to a product key this way — nothing to declare if no row does.
 
+##### `{% for %}` — one template line, several lines of the file
+
+Under `rows: artifact`, a plain `{% for NAME in LIST %}` is evaluated: the line
+inside it becomes one row per element of the list, named the way the rendered
+file addresses it (`server`, `server[1]`), valued with the line as it renders,
+and **sourced at the element it came from** — the vars file entry a reviewer
+would edit, not the template line the structure came from. `apply` holds on
+such a row, as it does for every value substituted into a template's text.
+
+Only that shape. A filter, tuple unpacking, an `{% else %}` arm or a nested
+loop is reported and its lines stay out, on the same stance the `{% if %}`
+evaluator takes: a guess would put lines on the sheet that the deployed file
+does not have.
+
+The list's length is taken from `defaults`. An overlay giving one environment
+a longer or shorter list is reported rather than silently rendering rows for
+one environment only — a per-instance row SET is a shape this axis does not
+have, since Pattern B varies a value and not whether a line exists.
+
 This `{{ var }}` → `keyMap` binding is `ansible`'s own reference mechanism —
 a template value that is a reference into `defaults`/overlays, recognized
 from the template's parse tree. A `static_files` entry can carry the same

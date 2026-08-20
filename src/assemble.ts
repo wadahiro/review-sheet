@@ -1588,7 +1588,15 @@ export function attributedFile(
   hasVariable: boolean
 ): string | undefined {
   const own = ownFileOf(param);
-  const partOfArtifact = own === undefined || hasVariable || (templateSource !== undefined && own === templateSource);
+  // `substituted` says this site holds PART of the row's rendered line — which
+  // is the same statement as "the row is a line of the artifact", made by the
+  // source itself. Without reading it, a row whose value was rendered from a
+  // list element files under the vars file the element lives in, and the sheet
+  // shows a `server` directive under `defaults/main.yml` instead of under the
+  // chrony.conf it is a line of.
+  const substituted = "source" in param && param.source?.substituted === true;
+  const partOfArtifact =
+    own === undefined || hasVariable || substituted || (templateSource !== undefined && own === templateSource);
   return partOfArtifact ? (artifact ?? own) : own;
 }
 
