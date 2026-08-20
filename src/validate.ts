@@ -26,6 +26,15 @@ function formatSchemaError(e: ErrorObject): string {
 // Cross-field rule that the schema alone cannot express: an `embedded` origin
 // param is a literal baked into the source, so it can never carry
 // per-environment `instances`.
+//
+// A BLOCK's own row is the exception, and not a grudging one: its instance list
+// says something the rule was never about. For a setting, `instances` means
+// "this value differs per environment", which a literal cannot do. For a block
+// it means "this block is THERE in these environments" — a `<IfModule>` inside
+// a `{% if %}` is rendered for some and not others, and an instance list is the
+// only shape the model has for saying so (see the container rows the ansible
+// recipe emits for a conditional block). Two different facts wearing one field,
+// and the rule holds for exactly one of them.
 function findEmbeddedOriginErrors(input: ParameterSheetInput): string[] {
   const errors: string[] = [];
   const walkCategories = (categories: Category[], path: string): void => {
@@ -35,7 +44,8 @@ function findEmbeddedOriginErrors(input: ParameterSheetInput): string[] {
       const params = category.params ?? [];
       for (let pi = 0; pi < params.length; pi++) {
         const param = params[pi];
-        if (param.origin === "embedded" && "instances" in param && param.instances !== undefined) {
+        const isBlock = "container" in param && param.container !== undefined;
+        if (!isBlock && param.origin === "embedded" && "instances" in param && param.instances !== undefined) {
           errors.push(`${catPath}/params/${pi}: embedded origin cannot have per-environment instances`);
         }
       }
