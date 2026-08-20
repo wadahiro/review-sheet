@@ -104,6 +104,40 @@ describe("ansible recipe: baseline", () => {
     expect(base.entries.has("KeepAlive")).toBe(false);
   });
 
+  // A disabled directive is usually still IN the deployed file with a `#` in
+  // front of it, and that line — with whatever the author wrote above it saying
+  // why — is the place a reviewer wants to be taken to. Found by exact text
+  // against the vendor's own line, never by deciding what a comment means.
+  it("points a vendor-only row at the line where the template commented it out", () => {
+    const si = load({ ...BASE_SHEET, baseline: { file: "vendor.conf" } });
+    const [preview] = si.artifacts ?? [];
+    const at = preview.lines.findIndex((l) => l.text.trim() === "#KeepAlive Off");
+    expect(at).toBeGreaterThan(-1);
+    expect(preview.lines[at].key).toBe("KeepAlive");
+  });
+
+  // The block's own row is synthesized downstream from these entries'
+  // containers, so it is the one row nothing in this recipe would anchor: its
+  // three settings appeared in the preview under a `<Directory>` line that led
+  // nowhere.
+  it("points a vendor-only BLOCK at its own commented opening line", () => {
+    const si = load({ ...BASE_SHEET, baseline: { file: "vendor.conf" } });
+    const [preview] = si.artifacts ?? [];
+    const line = (text: string) => preview.lines.find((l) => l.text.trim() === text);
+    expect(line('#<Directory "/var/www/cgi-bin">')?.key).toBe('Directory["/var/www/cgi-bin"]');
+    // Still the children, unchanged — the block and its contents both resolve.
+    expect(line("#    AllowOverride None")?.key).toBe('Directory["/var/www/cgi-bin"].AllowOverride');
+  });
+
+  // A line the author reworded while disabling it simply does not match, and
+  // the row keeps its meaning with no preview line, which is honest.
+  it("anchors nothing when the deployed file does not carry the vendor's line", () => {
+    const si = load({ ...BASE_SHEET, baseline: { file: "vendor.conf" }, template: "app-no-comments.conf.j2" });
+    const [preview] = si.artifacts ?? [];
+    expect(preview.lines.every((l) => l.key !== "KeepAlive")).toBe(true);
+    expect(preview.lines.every((l) => !(l.key ?? "").startsWith("Directory["))).toBe(true);
+  });
+
   it("reports the four counts", () => {
     const warn = mock((..._args: unknown[]) => {});
     const orig = console.warn;
@@ -118,7 +152,10 @@ describe("ansible recipe: baseline", () => {
     expect(summary).toContain("1 inherited unchanged");
     expect(summary).toContain("1 changed");
     expect(summary).toContain("1 added");
-    expect(summary).toContain("1 the vendor ships");
+    // Three: KeepAlive and the two settings inside the block the template
+    // disabled. The block's own row is synthesized downstream and is not one of
+    // these entries.
+    expect(summary).toContain("3 the vendor ships");
   });
 
   it("warns loudly when the baseline shares no keys with the deployed artifact", () => {

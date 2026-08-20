@@ -1244,15 +1244,34 @@ export const ansibleRecipe: SheetRecipe = {
         // meaning with no preview line, which is honest.
         const baselineLines = baselineContent.split("\n");
         const templateLines = templateText.split("\n");
-        const disabledAt = new Map<string, number>();
-        for (const [key, entry] of missing) {
-          const want = (baselineLines[(entry.source.line ?? 0) - 1] ?? "").trim();
-          if (want === "") continue;
+        const disabledLine = (line: number | undefined): number | undefined => {
+          const want = (baselineLines[(line ?? 0) - 1] ?? "").trim();
+          if (want === "") return undefined;
           const at = templateLines.findIndex((l: string) => {
             const t = l.trim();
             return t.startsWith("#") && t.replace(/^#+\s*/, "").trim() === want;
           });
-          if (at !== -1) disabledAt.set(key, at + 1);
+          return at === -1 ? undefined : at + 1;
+        };
+        const disabledAt = new Map<string, number>();
+        for (const [key, entry] of missing) {
+          const at = disabledLine(entry.source.line);
+          if (at !== undefined) disabledAt.set(key, at);
+        }
+        // The BLOCK that holds them, by its own opening line. A container row is
+        // synthesized downstream (assembleSheets' containerDrafts, from these
+        // entries' `containers`), so nothing else here would ever anchor it —
+        // and the block's three settings landing in the preview while the
+        // `<Directory>` line above them did not was the visible half of that.
+        // Same address the assembler builds, same exact-text rule, and only for
+        // a node it will actually emit a row for (one carrying a subject).
+        for (const [, entry] of missing) {
+          const chain = entry.containers ?? [];
+          for (let i = 0; i < chain.length; i++) {
+            if (chain[i].subject === undefined) continue;
+            const at = disabledLine(chain[i].line);
+            if (at !== undefined) rowAtLine(spec.path, at, chain.slice(0, i + 1).map((n) => n.pathSeg).join("."));
+          }
         }
         for (const [key, entry] of missing) {
           embedded.push({
