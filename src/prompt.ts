@@ -51,6 +51,10 @@ export type ParamData = {
   // shape, and a container is not a fact either of them may guess at.
   container?: { name?: string; nameFromDocs?: boolean };
   container_path?: { path: string; name?: string; subject?: string }[];
+  // This row's value is PRESENCE — see `ParameterBase.presence` in types.ts.
+  presence?: true;
+  // The product own word for presence — see ParameterBase.presence_label.
+  presence_label?: LangText | string;
   // The grouping a file heading displaced, for the viewer to sub-head with —
   // see `ParameterBase.sub_category`. Display only; the row's identity is its
   // category and key, and neither moves when the layout does.

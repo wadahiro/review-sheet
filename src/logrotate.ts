@@ -1,5 +1,6 @@
 // logrotate policy files: `/path/to/*.log { directive … }`.
 import type { ContainerNode } from "./types.js";
+import { PRESENCE_VALUE } from "./types.js";
 import { containerSubjectAt } from "./parser.js";
 //
 // The format a rotation policy is written in, and — until this existed — a
@@ -37,6 +38,10 @@ export type LogrotateEntry = {
   line: number;
   path: string;
   containers: ContainerNode[];
+  // Its presence IS the setting — a flag, or a pattern opening a block. Stated
+  // rather than inferred from the value, so a directive whose argument happens
+  // to be the string this tool spells presence with is not mistaken for one.
+  presence?: true;
 };
 
 // The block enclosing a directive.
@@ -229,20 +234,20 @@ export function logrotateIndex(content: string): LogrotateEntry[] {
   // on whitespace the way a directive is split turns `{{ home }}/x.log` into a
   // row named `{{`, which names nothing.
   function emitPattern(text: string, line: number): void {
-    push(text, "true", line);
+    push(text, PRESENCE_VALUE, line, true);
   }
 
   function emit(text: string, line: number): void {
     const [name, ...args] = text.split(/\s+/);
-    push(name, args.length > 0 ? args.join(" ") : "true", line);
+    push(name, args.length > 0 ? args.join(" ") : PRESENCE_VALUE, line, args.length === 0);
   }
 
-  function push(name: string, value: string, line: number): void {
+  function push(name: string, value: string, line: number, presence = false): void {
     const scope = block ?? GLOBAL;
     const n = seen.get(`${scope}\u0000${name}`) ?? 0;
     seen.set(`${scope}\u0000${name}`, n + 1);
     const key = n === 0 ? name : `${name}[${n}]`;
-    out.push({ categoryPath: [scope], key, value, line, path: `${scope}.${key}`, containers: [scopeNode(content, scope, blockLine, blockRange)] });
+    out.push({ categoryPath: [scope], key, value, line, path: `${scope}.${key}`, containers: [scopeNode(content, scope, blockLine, blockRange)], ...(presence ? { presence: true as const } : {}) });
   }
 }
 

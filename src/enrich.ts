@@ -9,6 +9,7 @@
 // purely documentation, source maps are unaffected.
 
 import "./providers/index.js";
+import { PRESENCE_VALUE } from "./types.js";
 import { resolveMetadata, type MetadataContext, type MetadataProvider, type DictionaryBinding, type LangProvenance } from "./metadata.js";
 import { loadProjectMeta, paramsForSheet, checkProjectMetaSheets, type ProjectMetaDoc } from "./providers/project.js";
 import { bindKey, isBindError, loadBindSources, type Binding, type BindSource, bindableKey } from "./bind.js";
@@ -411,6 +412,24 @@ function enrichParam(
     // for the same distinction).
     if (resolved.options !== undefined && param.options === undefined) {
       param.options = resolved.options;
+      wrote = true;
+    }
+    // Only onto a row the extraction MARKED as presence. A dictionary saying a
+    // setting is presence-shaped while the file writes it with a value is a
+    // disagreement to report, not a licence to relabel the value — see the
+    // cross-check in assemble.
+    if (resolved.presence_label !== undefined && param.presence === true && param.presence_label === undefined) {
+      param.presence_label = resolved.presence_label;
+      wrote = true;
+    }
+    // `present`/`absent` is the dictionary's vocabulary for whether the product
+    // SHIPS the thing there — not a value. Translated into the spelling every
+    // presence row on the sheet carries, so the default cell and the value cell
+    // compare and both render under the same word. `absent` states there is no
+    // value in effect, which is what no default at all already means.
+    if (param.presence === true && (param.default === "present" || param.default === "absent")) {
+      if (param.default === "present") param.default = PRESENCE_VALUE;
+      else delete param.default;
       wrote = true;
     }
     // A boolean, and a fact a CHECK reads rather than a reader — so not an

@@ -25,7 +25,7 @@ import { applyEdits, editsForCell, isEdit, isEditableField, isDeleted, planFromE
 import { getMarkdownRenderer } from "./markdown-runtime.js";
 import { withEmbeddedHistory, readEmbeddedHistory, suggestedFileName, type EmbeddedHistory } from "./save.js";
 import type { DiffStatus } from "../diff.js";
-import { pickLang, type OutOfScope, type Capabilities, type ArtifactPreview } from "../types.js";
+import { pickLang, type OutOfScope, type Capabilities, type ArtifactPreview, PRESENCE_VALUE } from "../types.js";
 
 const html = htm.bind(h);
 
@@ -93,6 +93,10 @@ function localizeParam(p: ParamData, lang: Lang): ParamData {
     // beside a Japanese description. Showing the English one beats showing
     // nothing, which is what a bare code already was.
     options: p.options?.map((o) => ({ value: o.value, label: pickLang(o.label, lang) })),
+    // The product's word for presence, resolved like every other LangText the
+    // viewer shows — without this the cell falls back to the neutral word even
+    // where the dictionary supplied a better one.
+    presence_label: pickLang(p.presence_label, lang),
   };
 }
 
@@ -101,7 +105,15 @@ function localizeParam(p: ParamData, lang: Lang): ParamData {
 // dictionary version does not list, or one carrying a placeholder — and that
 // silence is deliberate: the cell falls back to showing the raw value alone,
 // which is what it always showed.
-function optionLabel(param: ParamData, value: string): string | undefined {
+function optionLabel(param: ParamData, value: string, t?: Messages): string | undefined {
+  // A row recorded by PRESENCE holds this tool's spelling of "it is there",
+  // which is written nowhere in the file the reviewer is checking. What belongs
+  // in the cell is what presence MEANS here: the product's word if the bound
+  // dictionary carries one, and a neutral one otherwise.
+  if (param.presence === true && value === PRESENCE_VALUE) {
+    const own = typeof param.presence_label === "string" ? param.presence_label : undefined;
+    return own && own.length > 0 ? own : t?.present;
+  }
   if (!param.options || value === "") return undefined;
   const hit = param.options.find((o) => o.value === value);
   const label = hit?.label;
@@ -2062,7 +2074,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     // answers it wrongly.
     cell: (param) => {
       const shown = param.baseline ?? param.default ?? "-";
-      return { kind: "review", value: shown, target: baseTarget(param), field: "default", className: "rs-col-default", isCode: true, copyable: false, valueLabel: optionLabel(param, shown) };
+      return { kind: "review", value: shown, target: baseTarget(param), field: "default", className: "rs-col-default", isCode: true, copyable: false, valueLabel: optionLabel(param, shown, t) };
     },
   });
 
@@ -2093,7 +2105,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
             // Equals the default AND empty → the environment leaves it at the
             // (empty) default: render as unset "—" rather than a blank cell.
             const cls = isSameAsDefault ? (value === "" ? "rs-cell-unset" : "rs-same-as-default") : "rs-changed";
-            return { kind: "review", value, target: { ...baseTarget(param), instance: name }, field: "value", className: `rs-col-value ${cls} ${diffCls}`, isCode: true, copyable: value.length > 0, unsetLabel: t.usesDefault, valueLabel: optionLabel(param, value) };
+            return { kind: "review", value, target: { ...baseTarget(param), instance: name }, field: "value", className: `rs-col-value ${cls} ${diffCls}`, isCode: true, copyable: value.length > 0, unsetLabel: t.usesDefault, valueLabel: optionLabel(param, value, t) };
           }
           // Pattern A: one stored value, shown in every environment column. The
           // cell still targets ITS environment, because a review here is a
@@ -2104,7 +2116,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
           const common = param.value ?? "";
           if (rowOutOfScope(param)) {
             // e.g. a secret — shown read-only; the out-of-scope row styling wins.
-            return { kind: "review", value: common, target: { ...baseTarget(param), instance: name }, field: "value", className: "rs-col-value rs-same-as-default", isCode: true, copyable: false, sharedRow: true, valueLabel: optionLabel(param, common) };
+            return { kind: "review", value: common, target: { ...baseTarget(param), instance: name }, field: "value", className: "rs-col-value rs-same-as-default", isCode: true, copyable: false, sharedRow: true, valueLabel: optionLabel(param, common, t) };
           }
           // "Nothing is set here" and "what is set equals the default" are two
           // different facts, and only the first one is `usesDefault`. This used
@@ -2131,7 +2143,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
             isCode: true,
             copyable: !isUnset,
             unsetLabel: baselineAbsent ? t.originBaselineDisabled : t.usesDefault,
-            valueLabel: isUnset ? undefined : optionLabel(param, common),
+            valueLabel: isUnset ? undefined : optionLabel(param, common, t),
             sharedRow: true,
           };
         },
@@ -2154,7 +2166,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
             isCode: true,
             copyable: !baselineAbsent,
             unsetLabel: baselineAbsent ? t.originBaselineDisabled : undefined,
-            valueLabel: optionLabel(param, value),
+            valueLabel: optionLabel(param, value, t),
           };
         },
       }];
@@ -2339,7 +2351,11 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     // their description IS the label.
     const label = typeof param.label === "string" ? param.label : undefined;
     const keySubline: (VNode | null)[] = [];
-    if (label) keySubline.push(html`<span class="rs-key-subline"><code>${param.key}</code></span>` as VNode);
+    // The key goes beneath the label because they answer different questions —
+    // what a reviewer recognises, and where the value lives. When they are the
+    // same string there is only one question, and printing it twice reads as a
+    // row that could not decide what it is called.
+    if (label && label !== param.key) keySubline.push(html`<span class="rs-key-subline"><code>${param.key}</code></span>` as VNode);
     for (const line of underKeyLines) {
       keySubline.push(
         html`<span class="rs-key-subline"><span class="rs-subline-head">${line.head}</span><code>${line.value}</code></span>` as VNode

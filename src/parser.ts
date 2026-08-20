@@ -25,6 +25,15 @@ export type Entry = {
   key: string;
   value: string;
   source: SourceLocation;
+  // This entry's value is PRESENCE — the file records the setting by the thing
+  // being there, not by writing a value beside a name (a logrotate `missingok`,
+  // a service listed in a firewall zone). Stated by the parser that read it,
+  // because how a format records a setting is a fact about the format.
+  //
+  // Deliberately not left to be inferred from `value === PRESENCE_VALUE`: a
+  // product whose legitimate value happens to be the string `true` would be
+  // read as presence, and nothing would say so.
+  presence?: true;
   // Optional documentation a parser can co-extract (e.g. the annotation parser
   // reads these from in-source `@rs` comments). Most parsers only set value/source.
   description?: string;

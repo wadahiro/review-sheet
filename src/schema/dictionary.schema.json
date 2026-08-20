@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "review-sheet dictionary",
-  "description": "<product>@<version>.yml — what a PRODUCT says about its own settings. Written wholesale by an extraction; a hand edit belongs in <product>@<version>.overlay.yml, whose accepted fields are deliberately narrower.",
+  "description": "<product>@<version>.yml \u2014 what a PRODUCT says about its own settings. Written wholesale by an extraction; a hand edit belongs in <product>@<version>.overlay.yml, whose accepted fields are deliberately narrower.",
   "type": "object",
   "required": [
     "product",
@@ -35,7 +35,7 @@
       "$ref": "#/definitions/url"
     },
     "block_label": {
-      "description": "What this format's own documentation calls a block its SYNTAX leaves unnamed — logrotate(8) says \"log file definition\" for `/var/log/x { … }`, which opens with its patterns and no keyword. A document-level fact, because it is one word for every such block in the format, not a per-entry one. Absent for a format whose blocks name themselves (httpd writes `Directory`), which is most of them. The parser never supplies this: a word for a thing the file does not name is documentation, and the sheet marks it so a reader never mistakes it for their own text.",
+      "description": "What this format's own documentation calls a block its SYNTAX leaves unnamed \u2014 logrotate(8) says \"log file definition\" for `/var/log/x { \u2026 }`, which opens with its patterns and no keyword. A document-level fact, because it is one word for every such block in the format, not a per-entry one. Absent for a format whose blocks name themselves (httpd writes `Directory`), which is most of them. The parser never supplies this: a word for a thing the file does not name is documentation, and the sheet marks it so a reader never mistakes it for their own text.",
       "$ref": "#/definitions/langText"
     },
     "parameters": {
@@ -205,11 +205,33 @@
         },
         "provenance": {
           "$ref": "#/definitions/langProvenance"
+        },
+        "presence": {
+          "oneOf": [
+            {
+              "const": true
+            },
+            {
+              "type": "object",
+              "required": [
+                "label"
+              ],
+              "properties": {
+                "label": {
+                  "type": [
+                    "string",
+                    "object"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
         }
       },
       "allOf": [
         {
-          "$comment": "A container groups other objects and has no value of its own, so it has no default either — and a default here is an object, which is not what the field may hold. This pairing is what materialize reads to keep such an entry out of the inventory.",
+          "$comment": "A container groups other objects and has no value of its own, so it has no default either \u2014 and a default here is an object, which is not what the field may hold. This pairing is what materialize reads to keep such an entry out of the inventory.",
           "if": {
             "properties": {
               "kind": {
@@ -227,6 +249,31 @@
               ]
             }
           }
+        },
+        {
+          "not": {
+            "required": [
+              "presence",
+              "options"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "presence"
+            ]
+          },
+          "then": {
+            "properties": {
+              "default": {
+                "enum": [
+                  "present",
+                  "absent"
+                ]
+              }
+            }
+          }
         }
       ]
     },
@@ -239,7 +286,7 @@
       "properties": {
         "value": {
           "type": "string",
-          "description": "The STORED form, verbatim — what a config file holds. Never a display form."
+          "description": "The STORED form, verbatim \u2014 what a config file holds. Never a display form."
         },
         "label": {
           "$ref": "#/definitions/langText"

@@ -78,6 +78,11 @@ type Messages = {
   // rows from more than one file (`layout: categories`), so a reader can see
   // the mixture instead of reading two files' settings as one file's.
   rowFile: string;
+  // What a row whose value is PRESENCE shows in the value cell when the product
+  // has no word of its own for it. Neutral on purpose: a dictionary must never
+  // have to invent wording, and this tool's spelling of presence (`true`) is an
+  // internal a reviewer has no reason to meet.
+  present: string;
   artifactRenderedFrom: string;
   artifactSourceFile: string;
   artifactInstance: string;
@@ -308,6 +313,7 @@ const ja: Messages = {
   artifactOpen: "設定ファイルの該当箇所を見る",
   artifactTitle: "プレビュー",
   rowFile: "ファイル",
+  present: "あり",
   artifactRenderedFrom: "生成元",
   artifactSourceFile: "ソースファイル",
   artifactInstance: "環境",
@@ -506,6 +512,7 @@ const en: Messages = {
   artifactOpen: "Show this line in the file",
   artifactTitle: "Preview",
   rowFile: "File",
+  present: "present",
   artifactRenderedFrom: "Rendered from",
   artifactSourceFile: "Source file",
   artifactInstance: "Instance",

@@ -68,6 +68,7 @@ import type {
   SheetDocument,
   ContainerNode,
 } from "./types.js";
+import { PRESENCE_VALUE } from "./types.js";
 
 // `origin: "embedded"` marks a base-layer entry whose position relative to its
 // sibling base entries matters — e.g. a template's bare literal (no backing
@@ -90,7 +91,17 @@ import type {
 // `baseline:` matches it onto a row it has already built (the row's own
 // `key`), and threading it through here is what lets buildDrafts carry it onto
 // the Parameter without a second key-indexed pass of its own.
-export type ExtractedEntry = { value: string; source: SourceLocation; origin?: "embedded"; component?: string; baseline?: string };
+export type ExtractedEntry = {
+  value: string;
+  source: SourceLocation;
+  origin?: "embedded";
+  component?: string;
+  baseline?: string;
+  // This entry's value is PRESENCE — see Entry.presence. Carried through to the
+  // row so the sheet can say what presence MEANS here rather than showing the
+  // tool's spelling of it.
+  presence?: true;
+};
 // Insertion order is significant: it drives Pattern A/B emission order.
 export type ExtractedMap = Map<string, ExtractedEntry>;
 
@@ -131,6 +142,8 @@ export type EmbeddedEntry = {
   // `container_path` so the sheet can indent it under its own block and a
   // filter can keep the blocks a surviving row hangs under.
   containers?: ContainerNode[];
+  // This row's value is PRESENCE — see Entry.presence.
+  presence?: true;
   // The categoryPath outranks a bound dictionary's own `group` — see
   // bindingOrFallback. Set by a recipe that knows the row came out of a
   // repetition axis.
@@ -872,14 +885,17 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
     // onto the Parameter alongside whichever shape the row resolves to below,
     // Pattern A or B: it is a property of the KEY, not of one value shape.
     const baselineField = baseEntry.baseline !== undefined ? { baseline: baseEntry.baseline } : {};
+    // How the file RECORDS this setting, carried onto the row the same way the
+    // vendor's value is: a property of the key, not of one value shape.
+    const presenceField = baseEntry.presence ? { presence: true as const } : {};
     let param: Parameter;
     if (overriddenBy.length > 0) {
       const instances = buildOverlayInstances(si.instances, extractedKey, baseEntry, overlays);
       const origin = demotedOrigin(paramKey, "overlay", si.authoredKeys);
-      param = { key: paramKey, instances, origin, ...baselineField } as InstanceParameter;
+      param = { key: paramKey, instances, origin, ...baselineField, ...presenceField } as InstanceParameter;
     } else {
       const origin = demotedOrigin(paramKey, "common", si.authoredKeys);
-      param = { key: paramKey, value: baseEntry.value, source: baseEntry.source, origin, ...baselineField } as SimpleParameter;
+      param = { key: paramKey, value: baseEntry.value, source: baseEntry.source, origin, ...baselineField, ...presenceField } as SimpleParameter;
     }
     attachReferenceSites(param, extractedKey);
     pushDraft(paramKey, withUnderKey(param, variable), variable, extractedKey, baseEntry.component);
@@ -1052,6 +1068,7 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
     // groups by file and the parser's own headings are dropped — that mode is
     // exactly where the structure would otherwise survive only inside the row
     // keys, as text.
+    if (e.presence) param.presence = true;
     if (e.containers?.length) param.container_path = e.containers.map((n, i) => ({ path: e.containers!.slice(0, i + 1).map((x) => x.pathSeg).join("."), name: n.name }));
     pushDraft(e.key, withUnderKey(param, variable), variable, undefined, e.component, e.categoryPath, e.categoryPathWins);
   }
@@ -1361,6 +1378,17 @@ function materializeDrafts(
     // have a real, undocumented default, e.g. httpd's AcceptFilter/
     // ErrorDocument/Protocol; the exclusion depends on the dictionary's own
     // extraction quality, which is exactly why it must never be silent).
+    // A presence setting's default says whether the product SHIPS the thing
+    // there. `absent` is the same statement as no default at all — there is no
+    // value in effect to put in a ledger row, and materializing 176 rows
+    // saying "not permitted" is the noise the noDefault gate exists to keep
+    // opt-in.
+    const presenceDefault = entry.presence !== undefined ? entry.default : undefined;
+    if (presenceDefault === "absent") {
+      noDefault++;
+      noDefaultKeys.push(key);
+      continue;
+    }
     if (entry.default === undefined && !opt.includeNoDefault) {
       noDefault++;
       noDefaultKeys.push(key);
@@ -1371,8 +1399,12 @@ function materializeDrafts(
     const makeParam = (rowKey: string) =>
       ({
         key: rowKey,
-        value: entry.default !== undefined ? String(entry.default) : "",
+        // `present` is the dictionary's vocabulary, not a value: the row holds
+        // this tool's spelling of presence, which is what every other presence
+        // row on the sheet holds, so the two compare.
+        value: presenceDefault === "present" ? PRESENCE_VALUE : entry.default !== undefined ? String(entry.default) : "",
         origin: "default",
+        ...(entry.presence !== undefined ? { presence: true as const } : {}),
       }) as SimpleParameter;
 
     // One row per repetition, keyed the way the repetition's own rows are

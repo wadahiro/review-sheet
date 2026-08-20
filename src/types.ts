@@ -33,6 +33,21 @@ export type LangText = string | { en?: string; ja?: string };
 // value without them.
 export type ParamOption = { value: string; label?: LangText };
 
+// How this tool spells "the setting is present".
+//
+// Some settings have no value: a logrotate policy says `missingok`, a firewall
+// permits a service by listing it. What the file records is that the thing is
+// there, and the row's value is that fact. One constant, in the model's own
+// file, because the alternative already happened — a per-format `bareFlag` and
+// a separate constant for membership rows, two independent spellings that
+// agreed by luck.
+//
+// Never written into a dictionary. A product document that quotes this string
+// is quoting a tool internal, and would go silently wrong the day it changed —
+// see the `presence` field, which lets a dictionary say a setting IS presence
+// without saying how the tool stores it.
+export const PRESENCE_VALUE = "true";
+
 // Resolve a LangText for a target language: the exact language if present, else
 // English, else Japanese, else undefined. A plain string passes through.
 export function pickLang(t: LangText | undefined, lang: "en" | "ja"): string | undefined {
@@ -439,6 +454,15 @@ export type ParameterBase = {
   // block it came from: the viewer redraws the block line from this chain, and a
   // bare `Directory` above two different blocks names neither.
   container_path?: { path: string; name?: string; subject?: string }[];
+  // This row's value is PRESENCE — see Entry.presence. Carried on the row so
+  // the viewer can say what presence MEANS here (the dictionary's word, or a
+  // neutral one) instead of showing the tool's spelling of it, and so verify
+  // and apply read the row the same way whatever dictionaries are on disk.
+  presence?: true;
+  // The product own word for presence, filled by enrich from the bound
+  // dictionary — see DictionaryParam.presence. Display only: what the row IS
+  // was settled at extraction.
+  presence_label?: LangText;
   // The grouping a file heading displaced (`layout: file+categories`): the
   // dictionary's own group path for this row, carried so the viewer can
   // sub-head a long flat file by it. DISPLAY ONLY — the row's identity stays

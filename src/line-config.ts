@@ -13,9 +13,18 @@
 // locateLine for values that only carry a line/anchor.
 
 import type { SourceLocation } from "./types.js";
+import { PRESENCE_VALUE } from "./types.js";
 import type { LocateResult, EditResult } from "./parser.js";
 
-export type Entry = { categoryPath: string[]; key: string; value: string; source: SourceLocation };
+export type Entry = {
+  categoryPath: string[];
+  key: string;
+  value: string;
+  source: SourceLocation;
+  // This entry's value is PRESENCE — a directive standing alone on its line,
+  // where being written IS the setting. Mirrors parser.ts's Entry.presence.
+  presence?: true;
+};
 
 export type LineConfig = {
   delims: string[];
@@ -59,7 +68,7 @@ export const LINE_CONFIGS: Record<"properties" | "dotenv" | "sysctl" | "ini" | "
   dotenv: { delims: ["="], comments: ["#"], sections: false, space: false, exportPrefix: true },
   sysctl: { delims: ["="], comments: ["#", ";"], sections: false, space: false, exportPrefix: false },
   ini: { delims: ["=", ":"], comments: ["#", ";"], sections: true, space: false, exportPrefix: false },
-  space: { delims: [], comments: ["#"], sections: false, space: true, exportPrefix: false, bareFlag: "true" },
+  space: { delims: [], comments: ["#"], sections: false, space: true, exportPrefix: false, bareFlag: PRESENCE_VALUE },
   generic: { delims: ["=", ":"], comments: ["#", ";", "!"], sections: false, space: false, exportPrefix: false },
 };
 
@@ -86,6 +95,8 @@ export function extractLines(content: string, cfg: LineConfig): Entry[] {
     }
 
     let key: string | undefined;
+
+    let isPresence = false;
     let value: string | undefined;
     let anchor: string | undefined;
 
@@ -96,6 +107,7 @@ export function extractLines(content: string, cfg: LineConfig): Entry[] {
         value = m[3];
         anchor = body.slice(0, m[1].length + m[2].length); // "key " incl. the gap
       } else if (cfg.bareFlag !== undefined && /^\S+$/.test(body.trimEnd())) {
+        isPresence = true;
         // A directive standing alone. Dropping it lost a real setting with no
         // report — the row simply never existed, which is the one failure this
         // project refuses to leave silent.
@@ -125,6 +137,10 @@ export function extractLines(content: string, cfg: LineConfig): Entry[] {
       categoryPath: section ? [section] : [],
       key,
       value,
+      // Stated, not inferred from the value: a setting whose legitimate value
+      // is the string this tool spells presence with would otherwise be read
+      // as presence, with nothing saying so.
+      ...(isPresence ? { presence: true as const } : {}),
       source: { line: i + 1, anchor },
     });
   }
