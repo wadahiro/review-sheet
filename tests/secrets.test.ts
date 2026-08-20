@@ -76,3 +76,41 @@ describe("out_of_scope rows still resolve `secret`", () => {
     expect(found).toHaveLength(1);
   });
 });
+
+// A reference is not a credential, whichever spelling the product uses for it.
+//
+// The check is shape-based on purpose — a denylist of likely-looking passwords
+// would call a real secret safe the moment it looked unusual — so the shapes it
+// knows are the whole of what it can tell apart.
+describe("the reference forms a value can wear", () => {
+  const sheet = (value: string) => ({
+    metadata: { title: "t" },
+    sheets: [
+      {
+        name: "s",
+        categories: [{ name: "c", params: [{ key: "bind", value, secret: true, description: { en: "d" } }] }],
+      },
+    ],
+  });
+  const baked = (value: string) => findBakedSecrets(sheet(value) as never).length > 0;
+
+  it("knows the shell and vault form", () => {
+    expect(baked("${vault.corp-ldap-bind}")).toBe(false);
+  });
+
+  it("knows the Jinja form", () => {
+    expect(baked("{{ ldap_bind_password }}")).toBe(false);
+  });
+
+  // Keycloak's provider config spells an environment lookup with parentheses,
+  // and a value in that form is as much a reference as the other two — reported
+  // as a literal, it sent a reader looking for a credential that is not there.
+  it("knows the parenthesised environment form", () => {
+    expect(baked("$(env:SSO_LDAP_CORP_PASSWORD)")).toBe(false);
+  });
+
+  // And still reports a value that IS the credential, which is the whole point.
+  it("still reports a literal", () => {
+    expect(baked("CHANGEME_SET_VIA_SECRETS_PIPELINE")).toBe(true);
+  });
+});
