@@ -726,6 +726,12 @@
     "sha": "63e648432503c29d"
   },
   {
+    "file": "tests/fixtures/baseline-rows/app-no-comments.conf.j2",
+    "parser": "jinja2",
+    "count": 3,
+    "sha": "c8d59820b404d343"
+  },
+  {
     "file": "tests/fixtures/baseline-rows/app.conf.j2",
     "parser": "jinja2",
     "count": 3,
@@ -746,8 +752,8 @@
   {
     "file": "tests/fixtures/baseline-rows/vendor.conf",
     "parser": "httpd",
-    "count": 3,
-    "sha": "27e1c195b9001fc0"
+    "count": 5,
+    "sha": "39553c56d8083962"
   },
   {
     "file": "tests/fixtures/bind-report/.review-sheet/build.yml",

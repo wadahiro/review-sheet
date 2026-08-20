@@ -5,9 +5,3 @@
 ServerRoot "/etc/httpd"
 Listen {{ app_port }}
 ExtraDirective on
-# Disabled here — nothing is served from it.
-#KeepAlive Off
-#<Directory "/var/www/cgi-bin">
-#    AllowOverride None
-#    Require all granted
-#</Directory>
