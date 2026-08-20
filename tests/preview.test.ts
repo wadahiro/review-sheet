@@ -47,14 +47,18 @@ describe("addLineKey", () => {
   it("attaches a key at its 1-based line", () => {
     const keys: LineKeys = new Map();
     addLineKey(keys, 3, "some.key");
-    expect(keys.get(3)).toEqual(["some.key"]);
+    expect(keys.get(3)).toEqual([["some.key"]]);
   });
 
-  it("is last-wins on a collision", () => {
+  // Two settings can share a line — `--query SecretString --output text` is one
+  // line and two rows — so the line names both. It still jumps BACK to one of
+  // them (a click has one destination), and that is the last, which is the one
+  // nearest what a reader sees there.
+  it("keeps every row a line is, and jumps back to the last", () => {
     const keys: LineKeys = new Map();
     addLineKey(keys, 3, "first");
     addLineKey(keys, 3, "second");
-    expect(keys.get(3)).toEqual(["second"]);
+    expect(keys.get(3)).toEqual([["first", "second"]]);
   });
 
   // A `{% for %}` writes its body once per element, and each copy is its own
@@ -65,7 +69,7 @@ describe("addLineKey", () => {
     const keys: LineKeys = new Map();
     addLineKey(keys, 3, "--region[1]", 0);
     addLineKey(keys, 3, "--region[2]", 1);
-    expect(keys.get(3)).toEqual(["--region[1]", "--region[2]"]);
+    expect(keys.get(3)).toEqual([["--region[1]"], ["--region[2]"]]);
   });
 });
 

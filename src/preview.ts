@@ -43,7 +43,7 @@ export const MAX_PREVIEW_BYTES = 128 * 1024;
 // last member's (last-wins, below) and hung it on the FIRST copy, so one row
 // linked to another row's line and every other member had no line at all —
 // no "see this line in the file" button on any of them.
-export type LineKeys = Map<number, string[]>;
+export type LineKeys = Map<number, string[][]>;
 
 // No-ops when `line` is undefined (a row with no source line has nowhere to
 // attach). A collision is last-wins, matching both existing producers: neither
@@ -53,7 +53,7 @@ export type LineKeys = Map<number, string[]>;
 export function addLineKey(keys: LineKeys, line: number | undefined, key: string, member = 0): void {
   if (line === undefined) return;
   const at = keys.get(line) ?? [];
-  at[member] = key;
+  at[member] = [...(at[member] ?? []), key];
   keys.set(line, at);
 }
 
@@ -127,8 +127,13 @@ export function previewFile(
     lines: content.split("\n").map((text, i) => {
       // A committed file has no loop to repeat a line, so only entry 0 is ever
       // set here.
-      const key = keys.get(i + 1)?.[0];
-      return { text, kind: "verbatim" as const, ...(key === undefined ? {} : { key }) };
+      const k = keys.get(i + 1)?.[0] ?? [];
+      return {
+        text,
+        kind: "verbatim" as const,
+        ...(k.length === 0 ? {} : { key: k[k.length - 1] }),
+        ...(k.length > 1 ? { keys: k } : {}),
+      };
     }),
   };
 }
@@ -182,9 +187,15 @@ function renderLines(
 ): ArtifactLine[] {
   const conditions = jinjaConditions(templateText);
   const blocks = new Map(jinjaLoopBlocks(templateText).map((b) => [b.start, b]));
-  const keyOf = (line: number, member = 0): { key?: string } => {
+  // A line may BE several rows — `--query SecretString --output text` is two
+  // settings written on one line — so it names all of them. `key` stays the one
+  // a click on the line jumps to (the last, which is the one nearest what a
+  // reader sees there); `keys` is what lets every one of those rows find its
+  // place in the file, which is the direction the row's own button asks for.
+  const keyOf = (line: number, member = 0): { key?: string; keys?: string[] } => {
     const k = keys.get(line)?.[member];
-    return k === undefined ? {} : { key: k };
+    if (k === undefined || k.length === 0) return {};
+    return { key: k[k.length - 1], ...(k.length > 1 ? { keys: k } : {}) };
   };
   const out: ArtifactLine[] = [];
   // A `{% for %}` renders its body once per element, and the preview is the

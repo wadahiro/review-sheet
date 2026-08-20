@@ -727,7 +727,7 @@ export const ansibleRecipe: SheetRecipe = {
       // the file, and a line finds the row that reviews it.
       const keyAtLine = new Map<string, LineKeys>();
       const rowAtLine = (templatePath: string, line: number | undefined, key: string, member = 0): void => {
-        const perFile = keyAtLine.get(templatePath) ?? new Map<number, string[]>();
+        const perFile = keyAtLine.get(templatePath) ?? new Map<number, string[][]>();
         addLineKey(perFile, line, key, member);
         keyAtLine.set(templatePath, perFile);
       };
@@ -1532,7 +1532,7 @@ export const ansibleRecipe: SheetRecipe = {
       // `console.warn`, matching this recipe's other warnings.
       const warn = (m: string) => console.warn(m);
       for (const { spec, file, content } of read) {
-        const keys = keyAtLine.get(spec.path) ?? new Map<number, string[]>();
+        const keys = keyAtLine.get(spec.path) ?? new Map<number, string[][]>();
         artifacts.push(
           ...previewRendered(
             {
