@@ -536,3 +536,47 @@ describe("validateReview", () => {
     expect(() => validateReview(data)).toThrow();
   });
 });
+
+// A block's own row and a setting's row are not the same shape of thing.
+//
+// `origin: "embedded"` says the value is a literal in the source, and for a
+// SETTING that rules out per-environment instances: a literal is one string in
+// one file. A block's row says something else — it is the block, and a block
+// inside a `{% if %}` EXISTS in some environments and not others. Its instance
+// list is not "this value varies", it is "this block is there", which is the
+// only shape the model has for saying so.
+describe("a container row's instances", () => {
+  const sheet = (param: Record<string, unknown>) => ({
+    metadata: { title: "t" },
+    sheets: [
+      {
+        name: "s",
+        instances: ["staging", "production"],
+        categories: [{ name: "c", params: [param] }],
+      },
+    ],
+  });
+
+  it("is allowed on a block that only some environments render", () => {
+    const doc = sheet({
+      key: "IfModule[0]",
+      container: { name: "IfModule" },
+      origin: "embedded",
+      description: { en: "d" },
+      instances: [{ name: "staging", value: "mpm_event_module" }],
+    });
+    expect(validateInput(doc)).toBeDefined();
+  });
+
+  // Unchanged for everything else: a literal setting with per-environment
+  // values is still the contradiction the rule exists to catch.
+  it("stays an error on a row that is not a block", () => {
+    const doc = sheet({
+      key: "Listen",
+      origin: "embedded",
+      description: { en: "d" },
+      instances: [{ name: "staging", value: "8080" }],
+    });
+    expect(() => validateInput(doc)).toThrow(/embedded origin cannot have per-environment instances/);
+  });
+});
