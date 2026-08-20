@@ -146,3 +146,67 @@ describe("verifySources — line fallback after an unresolved structural path", 
     expect(out.checks[0].fallback).toBeUndefined();
   });
 });
+
+// A membership row: its value is presence and the site holds the member's own
+// text, so the text to confirm at the location is the member — `true` appears
+// in the file nowhere.
+describe("verify: a row whose value is membership of a list", () => {
+  const FILE = "services:\n  - ssh\n  - http\n";
+  const row = (member: string, line: number) => ({
+    metadata: { title: "t" },
+    sheets: [
+      {
+        name: "s",
+        categories: [
+          {
+            name: "c",
+            params: [
+              {
+                key: `firewalld.${member}`,
+                value: "true",
+                description: "d",
+                source: { file: "vars.yml", line, member, path: `services[${line - 2}]` },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  // The other locate path: a format with no structural addresses confirms the
+  // line by the text it expects to find on it, and `true` is on no line of the
+  // file — so the member has to be what is looked for.
+  it("confirms it by line and anchor too, where the format has no paths", () => {
+    const byLine = {
+      metadata: { title: "t" },
+      sheets: [
+        {
+          name: "s",
+          categories: [
+            {
+              name: "c",
+              params: [
+                { key: "firewalld.ssh", value: "true", description: "d", source: { file: "vars.yml", line: 2, anchor: "ssh", member: "ssh" } },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(verifySources(byLine as never, reader({ "vars.yml": FILE })).checks[0]).toMatchObject({ status: "ok" });
+  });
+
+  it("confirms the member at the location, not the row's value", () => {
+    const r = verifySources(row("ssh", 2) as never, reader({ "vars.yml": FILE }));
+    expect(r.checks[0]).toMatchObject({ status: "ok" });
+  });
+
+  // The row says ssh is permitted; the list no longer says so. That is the
+  // whole point of the check.
+  it("reports a member that is gone", () => {
+    const r = verifySources(row("telnet", 2) as never, reader({ "vars.yml": FILE }));
+    expect(r.checks[0].status).toBe("error");
+    expect(r.checks[0].message).toContain("no longer a member here");
+  });
+});

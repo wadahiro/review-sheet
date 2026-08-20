@@ -13,6 +13,7 @@ import {
   buildPromptText,
   HELD_REASON_GENERATED,
   HELD_REASON_SUBSTITUTED,
+  HELD_REASON_MEMBERSHIP,
   HELD_REASON_DEFAULT,
   HELD_REASON_BASELINE,
   HELD_REASON_SHARED_INSTANCE,
@@ -247,6 +248,13 @@ export function computeApply(
         // so it is always held for the AI-prompt/manual fallback instead.
         if (tgt.source?.generated) {
           results.push({ ...base, status: "held", reason: HELD_REASON_GENERATED });
+          anyHeld = true;
+          continue;
+        }
+        // See HELD_REASON_MEMBERSHIP: the row says a member is present, and the
+        // site holds the member — a change to it is an edit to the list.
+        if (tgt.source?.member !== undefined) {
+          results.push({ ...base, status: "held", reason: HELD_REASON_MEMBERSHIP });
           anyHeld = true;
           continue;
         }

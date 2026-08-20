@@ -62,6 +62,8 @@ import { makeKeySelector, type KeySelector } from "../keyglob.js";
 import {
   makeKeyTransformer,
   selectKeySource,
+  transformCovers,
+  PRESENCE_VALUE,
   keyTransformSchema,
   splitKeySteps,
   splitComponentSteps,
@@ -563,6 +565,10 @@ export function buildMapFromSources(
   for (const spec of specs) {
     const { file, content } = readRequired(io, spec.path, what);
     const transformer = spec.key ? makeKeyTransformer(spec.key) : undefined;
+    // A declared `at:` that covers nothing is a transform applying to nothing —
+    // reported rather than shrugged off, like every other declaration here that
+    // matches nothing.
+    let atMatched = false;
     const seenPathsInFile = new Map<string, string[]>();
     // Materialized before the loop: a nested member's key prefix comes from
     // another entry of the same file, so the whole file has to be in hand
@@ -571,8 +577,10 @@ export function buildMapFromSources(
     const prefixes = nestPrefixes(split, fileEntriesRaw);
     for (const e of fileEntriesRaw) {
       let key: string | undefined;
-      if (transformer) {
-        key = transformer.apply(selectKeySource(spec.key!.from, e.key, e.source.path));
+      const transformed = transformer !== undefined && transformCovers(spec.key!.at, e.key, e.source.path);
+      if (transformed) {
+        atMatched = atMatched || spec.key!.at !== undefined;
+        key = transformer!.apply(selectKeySource(spec.key!.from, e.key, e.source.path, e.value));
       } else {
         key = e.key;
       }
@@ -586,13 +594,29 @@ export function buildMapFromSources(
       }
       const componentId = componentIdOf(component, e.key, e.source.path);
       component?.note(e.key, e.source.path, key);
-      out.set(key, { value: e.value, source: { ...e.source, file }, ...(componentId ? { component: componentId } : {}) });
+      // A row keyed by its own value is a MEMBERSHIP row: `- ssh` in a list is
+      // how the file writes "ssh is permitted", so the row's value is presence
+      // and the site holds the member — see SourceLocation.member. Without
+      // this the key and the value are one string in two slots, and the value
+      // column says nothing.
+      const membership = transformed && spec.key?.from === "value";
+      out.set(key, {
+        value: membership ? PRESENCE_VALUE : e.value,
+        source: { ...e.source, file, ...(membership ? { member: e.value } : {}) },
+        ...(componentId ? { component: componentId } : {}),
+      });
     }
     const collisions: InFileCollision[] = [...seenPathsInFile]
       .filter(([, paths]) => new Set(paths).size > 1)
       .map(([key, paths]) => ({ key, locations: [...new Set(paths)] }));
     if (collisions.length > 0) {
       throw new Error(formatKeyCollisionError(what, file, collisions));
+    }
+    if (spec.key?.at !== undefined && !atMatched) {
+      throw new Error(
+        `${what}: ${file} declares "key: { at: ${spec.key.at} }", and no entry in the file sits under that address. ` +
+          `A transform applying to nothing renames nothing — check the path against the file, or drop the "at:".`
+      );
     }
     if (transformer) {
       const unmatched = transformer.unmatchedDropPatterns();
@@ -1000,7 +1024,10 @@ export const layeredRecipe: SheetRecipe = {
         );
       }
       const membersOnly = (spec as { members_only?: boolean }).members_only === true;
-      return { ...spec, key: { from: "path", steps: [...splitKeySteps(split, membersOnly), ...(spec.key?.steps ?? [])] } };
+      // The rest of the declaration is carried, not rebuilt around: `at:` says
+      // WHERE the transform applies and a rebuild that dropped it silently
+      // widened the transform to the whole file.
+      return { ...spec, key: { ...spec.key, from: "path", steps: [...splitKeySteps(split, membersOnly), ...(spec.key?.steps ?? [])] } };
     };
     // `defaultFrom` is the source's own untransformed key space, which differs
     // by source: defaults/overlays key by the extracted leaf name, a static
@@ -1012,7 +1039,7 @@ export const layeredRecipe: SheetRecipe = {
         const withSplitApplied = withSplit(spec);
         if (dataMapSteps.length === 0) return withSplitApplied;
         const key = withSplitApplied.key;
-        return { ...withSplitApplied, key: { from: key?.from ?? defaultFrom, steps: [...(key?.steps ?? []), ...dataMapSteps] } };
+        return { ...withSplitApplied, key: { ...key, from: key?.from ?? defaultFrom, steps: [...(key?.steps ?? []), ...dataMapSteps] } };
       };
 
     const defaultsSpecs = asSourceSpecs(sheetSpec.defaults).map(withKeyShape("key"));

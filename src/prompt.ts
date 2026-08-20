@@ -31,6 +31,9 @@ export type SourceLocation = {
   // apply.ts never treats the site as a write target. Meaningful only on an
   // `additional_sources` entry (see types.ts's `ParameterBase`).
   ref?: string;
+  // The text at this site whose PRESENCE is the row's value — see
+  // `SourceLocation.member` in types.ts.
+  member?: string;
   // The mirror of `ref`: this site holds a PART of the row's value, not a
   // reference to it — the variable's value substituted into a template's line
   // (see types.ts's SourceLocation.substituted and the ansible recipe's
@@ -152,6 +155,14 @@ export const HELD_REASON_GENERATED = "Cannot apply directly: source file is gene
 // the reviewer meant to change is exactly where a config edit turns into a
 // template edit — `CustomLog "…" proxied` can be changed in the variable or in
 // the template, and only a human can say which was meant.
+// A membership row: its value is presence and the site holds the member's own
+// text (SourceLocation.member). Held rather than written, because changing it
+// is not a scalar edit — "no longer permit ssh" removes an element from a list,
+// and writing `true` over `ssh` would corrupt the file. The structural change
+// belongs to the same machinery a deleted row already goes through.
+export const HELD_REASON_MEMBERSHIP =
+  "Cannot apply directly: this row's value is membership of a list — removing or adding a member is a structural edit, not a value one";
+
 export const HELD_REASON_SUBSTITUTED =
   "Cannot apply directly: the row is a rendered line and this source holds only the variable inside it";
 
