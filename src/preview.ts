@@ -21,7 +21,7 @@
 // nothing to look up, so a registry here would only be a detour back to the
 // one caller that already had the answer.
 
-import { jinjaConditions, jinjaLoops, substituteJinja, truthyJinja, type LineCondition } from "./jinja2.js";
+import { jinjaConditions, jinjaLoopBlocks, substituteJinja, truthyJinja, type LineCondition } from "./jinja2.js";
 import type { ArtifactLine, ArtifactPreview } from "./types.js";
 
 // Above this a file is not previewed. The limit is a RULE rather than a list of
@@ -168,13 +168,13 @@ function renderLines(
   listMembers: ((list: string, instance: string | undefined) => LoopMemberView[]) | undefined
 ): ArtifactLine[] {
   const conditions = jinjaConditions(templateText);
-  const loops = jinjaLoops(templateText);
+  const blocks = new Map(jinjaLoopBlocks(templateText).map((b) => [b.start, b]));
   const keyOf = (line: number): { key?: string } => {
     const k = keys.get(line);
     return k === undefined ? {} : { key: k };
   };
   const out: ArtifactLine[] = [];
-  // A `{% for %}` renders its line once per element, and the preview is the
+  // A `{% for %}` renders its body once per element, and the preview is the
   // deployed FILE — three NTP sources are three `server` lines there. Rendering
   // it once left `server {{ s }} iburst` on screen: the loop variable resolves
   // from no vars file, so the preview showed the template where it promises the
@@ -197,47 +197,89 @@ function renderLines(
     const field = nm.slice(variable.length + 1);
     return m.fields?.get(field) ?? (m.identifier?.field === field ? m.identifier.value : undefined);
   };
-  templateText.split("\n").forEach((line, i) => {
-    // The `{% ... %}` tag line itself produces no output line.
-    if (/\{%/.test(line)) return;
-    const loop = loops.get(i + 1);
-    if (loop !== undefined && loop.supported) {
-      const members = membersOf(loop.list);
-      if (members.length === 0) {
-        out.push({ text: line, kind: "unrendered", cause: "engine", reason: `${loop.list} has no elements this sheet reads`, ...keyOf(i + 1) });
+  // Does the `{% if %}` around a line hold — or is the answer not knowable
+  // here? THREE states, not two.
+  //
+  // "Not knowable" used to be spelled false, and `absent` is a positive claim
+  // that the deployed file does NOT contain the line. For a name this sheet
+  // cannot read, the tool holds no evidence for that claim: the deployment
+  // leaving a variable unset and the SHEET never being pointed at the file that
+  // sets it are indistinguishable here, and only the first of them makes the
+  // line absent. Measured, on a real template: `{% if secret_list %}` around a
+  // block whose `{% for secret_list %}` body the sheet was rendering perfectly
+  // — the list has no scalar value, so six lines the deployed file has, one of
+  // them the directory's permissions, were struck through as absent while the
+  // loop inside them rendered. The preview asserted the block was both taken
+  // and not taken.
+  //
+  // What this costs in noise, measured rather than argued: on a real project
+  // it turned 0 lines from `absent` into `unrendered`, because the ROW side
+  // already reported a condition variable a sheet does not read ("add it to
+  // include:") — the preview was the one surface still silent about it. A sheet
+  // that legitimately tests a variable defined nowhere would now be told so on
+  // every build; if that ever becomes noise, the answer is a declaration in the
+  // spec that the build can check, not a guess here.
+  //
+  // A name with readable ELEMENTS is a non-empty list and therefore true —
+  // Jinja agrees, and refusing the enumeration here while printing rendered
+  // lines from it two lines down is that same contradiction. Zero elements
+  // stays unknown: "genuinely empty" and "this sheet reads no elements of it"
+  // are the same two cases again.
+  const condState = (cond: Extract<LineCondition, { supported: true }>): "holds" | "fails" | "unknown" => {
+    for (const t of cond.tests) {
+      const scalar = resolve(instance, t.variable);
+      const truth = scalar !== undefined ? truthyJinja(scalar) : membersOf(t.variable).length > 0 ? true : undefined;
+      if (truth === undefined) return "unknown";
+      if (truth === t.negated) return "fails";
+    }
+    return "holds";
+  };
+  const unreadable = (cond: Extract<LineCondition, { supported: true }>): string =>
+    cond.tests
+      .filter((t) => resolve(instance, t.variable) === undefined && membersOf(t.variable).length === 0)
+      .map((t) => t.variable)
+      .join(", ");
+
+  const lines = templateText.split("\n");
+  // One template line, outside any loop body — or inside one, with the loop
+  // variable already bound by the caller.
+  const renderOne = (i: number, bind: ((nm: string) => string | undefined) | undefined, withKey: boolean): void => {
+    const line = lines[i];
+    const key = withKey ? keyOf(i + 1) : {};
+    const cond = bind === undefined ? conditions.get(i + 1) : undefined;
+    if (cond !== undefined && !cond.supported) {
+      out.push({ text: line, kind: "unrendered", reason: cond.expr, ...key });
+      return;
+    }
+    if (cond !== undefined) {
+      const state = condState(cond);
+      if (state === "unknown") {
+        out.push({
+          text: line,
+          kind: "unrendered",
+          cause: "engine",
+          reason: `${unreadable(cond)} — this sheet reads no value for it, so whether this line is in the file is not known here`,
+          ...key,
+        });
         return;
       }
-      members.forEach((m, n) => {
-        const { text, unresolved } = substituteJinja(line, (nm) => inMember(m, nm, loop.variable));
-        out.push(
-          unresolved.length === 0
-            ? { text, kind: "substituted", ...(n === 0 ? keyOf(i + 1) : {}) }
-            : { text: line, kind: "unrendered", cause: "engine", reason: unresolved.join(", "), ...(n === 0 ? keyOf(i + 1) : {}) }
-        );
-      });
-      return;
-    }
-    const cond = conditions.get(i + 1);
-    if (cond !== undefined && !cond.supported) {
-      out.push({ text: line, kind: "unrendered", reason: cond.expr, ...keyOf(i + 1) });
-      return;
-    }
-    if (cond !== undefined && !holds(cond, instance, resolve)) {
-      out.push({
-        text: line,
-        kind: "absent",
-        reason: cond.tests.map((t) => (t.negated ? `not ${t.variable}` : t.variable)).join(" and "),
-        ...keyOf(i + 1),
-      });
-      return;
+      if (state === "fails") {
+        out.push({
+          text: line,
+          kind: "absent",
+          reason: cond.tests.map((t) => (t.negated ? `not ${t.variable}` : t.variable)).join(" and "),
+          ...key,
+        });
+        return;
+      }
     }
     if (!line.includes("{{")) {
-      out.push({ text: line, kind: "verbatim", ...keyOf(i + 1) });
+      out.push({ text: line, kind: "verbatim", ...key });
       return;
     }
-    const { text: rendered, unresolved } = substituteJinja(line, (n) => resolve(instance, n));
+    const { text: rendered, unresolved } = substituteJinja(line, bind ?? ((n) => resolve(instance, n)));
     if (unresolved.length === 0) {
-      out.push({ text: rendered, kind: "substituted", ...keyOf(i + 1) });
+      out.push({ text: rendered, kind: "substituted", ...key });
       return;
     }
     // `{{ name }}` -> name, for deciding which of the two causes this is.
@@ -248,9 +290,44 @@ function renderLines(
       kind: "unrendered",
       cause: deployTime ? "deploy-time" : "engine",
       reason: unresolved.join(", "),
-      ...keyOf(i + 1),
+      ...key,
     });
-  });
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const block = blocks.get(i + 1);
+    if (block !== undefined) {
+      const body: number[] = [];
+      for (let j = i + 1; j < block.end - 1; j++) body.push(j);
+      const members = membersOf(block.list);
+      if (members.length === 0) {
+        // Not "the list is empty": this sheet reads no elements of it, and an
+        // empty list would render nothing at all rather than these lines.
+        for (const j of body) {
+          out.push({
+            text: lines[j],
+            kind: "unrendered",
+            cause: "engine",
+            reason: `${block.list} has no elements this sheet reads`,
+            ...keyOf(j + 1),
+          });
+        }
+      } else {
+        // Element one's whole body, then element two's — the order Jinja
+        // writes and therefore the order the deployed file has. Only the first
+        // pass carries the row keys: a template line is ONE row per element
+        // and the key belongs to the line, not to every copy of it.
+        members.forEach((m, n) => {
+          for (const j of body) renderOne(j, (nm) => inMember(m, nm, block.variable), n === 0);
+        });
+      }
+      i = block.end - 1;
+      continue;
+    }
+    // The `{% ... %}` tag line itself produces no output line.
+    if (/\{%/.test(lines[i])) continue;
+    renderOne(i, undefined, true);
+  }
   return out;
 }
 

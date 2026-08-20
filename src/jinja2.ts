@@ -47,51 +47,214 @@ const PURE_FILTERS: Record<string, (s: string) => string> = {
   trim: (s) => s.trim(),
 };
 
-// A quoted STRING LITERAL as the whole expression: `{{ 'text' }}`. Jinja emits
-// the string, so rendering it is exact rather than a guess — the same standard
-// the pure filters meet. Anchored on the quotes, not on the braces, because the
-// literal a template most often writes is a doubled brace it wants to show
-// LITERALLY (`{{ '{{ var }}' }}` in a comment explaining the templating), and a
-// brace-anchored pattern stops at the inner `}}`.
-const STRING_LITERAL = /\{\{-?\s*'((?:[^'\\]|\\.)*)'\s*-?\}\}|\{\{-?\s*"((?:[^"\\]|\\.)*)"\s*-?\}\}/g;
+// ---------------------------------------------------------------------------
+// The expression a `{{ … }}` may hold.
+//
+// Still deliberately NOT Jinja2. What is understood is a NAMED grammar, and
+// everything outside it is left as written and reported:
+//
+//   expr     := concat ( 'if' cond 'else' concat )?     Jinja's conditional
+//   cond     := 'not'? name                             truthiness, one name
+//   concat   := filtered ( '~' filtered )*              string concatenation
+//   filtered := ( name | string ) ( '|' purefilter )*
+//
+// It grew from one line no evaluator could touch — `{{ '--endpoint-url ' ~ url
+// if url else '' }}`, which is the whole local/AWS difference of a secrets
+// fetch — where the alternative was a preview showing the template where it
+// promises the deployed file.
+//
+// The rule that makes it safe: a name this sheet cannot resolve fails the WHOLE
+// expression, including one in a branch that is not taken. Jinja treats an
+// undefined name as falsy, and adopting that would render "the sheet was never
+// pointed at this variable" identically to "the variable is unset" — a
+// mis-wired sheet looking exactly like a correct one. `truthyJinja` is the same
+// function `{% if %}` uses, so a template's two ways of asking the same
+// question cannot disagree here.
+
+type Tok = { kind: "name" | "str" | "op"; text: string };
+
+function lex(src: string): Tok[] | undefined {
+  const out: Tok[] = [];
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (/\s/.test(c)) {
+      i++;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      let j = i + 1;
+      let v = "";
+      while (j < src.length && src[j] !== c) {
+        if (src[j] === "\\" && j + 1 < src.length) {
+          v += src[j + 1];
+          j += 2;
+          continue;
+        }
+        v += src[j];
+        j++;
+      }
+      if (j >= src.length) return undefined; // unterminated
+      out.push({ kind: "str", text: v });
+      i = j + 1;
+      continue;
+    }
+    if (c === "~" || c === "|") {
+      out.push({ kind: "op", text: c });
+      i++;
+      continue;
+    }
+    const name = /^[A-Za-z_][\w.]*/.exec(src.slice(i));
+    if (!name) return undefined;
+    out.push({ kind: "name", text: name[0] });
+    i += name[0].length;
+  }
+  return out;
+}
+
+// undefined = "not in the grammar, or a name that does not resolve" — one
+// answer for both, because they mean the same thing to a caller: this line was
+// not computed, and is reported as written.
+function evalExpr(src: string, lookup: (name: string) => string | undefined): string | undefined {
+  const toks = lex(src);
+  if (toks === undefined || toks.length === 0) return undefined;
+  let at = 0;
+  const peek = (): Tok | undefined => toks[at];
+  const isWord = (w: string): boolean => peek()?.kind === "name" && peek()!.text === w;
+
+  const filtered = (): string | undefined => {
+    const t = toks[at++];
+    if (t === undefined) return undefined;
+    let v: string | undefined;
+    if (t.kind === "str") v = t.text;
+    else if (t.kind === "name") {
+      // A keyword is never a value. A variable actually named `if` could not be
+      // told apart from the operator, and the operator is what a template means
+      // every time.
+      if (t.text === "if" || t.text === "else" || t.text === "not") return undefined;
+      v = lookup(t.text);
+    } else return undefined;
+    if (v === undefined) return undefined;
+    while (peek()?.kind === "op" && peek()!.text === "|") {
+      at++;
+      const f = toks[at++];
+      if (f?.kind !== "name" || PURE_FILTERS[f.text] === undefined) return undefined;
+      v = PURE_FILTERS[f.text](v);
+    }
+    return v;
+  };
+  const concat = (): string | undefined => {
+    let v = filtered();
+    if (v === undefined) return undefined;
+    while (peek()?.kind === "op" && peek()!.text === "~") {
+      at++;
+      const rhs = filtered();
+      if (rhs === undefined) return undefined;
+      v += rhs;
+    }
+    return v;
+  };
+
+  const first = concat();
+  if (first === undefined) return undefined;
+  if (at === toks.length) return first;
+  if (!isWord("if")) return undefined;
+  at++;
+  let negated = false;
+  if (isWord("not")) {
+    negated = true;
+    at++;
+  }
+  const nameTok = toks[at++];
+  if (nameTok?.kind !== "name") return undefined;
+  // Read BEFORE a branch is chosen: an unreadable name is a fact about this
+  // sheet, not about the template, and must not decide anything.
+  const condValue = lookup(nameTok.text);
+  if (condValue === undefined) return undefined;
+  if (!isWord("else")) return undefined;
+  at++;
+  const other = concat();
+  if (other === undefined || at !== toks.length) return undefined;
+  return truthyJinja(condValue) !== negated ? first : other;
+}
+
+// Every `{{ … }}` region of a text, as offsets. Scanned rather than matched,
+// because a quoted string may contain `}}`: the literal a template most often
+// writes is a doubled brace it wants shown LITERALLY (`{{ '{{ var }}' }}` in a
+// comment explaining the templating), and a non-greedy regex stops inside it.
+function expressionSpans(text: string): { start: number; end: number; inner: string }[] {
+  const out: { start: number; end: number; inner: string }[] = [];
+  let i = 0;
+  while (i < text.length - 1) {
+    if (text[i] !== "{" || text[i + 1] !== "{") {
+      i++;
+      continue;
+    }
+    let j = i + 2;
+    let quote: string | undefined;
+    let closed = -1;
+    while (j < text.length) {
+      const c = text[j];
+      if (quote !== undefined) {
+        if (c === "\\") {
+          j += 2;
+          continue;
+        }
+        if (c === quote) quote = undefined;
+        j++;
+        continue;
+      }
+      if (c === "'" || c === '"') {
+        quote = c;
+        j++;
+        continue;
+      }
+      if (c === "}" && text[j + 1] === "}") {
+        closed = j + 2;
+        break;
+      }
+      j++;
+    }
+    if (closed === -1) {
+      i += 2;
+      continue;
+    }
+    out.push({ start: i, end: closed, inner: text.slice(i + 2, closed - 2).replace(/^-|-$/g, "") });
+    i = closed;
+  }
+  return out;
+}
 
 export function substituteJinja(
   text: string,
   lookup: (name: string) => string | undefined
 ): { text: string; unresolved: string[] } {
   const unresolved: string[] = [];
-  // Literals are held as placeholders until the very end. Their OUTPUT can
-  // contain braces — that is the whole point of writing one — and the sweep
-  // below would then report the braces this function legitimately produced,
-  // bouncing a line that rendered perfectly into "could not compute".
-  const literals: string[] = [];
-  const withLiterals = text.replace(STRING_LITERAL, (_m, single: string | undefined, double: string | undefined) => {
-    literals.push(single ?? double ?? "");
-    return `\u0000RsJlit${literals.length - 1}\u0000`;
-  });
-  const restoreLiterals = (v: string): string =>
-    literals.length === 0 ? v : v.replace(/\u0000RsJlit(\d+)\u0000/g, (_m, i: string) => literals[Number(i)]);
-  const out = withLiterals.replace(/\{\{-?\s*([A-Za-z_][\w.]*)((?:\s*\|\s*[a-z_]+)*)\s*-?\}\}/g, (whole, name: string, filters: string) => {
-    const value = lookup(name);
+  // Every rendered value is held as a placeholder until the very end. Its
+  // OUTPUT can contain braces — that is the whole point of a template writing
+  // one — and a later sweep would then report the very braces this function
+  // legitimately produced, bouncing a line that rendered perfectly into "could
+  // not compute".
+  const outputs: string[] = [];
+  let out = "";
+  let at = 0;
+  for (const span of expressionSpans(text)) {
+    out += text.slice(at, span.start);
+    const whole = text.slice(span.start, span.end);
+    const value = evalExpr(span.inner, lookup);
     if (value === undefined) {
       unresolved.push(whole);
-      return whole;
+      out += whole;
+    } else {
+      outputs.push(value);
+      out += `\u0000RsJout${outputs.length - 1}\u0000`;
     }
-    let s = value;
-    for (const f of filters.split("|").map((x) => x.trim()).filter(Boolean)) {
-      const fn = PURE_FILTERS[f];
-      if (!fn) {
-        unresolved.push(whole);
-        return whole;
-      }
-      s = fn(s);
-    }
-    return s;
-  });
-  // Anything still in braces was never even a plain variable reference — an
-  // expression, a concatenation, a conditional. Reported the same way.
-  for (const m of out.match(/\{\{[\s\S]*?\}\}/g) ?? []) if (!unresolved.includes(m)) unresolved.push(m);
-  return { text: restoreLiterals(out), unresolved: unresolved.map(restoreLiterals) };
+    at = span.end;
+  }
+  out += text.slice(at);
+  const restore = (v: string): string =>
+    outputs.length === 0 ? v : v.replace(/\u0000RsJout(\d+)\u0000/g, (_m, i: string) => outputs[Number(i)]);
+  return { text: restore(out), unresolved };
 }
 
 // Mask Jinja2 syntax so a brace-structured base format (nginx/httpd/haproxy) does
@@ -175,6 +338,53 @@ export type LineLoop =
   | { supported: false; expr: string };
 
 const PLAIN_FOR = /^\{%-?\s*for\s+([A-Za-z_][\w]*)\s+in\s+([A-Za-z_][\w]*)\s*-?%\}$/;
+
+// A `{% for %}` block as a RANGE — the tag line, its `{% endfor %}`, and what
+// it repeats over. `jinjaLoops` above answers "which loop is this line inside",
+// which is enough to decide a line's fate one line at a time; this answers
+// "where does the body start and stop", which is what rendering it needs.
+//
+// The difference is visible in the output: a body of several lines is repeated
+// AS A BLOCK by Jinja — element one's whole block, then element two's — and a
+// renderer that only knew the per-line answer emitted every copy of line 1,
+// then every copy of line 2. A one-line body (the case this started with) hides
+// that completely.
+//
+// Only blocks whose own tag is the plain shape are returned, and a block
+// containing another `{% for %}` is not: `jinjaLoops` already refuses a nested
+// loop, and the two must agree about what is supported.
+export type LoopBlock = { start: number; end: number; variable: string; list: string };
+
+export function jinjaLoopBlocks(content: string): LoopBlock[] {
+  const lines = content.split("\n");
+  const out: LoopBlock[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = PLAIN_FOR.exec(lines[i].trim());
+    if (!m) continue;
+    let depth = 1;
+    let nested = false;
+    let end = -1;
+    for (let j = i + 1; j < lines.length; j++) {
+      const tag = lines[j].trim();
+      if (/\{%-?\s*for\b/.test(tag)) {
+        depth++;
+        nested = true;
+        continue;
+      }
+      if (/\{%-?\s*endfor\b/.test(tag)) {
+        depth--;
+        if (depth === 0) {
+          end = j + 1;
+          break;
+        }
+      }
+    }
+    if (end === -1 || nested) continue;
+    out.push({ start: i + 1, end, variable: m[1], list: m[2] });
+    i = end - 1;
+  }
+  return out;
+}
 
 export function jinjaLoops(content: string): Map<number, LineLoop> {
   const lines = content.split("\n");
