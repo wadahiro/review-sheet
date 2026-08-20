@@ -273,6 +273,31 @@ sheets:
 // to a recipe schema alone would have rejected every ordinary sheet. See
 // src/spec.ts's COMMON_SHEET_FIELDS / recipe.schema's additionalProperties,
 // and each of src/recipes/{layered,ansible,snapshot}.ts.
+// A template with no `{{ … }}` in it — a fixed-value logrotate policy, a cron
+// file — used to have to name a vars file it has no use for, because the ansible
+// recipe required `defaults`. Naming one is not free: the part is then
+// answerable for every variable in that file, so a required field manufactured
+// an obligation the part did not have.
+describe("loadBuildSpec: an ansible sheet needs no defaults", () => {
+  it("accepts a templates-only sheet", () => {
+    const map = files({
+      [SPEC_PATH]: `
+version: 1
+instances: [prod]
+sheets:
+  - name: s
+    recipe: ansible
+    rows: artifact
+    templates:
+      - path: policy.j2
+        component: /etc/logrotate.d/app
+        deployed_path: /etc/logrotate.d/app
+`,
+    });
+    expect(() => loadBuildSpec(SPEC_PATH, { readFile: readFileFrom(map) })).not.toThrow();
+  });
+});
+
 describe("loadBuildSpec: unknown-field rejection (P0)", () => {
   function layeredSpecYaml(extra: string): string {
     return `

@@ -117,7 +117,13 @@ import { layeredRecipe, sourceOrListSchema, splitSchema } from "./layered.js";
 
 const schema = {
   type: "object",
-  required: ["defaults"],
+  // Nothing is required. `defaults` was, and a template with no `{{ … }}` in it
+  // — a fixed-value logrotate policy, a cron file — then had to name a vars
+  // file it has no use for. Naming one is not free: a part is answerable for
+  // the whole file it is given (see the rescue below), so the obligation was
+  // manufactured by a field the part did not need. Omitted, the part reviews
+  // its templates and nothing else.
+  required: [],
   properties: {
     // `defaults`/`overlays` take layered.ts's SHARED shapes, not copies of
     // them: `load` below hands both straight to `layeredRecipe.load`, which
@@ -1369,11 +1375,36 @@ export const ansibleRecipe: SheetRecipe = {
       // template position for a rescued row to slot into, so it is appended
       // after every template-derived row, in `defaults`'s own declaration
       // order, under its own name (see module doc).
+      // Which names the templates MENTION at all — not which resolved into a
+      // row, which is what `bound` answers. A variable no template of this part
+      // names is one of two things the tool cannot tell apart: it belongs to
+      // another sheet, or a template that uses it was left out of `templates:`.
+      // Both are the author's to answer, so both are reported.
+      const mentioned = new Set<string>();
+      for (const { content } of read) for (const v of jinjaVariables(content)) mentioned.add(v.split(".")[0]);
+      const unmentioned: string[] = [];
       for (const [variable, def] of defaultsMap) {
         if (bound.has(variable)) continue;
         if (overlayLayers.some((ov) => ov.entries.has(variable))) continue;
         if (rowsArtifact && consumedVars.has(variable)) continue;
+        if (rowsArtifact && !mentioned.has(variable.split("[")[0].split(".")[0])) unmentioned.push(variable);
         bound.set(variable, def);
+      }
+      // Only when the sheet declared no filter. A variable admitted by an
+      // `include:` is one the author asked for BY NAME (or by a glob they
+      // wrote), and a sheet reviewing something no file carries — an SELinux
+      // state a command applies, a firewall opening — is exactly what that
+      // declaration is for. Warning there would be telling an author their own
+      // decision is a mistake.
+      const filtered = ["include", "exclude"].some((f) => Array.isArray(sheetSpec[f]) && (sheetSpec[f] as JsonValue[]).length > 0);
+      if (unmentioned.length > 0 && !filtered) {
+        console.warn(
+          `ansible recipe: sheet "${name}": ${unmentioned.length} variable(s) of the defaults are named by no ` +
+            `template here, and become rows of their own: ${unmentioned.slice(0, 6).join(", ")}` +
+            `${unmentioned.length > 6 ? ", …" : ""} — a part is answerable for the whole file it is given. If they ` +
+            `belong to another sheet, narrow this one with include:/exclude:; if a template that uses them is ` +
+            `missing from templates:, that is the bug this is reporting.`
+        );
       }
       baseMap = bound;
 

@@ -215,9 +215,13 @@ describe("an artifact preview enforces the size gate", () => {
       console.warn = spy;
     }
     expect(result.artifacts ?? []).toEqual([]);
-    expect(warnings.length).toBe(1);
-    expect(warnings[0]).toContain("logrotate-app.j2");
-    expect(warnings[0]).toContain(`${Math.round(MAX_PREVIEW_BYTES / 1024)} KB`);
+    // The size gate's own warning, named rather than counted: replacing the
+    // template with padding makes it mention no variable, which this recipe
+    // separately (and correctly) reports about the defaults it was given.
+    const gate = warnings.find((w) => w.includes("KB"));
+    expect(gate).toBeDefined();
+    expect(gate).toContain("logrotate-app.j2");
+    expect(gate).toContain(`${Math.round(MAX_PREVIEW_BYTES / 1024)} KB`);
   });
 });
 
