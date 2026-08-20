@@ -400,6 +400,11 @@ function enrichParam(
     }
     if (resolved.default !== undefined && param.default === undefined) {
       param.default = resolved.default;
+      // And where it was read, when the dictionary says. A default taken from a
+      // distribution's shipped file answers a different question than one the
+      // product documents, and the two arrive in the same cell — so the answer
+      // travels with the value rather than sitting in a header nobody reads.
+      if (resolved.default_from !== undefined) param.default_from = resolved.default_from;
       wrote = true;
     }
     if (resolved.remarks !== undefined && param.remarks === undefined) {

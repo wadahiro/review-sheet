@@ -1727,10 +1727,19 @@ const WITH_BASELINE = {
                 // The vendor shipped this and this deliverable does not have it.
                 { key: "KeepAlive", value: "", baseline: "Off", origin: "baseline" as const, description: "Keep-alive" },
                 // Vendor shipped 60; the product documents 300. The host has 60.
-                { key: "Timeout", value: "60", baseline: "60", default: "300", description: "Timeout" },
+                // `default_from` is set as well: the shipped value wins in the
+                // cell, so the annotation must NOT follow the default up.
+                { key: "Timeout", value: "60", baseline: "60", default: "300", default_from: "/etc/httpd/conf/httpd.conf", description: "Timeout" },
                 // We added it; the vendor's file says nothing, so the documented
                 // default is the only answer to "what without our line".
                 { key: "AddedByUs", value: "120", default: "300", description: "Added" },
+                // A default the dictionary read out of a file the distribution
+                // ships, not out of the product's documentation.
+                { key: "Rotate", value: "7", default: "4", default_from: "/etc/logrotate.conf", description: "Log files are rotated count times. Default is 0." },
+                // A presence row whose default is also presence: the word
+                // REPLACES the stored value, so there is nothing left to
+                // annotate beside it.
+                { key: "RtcSync", value: "true", default: "true", presence: true as const, description: "Sync the RTC" },
                 // Removed by us. The vendor had None.
                 { key: "Removed", value: "", baseline: "None", default: "FollowSymlinks", origin: "baseline" as const, description: "Removed" },
               ],
@@ -1778,6 +1787,40 @@ describe("viewer: the as-installed column", () => {
   it("falls back to the documented default where the vendor's file says nothing", async () => {
     const host = mountBaseline();
     expect(cellText(host, "AddedByUs", "rs-col-default")).toBe("300");
+  });
+
+  // logrotate's man page says `rotate` defaults to 0 and the shipped
+  // logrotate.conf sets 4 — both true one layer apart. A cell reading `4`
+  // beside a description reading "Default is 0" reads as broken until it says
+  // which document the 4 came from.
+  it("names the file a default was read from, when it was not the product's own documentation", async () => {
+    const host = mountBaseline();
+    const rows = [...host.querySelectorAll("tbody tr")];
+    const row = rows.find((r) => r.querySelector(".rs-col-key code")?.textContent === "Rotate")!;
+    const cell = row.querySelector("td.rs-col-default")!;
+    expect(cell.querySelector(".rs-option-label")?.textContent).toBe("/etc/logrotate.conf");
+    expect(cell.textContent).toContain("4");
+  });
+
+  // The word IS the value on a presence row — `display` already replaced it —
+  // so a label beside it repeats itself: "あり (あり)".
+  it("does not repeat the presence word as a label beside itself", async () => {
+    const host = mountBaseline();
+    const rows = [...host.querySelectorAll("tbody tr")];
+    const row = rows.find((r) => r.querySelector(".rs-col-key code")?.textContent === "RtcSync")!;
+    const cell = row.querySelector("td.rs-col-default")!;
+    expect((cell.textContent ?? "").trim()).toBe("あり");
+    expect(cell.querySelector(".rs-option-label")).toBeNull();
+  });
+
+  // The shipped value wins in this cell, and it is a different fact with a
+  // different source: annotating it with the defaults file would name the
+  // wrong document for the number on screen.
+  it("does not name that file on a row where the shipped value is what is shown", async () => {
+    const host = mountBaseline();
+    const rows = [...host.querySelectorAll("tbody tr")];
+    const row = rows.find((r) => r.querySelector(".rs-col-key code")?.textContent === "Timeout")!;
+    expect(row.querySelector("td.rs-col-default .rs-option-label")).toBeNull();
   });
 
   it("shows what the vendor had on a row we disabled, and claims nothing about what applies instead", async () => {

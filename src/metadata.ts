@@ -148,6 +148,11 @@ export type MetadataResult = {
   // setting, and interleaving two providers' lists would produce a set of
   // choices neither of them describes.
   options?: ParamOption[];
+  // WHERE this default was read, when a distribution's shipped file supplied
+  // it rather than the product's own documentation — see
+  // DictionaryDoc.defaults_from. Travels with the default so a reader meets the
+  // two together; a header cannot reach the person reading one row.
+  default_from?: string;
   // The product's own word for "it is there", when this setting is recorded by
   // presence — see DictionaryParam.presence. Carried as the WORD alone: whether
   // a row IS presence is decided at extraction (a fact about the format), and a
@@ -225,6 +230,8 @@ export type ResolvedMetadata = {
   type?: string;
   scope?: string;
   options?: ParamOption[];
+  // Where a default came from — see MetadataEntry.default_from.
+  default_from?: string;
   // The product's word for presence — see MetadataEntry.presence_label.
   presence_label?: LangText;
   secret?: boolean;
@@ -236,7 +243,7 @@ export type ResolvedMetadata = {
 // Fields merged whole, field-level first-wins: the first (highest-priority)
 // provider to supply a defined value for the field claims it outright, same
 // as before this module gained per-language merging.
-const PLAIN_MERGE_FIELDS = ["default", "docs_url", "type", "scope", "options", "presence_label", "secret", "out_of_scope"] as const;
+const PLAIN_MERGE_FIELDS = ["default", "default_from", "docs_url", "type", "scope", "options", "presence_label", "secret", "out_of_scope"] as const;
 
 // LangText fields merged per language KEY rather than as a whole (see below)
 // — the reason this module exists: a project's own metadata file may now

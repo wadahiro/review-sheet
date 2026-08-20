@@ -133,6 +133,11 @@ export type Binding = {
   // re-loading or re-searching the document itself — bindKey() already had
   // it in hand while resolving.
   docProvenance?: LangProvenance;
+  // Where the binding document's defaults were read, when a distribution's
+  // shipped file supplied them — see DictionaryDoc.defaults_from. Carried on
+  // the binding for the same reason `docProvenance` is: it is a fact about the
+  // document a row bound to, and the row is where it has to be readable.
+  defaultsFrom?: string;
 };
 
 export type BindMatch = { product: string; version: string; dictKey: string };
@@ -470,6 +475,7 @@ export function bindKey(key: string, dictKey: ProjectDictKey, sources: readonly 
         entry: source.doc.parameters[dictKeyHit],
         method,
         docProvenance: source.doc.provenance,
+        defaultsFrom: source.doc.defaults_from,
       };
     }
     return ambiguousError(key, method, unique);

@@ -463,6 +463,10 @@ export type ParameterBase = {
   // dictionary — see DictionaryParam.presence. Display only: what the row IS
   // was settled at extraction.
   presence_label?: LangText;
+  // Where this row's `default` was read, when a distribution's shipped file
+  // supplied it rather than the product's documentation — see
+  // DictionaryDoc.defaults_from. Display only.
+  default_from?: string;
   // The grouping a file heading displaced (`layout: file+categories`): the
   // dictionary's own group path for this row, carried so the viewer can
   // sub-head a long flat file by it. DISPLAY ONLY — the row's identity stays

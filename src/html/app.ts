@@ -2088,7 +2088,35 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     // answers it wrongly.
     cell: (param) => {
       const shown = param.baseline ?? param.default ?? "-";
-      return { kind: "review", value: shown, target: baseTarget(param), field: "default", className: "rs-col-default", isCode: true, copyable: false, display: presenceDisplay(param, shown, t), valueLabel: presenceDisplay(param, shown, t) === undefined ? optionLabel(param, shown, t) : undefined };
+      // Where the default was READ, when it is a distribution's shipped file
+      // rather than the product's own documentation. Beside the value, because
+      // the description on the same row quotes the product — logrotate's says
+      // "Default is 0" while the shipped logrotate.conf makes it 4, and both
+      // are true one layer apart. Without the source the row reads as broken.
+      // Only when the DEFAULT is what the cell shows. `baseline` wins over it
+      // above, and it is a different fact (what the distribution shipped in
+      // this file) with a different source — annotating it with the defaults
+      // file would name the wrong document.
+      const from = param.baseline === undefined ? param.default_from : undefined;
+      return {
+        kind: "review",
+        value: shown,
+        target: baseTarget(param),
+        field: "default",
+        className: "rs-col-default",
+        isCode: true,
+        copyable: false,
+        display: presenceDisplay(param, shown, t),
+        // A presence row takes no label at all: `display` above has already
+        // put the word in place of the stored value, and a label beside it
+        // would repeat it ("あり (あり)").
+        valueLabel:
+          presenceDisplay(param, shown, t) !== undefined
+            ? undefined
+            : from !== undefined && shown !== "-"
+              ? from
+              : optionLabel(param, shown, t),
+      };
     },
   });
 
