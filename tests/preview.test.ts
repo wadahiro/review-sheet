@@ -47,14 +47,25 @@ describe("addLineKey", () => {
   it("attaches a key at its 1-based line", () => {
     const keys: LineKeys = new Map();
     addLineKey(keys, 3, "some.key");
-    expect(keys.get(3)).toBe("some.key");
+    expect(keys.get(3)).toEqual(["some.key"]);
   });
 
   it("is last-wins on a collision", () => {
     const keys: LineKeys = new Map();
     addLineKey(keys, 3, "first");
     addLineKey(keys, 3, "second");
-    expect(keys.get(3)).toBe("second");
+    expect(keys.get(3)).toEqual(["second"]);
+  });
+
+  // A `{% for %}` writes its body once per element, and each copy is its own
+  // row wanting its own line. Keyed by line alone, the copies collided: the
+  // last member's key was kept and hung on the FIRST copy, so one row linked to
+  // another row's line and the rest had no line at all.
+  it("keeps one key per element of a loop, in element order", () => {
+    const keys: LineKeys = new Map();
+    addLineKey(keys, 3, "--region[1]", 0);
+    addLineKey(keys, 3, "--region[2]", 1);
+    expect(keys.get(3)).toEqual(["--region[1]", "--region[2]"]);
   });
 });
 

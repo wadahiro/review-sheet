@@ -34,16 +34,27 @@ export const MAX_PREVIEW_BYTES = 128 * 1024;
 // walks, or the committed file `previewFile` reads) -> the row's FINAL sheet
 // key. Built by the caller, who alone knows which line became which row —
 // this module never invents a key, only attaches the ones it is handed.
-export type LineKeys = Map<number, string>;
+// One template line can become SEVERAL lines of the deployed file — a
+// `{% for %}` writes its body once per element — and each of those is its own
+// row. So the value is a list, indexed by the element's position: entry 0 is
+// the ordinary case and the only one a template line outside a loop has.
+//
+// Without the axis, a loop's copies all pointed at one key: the map kept the
+// last member's (last-wins, below) and hung it on the FIRST copy, so one row
+// linked to another row's line and every other member had no line at all —
+// no "see this line in the file" button on any of them.
+export type LineKeys = Map<number, string[]>;
 
 // No-ops when `line` is undefined (a row with no source line has nowhere to
 // attach). A collision is last-wins, matching both existing producers: neither
 // has ever needed to distinguish "the second entry on this line wins" from an
 // error, since a later entry on the same line is closer to what a reader sees
 // there.
-export function addLineKey(keys: LineKeys, line: number | undefined, key: string): void {
+export function addLineKey(keys: LineKeys, line: number | undefined, key: string, member = 0): void {
   if (line === undefined) return;
-  keys.set(line, key);
+  const at = keys.get(line) ?? [];
+  at[member] = key;
+  keys.set(line, at);
 }
 
 // Identity plus placement, common to both producers. A caller builds this once
@@ -114,7 +125,9 @@ export function previewFile(
     source_file: src.source_file,
     ...(src.nature !== undefined ? { nature: src.nature } : {}),
     lines: content.split("\n").map((text, i) => {
-      const key = keys.get(i + 1);
+      // A committed file has no loop to repeat a line, so only entry 0 is ever
+      // set here.
+      const key = keys.get(i + 1)?.[0];
       return { text, kind: "verbatim" as const, ...(key === undefined ? {} : { key }) };
     }),
   };
@@ -169,8 +182,8 @@ function renderLines(
 ): ArtifactLine[] {
   const conditions = jinjaConditions(templateText);
   const blocks = new Map(jinjaLoopBlocks(templateText).map((b) => [b.start, b]));
-  const keyOf = (line: number): { key?: string } => {
-    const k = keys.get(line);
+  const keyOf = (line: number, member = 0): { key?: string } => {
+    const k = keys.get(line)?.[member];
     return k === undefined ? {} : { key: k };
   };
   const out: ArtifactLine[] = [];
@@ -243,9 +256,9 @@ function renderLines(
   const lines = templateText.split("\n");
   // One template line, outside any loop body — or inside one, with the loop
   // variable already bound by the caller.
-  const renderOne = (i: number, bind: ((nm: string) => string | undefined) | undefined, withKey: boolean): void => {
+  const renderOne = (i: number, bind: ((nm: string) => string | undefined) | undefined, member: number): void => {
     const line = lines[i];
-    const key = withKey ? keyOf(i + 1) : {};
+    const key = keyOf(i + 1, member);
     const cond = bind === undefined ? conditions.get(i + 1) : undefined;
     if (cond !== undefined && !cond.supported) {
       out.push({ text: line, kind: "unrendered", reason: cond.expr, ...key });
@@ -314,11 +327,11 @@ function renderLines(
         }
       } else {
         // Element one's whole body, then element two's — the order Jinja
-        // writes and therefore the order the deployed file has. Only the first
-        // pass carries the row keys: a template line is ONE row per element
-        // and the key belongs to the line, not to every copy of it.
+        // writes and therefore the order the deployed file has. Each copy takes
+        // ITS element's row key: a template line inside a loop is one row per
+        // element, and each of those rows wants to point at its own line.
         members.forEach((m, n) => {
-          for (const j of body) renderOne(j, (nm) => inMember(m, nm, block.variable), n === 0);
+          for (const j of body) renderOne(j, (nm) => inMember(m, nm, block.variable), n);
         });
       }
       i = block.end - 1;
@@ -326,7 +339,7 @@ function renderLines(
     }
     // The `{% ... %}` tag line itself produces no output line.
     if (/\{%/.test(lines[i])) continue;
-    renderOne(i, undefined, true);
+    renderOne(i, undefined, 0);
   }
   return out;
 }

@@ -726,9 +726,9 @@ export const ansibleRecipe: SheetRecipe = {
       // directions of the preview panel hang off this: a row finds its place in
       // the file, and a line finds the row that reviews it.
       const keyAtLine = new Map<string, LineKeys>();
-      const rowAtLine = (templatePath: string, line: number | undefined, key: string): void => {
-        const perFile = keyAtLine.get(templatePath) ?? new Map<number, string>();
-        addLineKey(perFile, line, key);
+      const rowAtLine = (templatePath: string, line: number | undefined, key: string, member = 0): void => {
+        const perFile = keyAtLine.get(templatePath) ?? new Map<number, string[]>();
+        addLineKey(perFile, line, key, member);
         keyAtLine.set(templatePath, perFile);
       };
       // Filled by pass 1 below and handed to the model — see the return.
@@ -828,16 +828,55 @@ export const ansibleRecipe: SheetRecipe = {
         // live on the entry, and the address must not be read off the source —
         // doing so named these rows after the list they came from.
         const expandedFromLoop = new Set<Entry>();
+        // How far a repeated key's occurrence number has been pushed by the
+        // loops before it. A parser numbers repeats as it reads them
+        // (`--region[0]`, `--region[1]`); expanding one occurrence into three
+        // moves every later one along by two, exactly as the rendered file
+        // reads. `undefined` means "leave the key alone", which is the ordinary
+        // case: a key that occurs once carries no number to move.
+        const indexShift = new Map<string, number>();
+        // Entries whose key was renumbered for the RENDERED file. Their
+        // `source.path` still addresses the template, where the occurrence
+        // number is the one the template has — the two legitimately differ, and
+        // the row's identity is the rendered file's.
+        const renumbered = new Set<Entry>();
+        const splitIndex = (key: string): { base: string; index: number; bare: boolean } | undefined => {
+          const m = /^(.*)\[(\d+)\]$/.exec(key);
+          return m ? { base: m[1], index: Number(m[2]), bare: false } : { base: key, index: 0, bare: true };
+        };
+        // The key an expanded row takes: the base's own occurrence number, plus
+        // this member's position among the elements, in the parser's own
+        // spelling (a first occurrence some formats write bare).
+        const renumber = (boundKey: string, member: number): string | undefined => {
+          const at = splitIndex(boundKey);
+          if (at === undefined) return undefined;
+          const n = at.index + (indexShift.get(at.base) ?? 0) + member;
+          return n === 0 && at.bare ? undefined : `${at.base}[${n}]`;
+        };
         // The TEMPLATE line an expanded row came from. Its source now points at
         // the vars file element — which is where the value is written — but the
         // preview links a row to the line of the template it renders, and that
         // line is the only thing that can still be pointed at.
         const expandedAtLine = new Map<Entry, number | undefined>();
+        // Which element of the list a row is. The preview writes the body once
+        // per element, and each copy carries its own row's key.
+        const expandedMember = new Map<Entry, number>();
         const expanded: Entry[] = [];
         for (const entry of entries) {
           const loop = rowsArtifact ? loopOf(entry, loops) : undefined;
           if (loop === undefined) {
-            expanded.push(entry);
+            // A later occurrence of a key a loop above it multiplied. The
+            // rendered file counts every copy, so this one is no longer the
+            // occurrence the template made it.
+            const at = splitIndex(entry.key);
+            const moved = at !== undefined && (indexShift.get(at.base) ?? 0) > 0;
+            if (!moved) {
+              expanded.push(entry);
+              continue;
+            }
+            const shifted = { ...entry, key: `${at!.base}[${at!.index + indexShift.get(at!.base)!}]` };
+            renumbered.add(shifted);
+            expanded.push(shifted);
             continue;
           }
           if (!loop.supported) {
@@ -971,24 +1010,33 @@ export const ansibleRecipe: SheetRecipe = {
               // all. What it must not become is the row's own name — see
               // `expandedFromLoop` at the key below.
               source: site,
-              // Its own address, so two members of one list are two rows.
+              // Its own address, so two members of one list are two rows — and
+              // the address is the one the DEPLOYED FILE has, continuing the
+              // occurrence numbering the parser gives that file. A template
+              // whose `--secret-id` is the second occurrence, repeated over two
+              // elements, is `--secret-id[1]` and `--secret-id[2]` in the
+              // rendered script, and a key no parse of that file can produce is
+              // a row identity re-based onto another document.
               //
-              // By the member's IDENTIFIER where the element has one, because a
-              // row's key is what a review, an apply target and a diff hang
-              // off: keyed by ordinal, adding a secret in the middle of the
-              // list renames every row after it and orphans their reviews. A
-              // list of scalars has no identifier and keeps the ordinal, which
-              // is the only identity it offers.
-              ...(m.identifier !== undefined
-                ? { key: `${boundKey}[${m.identifier.field}=${m.identifier.value}]` }
-                : i === 0
-                  ? {}
-                  : { key: `${boundKey}[${i}]` }),
+              // The element's own stable identity is not lost: it is the row's
+              // SOURCE (`secret_list[key=corp-ldap-bind].secret_name`), which
+              // addresses the vars file, where the element genuinely is the
+              // identity — and which is where apply writes and verify reads.
+              // Keying by it here was aimed at the right fact and the wrong
+              // field: a review comment names a place in the file under review,
+              // and inserting an element really does change what stands at that
+              // place.
+              ...(renumber(boundKey, i) === undefined ? {} : { key: renumber(boundKey, i)! }),
             };
             expandedFromLoop.add(made);
             expandedAtLine.set(made, entry.source.line);
+            expandedMember.set(made, i);
             expanded.push(made);
           });
+          // n elements where the template had one occurrence: everything after
+          // it is n-1 further along in the rendered file.
+          const base = splitIndex(entry.key)?.base;
+          if (base !== undefined) indexShift.set(base, (indexShift.get(base) ?? 0) + members.length - 1);
         }
         for (const entry of expanded) {
           // A line inside `{% if %}`/`{% for %}`. Under the ARTIFACT axis the
@@ -1080,7 +1128,7 @@ export const ansibleRecipe: SheetRecipe = {
             // directive that IS a variable, as `{{ httpd_logrotate_frequency }}`
             // renders to `daily`). The row's identity is its address in the
             // RENDERED file, so it has to be rendered as well.
-            const rawKey = expandedFromLoop.has(entry) ? entry.key : (entry.source.path ?? entry.key);
+            const rawKey = expandedFromLoop.has(entry) || renumbered.has(entry) ? entry.key : (entry.source.path ?? entry.key);
             const keySub = substituteJinja(rawKey, (n) => defaultsMap.get(n)?.value);
             const key = keySub.text;
             // And the row's heading, which for a format whose containers are
@@ -1226,7 +1274,12 @@ export const ansibleRecipe: SheetRecipe = {
             presence.push({ key, ...(onlyIn !== undefined ? { onlyIn } : {}) });
             // Which line of which template this row IS, so the preview can
             // point back at it and the sheet can point into the preview.
-            rowAtLine(spec.path, expandedFromLoop.has(entry) ? expandedAtLine.get(entry) : entry.source.line, key);
+            rowAtLine(
+              spec.path,
+              expandedFromLoop.has(entry) ? expandedAtLine.get(entry) : entry.source.line,
+              key,
+              expandedMember.get(entry) ?? 0
+            );
             // And the BLOCKS around it, at the lines that open them. A block is
             // a row with a real line in this file, so it gets the same jump
             // both ways as any other row — without this it was the one row on
@@ -1479,7 +1532,7 @@ export const ansibleRecipe: SheetRecipe = {
       // `console.warn`, matching this recipe's other warnings.
       const warn = (m: string) => console.warn(m);
       for (const { spec, file, content } of read) {
-        const keys = keyAtLine.get(spec.path) ?? new Map<number, string>();
+        const keys = keyAtLine.get(spec.path) ?? new Map<number, string[]>();
         artifacts.push(
           ...previewRendered(
             {
