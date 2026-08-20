@@ -2458,3 +2458,57 @@ describe("a group holding rows from more than one file", () => {
     expect(filesShown(mountFiles([row("a"), row("b")]))).toEqual([]);
   });
 });
+
+// A presence row holds this tool's spelling of "it is there" — a string written
+// nowhere in the file under review. The annotation rule that puts a product's
+// name for a value BESIDE it exists because the value is what the review dialog
+// opens with, the copy button yields and apply writes back; for presence none of
+// those hold, so the word stands alone and the value stays the identity beneath.
+describe("what a presence row shows in its value cell", () => {
+  function mountRows(params: Record<string, unknown>[], lang: "ja" | "en" = "ja"): HTMLElement {
+    const payload = {
+      metadata: { title: "t" },
+      versions: [{ version: "current", sheets: [{ name: "s", categories: [{ name: "c", params }] }] }],
+    } as unknown as ParameterSheetInput as never;
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: lang, server: false }), host);
+    return host;
+  }
+  const valueCell = (host: HTMLElement, key: string): string =>
+    [...host.querySelectorAll("tr.rs-param-row")]
+      .find((tr) => tr.querySelector(".rs-col-key")?.textContent?.includes(key))
+      ?.querySelector(".rs-col-value")?.textContent?.trim() ?? "";
+
+  const presenceRow = (extra: Record<string, unknown> = {}) => ({
+    key: "missingok",
+    value: "true",
+    presence: true,
+    description: { ja: "d" },
+    ...extra,
+  });
+
+  it("shows the product's word for presence, not the stored spelling", () => {
+    const host = mountRows([presenceRow({ presence_label: { ja: "許可", en: "permitted" } })]);
+    expect(valueCell(host, "missingok")).toBe("許可");
+  });
+
+  // A dictionary must never have to invent wording, so the viewer has one.
+  it("falls back to a neutral word when the product has none", () => {
+    expect(valueCell(mountRows([presenceRow()]), "missingok")).toBe("あり");
+    expect(valueCell(mountRows([presenceRow()], "en"), "missingok")).toBe("present");
+  });
+
+  // An ordinary row is untouched: its value IS what the file says.
+  it("leaves a row that holds a real value alone", () => {
+    const host = mountRows([{ key: "rotate", value: "4", description: { ja: "d" } }]);
+    expect(valueCell(host, "rotate")).toBe("4");
+  });
+
+  // A value that merely looks like the spelling is not presence, and says so.
+  it("does not touch a row whose value is `true` but is not presence", () => {
+    const host = mountRows([{ key: "debug", value: "true", description: { ja: "d" } }]);
+    expect(valueCell(host, "debug")).toBe("true");
+  });
+});

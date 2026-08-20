@@ -21,7 +21,7 @@
 // nothing to look up, so a registry here would only be a detour back to the
 // one caller that already had the answer.
 
-import { jinjaConditions, substituteJinja, truthyJinja, type LineCondition } from "./jinja2.js";
+import { jinjaConditions, jinjaLoops, substituteJinja, truthyJinja, type LineCondition } from "./jinja2.js";
 import type { ArtifactLine, ArtifactPreview } from "./types.js";
 
 // Above this a file is not previewed. The limit is a RULE rather than a list of
@@ -151,14 +151,46 @@ function renderLines(
   deployTimeVars: ReadonlySet<string>
 ): ArtifactLine[] {
   const conditions = jinjaConditions(templateText);
+  const loops = jinjaLoops(templateText);
   const keyOf = (line: number): { key?: string } => {
     const k = keys.get(line);
     return k === undefined ? {} : { key: k };
   };
   const out: ArtifactLine[] = [];
+  // A `{% for %}` renders its line once per element, and the preview is the
+  // deployed FILE — three NTP sources are three `server` lines there. Rendering
+  // it once left `server {{ s }} iburst` on screen: the loop variable resolves
+  // from no vars file, so the preview showed the template where it promises the
+  // file. The members come from the same walk the recipe's expansion uses.
+  const membersOf = (list: string): string[] => {
+    const out: string[] = [];
+    for (let i = 0; ; i++) {
+      const v = resolve(instance, `${list}[${i}]`);
+      if (v === undefined) break;
+      out.push(v);
+    }
+    return out;
+  };
   templateText.split("\n").forEach((line, i) => {
     // The `{% ... %}` tag line itself produces no output line.
     if (/\{%/.test(line)) return;
+    const loop = loops.get(i + 1);
+    if (loop !== undefined && loop.supported) {
+      const members = membersOf(loop.list);
+      if (members.length === 0) {
+        out.push({ text: line, kind: "unrendered", cause: "engine", reason: `${loop.list} has no elements this sheet reads`, ...keyOf(i + 1) });
+        return;
+      }
+      members.forEach((m, n) => {
+        const { text, unresolved } = substituteJinja(line, (nm) => (nm === loop.variable ? m : resolve(instance, nm)));
+        out.push(
+          unresolved.length === 0
+            ? { text, kind: "substituted", ...(n === 0 ? keyOf(i + 1) : {}) }
+            : { text: line, kind: "unrendered", cause: "engine", reason: unresolved.join(", "), ...(n === 0 ? keyOf(i + 1) : {}) }
+        );
+      });
+      return;
+    }
     const cond = conditions.get(i + 1);
     if (cond !== undefined && !cond.supported) {
       out.push({ text: line, kind: "unrendered", reason: cond.expr, ...keyOf(i + 1) });
