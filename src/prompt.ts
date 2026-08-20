@@ -55,6 +55,8 @@ export type ParamData = {
   presence?: true;
   // The product own word for presence — see ParameterBase.presence_label.
   presence_label?: LangText | string;
+  // Where this row's `default` was read — see `ParameterBase.default_from`.
+  default_from?: string;
   // The grouping a file heading displaced, for the viewer to sub-head with —
   // see `ParameterBase.sub_category`. Display only; the row's identity is its
   // category and key, and neither moves when the layout does.

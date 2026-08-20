@@ -201,7 +201,7 @@ export const DICTIONARY_PARAM_FIELDS = [
   "provenance",
 ] as const;
 
-export const DICTIONARY_DOC_FIELDS = ["product", "version", "provenance", "coverage", "generated_by", "docs_url", "block_label", "parameters"] as const;
+export const DICTIONARY_DOC_FIELDS = ["product", "version", "provenance", "coverage", "generated_by", "docs_url", "block_label", "defaults_from", "parameters"] as const;
 
 type Empty<T extends never> = T;
 type _ParamFieldsCoverType = Empty<Exclude<keyof DictionaryParam, (typeof DICTIONARY_PARAM_FIELDS)[number]>>;
@@ -212,6 +212,28 @@ type _DocFieldsAreReal = Empty<Exclude<(typeof DICTIONARY_DOC_FIELDS)[number], k
 export type DictionaryDoc = {
   product: string;
   version: string;
+  // WHERE this document's `default` values were read, when they were read from
+  // a file a distribution ships rather than from the product's own
+  // documentation.
+  //
+  // Two different questions wear one field otherwise. `default` is documented
+  // as "what the PRODUCT says", and for httpd or systemd that is what it holds;
+  // logrotate's dictionary takes every default from the /etc/logrotate.conf its
+  // package installs, which is a different fact — the same distinction
+  // `ParameterBase.baseline` already draws with httpd's `ServerRoot`
+  // (`/usr/local/apache` upstream, `/etc/httpd` as RHEL ships it).
+  //
+  // Measured, on the row that prompted this: logrotate's man page says `rotate`
+  // defaults to 0 and the shipped logrotate.conf sets 4, so a policy omitting
+  // the directive keeps four generations, not none. Both true, one layer apart
+  // — and a row showing `4` beside a description reading "Default is 0" reads
+  // as broken until it says where the 4 came from.
+  //
+  // Absent means the product documents its own defaults, which is the ordinary
+  // case and costs those extractions nothing. Document-level because a
+  // dictionary reads its defaults from one place; the per-entry form waits for
+  // a dictionary that genuinely mixes the two.
+  defaults_from?: string;
   // Document-level default provenance, same LangProvenance widening as
   // DictionaryParam.provenance above — a doc-level map is what lets nginx/
   // httpd (hand-transcribed English, community-translated Japanese) declare
@@ -709,7 +731,7 @@ const dictionaryProvider: MetadataProvider = {
     // enrich.ts's own standalone pass for the `import -f` path).
     if (!query.binding) return undefined;
 
-    const { entry, docProvenance } = query.binding;
+    const { entry, docProvenance, defaultsFrom } = query.binding;
     return {
       // Carry the full LangText through; the viewer resolves the display
       // language at render time so the in-page language toggle switches it.
@@ -719,6 +741,9 @@ const dictionaryProvider: MetadataProvider = {
       type: entry.type,
       scope: entry.scope,
       options: entry.options,
+      // Only beside a default there IS: the field explains where a value came
+      // from, and an entry with no default has nothing to explain.
+      default_from: entry.default !== undefined ? defaultsFrom : undefined,
       // Only the word travels. Whether the row IS presence was decided when the
       // file was read; a dictionary that could decide it would make the same
       // model verify differently depending on which dictionaries are on disk.

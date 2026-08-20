@@ -65,6 +65,29 @@ describe("dictionary metadata provider", () => {
     expect(typeof result?.default).toBe("string");
   });
 
+  // Where the defaults were read is a fact about the DOCUMENT (one dictionary
+  // reads them from one place), so it rides on the binding, not the entry —
+  // and it may only annotate a value that is actually there.
+  it("carries the document's defaults_from onto a row that has a default", () => {
+    const result = provider.resolve(
+      { key: "rotate", binding: binding({ default: 4 }, { defaultsFrom: "/etc/logrotate.conf" }) },
+      ctx()
+    );
+    expect(result?.default).toBe("4");
+    expect(result?.default_from).toBe("/etc/logrotate.conf");
+  });
+
+  // Otherwise the sheet would print a source beside an empty cell, naming a
+  // file for a value the dictionary never gives.
+  it("leaves defaults_from off an entry that documents no default", () => {
+    const result = provider.resolve(
+      { key: "sharedscripts", binding: binding({ description: { en: "x" } }, { defaultsFrom: "/etc/logrotate.conf" }) },
+      ctx()
+    );
+    expect(result?.default).toBeUndefined();
+    expect(result?.default_from).toBeUndefined();
+  });
+
   it("provenance precedence: the entry's own provenance wins over the dictionary document's", () => {
     const result = provider.resolve(
       { key: "worker_connections", binding: binding({ provenance: "community" }, { docProvenance: "official" }) },

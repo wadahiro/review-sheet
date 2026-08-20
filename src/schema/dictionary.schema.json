@@ -47,6 +47,11 @@
       "additionalProperties": {
         "$ref": "#/definitions/parameter"
       }
+    },
+    "defaults_from": {
+      "description": "WHERE this document's `default` values were read, when a file the DISTRIBUTION ships supplied them rather than the product's own documentation \u2014 logrotate's dictionary takes them from the /etc/logrotate.conf its package installs, so `rotate` reads 4 while logrotate(8) says the default is 0. Both are true one layer apart, and the sheet shows this beside the value so the row does not read as broken. Document-level, because a dictionary reads its defaults from one place; absent means the product documents its own, which is the ordinary case. An extraction emits it mechanically when it was pointed at such a file \u2014 never hand-written.",
+      "type": "string",
+      "minLength": 1
     }
   },
   "definitions": {
@@ -125,6 +130,7 @@
           "$ref": "#/definitions/langText"
         },
         "default": {
+          "description": "What the PRODUCT documents as this key's value when the setting is absent. Not `baseline`, which is what a given distribution SHIPPED: httpd's own documentation says `ServerRoot` defaults to /usr/local/apache while the RHEL package compiles in /etc/httpd, and a sheet that conflated them would tell a reviewer the wrong thing about an untouched key. When the defaults here were themselves read out of a shipped file rather than the documentation, the document says so once in `defaults_from`.",
           "oneOf": [
             {
               "type": [
