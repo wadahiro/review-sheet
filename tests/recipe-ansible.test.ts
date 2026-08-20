@@ -789,3 +789,68 @@ describe("group_by: file with a multi-variable line", () => {
     expect([...(si.templateVariables ?? [])].sort()).toEqual(["db_host", "db_name"]);
   });
 });
+
+
+// What a part is answerable for. `defaults:` names a file, and every variable in
+// it that no template resolves into a row becomes a row of its own — this
+// project never drops one silently. That is right when the variable IS part of
+// the deliverable and simply has no file to be a line of (a state a command
+// applies), and wrong when the file was a role-wide one shared with other
+// sheets. The tool cannot tell those apart; it can refuse to be silent about
+// which case it is in, and it can stop demanding the file when nothing needs it.
+describe("ansible recipe: the defaults a part is given", () => {
+  const FILES: Record<string, string> = {
+    "/vars.yml": "unused_a: 1\nunused_b: two\n",
+    // A fixed-value policy: no `{{ … }}` anywhere in it.
+    "/policy.j2": "/var/log/app.log {\n    daily\n    rotate 7\n}\n",
+  };
+  const io = { readFile: (p: string) => FILES[p] ?? null, specDir: "/", resolve: (p: string) => p, instances: [] };
+  const load = (spec: Record<string, unknown>) => {
+    const warnings: string[] = [];
+    const orig = console.warn;
+    console.warn = (...a: unknown[]) => void warnings.push(String(a[0]));
+    try {
+      const si = getRecipe("ansible")!.load(
+        {
+          name: "s",
+          recipe: "ansible",
+          rows: "artifact",
+          templates: [{ path: "/policy.j2", component: "/etc/logrotate.d/app", deployed_path: "/etc/logrotate.d/app" }],
+          ...spec,
+        } as never,
+        io as never
+      );
+      const base = si.layers.find((l) => l.kind === "base") as { entries: Map<string, unknown> } | undefined;
+      return { keys: [...(base?.entries.keys() ?? [])], warnings };
+    } finally {
+      console.warn = orig;
+    }
+  };
+
+  // The case that raised this: a template with no variables in it had to name a
+  // vars file anyway, and naming one made the part answerable for all of it.
+  it("does not require defaults, and reviews only the templates without one", () => {
+    const { keys, warnings } = load({});
+    expect(keys).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("still files an unreferenced variable as a row, and says it did", () => {
+    const { keys, warnings } = load({ defaults: "/vars.yml" });
+    expect(keys).toEqual(["unused_a", "unused_b"]);
+    const said = warnings.find((w) => w.includes("named by no template"));
+    expect(said).toBeDefined();
+    expect(said).toContain("unused_a");
+    expect(said).toContain("include:/exclude:");
+  });
+
+  // A variable an `include:` admits is one the author asked for. A sheet
+  // reviewing something no file carries — a state a command applies — is what
+  // that declaration is for, and warning there tells an author their own
+  // decision is a mistake.
+  it("says nothing when the sheet declared what it reads", () => {
+    const { keys, warnings } = load({ defaults: "/vars.yml", include: ["unused_a"] });
+    expect(keys).toEqual(["unused_a"]);
+    expect(warnings.filter((w) => w.includes("named by no template"))).toEqual([]);
+  });
+});
