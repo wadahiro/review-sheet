@@ -157,6 +157,62 @@ export type LineCondition =
   | { supported: true; tests: { variable: string; negated: boolean }[] }
   | { supported: false; expr: string };
 
+// What a line inside a `{% for %}` repeats over, per 1-based line number.
+//
+// A loop is the one Jinja shape that turns ONE template line into several lines
+// of the deployed file — `{% for s in ntp %}server {{ s }} iburst{% endfor %}`
+// is three `server` lines on a host with three sources. Left unevaluated, the
+// sheet shows the variable instead of the lines, and the settings sit apart
+// from the rest of the file they are written in.
+//
+// Only ONE shape is understood, on the same stance as the conditions above:
+// `{% for NAME in LIST %}` over a bare variable, not nested inside another
+// loop, with no filter, no tuple unpacking, no `loop.` reference and no
+// `{% else %}`. Anything else is reported and its lines stay out, because a
+// guess would put lines on the sheet that the deployed file does not have.
+export type LineLoop =
+  | { supported: true; variable: string; list: string }
+  | { supported: false; expr: string };
+
+const PLAIN_FOR = /^\{%-?\s*for\s+([A-Za-z_][\w]*)\s+in\s+([A-Za-z_][\w]*)\s*-?%\}$/;
+
+export function jinjaLoops(content: string): Map<number, LineLoop> {
+  const lines = content.split("\n");
+  const out = new Map<number, LineLoop>();
+  const stack: LineLoop[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const tag = lines[i].trim();
+    if (/\{%-?\s*endfor\b/.test(tag)) {
+      stack.pop();
+      continue;
+    }
+    if (/\{%-?\s*for\b/.test(tag)) {
+      const m = PLAIN_FOR.exec(tag);
+      // A loop inside a loop repeats its lines over two axes at once, and this
+      // evaluator addresses a row by one index. Reported rather than expanded
+      // over the inner one alone, which would name half the rows.
+      const nested = stack.length > 0;
+      stack.push(m && !nested ? { supported: true, variable: m[1], list: m[2] } : { supported: false, expr: tag });
+      continue;
+    }
+    // An `{% else %}` belonging to the loop makes the whole block unreadable
+    // here for the reason the conditions give: the arm's own membership is a
+    // negation this deliberately does not compute.
+    if (/\{%-?\s*else\b/.test(tag) && stack.length > 0) {
+      stack[stack.length - 1] = { supported: false, expr: tag };
+      // The lines BEFORE it were already recorded as supported, so they are
+      // corrected here: an arm is not readable in isolation from the branch
+      // that follows it.
+      for (const [ln, v] of out) if (v === undefined || ln < i + 1) out.set(ln, { supported: false, expr: tag });
+      continue;
+    }
+    if (stack.length === 0) continue;
+    const unsupported = stack.find((l) => !l.supported);
+    out.set(i + 1, unsupported ?? stack[stack.length - 1]);
+  }
+  return out;
+}
+
 const PLAIN_IF = /^\{%-?\s*(?:el)?if\s+(not\s+)?([A-Za-z_][\w]*)\s*-?%\}$/;
 
 export function jinjaConditions(content: string): Map<number, LineCondition> {

@@ -97,12 +97,14 @@ import {
   jinjaVariables,
   substituteJinja,
   jinjaConditions,
+  jinjaLoops,
   truthyJinja,
   type LineCondition,
+  type LineLoop,
 } from "../jinja2.js";
 import { registerRecipe, type SheetRecipe, type RecipeIO, type JsonValue } from "../recipe.js";
 import { previewRendered, previewId, addLineKey, type LineKeys } from "../preview.js";
-import type { ArtifactPreview, LangText } from "../types.js";
+import type { ArtifactPreview, LangText, SourceLocation } from "../types.js";
 import type {
   SheetInputs,
   ExtractedMap,
@@ -406,6 +408,29 @@ export const ansibleRecipe: SheetRecipe = {
           : false;
     const conditionOf = (entry: Entry, conditions: Map<number, LineCondition>): LineCondition | undefined =>
       entry.source.conditional && entry.source.line !== undefined ? conditions.get(entry.source.line) : undefined;
+    const loopOf = (entry: Entry, loops: Map<number, LineLoop>): LineLoop | undefined =>
+      entry.source.line === undefined ? undefined : loops.get(entry.source.line);
+
+    // The members of a `{% for %}`'s list, as this sheet can see them.
+    //
+    // A list reaches the sheet as one entry per element, addressed by index
+    // (`common_ntp_servers[0]`) — the shape a structural key transform
+    // produces. Walked from 0 until the addresses run out, per instance,
+    // because an overlay may give an environment a different list.
+    //
+    // Each member carries its OWN source. That is the point of expanding at
+    // all: the line `server {{ s }} iburst` exists once in the template, but
+    // the row it renders to belongs to one element of one vars file, and that
+    // is where a reviewer edits it.
+    const loopMembers = (list: string, instance: string | undefined): { value: string; source: SourceLocation }[] => {
+      const out: { value: string; source: SourceLocation }[] = [];
+      for (let i = 0; ; i++) {
+        const hit = instance === undefined ? defaultsMap.get(`${list}[${i}]`) : overlayEntryFor(instance, `${list}[${i}]`);
+        if (hit === undefined) break;
+        out.push({ value: hit.value, source: hit.source });
+      }
+      return out;
+    };
     // Which instances render this line. `undefined` means "every one of them",
     // which is both the unconditional case and a condition that holds
     // everywhere — a row with no per-instance story to tell.
@@ -541,6 +566,10 @@ export const ansibleRecipe: SheetRecipe = {
           // What governs each line's PRESENCE, so a conditional line can be a
           // row for the instances that render it instead of no row at all.
           conditions: jinjaConditions(t.content),
+          // What each line inside a `{% for %}` repeats over, so one template
+          // line can become the several lines of the deployed file it renders
+          // to — see the expansion below.
+          loops: jinjaLoops(t.content),
           // A `.j2` resolves to its base format by name (realm-corp.json.j2 ->
           // .json), which is also what decides whether a row's identity is its
           // path or its leaf — see productKeyOf.
@@ -703,14 +732,117 @@ export const ansibleRecipe: SheetRecipe = {
       // whether an entry earns its product key or falls back to the variable
       // name.
       const bound: ExtractedMap = new Map();
-      for (const { spec, file, entries, structured, conditions } of read) {
+      for (const { spec, file, entries, structured, conditions, loops } of read) {
         // The heading a reader wants is the file on the host, not the id this
         // spec files rows under: `logrotate-httpd` is the template's name,
         // `/etc/logrotate.d/httpd` is the thing being reviewed. The id stays
         // the category's identity — bindings, per-component params and every
         // diff join key still read it — and only the display changes.
         if (spec.component !== undefined) componentLabels.set(spec.component, spec.deployedPath ?? spec.component);
+        // A `{% for %}` renders ONE template line as several lines of the
+        // deployed file, so the entry read from the template stands for a row
+        // per member of the list. Expanded here, before anything else looks at
+        // it: downstream every one of them is an ordinary line whose value
+        // happens to come from one element of a vars file, which is a relation
+        // the model already has.
+        //
+        // Only under the ARTIFACT axis, where a row IS a line. Under the
+        // variable axis the row is the variable, and the list is already one
+        // row — expanding would file the same value twice.
+        // The entries this loop expansion produced. A row's ADDRESS is where
+        // its line lands in the deployed file; its SOURCE is where the value is
+        // written, which for a loop member is an element of a vars file. Both
+        // live on the entry, and the address must not be read off the source —
+        // doing so named these rows after the list they came from.
+        const expandedFromLoop = new Set<Entry>();
+        // The TEMPLATE line an expanded row came from. Its source now points at
+        // the vars file element — which is where the value is written — but the
+        // preview links a row to the line of the template it renders, and that
+        // line is the only thing that can still be pointed at.
+        const expandedAtLine = new Map<Entry, number | undefined>();
+        const expanded: Entry[] = [];
         for (const entry of entries) {
+          const loop = rowsArtifact ? loopOf(entry, loops) : undefined;
+          if (loop === undefined) {
+            expanded.push(entry);
+            continue;
+          }
+          if (!loop.supported) {
+            console.warn(`skipped (inside ${loop.expr}, which is not a plain {% for name in list %}): ${entry.key}`);
+            continue;
+          }
+          // The list as the DEFAULTS see it decides how many rows there are.
+          // An overlay that gives one environment a longer list is a real
+          // difference, and it is reported rather than silently producing rows
+          // for one environment only: a per-instance row SET is a shape the
+          // artifact axis does not have (Pattern B varies a value, not the
+          // existence of a line), so agreeing on the length is the honest
+          // requirement.
+          const members = loopMembers(loop.list, undefined);
+          if (members.length === 0) {
+            console.warn(
+              `ansible recipe: sheet "${name}": ${entry.key} repeats over ${loop.list}, which this sheet reads no ` +
+                `elements of — add it to include: (it needs to be resolvable, not to be a row) or the lines are left out`
+            );
+            continue;
+          }
+          for (const inst of io.instances) {
+            const n = loopMembers(loop.list, inst).length;
+            if (n !== members.length) {
+              console.warn(
+                `ansible recipe: sheet "${name}": ${loop.list} has ${members.length} element(s) in the defaults and ` +
+                  `${n} in ${inst} — the rows this loop renders are taken from the defaults, so ${inst}'s extra or ` +
+                  `missing lines are not on the sheet`
+              );
+            }
+          }
+          // The list's elements are now lines of the artifact. Left in the
+          // base map as well, each would be a second row for the same setting —
+          // one under the file it renders into and one under the variable it is
+          // written as — which is the duplication the artifact axis exists to
+          // avoid.
+          members.forEach((_m, i) => consumedVars.add(`${loop.list}[${i}]`));
+          members.forEach((m, i) => {
+            // The loop variable resolves to THIS member; everything else keeps
+            // resolving as it did. Substituted into the key as well as the
+            // value, because a templated directive addresses the rendered line
+            // by a name that only exists after substitution.
+            const bind = (t: string): string =>
+              substituteJinja(t, (nm) => (nm === loop.variable ? m.value : defaultsMap.get(nm)?.value)).text;
+            const made: Entry = {
+              ...entry,
+              key: bind(entry.key),
+              value: bind(entry.value),
+              categoryPath: entry.categoryPath.map(bind),
+              // The member's own definition site. The template line is where
+              // the STRUCTURE is; this is where the value a reviewer would
+              // change lives, which is what verify reads back and apply writes.
+              // The member's site, WHOLE — not merged over the template
+              // entry's. The site is in another file, read by another format,
+              // and inheriting the template's `baseFormat` sent verify at a
+              // vars file with the config parser the template declared.
+              //
+              // Its address travels with it: a substituted row is verified by
+              // resolving the site structurally and comparing by containment,
+              // so `common_ntp_servers[0]` is how verify reaches the element at
+              // all. What it must not become is the row's own name — see
+              // `expandedFromLoop` at the key below.
+              source: {
+                ...m.source,
+                // The row's value is the whole rendered line and this site
+                // holds only the member inside it — the relation the model
+                // already has for a value substituted into a template's text.
+                substituted: true,
+              },
+              // Its own address, so two members of one list are two rows.
+              ...(i === 0 ? {} : { key: `${bind(entry.key)}[${i}]` }),
+            };
+            expandedFromLoop.add(made);
+            expandedAtLine.set(made, entry.source.line);
+            expanded.push(made);
+          });
+        }
+        for (const entry of expanded) {
           // A line inside `{% if %}`/`{% for %}`. Under the ARTIFACT axis the
           // row IS the line, so whether it is in the deployed file is the
           // row's own existence — it is evaluated per instance, and the row
@@ -783,7 +915,7 @@ export const ansibleRecipe: SheetRecipe = {
             // directive that IS a variable, as `{{ httpd_logrotate_frequency }}`
             // renders to `daily`). The row's identity is its address in the
             // RENDERED file, so it has to be rendered as well.
-            const rawKey = entry.source.path ?? entry.key;
+            const rawKey = expandedFromLoop.has(entry) ? entry.key : (entry.source.path ?? entry.key);
             const keySub = substituteJinja(rawKey, (n) => defaultsMap.get(n)?.value);
             const key = keySub.text;
             // And the row's heading, which for a format whose containers are
@@ -863,7 +995,14 @@ export const ansibleRecipe: SheetRecipe = {
             const siteVar = valueVars.find((v) => defaultsMap.get(v) !== undefined);
             const only = siteVar !== undefined ? defaultsMap.get(siteVar) : undefined;
             for (const v of vars) consumedVars.add(v);
-            const source = only ? { ...only.source, substituted: true } : { ...entry.source, file };
+            // An entry that already carries a file is one this recipe EXPANDED:
+            // a `{% for %}` member's row, whose site is the element in the vars
+            // file rather than the template line the structure came from. Its
+            // own site wins — recomputing here would send verify at the
+            // template, which holds `{{ s }}` and not the rendered line.
+            const source = only
+              ? { ...only.source, substituted: true }
+              : { ...entry.source, file: entry.source.file ?? file };
             if (scoped) {
               // Two units both have `Unit.Description`, and the base map is
               // keyed by the row's own name — so on a sheet covering several
@@ -922,7 +1061,7 @@ export const ansibleRecipe: SheetRecipe = {
             presence.push({ key, ...(onlyIn !== undefined ? { onlyIn } : {}) });
             // Which line of which template this row IS, so the preview can
             // point back at it and the sheet can point into the preview.
-            rowAtLine(spec.path, entry.source.line, key);
+            rowAtLine(spec.path, expandedFromLoop.has(entry) ? expandedAtLine.get(entry) : entry.source.line, key);
             // And the BLOCKS around it, at the lines that open them. A block is
             // a row with a real line in this file, so it gets the same jump
             // both ways as any other row — without this it was the one row on
