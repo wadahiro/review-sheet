@@ -10,10 +10,13 @@ const oneRedDot: ImageResolver = (href) =>
   href === "img/diagram.png" ? { mime: "image/png", base64: "AAAA" } : null;
 
 describe("markdown: headings and the outline", () => {
+  // No leading h1 in this fixture: a document's title is not an outline entry
+  // at all (see "the document's own title" below), and mixing that rule in here
+  // would be testing two things at once.
   it("lists headings down to the declared depth, and no deeper", () => {
-    const md = "# A\n\n## B\n\n### C\n\n#### D\n";
-    expect(renderMarkdown(md, noImages, { navDepth: 3 }).headings.map((h) => h.text)).toEqual(["A", "B", "C"]);
-    expect(renderMarkdown(md, noImages, { navDepth: 1 }).headings.map((h) => h.text)).toEqual(["A"]);
+    const md = "## B\n\n### C\n\n#### D\n";
+    expect(renderMarkdown(md, noImages, { navDepth: 3 }).headings.map((h) => h.text)).toEqual(["B", "C"]);
+    expect(renderMarkdown(md, noImages, { navDepth: 2 }).headings.map((h) => h.text)).toEqual(["B"]);
     expect(renderMarkdown(md, noImages, { navDepth: 0 }).headings).toEqual([]);
   });
 
@@ -26,7 +29,7 @@ describe("markdown: headings and the outline", () => {
   });
 
   it("keeps a Japanese heading's own text in its id", () => {
-    const { headings } = renderMarkdown("# 移行方針\n", noImages);
+    const { headings } = renderMarkdown("## 移行方針\n", noImages);
     expect(headings[0].id).toBe("rs-doc-移行方針");
   });
 
@@ -43,7 +46,7 @@ describe("markdown: headings and the outline", () => {
   });
 
   it("still anchors a heading made only of punctuation", () => {
-    const { headings } = renderMarkdown("# ---\n\n## ???\n", noImages, { navDepth: 2 });
+    const { headings } = renderMarkdown("## ---\n\n### ???\n", noImages, { navDepth: 3 });
     expect(headings.map((h) => h.id)).toEqual(["rs-doc-h1", "rs-doc-h2"]);
   });
 });
@@ -188,5 +191,37 @@ describe("markdown: a wrapped Japanese paragraph", () => {
   it("folds inside a table cell too", () => {
     const { html } = renderMarkdown("| 説明 |\n|---|\n| 決めて<br>いる |\n", noImages);
     expect(html).toContain("決めて<br>いる");
+  });
+});
+
+
+// A document sheet is named after its page, and a markdown file worth reading
+// on its own writes that name as its h1. Listing both nested the page under
+// itself — "Page name > Page name > Section A" — and the two ways out both cost
+// something: deleting the h1 leaves a file that opens with no title, and
+// nav_depth: 1 drops the sections that are the reason for having an outline.
+describe("markdown: the document's own title", () => {
+  it("is not an outline entry", () => {
+    const { headings } = renderMarkdown("# Page name\n\n## Section A\n\n## Section B\n", () => null, {});
+    expect(headings.map((h) => h.text)).toEqual(["Section A", "Section B"]);
+  });
+
+  // Still anchored: search can land on it, and a link to it resolves.
+  it("keeps its id in the rendered html", () => {
+    const { html } = renderMarkdown("# Page name\n\n## Section A\n", () => null, {});
+    expect(html).toContain("<h1 id=");
+    expect(html).toContain("Page name");
+  });
+
+  // A file that opens at h2 has no title to drop.
+  it("drops nothing when the document does not open with an h1", () => {
+    const { headings } = renderMarkdown("## Section A\n\n## Section B\n", () => null, {});
+    expect(headings.map((h) => h.text)).toEqual(["Section A", "Section B"]);
+  });
+
+  // A later h1 is a section of a flat document, not its name.
+  it("keeps an h1 that is not the first heading", () => {
+    const { headings } = renderMarkdown("# Title\n\n## A\n\n# Part two\n", () => null, {});
+    expect(headings.map((h) => h.text)).toEqual(["A", "Part two"]);
   });
 });

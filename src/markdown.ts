@@ -190,7 +190,24 @@ export function renderMarkdown(source: string, resolveImage: ImageResolver, opts
         ordinal += 1;
         const text = plainText(token.tokens, token.text);
         const id = slugify(text, taken, idPrefix, ordinal);
-        if (token.depth <= navDepth) headings.push({ level: token.depth, text, id });
+        // A document's own TITLE is not an outline entry. It is the first
+        // heading, it is an h1, and the sheet is already named after it in the
+        // navigation — so listing it nests the page under itself: "Page name >
+        // Page name > Section A". A markdown file that is worth reading on its
+        // own writes that title, which is the point of this recipe, so the
+        // answer cannot be "delete the h1".
+        //
+        // The FIRST heading only, and only when it is an h1: a document that
+        // opens at h2 has no title to drop, and a later h1 is a section of a
+        // flat document rather than its name. Compared by POSITION, never
+        // against the sheet's label — the label is per-language and the
+        // heading is one language, so a match test would list the title in
+        // English and hide it in Japanese.
+        //
+        // Listing is all that changes: the id below is still emitted, so
+        // search can land here and a link to it still resolves.
+        const isTitle = ordinal === 1 && token.depth === 1;
+        if (token.depth <= navDepth && !isTitle) headings.push({ level: token.depth, text, id });
         // The id goes on EVERY heading, not only the listed ones: search can
         // land on a heading the outline chose not to show, and an anchorless
         // heading would make that jump go nowhere.
