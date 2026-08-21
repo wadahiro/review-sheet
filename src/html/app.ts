@@ -23,6 +23,7 @@ import {
 import { buildDiffModel, rowKey, instKey, catKey, sheetKey, type DiffStatusMap } from "../diffview.js";
 import { applyEdits, editsForCell, isEdit, isEditableField, isDeleted, planFromEdits, promptItemsFromPlan, documentSource, documentAssets, DOCUMENT_FIELD, cellKey as editCellKey, targetKey, type EditedSheets } from "../edits.js";
 import { getMarkdownRenderer } from "./markdown-runtime.js";
+import { runMermaid } from "./mermaid-runtime.js";
 import { withEmbeddedHistory, readEmbeddedHistory, suggestedFileName, type EmbeddedHistory } from "./save.js";
 import type { DiffStatus } from "../diff.js";
 import { pickLang, type OutOfScope, type Capabilities, type ArtifactPreview, PRESENCE_VALUE } from "../types.js";
@@ -1230,9 +1231,18 @@ function DocumentBody({ sheet, reviews, editEnabled, t }: {
     return render(edited, { ...(sheet.document!.images ?? {}), ...documentAssets(reviews, sheet.name) }, { idPrefix: `rs-doc-${sheet.name.replace(/[^A-Za-z0-9\u00A0-\uFFFF]+/g, "-").replace(/^-+|-+$/g, "") || "sheet"}-` }).html;
   }, [edited, sheet, reviews, render]);
 
+  // Diagrams are drawn HERE, not by the build — see mermaid-runtime.ts. After
+  // every render of this body, including the one an edit causes: a diagram
+  // somebody just changed has to be re-drawn from the text they changed, and
+  // the html above is replaced wholesale, so the drawn svg goes with it.
+  const body = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    runMermaid(body.current);
+  }, [html_]);
+
   return html`
     ${edited !== undefined && html`<p class="rs-doc-edited-note">${t.editedBadge}</p>`}
-    <div class="rs-doc" dangerouslySetInnerHTML=${{ __html: html_ }}></div>
+    <div class="rs-doc" ref=${body} dangerouslySetInnerHTML=${{ __html: html_ }}></div>
   `;
 }
 

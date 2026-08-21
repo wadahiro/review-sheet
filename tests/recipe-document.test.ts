@@ -158,3 +158,21 @@ describe("document recipe: heading ids across sheets", () => {
     expect(load("os directory db").document?.headings?.[0].id).toBe("rs-doc-os-directory-db-ツリー");
   });
 });
+
+
+// The flag has to reach the MODEL, because generate.ts reads it there to decide
+// which viewer the page carries.
+describe("document recipe: a document that draws a diagram", () => {
+  it("carries the fact to the model", () => {
+    const si = documentRecipe.load(
+      { name: "d", file: "m.md" },
+      io({ "m.md": "# T\n\n```mermaid\ngraph LR\n  A --> B\n```\n" })
+    );
+    expect(si.document?.mermaid).toBe(true);
+  });
+
+  it("says nothing for a document that does not", () => {
+    const si = documentRecipe.load({ name: "d", file: "m.md" }, io({ "m.md": "# T\n\n本文。\n" }));
+    expect(si.document?.mermaid).toBeUndefined();
+  });
+});

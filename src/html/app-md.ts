@@ -27,4 +27,14 @@ setMarkdownRenderer((source, images, opts) =>
   )
 );
 
-import "./app.js";
+// DYNAMIC, because a static import is HOISTED: written at the bottom of this
+// file it still runs BEFORE the registration above, which is the whole point of
+// this module. The app then renders its first document with no renderer in
+// hand — and a file opened on a document that already carries a saved edit
+// shows the text it was BUILT from, not the edit, until something else causes a
+// re-render.
+//
+// Found while fixing the same mistake in app-mermaid.ts, where it was visible
+// (no diagram at all). Here it was not: the file looks right, and only the one
+// document somebody had edited is wrong.
+await import("./app.js");

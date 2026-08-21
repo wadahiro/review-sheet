@@ -6,13 +6,15 @@ import { toBase64Gzip, BOOTSTRAP } from "./compress.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Two entries, one app. `app-md.ts` is `app.ts` plus a markdown renderer, and
+// Three entries, one app. `app-md.ts` is `app.ts` plus a markdown renderer, and
 // it is the only module that imports marked — see html/markdown-runtime.ts for
-// why that costs 43 KB and why most documents should not pay it. Cached per
-// entry: a build with several sheets should not rebuild either one.
+// why that costs 43 KB and why most documents should not pay it.
+// `app-mermaid.ts` is that plus a diagram renderer, which costs 3.3 MB and is
+// carried only by a document that draws one. Cached per entry: a build with
+// several sheets should not rebuild any of them.
 const bundles = new Map<string, Promise<string>>();
 
-async function getAppBundle(entry: "app.ts" | "app-md.ts"): Promise<string> {
+async function getAppBundle(entry: "app.ts" | "app-md.ts" | "app-mermaid.ts"): Promise<string> {
   const cached = bundles.get(entry);
   if (cached) return cached;
   const built = buildBundle(entry);
@@ -120,7 +122,14 @@ export async function generateHtml(
   // somebody may edit. A read-only document is already rendered.
   const editableDocument =
     editEnabled && data.versions.some((v) => v.sheets.some((s) => s.document !== undefined));
-  const appJS = await getAppBundle(editableDocument ? "app-md.ts" : "app.ts");
+  // A diagram, unlike a heading or a paragraph, is NOT already rendered in a
+  // read-only copy: the build leaves the diagram's source in the page because
+  // it has no browser to draw it with, so the page draws it. That makes this
+  // independent of `editEnabled` — a read-only document needs the renderer just
+  // as much as an editable one.
+  const drawsDiagram = data.versions.some((v) => v.sheets.some((s) => s.document?.mermaid === true));
+  const entry = drawsDiagram ? "app-mermaid.ts" : editableDocument ? "app-md.ts" : "app.ts";
+  const appJS = await getAppBundle(entry);
   const dataJson = JSON.stringify(data);
   const configJson = escapeScriptClose(JSON.stringify({ review: reviewEnabled, edit: editEnabled, prompt: promptEnabled, lang, server: options?.server === true }));
   const title = options?.title ?? data.metadata?.title ?? (lang === "en" ? "Parameter Sheet" : "パラメータシート");

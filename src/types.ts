@@ -325,6 +325,9 @@ export type SheetDocument = {
   // depth, so the model states what the navigation IS rather than restating a
   // rule the viewer would apply again and could apply differently.
   headings?: DocumentHeading[];
+  // This document draws at least one diagram — see RenderedDocument.mermaid.
+  // Read by generate.ts to decide whether the page carries the renderer.
+  mermaid?: true;
 };
 
 export type DocumentHeading = {

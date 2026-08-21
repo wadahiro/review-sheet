@@ -137,7 +137,7 @@ export const documentRecipe: SheetRecipe = {
     // sheets happen to be declared in would re-point every heading anchor the
     // moment one is inserted above.
     const idPrefix = `rs-doc-${name.replace(/[^A-Za-z0-9\u00A0-\uFFFF]+/g, "-").replace(/^-+|-+$/g, "") || "sheet"}-`;
-    const { html, headings } = renderMarkdown(source, load, { navDepth, idPrefix });
+    const { html, headings, mermaid } = renderMarkdown(source, load, { navDepth, idPrefix });
 
     // The source and the images travel with the rendered html, so a viewer
     // that lets someone edit the document can render what they typed. Every
@@ -161,6 +161,9 @@ export const documentRecipe: SheetRecipe = {
         markdown: source,
         ...(Object.keys(images).length > 0 ? { images } : {}),
         ...(headings.length > 0 ? { headings } : {}),
+        // Carried to the model because generate.ts reads it to decide whether
+        // the page needs the diagram renderer at all.
+        ...(mermaid ? { mermaid: true as const } : {}),
       },
     };
   },
