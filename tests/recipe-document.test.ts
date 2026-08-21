@@ -31,7 +31,8 @@ describe("document recipe", () => {
     );
     expect(si.name).toBe("移行方針");
     expect(si.layers).toEqual([]);
-    expect(si.document?.html).toContain("<h1");
+    // The title is not rendered: the sheet heading already shows it.
+    expect(si.document?.html).not.toContain("<h1");
     // The title is rendered and NOT listed: the sheet is already named after
     // it, so listing it nests the page under itself.
     expect(si.document?.headings?.map((h) => h.text)).toEqual(["前提"]);
@@ -111,7 +112,9 @@ describe("a document sheet reaching the model", () => {
     const input = build();
     expect(input.sheets.map((s) => s.name)).toEqual(["policy", "params"]);
     expect(input.sheets[0].categories).toEqual([]);
-    expect(input.sheets[0].document?.html).toContain("<h1");
+    // Its body, rendered — the title h1 is not part of it (the sheet heading
+    // shows the page's name), so this asks for the prose instead.
+    expect(input.sheets[0].document?.html).toContain("本文");
   });
 
   it("does not disturb the sheet that does have rows", () => {

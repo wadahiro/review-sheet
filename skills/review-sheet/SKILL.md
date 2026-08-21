@@ -1090,12 +1090,19 @@ LISTS, and that decision is made at build time and recorded in the model — the
 viewer never re-derives it.
 
 **Write the page's title as an h1 and leave it there.** A markdown file worth
-reading on its own says what it is, and the outline does not list it: the sheet
-is already named after the page, so listing it would nest the page under itself
-("Page name > Page name > Section A"). Only the FIRST heading, and only when it
-is an h1 — a file that opens at h2 has no title to drop, and a later h1 is a
-section of a flat document rather than its name. It is still rendered, still
-anchored, and search still lands on it.
+reading on its own says what it is, and the sheet does not repeat it: the title
+is neither listed in the outline nor rendered into the body. Listing it nested
+the page under itself ("Page name > Page name > Section A"); rendering it put
+the same words twice, one line apart, under the sheet's own heading.
+
+The sheet's heading is the one that stays. It carries the label — per language,
+which a markdown h1 is not — and the sheet-level comment and edit controls.
+
+Only the FIRST heading, and only when it is an h1: a file that opens at h2 has
+no title to drop, and a later h1 is a section of a flat document rather than its
+name. Every other heading is rendered and anchored as before, including the ones
+below `nav_depth`. What this costs is an in-page link to the title
+(`[…](#the-title)`), which no longer resolves.
 
 Compared by POSITION, never against the sheet's label: a label is per-language
 and a heading is one language, so a match test would list the title in English

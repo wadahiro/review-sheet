@@ -22,9 +22,10 @@ describe("markdown: headings and the outline", () => {
 
   it("anchors EVERY heading, including the ones the outline skips", () => {
     // Search can land on a heading the outline chose not to show; without an
-    // id that jump goes nowhere.
-    const { html } = renderMarkdown("# A\n\n#### D\n", noImages, { navDepth: 1 });
-    expect(html).toContain('<h1 id="rs-doc-A">');
+    // id that jump goes nowhere. (The document's TITLE is a different case: it
+    // is not rendered at all — see "the document's own title" below.)
+    const { html } = renderMarkdown("## A\n\n#### D\n", noImages, { navDepth: 2 });
+    expect(html).toContain('<h2 id="rs-doc-A">');
     expect(html).toContain('<h4 id="rs-doc-D">');
   });
 
@@ -206,11 +207,14 @@ describe("markdown: the document's own title", () => {
     expect(headings.map((h) => h.text)).toEqual(["Section A", "Section B"]);
   });
 
-  // Still anchored: search can land on it, and a link to it resolves.
-  it("keeps its id in the rendered html", () => {
+  // Nor is it written into the body: the sheet's own heading already shows the
+  // page's name, in the reader's language, with the sheet-level controls on it.
+  // Rendering the h1 under that put the same words twice, one line apart.
+  it("is not rendered in the body either", () => {
     const { html } = renderMarkdown("# Page name\n\n## Section A\n", () => null, {});
-    expect(html).toContain("<h1 id=");
-    expect(html).toContain("Page name");
+    expect(html).not.toContain("<h1");
+    expect(html).not.toContain("Page name");
+    expect(html).toContain("Section A");
   });
 
   // A file that opens at h2 has no title to drop.

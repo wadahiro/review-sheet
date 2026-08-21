@@ -208,6 +208,18 @@ export function renderMarkdown(source: string, resolveImage: ImageResolver, opts
         // search can land here and a link to it still resolves.
         const isTitle = ordinal === 1 && token.depth === 1;
         if (token.depth <= navDepth && !isTitle) headings.push({ level: token.depth, text, id });
+        // …and it is not written into the BODY either. The page already shows
+        // its name: the sheet's own heading, which carries the label (per
+        // language, which a markdown h1 is not) and the sheet-level comment and
+        // edit controls. Rendering the h1 under it put the same words twice,
+        // one line apart.
+        //
+        // The sheet heading is the one that stays for the same reason the
+        // outline's entry did: it is the product's name for the page, in the
+        // reader's language. What this costs is an in-page link to the title
+        // (`[…](#the-title)`), which no longer resolves — the title is not an
+        // element of the document any more.
+        if (isTitle) return "";
         // The id goes on EVERY heading, not only the listed ones: search can
         // land on a heading the outline chose not to show, and an anchorless
         // heading would make that jump go nowhere.
