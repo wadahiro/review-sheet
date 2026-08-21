@@ -387,3 +387,70 @@ describe("rows: occurrence numbers a loop multiplied", () => {
     expect(keys()).toEqual(["--opt[0]", "--opt[1]", "--opt[2]", "--opt[3]"]);
   });
 });
+
+
+// A flag that only ever appears in a `{% if %}` test is the automation's input,
+// not the deployed state: "true in production" and "the block is in
+// production's file" are one fact in two vocabularies, and the reviewed file's
+// wins. It stops being a row — and that is not a silent drop, because the row
+// it decides carries its name.
+describe("ansible recipe: a variable that only decides a block's presence", () => {
+  const FILES: Record<string, string> = {
+    "/vars.yml": "some_flag: false\nbackend: http://127.0.0.1:9000\n",
+    "/dev.yml": "{}\n",
+    "/prod.yml": "some_flag: true\n",
+    "/proxy.conf.j2": 'ProxyPreserveHost On\n{% if some_flag %}\nProxyPass "{{ backend }}"\n{% endif %}\n',
+  };
+  const load = (spec: Record<string, unknown> = {}, files = FILES) => {
+    const si = getRecipe("ansible")!.load(
+      {
+        name: "web",
+        recipe: "ansible",
+        rows: "artifact",
+        defaults: "/vars.yml",
+        overlays: { dev: "/dev.yml", prod: "/prod.yml" },
+        templates: [{ path: "/proxy.conf.j2", component: "web.conf", deployed_path: "/etc/httpd/conf.d/proxy.conf", format: "space" }],
+        ...spec,
+      } as never,
+      { readFile: (p: string) => files[p] ?? null, specDir: "/", resolve: (p: string) => p, instances: ["dev", "prod"] } as never
+    );
+    const base = si.layers.find((l) => l.kind === "base") as { entries: Map<string, unknown> } | undefined;
+    const overlayKeys = si.layers.filter((l) => l.kind === "overlay").flatMap((l) => [...(l as never as { entries: Map<string, unknown> }).entries.keys()]);
+    // Either layer is a row: the rescue puts a variable only defaults set into
+    // the base map, and one an overlay sets is recovered from the overlay by
+    // assemble's own sweep. Suppression has to reach both, so a test asking
+    // "does it still have a row" has to look at both.
+    return { rows: [...(base?.entries.keys() ?? []), ...overlayKeys], embedded: si.embedded ?? [] };
+  };
+
+  it("is not a row of its own, in the base map or recovered from an overlay", () => {
+    expect(load().rows).not.toContain("some_flag");
+  });
+
+  it("survives on the row it decides, which is what keeps it from being a silent drop", () => {
+    const pp = load().embedded.find((e) => e.key === "ProxyPass")!;
+    expect(pp.present_when).toEqual([{ variable: "some_flag" }]);
+    expect(pp.instances?.map((i) => i.name)).toEqual(["prod"]);
+    expect(pp.absent_where_unlisted).toBe(true);
+  });
+
+  // The author asking for it BY NAME knows something the derivation does not:
+  // the VALUE may be the reviewable fact even when the block's presence tells
+  // the same story — an endpoint override whose URL is the whole difference.
+  it("keeps its row when the sheet's include: names it literally", () => {
+    expect(load({ include: ["some_flag", "backend"] }).rows).toContain("some_flag");
+  });
+
+  // A glob is not a name: it admits whatever happens to match, which is not the
+  // author pointing at this variable.
+  it("does not keep it for a glob that happens to match", () => {
+    expect(load({ include: ["some_*", "backend"] }).rows).not.toContain("some_flag");
+  });
+
+  // Nothing carries the name here, so nothing may be suppressed: the condition
+  // is one the evaluator does not read, so no row got a present_when.
+  it("keeps its row when the condition is one the evaluator cannot read", () => {
+    const odd = { ...FILES, "/proxy.conf.j2": 'ProxyPreserveHost On\n{% if some_flag and backend %}\nProxyPass "{{ backend }}"\n{% endif %}\n' };
+    expect(load({}, odd).rows).toContain("some_flag");
+  });
+});

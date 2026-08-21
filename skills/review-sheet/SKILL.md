@@ -956,6 +956,38 @@ tool cannot tell apart — it belongs to another sheet, or a template that uses 
 is missing from `templates:` — so it reports which variables they are and leaves
 them as rows.
 
+**A flag that only decides whether a block is deployed is not a row.**
+
+```
+{% if enable_x %}
+<LocationMatch "^/x/">
+    ProxyPass "{{ backend }}"
+</LocationMatch>
+{% endif %}
+```
+
+`enable_x` is the automation's input. What a reviewer wants to know is what each
+environment's file looks like, and the block's own row already says it: it is
+present in the environments the flag is true in, absent in the others, and it
+names the test that decided (`present_when`, shown under the row's key). The
+flag's value and the block's presence are one fact in two vocabularies, so the
+flag stops being a row of its own — nothing is dropped in silence, because the
+row that survives carries the name.
+
+Two cases keep their row, and both are the same rule seen from either side:
+
+- a condition the evaluator does not read (`{% if a and b %}`) attaches no
+  `present_when` to anything, so nothing states it and nothing is suppressed;
+- a variable this sheet's `include:` names LITERALLY. That is the author saying
+  the VALUE is the reviewable fact — an endpoint override whose URL is the whole
+  local/production difference — and it knows something the derivation cannot. A
+  glob is not a name.
+
+Do not reach for `category:` to place such a flag beside the block it governs.
+Before this, the flag was a row filed under the vars FILE it is defined in — a
+tab among tabs that are deployed files — and pinning it by hand was the only fix.
+It has no row now, so there is nothing to place.
+
 **A part whose templates use no variables should not name a file at all.**
 `defaults:` is optional:
 
