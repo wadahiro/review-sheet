@@ -209,3 +209,36 @@ describe("images pasted into a document", () => {
     expect(srcs).toEqual([PNG, PASTED]);
   });
 });
+
+
+// The title h1 is still IN the markdown — that is the point of keeping it — so
+// the source editor shows it and it can be edited, while the body it renders to
+// does not change. Nothing warns you of that at the moment you are typing into
+// it, so the editor says it.
+describe("the document editor and the page's title", () => {
+  const open = async (source: string): Promise<HTMLElement> => {
+    const host = mount({ editEnabled: true, reviews: [{
+      id: "rev_src",
+      target: { sheet: "OS ディレクトリ", field: "document" },
+      changes: [{ field: "document", suggested: source }],
+      status: "applied",
+      at: "2026-09-01T00:00:00Z",
+    } as ReviewItem] });
+    const tools = [...host.querySelectorAll(".rs-sheet-header .rs-head-tool")];
+    (tools.find((b) => (b.getAttribute("title") ?? "").includes("この文書")) as HTMLElement | undefined)?.click();
+    await Promise.resolve();
+    return host;
+  };
+
+  it("says what the leading h1 is, where a document has one", async () => {
+    const host = await open("# ページ名\n\n## セクションA\n");
+    const notes = [...host.querySelectorAll(".rs-doc-modal .rs-edit-note")].map((n) => n.textContent ?? "");
+    expect(notes.some((n) => n.includes("h1"))).toBe(true);
+  });
+
+  it("says nothing where the document has no title to explain", async () => {
+    const host = await open("## セクションA\n\n本文。\n");
+    const notes = [...host.querySelectorAll(".rs-doc-modal .rs-edit-note")].map((n) => n.textContent ?? "");
+    expect(notes.some((n) => n.includes("h1"))).toBe(false);
+  });
+});

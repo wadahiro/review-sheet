@@ -149,6 +149,7 @@ type Messages = {
   docEditShort: string;
   docRevert: string;
   docImagesNote: string;
+  docTitleNote: string;
   docPasting: string;
   docNoSource: string;
   editMenu: (n: number) => string;
@@ -377,6 +378,7 @@ const ja: Messages = {
   docEditShort: "編集",
   docRevert: "元の内容に戻す",
   docImagesNote: "Markdown で編集します。画像はクリップボードから貼り付けると、その場で文書に埋め込まれます。",
+  docTitleNote: "先頭の見出し（h1）はこのファイル自身のタイトルです。Markdown を単体で読む人のために残りますが、シートではこのページの見出しが使われるため本文には表示されません（見出しの文言は sheet.yml の label）。",
   docPasting: "画像を埋め込んでいます…",
   docNoSource: "この文書は Markdown の原文を持っていません（編集を有効にする前に生成されたものです）。編集するには生成し直してください。",
   editMenu: (n) => `変更 (${n})`,
@@ -578,6 +580,7 @@ const en: Messages = {
   docEditShort: "Edit",
   docRevert: "Restore the original",
   docImagesNote: "Edited as markdown. Paste an image from the clipboard and it is embedded into the document where the cursor is.",
+  docTitleNote: "The leading h1 is this FILE's own title. It stays for anyone reading the markdown on its own, and is not shown in the body here — the sheet's heading names the page (its wording comes from sheet.yml's label).",
   docPasting: "Embedding the image…",
   docNoSource: "This document carries no markdown source (it was built before editing was enabled). Regenerate it to edit.",
   editMenu: (n) => `Changes (${n})`,
