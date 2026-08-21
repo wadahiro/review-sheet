@@ -156,6 +156,9 @@ export type EmbeddedEntry = {
   // which is a sheet stating something about staging that is only true of
   // production.
   instances?: Instance[];
+  // The `{% if %}` test that decides whether this row is in the file — see
+  // Parameter.present_when, which it becomes unchanged.
+  present_when?: { variable: string; negated?: boolean }[];
 };
 
 // A binding from a bound (product) key to the variable that backs it, e.g.
@@ -973,6 +976,30 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
     }
   }
 
+  // The test that decides whether a BLOCK is in the file. A block has one only
+  // when every row inside it names the same one — which is what a `{% if %}`
+  // wrapped around the whole block produces. Rows disagreeing (a block whose
+  // settings are each conditional on something different) leaves the block
+  // without one: there is no single answer, and printing one of them would name
+  // a test that does not decide the block.
+  const containerCondition = new Map<string, { variable: string; negated?: boolean }[] | null>();
+  const condKey = (c: { variable: string; negated?: boolean }[] | undefined): string =>
+    c === undefined ? "" : JSON.stringify(c);
+  for (const e of si.embedded) {
+    const chain = e.containers ?? [];
+    for (let i = 0; i < chain.length; i++) {
+      if (chain[i].subject === undefined) continue;
+      const id = `${e.component ?? ""}\u0000${chain.slice(0, i + 1).map((x) => x.pathSeg).join(".")}`;
+      const cur = containerCondition.get(id);
+      if (cur === null) continue;
+      if (cur === undefined) {
+        containerCondition.set(id, e.present_when ?? null);
+        continue;
+      }
+      if (condKey(cur) !== condKey(e.present_when)) containerCondition.set(id, null);
+    }
+  }
+
   const emittedContainers = new Set<string>();
   const containerDrafts = (e: EmbeddedEntry): void => {
     const chain = e.containers ?? [];
@@ -1007,9 +1034,12 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
       // lives; carrying it only on the parent also split the block from its
       // three settings, which sat under the deployed file.
       const fromBaselineEntry = e.origin === "baseline";
+      const cond = containerCondition.get(id);
       const param: Parameter = {
         key: addr,
         container: { ...(n.name === undefined ? {} : { name: n.name }), ...(n.nameFromDocs ? { nameFromDocs: true } : {}) },
+        // Every row inside agreed on it, so it is the block's own.
+        ...(cond ? { present_when: cond } : {}),
         // Pattern B when the block is inside a conditional: it exists for these
         // environments and simply is not in the others, which an instance list
         // expresses by leaving them out.
@@ -1069,6 +1099,10 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
     // exactly where the structure would otherwise survive only inside the row
     // keys, as text.
     if (e.presence) param.presence = true;
+    // WHY the row is in some environments and not others. Display only, and it
+    // travels with the row rather than being re-derived: only the recipe that
+    // read the template knows which test governed the line.
+    if (e.present_when?.length) param.present_when = e.present_when;
     if (e.containers?.length) param.container_path = e.containers.map((n, i) => ({ path: e.containers!.slice(0, i + 1).map((x) => x.pathSeg).join("."), name: n.name }));
     pushDraft(e.key, withUnderKey(param, variable), variable, undefined, e.component, e.categoryPath, e.categoryPathWins);
   }

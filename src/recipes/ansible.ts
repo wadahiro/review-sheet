@@ -1107,6 +1107,15 @@ export const ansibleRecipe: SheetRecipe = {
             }
           }
           const onlyIn = rowsArtifact ? renderedIn(cond) : undefined;
+          // The test that decides it, carried onto the row. Only when the
+          // presence actually varies (`onlyIn` set) and the condition is one
+          // this evaluator reads: the same rule the rest of this module
+          // follows — report what was computed, claim nothing about what was
+          // not.
+          const presentWhen =
+            onlyIn !== undefined && cond !== undefined && cond.supported
+              ? cond.tests.map((t) => ({ variable: t.variable, ...(t.negated ? { negated: true } : {}) }))
+              : undefined;
           if (onlyIn !== undefined && onlyIn.length === 0) {
             console.warn(`skipped (its {% if %} holds in no instance, so no environment renders it): ${entry.key}`);
             continue;
@@ -1257,7 +1266,7 @@ export const ansibleRecipe: SheetRecipe = {
               const varies =
                 onlyIn !== undefined || perInstance.some((i) => i.value !== perInstance[0]?.value);
               if (varies && perInstance.length > 0) {
-                embedded.push({ key, value: text, source, component: spec.component, categoryPath, containers, instances: perInstance, ...(entry.presence ? { presence: true as const } : {}) });
+                embedded.push({ key, value: text, source, component: spec.component, categoryPath, containers, instances: perInstance, ...(presentWhen ? { present_when: presentWhen } : {}), ...(entry.presence ? { presence: true as const } : {}) });
               } else {
                 embedded.push({ key, value: text, source, component: spec.component, categoryPath, containers, ...(entry.presence ? { presence: true as const } : {}) });
               }

@@ -55,6 +55,9 @@ export type ParamData = {
   presence?: true;
   // The product own word for presence — see ParameterBase.presence_label.
   presence_label?: LangText | string;
+  // The `{% if %}` test that decides whether this row is in the file — see
+  // `ParameterBase.present_when`.
+  present_when?: { variable: string; negated?: boolean }[];
   // Where this row's `default` was read — see `ParameterBase.default_from`.
   default_from?: string;
   // The grouping a file heading displaced, for the viewer to sub-head with —

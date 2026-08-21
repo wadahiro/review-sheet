@@ -83,6 +83,7 @@ type Messages = {
   // have to invent wording, and this tool's spelling of presence (`true`) is an
   // internal a reviewer has no reason to meet.
   present: string;
+  presentWhen: string;
   artifactRenderedFrom: string;
   artifactSourceFile: string;
   artifactInstance: string;
@@ -314,6 +315,7 @@ const ja: Messages = {
   artifactTitle: "プレビュー",
   rowFile: "ファイル",
   present: "あり",
+  presentWhen: "この行がある条件",
   artifactRenderedFrom: "生成元",
   artifactSourceFile: "ソースファイル",
   artifactInstance: "環境",
@@ -513,6 +515,7 @@ const en: Messages = {
   artifactTitle: "Preview",
   rowFile: "File",
   present: "present",
+  presentWhen: "in the file when",
   artifactRenderedFrom: "Rendered from",
   artifactSourceFile: "Source file",
   artifactInstance: "Instance",

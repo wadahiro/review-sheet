@@ -2406,6 +2406,18 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
       );
     }
     if (tag) keySubline.push(html`<span class="rs-key-subline"><span class="rs-origin-tag" title=${tag.title}>${tag.label}</span></span>` as VNode);
+    // WHY this row is in some environments and not others. `instances` above
+    // already says where; the test that decides it is the next question a
+    // reviewer has, and until now it lived only on the struck-through line of
+    // the preview panel — a place you reach by knowing to look.
+    if (param.present_when?.length) {
+      keySubline.push(html`
+        <span class="rs-key-subline rs-present-when">
+          <span class="rs-subline-head">${t.presentWhen}</span>
+          <code>${param.present_when.map((c) => (c.negated ? `not ${c.variable}` : c.variable)).join(" and ")}</code>
+        </span>
+      ` as VNode);
+    }
     const rowFile = mixedFiles ? fileOfRow(param) : undefined;
     if (rowFile !== undefined) {
       keySubline.push(
