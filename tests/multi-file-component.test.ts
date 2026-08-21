@@ -48,8 +48,8 @@ const template = (component: string, file: string, deployed: string, format?: st
   ...(format ? { format } : {}),
 });
 
-function build(templates: unknown[], extra: Record<string, unknown> = {}) {
-  const si = getRecipe("ansible")!.load(
+function load(templates: unknown[], extra: Record<string, unknown> = {}) {
+  return getRecipe("ansible")!.load(
     {
       name: "mig",
       recipe: "ansible",
@@ -61,7 +61,14 @@ function build(templates: unknown[], extra: Record<string, unknown> = {}) {
     } as never,
     io as never
   );
-  return assembleSheets([si as never], { projectPath: "/project.yml", readFile: io.readFile, strictMetadata: false });
+}
+
+function build(templates: unknown[], extra: Record<string, unknown> = {}) {
+  return assembleSheets([load(templates, extra) as never], {
+    projectPath: "/project.yml",
+    readFile: io.readFile,
+    strictMetadata: false,
+  });
 }
 
 type Cat = { name: string; params?: { key: string }[]; categories?: Cat[] };
@@ -120,5 +127,45 @@ describe("a component that deploys several files", () => {
       v1: ["listen", "mode"],
       v2: ["listen", "mode"],
     });
+  });
+});
+
+
+// The same mistake one level up: what the COMPONENT itself is called.
+//
+// A component that IS a file is headed by the file rather than by the id the
+// spec files its rows under (`logrotate-httpd` -> `/etc/logrotate.d/httpd`),
+// which is the name a reader wants. Written per template, every component of a
+// multi-file sheet ended up wearing the LAST template's path — so two releases
+// read as the same heading, twice over in a side-by-side comparison, and
+// neither said which release it was.
+describe("what a component is called", () => {
+  const labels = (templates: unknown[]): [string, string][] =>
+    [...(((load(templates) as unknown as { componentLabels?: Map<string, string> }).componentLabels) ?? [])];
+
+  it("is the file, where the component deploys one", () => {
+    expect(
+      labels([
+        template("v1", "a.conf.j2", "/etc/a.conf", "space"),
+        template("v2", "a.conf.j2", "/etc/a.conf", "space"),
+      ])
+    ).toEqual([
+      ["v1", "/etc/a.conf"],
+      ["v2", "/etc/a.conf"],
+    ]);
+  });
+
+  // Its own id, which is what it was before the display rule existed: a
+  // component bringing several files has no file to be named after, and naming
+  // it after one of them says something false about the others.
+  it("is its own id, where the component deploys several", () => {
+    expect(
+      labels([
+        template("v1", "a.conf.j2", "/etc/a.conf", "space"),
+        template("v1", "b.properties.j2", "/etc/b.properties"),
+        template("v2", "a.conf.j2", "/etc/a.conf", "space"),
+        template("v2", "b.properties.j2", "/etc/b.properties"),
+      ])
+    ).toEqual([]);
   });
 });
