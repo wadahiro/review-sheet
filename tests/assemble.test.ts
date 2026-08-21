@@ -1806,6 +1806,15 @@ describe("a block's own condition", () => {
       ...(second ? { present_when: second } : {}),
     },
   ];
+  // A row for the variable itself, so the annotation has a referent: it is kept
+  // only where the reader can go and look at what it names (see the strip pass
+  // in assembleSheetsWithReport).
+  const flagRow = {
+    key: "some_flag",
+    value: "true",
+    source: { file: "/etc/app/proxy.conf", line: 1 },
+    categoryPath: ["proxy.conf"],
+  };
   const blockRow = (rows: unknown[]) => {
     const out = assembleSheets(
       [
@@ -1813,7 +1822,7 @@ describe("a block's own condition", () => {
           name: "s",
           instances: ["dev", "prod"],
           layers: [{ kind: "base", entries: new Map() }],
-          embedded: rows as never,
+          embedded: [...rows, flagRow] as never,
           // The sheet's default layout heads its rows by the file they land in,
           // and a top-level block has nothing else above it — so the sheet has
           // to know which file that is, as a real one does.
@@ -1842,5 +1851,29 @@ describe("a block's own condition", () => {
 
   it("takes none when nothing inside it is conditional", () => {
     expect(blockRow(embedded(undefined))?.present_when).toBeUndefined();
+  });
+
+  // The name is worth printing only where it points at something. A flag that
+  // only decides a block is not a row at all any more, and an annotation naming
+  // it would be a word from the automation's vocabulary pointing at nothing,
+  // beside a cell that already says the line is not in this file.
+  it("drops the annotation when the variable it names is on no row of the sheet", () => {
+    const out = assembleSheets(
+      [
+        {
+          name: "s",
+          instances: ["dev", "prod"],
+          layers: [{ kind: "base", entries: new Map() }],
+          embedded: embedded([{ variable: "some_flag" }]) as never,
+          deployedFiles: new Map([["", "/etc/app/proxy.conf"]]),
+        },
+      ],
+      baseOpts({ projectPath: "flat.yml", readFile: (f: string) => (f === "flat.yml" ? "params: {}\n" : null) })
+    );
+    const walk = (cats: { params?: { key: string; present_when?: unknown }[]; categories?: unknown[] }[]): { key: string; present_when?: unknown }[] =>
+      cats.flatMap((c) => [...(c.params ?? []), ...walk((c.categories ?? []) as never)]);
+    const rows = walk(out.sheets[0].categories as never);
+    expect(rows.some((r) => r.key.startsWith("Location"))).toBe(true);
+    expect(rows.every((r) => r.present_when === undefined)).toBe(true);
   });
 });

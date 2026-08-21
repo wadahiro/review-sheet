@@ -2946,6 +2946,37 @@ export function assembleSheetsWithReport(
     }
   }
 
+  // `present_when` names the test that decides a row's presence, and it is
+  // worth printing only where the name has a referent — a row on this sheet the
+  // reader can go and look at. Where the variable is not a row (the ordinary
+  // case now: a flag that only decides a block is consumed by the block), the
+  // annotation is a name from the automation's vocabulary pointing at nothing,
+  // beside a cell that already says the line is not in this environment's file.
+  //
+  // Stripped here rather than hidden in the viewer because the model should not
+  // carry a reference the sheet cannot substantiate. The presence fact itself is
+  // untouched: `instances` says where the row is and `absent_where_unlisted`
+  // says the rest do not have it.
+  for (const sheet of sheets) {
+    const keys = new Set<string>();
+    const collect = (cats: Category[] | undefined): void => {
+      for (const c of cats ?? []) {
+        for (const p of c.params ?? []) keys.add(p.key);
+        collect(c.categories);
+      }
+    };
+    collect(sheet.categories);
+    const strip = (cats: Category[] | undefined): void => {
+      for (const c of cats ?? []) {
+        for (const p of c.params ?? []) {
+          if (p.present_when && !p.present_when.some((w) => keys.has(w.variable))) delete p.present_when;
+        }
+        strip(c.categories);
+      }
+    };
+    strip(sheet.categories);
+  }
+
   const assembled: ParameterSheetInput = {
     ...(metadata ? { metadata } : {}),
     ...(declaredGroups.length > 0 ? { groups: declaredGroups } : {}),

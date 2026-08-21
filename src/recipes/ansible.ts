@@ -725,6 +725,17 @@ export const ansibleRecipe: SheetRecipe = {
       // invisible — it is the under_key of the line it renders into — so the
       // rescue below must not give it a row of its own as well.
       const consumedVars = new Set<string>();
+      // Variables this sheet's `include:` names LITERALLY — the author asking
+      // for them by name, which a glob is not. A condition variable is
+      // otherwise consumed by the row it decides (see the emit below); one
+      // asked for by name keeps its row, because the author knows something
+      // the derivation does not — its VALUE may be the reviewable fact even
+      // when the block's presence tells the same story (an endpoint override
+      // whose URL is the whole local/production difference).
+      const namedByProject = new Set(
+        (Array.isArray(sheetSpec.include) ? (sheetSpec.include as JsonValue[]) : [])
+          .filter((x): x is string => typeof x === "string" && !x.includes("*"))
+      );
       // Every artifact row and which instances render it, for the index check
       // after the loop (see checkRepeatIndices).
       const presence: { key: string; onlyIn?: string[] }[] = [];
@@ -1280,6 +1291,21 @@ export const ansibleRecipe: SheetRecipe = {
                   ...(onlyIn !== undefined ? { absent_where_unlisted: true as const } : {}),
                   ...(entry.presence ? { presence: true as const } : {}),
                 });
+                // The test variable is CONSUMED by the row it decides — the
+                // same rule that stops a variable being reviewed twice, once
+                // as itself and once as the line it renders into.
+                //
+                // A flag like `enable_x` is the automation's input, not the
+                // deployed state: "true in production" and "the block is in
+                // production's file" are one fact in two vocabularies, and the
+                // reviewed file's wins. What keeps this from being a silent
+                // drop is that the surviving row carries the name — `instances`
+                // says where the block is, `present_when` says which test put
+                // it there — so suppression fires only where something else
+                // provably states it. Where nothing does (a condition the
+                // evaluator cannot read, or one holding in no instance at all)
+                // `presentWhen` is undefined and the variable keeps its row.
+                if (presentWhen) for (const c of presentWhen) if (!namedByProject.has(c.variable)) consumedVars.add(c.variable);
               } else {
                 embedded.push({ key, value: text, source, component: spec.component, categoryPath, containers, ...(entry.presence ? { presence: true as const } : {}) });
               }
