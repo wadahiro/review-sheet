@@ -527,6 +527,19 @@ export type ParameterBase = {
   // at all (as opposed to a row we DO have, where `baseline` sits beside a
   // real `value` for comparison).
   baseline?: string;
+  // WHY this row exists in some environments and not others — the `{% if %}`
+  // test around the line it is, named. Display only: `instances` already says
+  // WHERE, and this is the question a reviewer actually has next ("prod only —
+  // because of what?"). The recipe computed it to decide the instances and then
+  // dropped it; the preview panel showed it on the struck-through line while
+  // the table beside it said nothing.
+  //
+  // Absent unless the presence really does vary: a condition that holds
+  // everywhere makes no difference to the row and naming it would be noise.
+  // Absent too when the condition is one the evaluator does not read — a claim
+  // about a test nobody evaluated is not a claim worth printing.
+  present_when?: { variable: string; negated?: boolean }[];
+
   remarks?: LangText;
   // Mark a single parameter as not in review scope (same effect as the category
   // flag, at parameter granularity).

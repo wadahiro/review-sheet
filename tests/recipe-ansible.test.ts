@@ -854,3 +854,50 @@ describe("ansible recipe: the defaults a part is given", () => {
     expect(warnings.filter((w) => w.includes("named by no template"))).toEqual([]);
   });
 });
+
+
+// `instances` says WHERE a row is; this says WHY. A block that exists in
+// production and not in dev is read by asking what turned it on, and until now
+// that answer lived only on the struck-through line of the preview panel — a
+// place you reach by knowing to look.
+describe("ansible recipe: why a row is in some environments and not others", () => {
+  const FILES: Record<string, string> = {
+    "/vars.yml": "some_flag: false\nport: 8080\n",
+    "/prod.yml": "some_flag: true\n",
+    "/app.conf.j2": "Listen {{ port }}\n{% if some_flag %}\nExtra on\n{% endif %}\n",
+  };
+  const io = { readFile: (p: string) => FILES[p] ?? null, specDir: "/", resolve: (p: string) => p, instances: ["dev", "prod"] };
+  const rows = (files = FILES) => {
+    const si = getRecipe("ansible")!.load(
+      {
+        name: "s",
+        recipe: "ansible",
+        rows: "artifact",
+        defaults: "/vars.yml",
+        overlays: { dev: "/dev.yml", prod: "/prod.yml" },
+        templates: [{ path: "/app.conf.j2", component: "app", deployed_path: "/etc/app.conf", format: "space" }],
+      } as never,
+      { ...io, readFile: (p: string) => (files[p] ?? (p === "/dev.yml" ? "" : null)) } as never
+    );
+    return si.embedded ?? [];
+  };
+
+  it("names the test that decides a conditional row", () => {
+    const extra = rows().find((e) => e.key === "Extra")!;
+    expect(extra.instances?.map((i) => i.name)).toEqual(["prod"]);
+    expect(extra.present_when).toEqual([{ variable: "some_flag" }]);
+  });
+
+  // A row every environment renders has nothing to explain, and naming a test
+  // that changes nothing is noise.
+  it("says nothing about a row whose presence does not vary", () => {
+    expect(rows().find((e) => e.key === "Listen")!.present_when).toBeUndefined();
+  });
+
+  // The rule this module follows everywhere: report what was computed, claim
+  // nothing about what was not.
+  it("says nothing when the condition is one the evaluator does not read", () => {
+    const odd = { ...FILES, "/app.conf.j2": "Listen {{ port }}\n{% if some_flag and port %}\nExtra on\n{% endif %}\n" };
+    expect(rows(odd).find((e) => e.key === "Extra")).toBeUndefined();
+  });
+});

@@ -3405,6 +3405,13 @@ tr.rs-jump-flash th {
   vertical-align: middle;
 }
 
+/* The condition a row's presence hangs on. The same muted sub-line every other
+   fact in the key cell uses; it is one more thing about the row, not a warning
+   about it. */
+.rs-present-when code {
+  color: var(--rs-text-muted);
+}
+
 /* Out-of-scope reason — always visible (this is the audit artifact, not a
    tooltip): the reason + optional owner, shown inline under the category
    heading or inside an excluded param row's key cell. */

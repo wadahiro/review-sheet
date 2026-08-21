@@ -1780,3 +1780,67 @@ describe("a metadata block for a component the sheet never produced", () => {
     expect(() => assembleSheets(inputs, opts({ strictMetadata: false }))).not.toThrow();
   });
 });
+
+// A `{% if %}` wrapped around a whole block: the block's own row carries the
+// test, because every row inside it named the same one. That is the pairing a
+// reviewer needs — the block and the flag that turns it on are two rows in one
+// table, and nothing said they were about each other.
+describe("a block's own condition", () => {
+  const embedded = (present: { variable: string; negated?: boolean }[] | undefined, second = present) => [
+    {
+      key: 'Location["/x"].Require',
+      value: "all granted",
+      source: { file: "/etc/app/proxy.conf", line: 3 },
+      containers: [{ name: "Location", subject: '"/x"', pathSeg: 'Location["/x"]', headings: ["Location /x"], line: 2 }],
+      categoryPath: ["proxy.conf"],
+      instances: [{ name: "prod", value: "all granted" }],
+      ...(present ? { present_when: present } : {}),
+    },
+    {
+      key: 'Location["/x"].Options',
+      value: "None",
+      source: { file: "/etc/app/proxy.conf", line: 4 },
+      containers: [{ name: "Location", subject: '"/x"', pathSeg: 'Location["/x"]', headings: ["Location /x"], line: 2 }],
+      categoryPath: ["proxy.conf"],
+      instances: [{ name: "prod", value: "None" }],
+      ...(second ? { present_when: second } : {}),
+    },
+  ];
+  const blockRow = (rows: unknown[]) => {
+    const out = assembleSheets(
+      [
+        {
+          name: "s",
+          instances: ["dev", "prod"],
+          layers: [{ kind: "base", entries: new Map() }],
+          embedded: rows as never,
+          // The sheet's default layout heads its rows by the file they land in,
+          // and a top-level block has nothing else above it — so the sheet has
+          // to know which file that is, as a real one does.
+          deployedFiles: new Map([["", "/etc/app/proxy.conf"]]),
+        },
+      ],
+      // The DEFAULT layout, not this file's shared `layout: categories`: a
+      // top-level block has nothing above it to file under except the file it
+      // is in, which is what heading rows by their file gives it.
+      baseOpts({ projectPath: "flat.yml", readFile: (f: string) => (f === "flat.yml" ? "params: {}\n" : null) })
+    );
+    const walk = (cats: { params?: { key: string; present_when?: unknown }[]; categories?: unknown[] }[]): { key: string; present_when?: unknown }[] =>
+      cats.flatMap((c) => [...(c.params ?? []), ...walk((c.categories ?? []) as never)]);
+    return walk(out.sheets[0].categories as never).find((p) => p.key === 'Location["/x"]');
+  };
+
+  it("takes the test its contents agree on", () => {
+    expect(blockRow(embedded([{ variable: "some_flag" }]))?.present_when).toEqual([{ variable: "some_flag" }]);
+  });
+
+  // No single answer, so no answer: naming one of them would name a test that
+  // does not decide the block.
+  it("takes none when its contents disagree", () => {
+    expect(blockRow(embedded([{ variable: "a" }], [{ variable: "b" }]))?.present_when).toBeUndefined();
+  });
+
+  it("takes none when nothing inside it is conditional", () => {
+    expect(blockRow(embedded(undefined))?.present_when).toBeUndefined();
+  });
+});
