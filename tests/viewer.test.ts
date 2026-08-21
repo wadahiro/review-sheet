@@ -2555,3 +2555,73 @@ describe("what a presence row shows in its value cell", () => {
     expect(valueCell(host, "debug")).toBe("true");
   });
 });
+
+
+// "Nothing is set here" and "this environment's file does not have the line"
+// are two different facts, and the cell said the first about the second: a
+// block a `{% if %}` keeps out of dev read "uses default", about a line dev's
+// file does not contain. The preview panel had it right — struck through, with
+// the condition as the reason — and the table beside it did not.
+describe("viewer: an environment the row is not in", () => {
+  const doc = (extra: Record<string, unknown>) => ({
+    metadata: { title: "t" },
+    versions: [
+      {
+        version: "current",
+        sheets: [
+          {
+            name: "web",
+            instances: ["dev", "prod"],
+            categories: [
+              {
+                name: "proxy.conf",
+                params: [
+                  {
+                    key: 'LocationMatch["^/x/"]',
+                    container: { name: "LocationMatch" },
+                    instances: [{ name: "prod", value: '"^/x/"' }],
+                    description: "a block",
+                    ...extra,
+                  },
+                  // A row that IS merely unset in dev, so the two labels are
+                  // told apart by what the row says rather than by position.
+                  { key: "Timeout", instances: [{ name: "prod", value: "60" }], description: "t" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  const mountDoc = (extra: Record<string, unknown>): HTMLElement => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: doc(extra) as never, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    return host;
+  };
+
+  // A block's key cell shows the block's own name, not the full address — see
+  // the container row's rendering.
+  const cells = (host: HTMLElement, key: string) => {
+    const row = [...host.querySelectorAll("tbody tr")].find((r) =>
+      (r.querySelector(".rs-col-key")?.textContent ?? "").startsWith(key)
+    )!;
+    return [...row.querySelectorAll("td.rs-col-value")].map((c) => (c.textContent ?? "").trim());
+  };
+
+  it("says the file does not have it, not that it uses a default", () => {
+    const host = mountDoc({ absent_where_unlisted: true });
+    expect(cells(host, "LocationMatch")).toEqual(["この環境のファイルにはない", '"^/x/"']);
+  });
+
+  // Same shape, no such claim on the row: an ordinary partial Pattern B row is
+  // unset in the environments it leaves out, and still says so.
+  it("still says uses-default for a row that is merely unset there", () => {
+    const host = mountDoc({});
+    expect(cells(host, "Timeout")).toEqual(["デフォルト値を利用", "60"]);
+    expect(cells(host, "LocationMatch")).toEqual(["デフォルト値を利用", '"^/x/"']);
+  });
+});

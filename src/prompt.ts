@@ -58,6 +58,8 @@ export type ParamData = {
   // The `{% if %}` test that decides whether this row is in the file — see
   // `ParameterBase.present_when`.
   present_when?: { variable: string; negated?: boolean }[];
+  // See `ParameterBase.absent_where_unlisted`.
+  absent_where_unlisted?: true;
   // Where this row's `default` was read — see `ParameterBase.default_from`.
   default_from?: string;
   // The grouping a file heading displaced, for the viewer to sub-head with —

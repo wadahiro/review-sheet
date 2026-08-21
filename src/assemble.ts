@@ -159,6 +159,9 @@ export type EmbeddedEntry = {
   // The `{% if %}` test that decides whether this row is in the file — see
   // Parameter.present_when, which it becomes unchanged.
   present_when?: { variable: string; negated?: boolean }[];
+  // See Parameter.absent_where_unlisted — an instance missing from the list
+  // above does not have this row at all.
+  absent_where_unlisted?: true;
 };
 
 // A binding from a bound (product) key to the variable that backs it, e.g.
@@ -1044,7 +1047,12 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
         // environments and simply is not in the others, which an instance list
         // expresses by leaving them out.
         ...(present !== undefined && present !== "all"
-          ? { instances: [...present].map((name) => ({ name, value: n.subject!, ...(src && !fromBaselineEntry ? { source: src } : {}) })) }
+          ? {
+              instances: [...present].map((name) => ({ name, value: n.subject!, ...(src && !fromBaselineEntry ? { source: src } : {}) })),
+              // The block is not in the other environments' files — it is not
+              // a block left at some default there.
+              absent_where_unlisted: true as const,
+            }
           : { value: n.subject }),
         // A block the VENDOR ships and this project does not is not embedded in
         // the deployed artifact — nothing opens it there. Saying "embedded"
@@ -1103,6 +1111,7 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
     // travels with the row rather than being re-derived: only the recipe that
     // read the template knows which test governed the line.
     if (e.present_when?.length) param.present_when = e.present_when;
+    if (e.absent_where_unlisted) param.absent_where_unlisted = true;
     if (e.containers?.length) param.container_path = e.containers.map((n, i) => ({ path: e.containers!.slice(0, i + 1).map((x) => x.pathSeg).join("."), name: n.name }));
     pushDraft(e.key, withUnderKey(param, variable), variable, undefined, e.component, e.categoryPath, e.categoryPathWins);
   }

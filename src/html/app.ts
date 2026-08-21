@@ -2147,7 +2147,12 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
             // Equals the default AND empty → the environment leaves it at the
             // (empty) default: render as unset "—" rather than a blank cell.
             const cls = isSameAsDefault ? (value === "" ? "rs-cell-unset" : "rs-same-as-default") : "rs-changed";
-            return { kind: "review", value, target: { ...baseTarget(param), instance: name }, field: "value", className: `rs-col-value ${cls} ${diffCls}`, isCode: true, copyable: value.length > 0, unsetLabel: t.usesDefault, display: presenceDisplay(param, value, t), valueLabel: presenceDisplay(param, value, t) === undefined ? optionLabel(param, value, t) : undefined };
+            // "Nothing is set here" and "this environment's file does not have
+            // the line" are two different facts, and this cell said the first
+            // about the second: a block a `{% if %}` keeps out of dev read
+            // "uses default", about a line dev's file does not contain.
+            const unsetLabel = !inst && param.absent_where_unlisted ? t.notInThisFile : t.usesDefault;
+            return { kind: "review", value, target: { ...baseTarget(param), instance: name }, field: "value", className: `rs-col-value ${cls} ${diffCls}`, isCode: true, copyable: value.length > 0, unsetLabel, display: presenceDisplay(param, value, t), valueLabel: presenceDisplay(param, value, t) === undefined ? optionLabel(param, value, t) : undefined };
           }
           // Pattern A: one stored value, shown in every environment column. The
           // cell still targets ITS environment, because a review here is a

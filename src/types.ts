@@ -539,6 +539,17 @@ export type ParameterBase = {
   // Absent too when the condition is one the evaluator does not read — a claim
   // about a test nobody evaluated is not a claim worth printing.
   present_when?: { variable: string; negated?: boolean }[];
+  // An environment missing from `instances` does not HAVE this row — the line
+  // is not in that environment's file at all — as opposed to leaving it unset.
+  // Two different facts, and the viewer said the second about the first: the
+  // cell for a block a conditional keeps out of dev read "uses default", about
+  // a line dev's file does not contain.
+  //
+  // Carried rather than inferred from `present_when`: that names the test and
+  // is absent whenever the evaluator could not read it, or (on a block) when
+  // the rows inside disagreed — while the absence itself is just as real. The
+  // recipe knows this at emit time, which is the only place that does.
+  absent_where_unlisted?: true;
 
   remarks?: LangText;
   // Mark a single parameter as not in review scope (same effect as the category
