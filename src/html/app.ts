@@ -24,6 +24,7 @@ import { buildDiffModel, rowKey, instKey, catKey, sheetKey, type DiffStatusMap }
 import { applyEdits, editsForCell, isEdit, isEditableField, isDeleted, planFromEdits, promptItemsFromPlan, documentSource, documentAssets, DOCUMENT_FIELD, cellKey as editCellKey, targetKey, type EditedSheets } from "../edits.js";
 import { getMarkdownRenderer } from "./markdown-runtime.js";
 import { runMermaid } from "./mermaid-runtime.js";
+import { setShowSources, showSources } from "./display-config.js";
 import { withEmbeddedHistory, readEmbeddedHistory, suggestedFileName, type EmbeddedHistory } from "./save.js";
 import type { DiffStatus } from "../diff.js";
 import { pickLang, type OutOfScope, type Capabilities, type ArtifactPreview, PRESENCE_VALUE } from "../types.js";
@@ -53,7 +54,7 @@ function originTag(param: ParamData, t: Messages): { label: string; title: strin
     // whole remedy, so which file is the useful half. What the marker MEANS is
     // explained once per sheet by the legend instead of being crammed into
     // every row's label.
-    const file = param.source?.file;
+    const file = showSources() ? param.source?.file : undefined;
     const base = file ? file.split("/").pop() : undefined;
     return { label: base ?? t.originEmbedded, title: file ? `${t.originEmbeddedTip}\n${file}` : t.originEmbeddedTip };
   }
@@ -3790,7 +3791,9 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, t }: {
                `nature: "source"` preview is the authored file itself, not
                something rendered FROM it — "Rendered from" would be a false
                claim, so it gets its own label instead. */ ""}
-          ${shown.nature === "source" ? t.artifactSourceFile : t.artifactRenderedFrom}: <code>${shown.source_file}</code>
+          ${showSources()
+            ? html`${shown.nature === "source" ? t.artifactSourceFile : t.artifactRenderedFrom}: <code>${shown.source_file}</code>`
+            : null}
           ${/* The exception, and only when there IS one. Costs nothing at zero,
                and when it fires it is the index that makes a marked line 200
                rows down get found instead of scrolled past. */ ""}
@@ -4868,7 +4871,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
               ${sheet.file_path && html`
                 <p class="rs-file-path">
                   <code>${sheet.file_path}</code>
-                  ${sheet.source_file && sheet.source_file !== sheet.file_path && html`
+                  ${showSources() && sheet.source_file && sheet.source_file !== sheet.file_path && html`
                     <span class="rs-source-path">${t.sheetSourceLabel}: <code>${sheet.source_file}</code></span>
                   `}
                 </p>
@@ -5072,7 +5075,10 @@ function diffBadge(status: DiffStatus | undefined) {
 // Root (version switching + diff) and entry point
 // ============================================================
 
-function Root({ payload, reviewEnabled, editEnabled, promptEnabled = true, initialLang, server, pristineHtml, embedded }: { payload: Payload; reviewEnabled: boolean; editEnabled: boolean; promptEnabled?: boolean; initialLang: Lang; server: boolean; pristineHtml?: string; embedded?: EmbeddedHistory }) {
+function Root({ payload, reviewEnabled, editEnabled, promptEnabled = true, showSources: sources = true, initialLang, server, pristineHtml, embedded }: { payload: Payload; reviewEnabled: boolean; editEnabled: boolean; promptEnabled?: boolean; showSources?: boolean; initialLang: Lang; server: boolean; pristineHtml?: string; embedded?: EmbeddedHistory }) {
+  // Applied here rather than in an effect: it decides what the FIRST render
+  // draws, and an effect runs after it.
+  setShowSources(sources);
   const [lang, setLang] = useState<Lang>(initialLang);
   const t = useMemo(() => getMessages(lang), [lang]);
   // Document-level opt-out (`capabilities.apply: false`): hides every
@@ -5169,13 +5175,16 @@ function init() {
   // Off only when the author said so (`--allow` without `prompt`): a document
   // built before this switch existed still offers it.
   const promptEnabled = config.prompt !== false;
+  // Where a value is WRITTEN, shown or not. On unless the author said otherwise
+  // (`--no-sources`) — see GenerateOptions.sources for what it is for.
+  const showSources = config.sources !== false;
   const lang: Lang = config.lang === "en" ? "en" : "ja";
   const serverMode = config.server === true;
 
   const appEl = document.getElementById("app");
   if (!appEl) return;
   render(html`<${Root} payload=${payload} reviewEnabled=${reviewEnabled} editEnabled=${editEnabled} initialLang=${lang} server=${serverMode}
-                       promptEnabled=${promptEnabled} pristineHtml=${pristineHtml} embedded=${embedded} />`, appEl);
+                       promptEnabled=${promptEnabled} showSources=${showSources} pristineHtml=${pristineHtml} embedded=${embedded} />`, appEl);
 }
 
 if (typeof document !== "undefined") {

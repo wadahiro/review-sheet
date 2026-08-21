@@ -265,6 +265,12 @@ program
 // facts in one file. `prompt` is not a mode; it is one affordance that either
 // mode may or may not carry.
 const ALLOWED_CAPS = ["review", "edit", "prompt"] as const;
+
+// Displaying WHERE a value is written is not a capability, so it is a flag of
+// its own: `--no-sources` hides the file names — the tag under a row's key, the
+// "rendered from" line under a sheet's heading, the source line in a preview.
+// The source map itself stays in the document; apply and verify resolve every
+// change through it.
 const EXCLUSIVE_MODES = ["review", "edit"] as const;
 
 // `-r` takes a review.json or the edited sheet HTML. Distinguished by content,
@@ -319,8 +325,9 @@ program
   // Same behaviour, so nothing breaks.
   .option("--no-review", "Deprecated spelling of --readonly")
   .option("--allow <caps>", "What the recipient may do: review OR edit, optionally with prompt. Omitted, the default is review,prompt (overrides --no-review)")
+  .option("--no-sources", "Hide where each value is written (the file name under a row, the sheet's rendered-from line, a preview's source line). The source map stays in the file — apply and verify still work")
   .option("--lang <lang>", "UI language: ja | en (default: ja)", "ja")
-  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; lang: string }) => {
+  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; lang: string }) => {
     try {
       const files = opts.input;
       let input: ParameterSheetInput | VersionedSheetInput;
@@ -361,6 +368,9 @@ program
         // but never in a document that produces nothing to put in one, where
         // claiming the capability would describe a button that cannot exist.
         prompt: (caps ? caps.has("prompt") : readable) && (caps ? caps.has("review") || caps.has("edit") : readable),
+        // Not a capability — nobody is permitted or forbidden anything by it —
+        // so a flag of its own rather than a name in --allow.
+        sources: opts.sources,
         lang,
       });
 

@@ -2625,3 +2625,73 @@ describe("viewer: an environment the row is not in", () => {
     expect(cells(host, "LocationMatch")).toEqual(["デフォルト値を利用", '"^/x/"']);
   });
 });
+
+
+// WHERE a value is written, shown or not. On a real sheet 454 rows of 1536
+// carried a file name under the key — `main.yml`, `poc.yml`, a template — and
+// for a reader who is judging the settings rather than maintaining the
+// repository, a name that never becomes an action is a column of noise.
+//
+// A display switch and not redaction: the source map stays in the document,
+// because apply and verify resolve every change through it. The tests below
+// check both halves of that.
+describe("viewer: showing where a value is written", () => {
+  const doc = {
+    metadata: { title: "t" },
+    versions: [
+      {
+        version: "current",
+        sheets: [
+          {
+            name: "web",
+            file_path: "/etc/httpd/conf/httpd.conf",
+            source_file: "roles/httpd/templates/httpd.conf.j2",
+            categories: [
+              {
+                name: "httpd.conf",
+                params: [
+                  {
+                    key: "Listen",
+                    value: "80",
+                    origin: "embedded",
+                    source: { file: "roles/httpd/defaults/main.yml", line: 3 },
+                    description: "port",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const mountWith = (sources: boolean): HTMLElement => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(
+      h(Root, { payload: doc as never, reviewEnabled: true, editEnabled: false, showSources: sources, initialLang: "ja", server: false }),
+      host
+    );
+    return host;
+  };
+
+  it("shows the file a row came from, and the template a sheet was rendered from", () => {
+    const host = mountWith(true);
+    expect(host.textContent).toContain("main.yml");
+    expect(host.textContent).toContain("httpd.conf.j2");
+  });
+
+  it("shows neither when the document was generated without them", () => {
+    const host = mountWith(false);
+    expect(host.textContent).not.toContain("main.yml");
+    expect(host.textContent).not.toContain("httpd.conf.j2");
+  });
+
+  // The DEPLOYED path is what the sheet is ABOUT, not where the repository
+  // keeps its template — it stays either way.
+  it("keeps the path the settings land on", () => {
+    expect(mountWith(false).textContent).toContain("/etc/httpd/conf/httpd.conf");
+  });
+});

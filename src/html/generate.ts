@@ -131,7 +131,8 @@ export async function generateHtml(
   const entry = drawsDiagram ? "app-mermaid.ts" : editableDocument ? "app-md.ts" : "app.ts";
   const appJS = await getAppBundle(entry);
   const dataJson = JSON.stringify(data);
-  const configJson = escapeScriptClose(JSON.stringify({ review: reviewEnabled, edit: editEnabled, prompt: promptEnabled, lang, server: options?.server === true }));
+  const showSources = options?.sources !== false;
+  const configJson = escapeScriptClose(JSON.stringify({ review: reviewEnabled, edit: editEnabled, prompt: promptEnabled, sources: showSources, lang, server: options?.server === true }));
   const title = options?.title ?? data.metadata?.title ?? (lang === "en" ? "Parameter Sheet" : "パラメータシート");
 
   return `<!DOCTYPE html>
