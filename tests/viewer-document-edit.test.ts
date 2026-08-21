@@ -189,7 +189,9 @@ describe("images pasted into a document", () => {
     const later: ReviewItem = {
       id: "rev_later",
       target: { sheet: "OS ディレクトリ", field: "document" },
-      changes: [{ field: "document", suggested: "# 別の見出し\n\n![](images/deadbeef.png)\n" }],
+      // A SECTION heading, not the page's title: a title h1 is the sheet's own
+      // heading and is not rendered into the body.
+      changes: [{ field: "document", suggested: "## 別の見出し\n\n![](images/deadbeef.png)\n" }],
       status: "applied",
       at: "2026-09-01T00:00:00Z",
     };
