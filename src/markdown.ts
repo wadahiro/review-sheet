@@ -25,6 +25,10 @@ export type DocHeading = {
 
 export type RenderedDocument = {
   html: string;
+  // This document draws at least one diagram, so the page it lands on has to
+  // carry the renderer. Absent means it does not — and the renderer is large
+  // enough that "absent" is the answer worth keeping cheap.
+  mermaid?: true;
   // ONLY the headings the outline is meant to show (see `navDepth`) — the model
   // then states what the navigation is, instead of restating a rule the viewer
   // would have to apply again and could apply differently.
@@ -177,6 +181,10 @@ export function renderMarkdown(source: string, resolveImage: ImageResolver, opts
   const headings: DocHeading[] = [];
   const taken = new Map<string, number>();
   let ordinal = 0;
+  // Whether this document draws a diagram. The caller needs it to decide
+  // whether the page carries the renderer at all — 3.3 MB of it, which a
+  // document without a diagram must not pay.
+  let mermaid = false;
 
   const marked = new Marked({ gfm: true });
   marked.use({
@@ -225,6 +233,24 @@ export function renderMarkdown(source: string, resolveImage: ImageResolver, opts
         // heading would make that jump go nowhere.
         return `<h${token.depth} id="${escapeHtml(id)}">${this.parser.parseInline(token.tokens)}</h${token.depth}>\n`;
       },
+      // A ```mermaid fence is a DIAGRAM, not a code sample. It is emitted as
+      // the element mermaid itself looks for, with the source escaped inside,
+      // and drawn in the page — which is the only place it can be drawn: this
+      // build never starts a browser, and a diagram somebody edits has to be
+      // re-drawn from the edited text, so a picture baked in beforehand would
+      // be a picture that stops matching its source the moment it is touched.
+      //
+      // The runtime that draws it travels only in a document that has one —
+      // see html/mermaid-runtime.ts. Without it the source shows as text, which
+      // is what a reader of the markdown file sees too.
+      code(token: Tokens.Code): string {
+        if ((token.lang ?? "").trim().toLowerCase() !== "mermaid") {
+          const cls = token.lang ? ` class="language-${escapeHtml(token.lang.trim().split(/\s+/)[0])}"` : "";
+          return `<pre><code${cls}>${escapeHtml(token.text)}\n</code></pre>\n`;
+        }
+        mermaid = true;
+        return `<pre class="mermaid">${escapeHtml(token.text)}</pre>\n`;
+      },
       image(token: Tokens.Image): string {
         const src = inlineImage(token.href, resolveImage);
         const title = token.title ? ` title="${escapeHtml(token.title)}"` : "";
@@ -237,7 +263,7 @@ export function renderMarkdown(source: string, resolveImage: ImageResolver, opts
   });
 
   const html = marked.parse(source, { async: false });
-  return { html, headings };
+  return { html, headings, ...(mermaid ? { mermaid: true as const } : {}) };
 }
 
 // Every image href the document references, in order, so the caller can resolve

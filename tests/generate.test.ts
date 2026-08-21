@@ -212,3 +212,40 @@ describe("generateHtml: the bundle actually runs", () => {
   });
 });
 
+
+// Which viewer the page carries, and therefore what it weighs. Three entries:
+// the plain one, the one that can re-render markdown (43 KB more), and the one
+// that can draw diagrams (3.3 MB more). A sheet must pay only for what it uses,
+// and "uses" is decided by the document itself, not by a flag somebody sets.
+describe("generateHtml: the page carries only the viewer it needs", () => {
+  const withDocument = (html: string, mermaid: boolean): ParameterSheetInput => ({
+    metadata: { title: "d" },
+    sheets: [
+      {
+        name: "doc",
+        categories: [],
+        document: { html, ...(mermaid ? { mermaid: true as const } : {}) },
+      },
+    ],
+  }) as ParameterSheetInput;
+
+  const appOf = (out: string): string => readGzipBlock(out, "sheet-app-gz") ?? "";
+
+  it("leaves the diagram renderer out of a document that draws none", async () => {
+    const out = await generateHtml(withDocument("<p>x</p>", false), { edit: true });
+    expect(appOf(out).length).toBeLessThan(1_000_000);
+  });
+
+  it("carries it for a document that draws one — even read-only", async () => {
+    // A diagram is NOT already rendered in a read-only copy: the build has no
+    // browser, so the page draws it. That makes this independent of editing.
+    const out = await generateHtml(withDocument('<pre class="mermaid">graph LR</pre>', true), {});
+    expect(appOf(out).length).toBeGreaterThan(1_000_000);
+  });
+
+  // The whole point of the split: a sheet with no document at all is unchanged.
+  it("leaves both out of a sheet with no document", async () => {
+    const out = await generateHtml(simpleFixture as ParameterSheetInput);
+    expect(appOf(out).length).toBeLessThan(1_000_000);
+  });
+});

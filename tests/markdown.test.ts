@@ -229,3 +229,42 @@ describe("markdown: the document's own title", () => {
     expect(headings.map((h) => h.text)).toEqual(["A", "Part two"]);
   });
 });
+
+
+// A ```mermaid fence is a DIAGRAM, not a code sample. The build cannot draw it —
+// it starts no browser, which is what makes it reproducible offline — so the
+// page draws it, and the fence is emitted as the element the renderer looks
+// for. That also keeps an edited diagram honest: it is re-drawn from the text
+// that was edited, where a picture baked in beforehand would stop matching its
+// source the moment somebody touched it.
+describe("markdown: a mermaid fence", () => {
+  it("becomes the element the renderer draws into, with the source escaped inside", () => {
+    const { html } = renderMarkdown("```mermaid\ngraph LR\n  A[x] --> B\n```\n", noImages);
+    expect(html).toContain('<pre class="mermaid">');
+    expect(html).toContain("graph LR");
+    // Escaped, or a label with a bracket would be markup.
+    expect(html).toContain("--&gt;");
+    expect(html).not.toContain("<code");
+  });
+
+  it("says the document draws one, so the page can decide whether to carry the renderer", () => {
+    expect(renderMarkdown("```mermaid\ngraph LR\n```\n", noImages).mermaid).toBe(true);
+  });
+
+  // The renderer is 3.3 MB. A document that does not draw must not pay it, so
+  // the answer has to be no by default and yes only on evidence.
+  it("says nothing of the kind for an ordinary document", () => {
+    expect(renderMarkdown("## A\n\n```sh\necho hi\n```\n", noImages).mermaid).toBeUndefined();
+  });
+
+  it("leaves an ordinary fenced block a code block", () => {
+    const { html } = renderMarkdown("```sh\necho hi\n```\n", noImages);
+    expect(html).toContain('<code class="language-sh">');
+    expect(html).not.toContain('class="mermaid"');
+  });
+
+  it("reads the fence's own spelling, not a word inside it", () => {
+    const { html } = renderMarkdown("```text\nmermaid is a library\n```\n", noImages);
+    expect(html).not.toContain('class="mermaid"');
+  });
+});
