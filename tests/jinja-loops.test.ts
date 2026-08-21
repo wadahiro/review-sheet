@@ -454,3 +454,57 @@ describe("ansible recipe: a variable that only decides a block's presence", () =
     expect(load({}, odd).rows).toContain("some_flag");
   });
 });
+
+
+// The same conditional block on a sheet that covers ONE template. Its rows do
+// not go through the per-component path, and the `{% if %}` was ignored there:
+// the row was left in the base map, which holds one value per key, and the
+// overlay pass then rendered the line for every environment — `Require ip `
+// with the allow-list empty, which denies everyone, in the environments whose
+// files have no such line at all.
+describe("ansible recipe: a conditional block on a single-template sheet", () => {
+  const FILES: Record<string, string> = {
+    "/vars.yml": 'allow_from: ""\nbackend: http://127.0.0.1:8080\n',
+    "/dev.yml": "{}\n",
+    "/prod.yml": 'allow_from: "10.0.0.0/8"\n',
+    "/httpd.conf.j2":
+      'ProxyPreserveHost On\n{% if allow_from %}\n<LocationMatch "^/admin/">\n    Require ip {{ allow_from }}\n</LocationMatch>\n{% endif %}\n',
+  };
+  const load = () => {
+    const si = getRecipe("ansible")!.load(
+      {
+        name: "web",
+        recipe: "ansible",
+        rows: "artifact",
+        defaults: "/vars.yml",
+        overlays: { dev: "/dev.yml", prod: "/prod.yml" },
+        // ONE template, named directly: no components, so the rows take the
+        // single-template path.
+        template: "/httpd.conf.j2",
+        deployed_path: "/etc/httpd/conf/httpd.conf",
+      } as never,
+      { readFile: (p: string) => FILES[p] ?? null, specDir: "/", resolve: (p: string) => p, instances: ["dev", "prod"] } as never
+    );
+    const base = si.layers.find((l) => l.kind === "base") as { entries: Map<string, unknown> } | undefined;
+    const overlays = si.layers.filter((l) => l.kind === "overlay").flatMap((l) => [...(l as never as { entries: Map<string, unknown> }).entries.keys()]);
+    return { si, rows: [...(base?.entries.keys() ?? []), ...overlays], embedded: si.embedded ?? [] };
+  };
+
+  it("renders the block for the environments that have it, and no others", () => {
+    const req = load().embedded.find((e) => e.key.endsWith(".Require"))!;
+    expect(req.instances?.map((i) => `${i.name}=${i.value}`)).toEqual(["prod=ip 10.0.0.0/8"]);
+    expect(req.absent_where_unlisted).toBe(true);
+    expect(req.present_when).toEqual([{ variable: "allow_from" }]);
+  });
+
+  // The base map holds one value per key; a row that is not in every file
+  // cannot be stated there, and leaving it there is what produced the empty
+  // directive.
+  it("does not leave the directive in the base map for the overlay pass to re-render", () => {
+    expect(load().rows.some((k) => k.endsWith(".Require"))).toBe(false);
+  });
+
+  it("does not leave the variable behind as a row of its own either", () => {
+    expect(load().rows).not.toContain("allow_from");
+  });
+});

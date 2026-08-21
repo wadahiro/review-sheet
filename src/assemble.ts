@@ -1637,7 +1637,16 @@ export function attributedFile(
   // list element files under the vars file the element lives in, and the sheet
   // shows a `server` directive under `defaults/main.yml` instead of under the
   // chrony.conf it is a line of.
-  const substituted = "source" in param && param.source?.substituted === true;
+  //
+  // Read from the INSTANCES too, exactly as `ownFileOf` reads the file from
+  // them: a row that differs per environment has no single site of its own,
+  // and asking only the row said "not part of the artifact" about the one row
+  // shape that is most obviously part of it — a directive an overlay changes.
+  // The asymmetry showed as a tab named after a group_vars file sitting beside
+  // tabs that are deployed files.
+  const substituted =
+    ("source" in param && param.source?.substituted === true) ||
+    ("instances" in param && (param.instances ?? []).some((i) => i.source?.substituted === true));
   const partOfArtifact =
     own === undefined || hasVariable || substituted || (templateSource !== undefined && own === templateSource);
   return partOfArtifact ? (artifact ?? own) : own;

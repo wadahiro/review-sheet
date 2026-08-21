@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { stubNonBuiltInProviders } from "./only-builtin-providers.js";
-import { assembleSheets, assembleSheetsWithReport, type AssembleOpts, type ExtractedEntry, type ExtractedMap, type SheetInputs } from "../src/assemble";
+import { assembleSheets, assembleSheetsWithReport, attributedFile, type AssembleOpts, type ExtractedEntry, type ExtractedMap, type SheetInputs } from "../src/assemble";
 import { ScaffoldableBuildError, renderScaffold } from "../src/enrich";
 import { buildSourceIndex } from "../src/prompt";
 import { parse as parseYaml } from "yaml";
@@ -1875,5 +1875,36 @@ describe("a block's own condition", () => {
     const rows = walk(out.sheets[0].categories as never);
     expect(rows.some((r) => r.key.startsWith("Location"))).toBe(true);
     expect(rows.every((r) => r.present_when === undefined)).toBe(true);
+  });
+});
+
+
+// Which FILE a row belongs to, for a row that differs per environment. The
+// evidence that a row is a line of the artifact — a source marked
+// `substituted`, i.e. "this site holds part of the rendered line" — was read
+// from the row and not from its instances, and a row that differs per
+// environment has no site of its own. So the one row shape most obviously part
+// of the artifact, a directive an overlay changes, was filed under the
+// group_vars file its value comes from: a tab named after a vars file, beside
+// tabs that are deployed files.
+describe("attributedFile: a row whose instances carry the substitution", () => {
+  const param = {
+    key: "Require",
+    instances: [
+      { name: "prod", value: "ip 10.0.0.0/8", source: { file: "group_vars/prod.yml", line: 3, substituted: true } },
+    ],
+  };
+
+  it("files it under the artifact, not under the vars file its value is written in", () => {
+    expect(attributedFile(param as never, "/etc/httpd/conf/httpd.conf", "httpd.conf.j2", false)).toBe(
+      "/etc/httpd/conf/httpd.conf"
+    );
+  });
+
+  // Unchanged where there is no such evidence: a plain variable row still
+  // belongs to the file that defines it.
+  it("leaves a row with no substituted site where it is written", () => {
+    const plain = { key: "some_var", instances: [{ name: "prod", value: "x", source: { file: "group_vars/prod.yml", line: 3 } }] };
+    expect(attributedFile(plain as never, "/etc/httpd/conf/httpd.conf", "httpd.conf.j2", false)).toBe("group_vars/prod.yml");
   });
 });
