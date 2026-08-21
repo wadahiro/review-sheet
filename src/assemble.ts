@@ -156,6 +156,17 @@ export type EmbeddedEntry = {
   // which is a sheet stating something about staging that is only true of
   // production.
   instances?: Instance[];
+  // WHERE this row lands on the host, when the recipe knows. It does whenever
+  // a row IS a line of a rendered artifact: the template it came from declared
+  // its `deployed_path`, and that is not something to re-derive here.
+  //
+  // It exists because deriving it went wrong for a component that deploys more
+  // than ONE file. The per-component record holds a single path, so the last
+  // template read silently won, and every row of the component's other files
+  // failed the "is this part of the artifact" test and was filed under its own
+  // SOURCE path — a heading reading `roles/x/templates/a.conf` beside rows that
+  // had no heading at all.
+  deployed_file?: string;
   // The `{% if %}` test that decides whether this row is in the file — see
   // Parameter.present_when, which it becomes unchanged.
   present_when?: { variable: string; negated?: boolean }[];
@@ -1111,6 +1122,8 @@ function buildDrafts(si: SheetInputs, hooks: AssembleHooks | undefined, underKey
     // travels with the row rather than being re-derived: only the recipe that
     // read the template knows which test governed the line.
     if (e.present_when?.length) param.present_when = e.present_when;
+    // Stated by the recipe, so nothing below has to work it out.
+    if (e.deployed_file !== undefined) param.deployed_file = e.deployed_file;
     if (e.absent_where_unlisted) param.absent_where_unlisted = true;
     if (e.containers?.length) param.container_path = e.containers.map((n, i) => ({ path: e.containers!.slice(0, i + 1).map((x) => x.pathSeg).join("."), name: n.name }));
     pushDraft(e.key, withUnderKey(param, variable), variable, undefined, e.component, e.categoryPath, e.categoryPathWins);
@@ -1836,6 +1849,9 @@ function fileDrafts(
     // this, exactly the rows a ledger adds are the rows `group_by: file`
     // cannot place.
     paramForRow(projectMeta, sheetName, d.component, d.key)?.deployed_file ??
+    // What the ROW says, which the recipe stamped from the template it rendered
+    // — the only answer that survives a component deploying several files.
+    ("deployed_file" in d.param ? d.param.deployed_file : undefined) ??
     deployedFiles?.get(d.component ?? "") ??
     deployedFiles?.get("") ??
     fileCategory(
