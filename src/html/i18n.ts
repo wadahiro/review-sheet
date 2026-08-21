@@ -20,6 +20,7 @@ type Messages = {
   paramName: string;
   defaultValue: string;
   usesDefault: string;
+  notInThisFile: string;
   scopeSharedHint: string;
   scopeThisEnv: (env: string) => string;
   scopeAllEnvs: string;
@@ -271,6 +272,7 @@ const ja: Messages = {
   paramName: "設定項目",
   defaultValue: "デフォルト値",
   usesDefault: "デフォルト値を利用",
+  notInThisFile: "この環境のファイルにはない",
   scopeSharedHint: "この値は全環境で 1 箇所に定義されています。指摘の範囲を選んでください。",
   scopeThisEnv: (env) => `${env} のみ（この環境にオーバーライドを追加）`,
   scopeAllEnvs: "全環境（共有値そのものを変更）",
@@ -471,6 +473,7 @@ const en: Messages = {
   paramName: "Parameter",
   defaultValue: "Default",
   usesDefault: "Uses default",
+  notInThisFile: "Not in this file",
   scopeSharedHint: "This value is defined once for every environment. Choose the scope of your finding.",
   scopeThisEnv: (env) => `${env} only (add an override for this environment)`,
   scopeAllEnvs: "All environments (change the shared value)",

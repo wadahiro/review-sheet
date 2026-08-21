@@ -1266,7 +1266,20 @@ export const ansibleRecipe: SheetRecipe = {
               const varies =
                 onlyIn !== undefined || perInstance.some((i) => i.value !== perInstance[0]?.value);
               if (varies && perInstance.length > 0) {
-                embedded.push({ key, value: text, source, component: spec.component, categoryPath, containers, instances: perInstance, ...(presentWhen ? { present_when: presentWhen } : {}), ...(entry.presence ? { presence: true as const } : {}) });
+                embedded.push({
+                  key,
+                  value: text,
+                  source,
+                  component: spec.component,
+                  categoryPath,
+                  containers,
+                  instances: perInstance,
+                  ...(presentWhen ? { present_when: presentWhen } : {}),
+                  // `onlyIn` set means the instance list IS the presence list:
+                  // the environments it leaves out do not have this line.
+                  ...(onlyIn !== undefined ? { absent_where_unlisted: true as const } : {}),
+                  ...(entry.presence ? { presence: true as const } : {}),
+                });
               } else {
                 embedded.push({ key, value: text, source, component: spec.component, categoryPath, containers, ...(entry.presence ? { presence: true as const } : {}) });
               }
