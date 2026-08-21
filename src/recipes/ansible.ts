@@ -699,8 +699,25 @@ export const ansibleRecipe: SheetRecipe = {
         // covering three deployed files said nothing about where any of them
         // went, which is the one question a reviewer of a rendered artifact
         // asks first.
-        for (const { spec, file } of read) {
-          const component = spec.component!;
+        // One entry per component, and ONLY where the component deploys one
+        // file. A component may bring several (two releases of a product, each
+        // with a config file and a properties file), and this map answers
+        // "which file IS this component" — a question such a component has no
+        // single answer to. Written anyway, the last template read won: every
+        // row of the component's OTHER files then failed the "is this part of
+        // the artifact" test and was filed under its own source path, while the
+        // winner's rows lost their heading to the fold that asks this same map
+        // whether the component already names their file.
+        //
+        // Where there are several, each ROW carries its own deployed path
+        // instead (EmbeddedEntry.deployed_file, stamped below) — the recipe
+        // knows it per template, and that is the fact, rather than a summary of
+        // it that only holds for one file.
+        const perComponent = new Map<string, { spec: (typeof read)[number]["spec"]; file: string }[]>();
+        for (const r of read) perComponent.set(r.spec.component!, [...(perComponent.get(r.spec.component!) ?? []), r]);
+        for (const [component, rs] of perComponent) {
+          if (rs.length !== 1) continue;
+          const { spec, file } = rs[0];
           componentFiles.set(component, {
             ...(spec.deployedPath !== undefined ? { filePath: spec.deployedPath } : {}),
             sourceFile: file,
@@ -1294,6 +1311,7 @@ export const ansibleRecipe: SheetRecipe = {
                   categoryPath,
                   containers,
                   instances: perInstance,
+                  ...(spec.deployedPath !== undefined ? { deployed_file: spec.deployedPath } : {}),
                   ...(presentWhen ? { present_when: presentWhen } : {}),
                   // `onlyIn` set means the instance list IS the presence list:
                   // the environments it leaves out do not have this line.
@@ -1316,7 +1334,7 @@ export const ansibleRecipe: SheetRecipe = {
                 // `presentWhen` is undefined and the variable keeps its row.
                 if (presentWhen) for (const c of presentWhen) if (!namedByProject.has(c.variable)) consumedVars.add(c.variable);
               } else {
-                embedded.push({ key, value: text, source, component: spec.component, categoryPath, containers, ...(entry.presence ? { presence: true as const } : {}) });
+                embedded.push({ key, value: text, source, component: spec.component, categoryPath, containers, ...(spec.deployedPath !== undefined ? { deployed_file: spec.deployedPath } : {}), ...(entry.presence ? { presence: true as const } : {}) });
               }
             } else {
               bound.set(key, { value: text, source });
@@ -1403,7 +1421,7 @@ export const ansibleRecipe: SheetRecipe = {
             // base layer rather than interleaved at their template position,
             // so within a component the variables come first. Grouping by
             // component reorders them anyway.
-            embedded.push({ key: literalKey, value: entry.value, source, component: spec.component, categoryPath: entry.categoryPath, containers: entry.containers, ...(entry.presence ? { presence: true as const } : {}) });
+            embedded.push({ key: literalKey, value: entry.value, source, component: spec.component, categoryPath: entry.categoryPath, containers: entry.containers, ...(spec.deployedPath !== undefined ? { deployed_file: spec.deployedPath } : {}), ...(entry.presence ? { presence: true as const } : {}) });
             rowAtLine(spec.path, entry.source.line, literalKey);
             continue;
           }
