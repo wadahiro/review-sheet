@@ -1242,7 +1242,16 @@ export const ansibleRecipe: SheetRecipe = {
             const source = only
               ? { ...only.source, substituted: true }
               : { ...entry.source, file: entry.source.file ?? file };
-            if (scoped) {
+            // `onlyIn` set means the line is not in every environment's file,
+            // and a base map cannot say that: it holds ONE value per key, which
+            // the overlay pass then renders for every instance. That is how a
+            // block wrapped in `{% if %}` came out as deployed everywhere, with
+            // its condition variable rendered empty — `Require ip ` in the
+            // environments that have no allow-list, which denies everyone and
+            // is the opposite of what those files do (they have no such line).
+            // The comment below says this was fixed for a sheet covering
+            // several artifacts; it was not fixed for the single-template one.
+            if (scoped || onlyIn !== undefined) {
               // Two units both have `Unit.Description`, and the base map is
               // keyed by the row's own name — so on a sheet covering several
               // artifacts these rows go to `embedded`, whose entries each carry
@@ -1317,14 +1326,20 @@ export const ansibleRecipe: SheetRecipe = {
             // alone sets even though there is no base site for apply to edit.
             // And not `vars[0]`, which is the KEY's variable whenever the key
             // is templated too — the row's value is what the column is about.
-            if (onlyVar !== undefined) keyMapCandidates.push({ key, variable: onlyVar, component: spec.component });
+            // …and not a row a VARIABLE may be renamed onto: this key is
+            // already taken by the conditional row above, and the variable that
+            // drives it is consumed by it.
+            if (onlyVar !== undefined && (scoped || onlyIn === undefined)) keyMapCandidates.push({ key, variable: onlyVar, component: spec.component });
             if (spec.component !== undefined) {
               for (const v of vars) {
                 const seenIn = templateOfVariable.get(v);
                 templateOfVariable.set(v, seenIn === undefined ? spec.component : seenIn === spec.component ? seenIn : null);
               }
             }
-            if (!scoped) artifactRows.push({ key, text: entry.value, vars, component: spec.component });
+            // Not a row the overlay pass may re-derive: it has its own
+            // per-instance list already, and re-deriving it would render the
+            // line for the environments whose files do not contain it.
+            if (!scoped && onlyIn === undefined) artifactRows.push({ key, text: entry.value, vars, component: spec.component });
             presence.push({ key, ...(onlyIn !== undefined ? { onlyIn } : {}) });
             // Which line of which template this row IS, so the preview can
             // point back at it and the sheet can point into the preview.
@@ -1700,7 +1715,14 @@ export const ansibleRecipe: SheetRecipe = {
           // A variable this sheet's templates never mention stays a row of its
           // own (the rescue above keeps its base value), so its overlay entry
           // has to survive too.
-          for (const [k, v] of layer.entries) if (!artifactRows.some((r) => r.vars.includes(k))) rekeyed.set(k, v);
+          //
+          // Asked of `consumedVars`, not of `artifactRows`: the two used to be
+          // the same set, and stopped being it when a row whose presence varies
+          // began carrying its own per-instance list instead of being
+          // re-derived here. Asking the proxy re-admitted exactly those
+          // variables — the value beside the line it renders into, which is the
+          // duplication this removes.
+          for (const [k, v] of layer.entries) if (!consumedVars.has(k)) rekeyed.set(k, v);
           layer.entries = rekeyed;
         }
       }
@@ -1742,6 +1764,7 @@ export const ansibleRecipe: SheetRecipe = {
       ? (sheetSpec.component_order as unknown[]).filter((x): x is string => typeof x === "string")
       : [];
 
+    if (name === "httpd reverse proxy") for (const e of embedded) if (e.key.includes("admin")) console.warn("DBG4", JSON.stringify({k: e.key, inst: (e.instances ?? []).map((i) => i.name), pw: e.present_when, awu: e.absent_where_unlisted}));
     return {
       name,
       ...(filePath ? { filePath } : {}),
