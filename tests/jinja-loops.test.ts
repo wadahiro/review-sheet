@@ -508,3 +508,35 @@ describe("ansible recipe: a conditional block on a single-template sheet", () =>
     expect(load().rows).not.toContain("allow_from");
   });
 });
+
+
+// Pinned so nobody "fixes" it into a rendered line: an absent line keeps the
+// TEMPLATE's text. Rendering it with the environment's own values would print
+// a line no file contains — `Require ip` with an empty allow-list denies
+// everyone — and the strikethrough would be the only thing standing between a
+// reader and the opposite of the truth.
+describe("preview: an absent line is not rendered", () => {
+  it("keeps the template's own text where the block is not deployed", () => {
+    const FILES: Record<string, string> = {
+      "/vars.yml": 'allow: ""\n',
+      "/prod.yml": 'allow: "10.0.0.0/8"\n',
+      "/app.conf.j2": '{% if allow %}\nRequire ip {{ allow }}\n{% endif %}\n',
+    };
+    const si = getRecipe("ansible")!.load(
+      {
+        name: "s",
+        recipe: "ansible",
+        rows: "artifact",
+        defaults: "/vars.yml",
+        overlays: { dev: "/dev.yml", prod: "/prod.yml" },
+        templates: [{ path: "/app.conf.j2", component: "app", deployed_path: "/etc/app.conf", format: "space" }],
+      } as never,
+      { readFile: (p: string) => (FILES[p] ?? (p === "/dev.yml" ? "{}\n" : null)), specDir: "/", resolve: (p: string) => p, instances: ["dev", "prod"] } as never
+    );
+    const dev = (si.artifacts ?? []).find((a) => (a.instances ?? []).includes("dev"))!;
+    const line = dev.lines.find((l) => l.text.includes("Require"))!;
+    expect(line.kind).toBe("absent");
+    expect(line.text).toBe("Require ip {{ allow }}");
+    expect(line.text).not.toContain("Require ip \n");
+  });
+});

@@ -288,6 +288,22 @@ function renderLines(
         return;
       }
       if (state === "fails") {
+        // The TEMPLATE's text, not the line rendered with this environment's
+        // values — and this is a choice, not a limitation: the values are in
+        // hand, one substitution away.
+        //
+        // Rendering it would print a line no file contains, in a form that can
+        // be read as a deployed setting. Measured, on the case that raised
+        // this: an allow-list empty in dev turns `Require ip {{ list }}` into
+        // `Require ip` with no address, which in Apache denies everyone — so a
+        // reader skimming past the strikethrough would take a deny-all rule out
+        // of an environment whose file has no such line at all. The strikethrough
+        // would be the only thing standing between them and the opposite of the
+        // truth.
+        //
+        // The template's own text is a string that really exists, in the repo
+        // being reviewed, and it answers the question a reader has in front of
+        // an absent block: what does the environment that HAS this get?
         out.push({
           text: line,
           kind: "absent",
