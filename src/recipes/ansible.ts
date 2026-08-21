@@ -656,6 +656,19 @@ export const ansibleRecipe: SheetRecipe = {
         };
       });
 
+      // How many files each component deploys. A component MAY bring several —
+      // two releases of a product, each with a config file and a properties
+      // file — and two decisions below have no single answer for one that does:
+      // which file the component IS (its heading), and which file its rows
+      // belong to. Both used to be written per template in a loop, so the last
+      // one read silently won, and both are now asked of this count.
+      const filesPerComponent = new Map<string, number>();
+      for (const { spec } of read) {
+        if (spec.component === undefined) continue;
+        filesPerComponent.set(spec.component, (filesPerComponent.get(spec.component) ?? 0) + 1);
+      }
+      const deploysOneFile = (component: string): boolean => filesPerComponent.get(component) === 1;
+
       // A template that yielded NOTHING is reported, always. It is not a
       // sheet-shaped statement — "this artifact has no settings" — it is the
       // shape of a template no parser could read: the artifact falls to the
@@ -713,11 +726,9 @@ export const ansibleRecipe: SheetRecipe = {
         // instead (EmbeddedEntry.deployed_file, stamped below) — the recipe
         // knows it per template, and that is the fact, rather than a summary of
         // it that only holds for one file.
-        const perComponent = new Map<string, { spec: (typeof read)[number]["spec"]; file: string }[]>();
-        for (const r of read) perComponent.set(r.spec.component!, [...(perComponent.get(r.spec.component!) ?? []), r]);
-        for (const [component, rs] of perComponent) {
-          if (rs.length !== 1) continue;
-          const { spec, file } = rs[0];
+        for (const { spec, file } of read) {
+          const component = spec.component!;
+          if (!deploysOneFile(component)) continue;
           componentFiles.set(component, {
             ...(spec.deployedPath !== undefined ? { filePath: spec.deployedPath } : {}),
             sourceFile: file,
@@ -845,7 +856,15 @@ export const ansibleRecipe: SheetRecipe = {
         // `/etc/logrotate.d/httpd` is the thing being reviewed. The id stays
         // the category's identity — bindings, per-component params and every
         // diff join key still read it — and only the display changes.
-        if (spec.component !== undefined) componentLabels.set(spec.component, spec.deployedPath ?? spec.component);
+        // …and only where the component deploys ONE file. A component that
+        // brings several has no file to be named after: labelled per template,
+        // every one of them ended up wearing the last template's path, so two
+        // components read as the same heading and neither said which release it
+        // was. Its own id is the honest name there, which is what it already
+        // was before this display rule existed.
+        if (spec.component !== undefined && deploysOneFile(spec.component)) {
+          componentLabels.set(spec.component, spec.deployedPath ?? spec.component);
+        }
         // A `{% for %}` renders ONE template line as several lines of the
         // deployed file, so the entry read from the template stands for a row
         // per member of the list. Expanded here, before anything else looks at
