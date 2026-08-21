@@ -2,6 +2,7 @@ import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import type { ParameterSheetInput, VersionedSheetInput, SheetVersion, GenerateOptions } from "../types.js";
 import { customStyles } from "./styles.js";
+import { toBase64Gzip, BOOTSTRAP } from "./compress.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -119,8 +120,8 @@ export async function generateHtml(
   // somebody may edit. A read-only document is already rendered.
   const editableDocument =
     editEnabled && data.versions.some((v) => v.sheets.some((s) => s.document !== undefined));
-  const appJS = escapeScriptClose(await getAppBundle(editableDocument ? "app-md.ts" : "app.ts"));
-  const dataJson = escapeScriptClose(JSON.stringify(data));
+  const appJS = await getAppBundle(editableDocument ? "app-md.ts" : "app.ts");
+  const dataJson = JSON.stringify(data);
   const configJson = escapeScriptClose(JSON.stringify({ review: reviewEnabled, edit: editEnabled, prompt: promptEnabled, lang, server: options?.server === true }));
   const title = options?.title ?? data.metadata?.title ?? (lang === "en" ? "Parameter Sheet" : "パラメータシート");
 
@@ -130,25 +131,26 @@ export async function generateHtml(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${escapeHtml(title)}</title>
-<style>
-${customStyles}
-</style>
 <script>(function(){try{var t=localStorage.getItem('rs-theme');if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;}catch(e){}})();</script>
 </head>
 <body>
 <div id="app"></div>
-<script type="application/json" id="sheet-data">
-${dataJson}
-</script>
 <script type="application/json" id="sheet-config">
 ${configJson}
 </script>
 ${editEnabled ? `<script type="application/json" id="sheet-reviews">
 []
 </script>` : ""}
-<script type="module">
-${appJS}
+<script type="application/gzip-base64" id="sheet-style-gz">
+${toBase64Gzip(customStyles)}
 </script>
+<script type="application/gzip-base64" id="sheet-data-gz">
+${toBase64Gzip(dataJson)}
+</script>
+<script type="application/gzip-base64" id="sheet-app-gz">
+${toBase64Gzip(appJS)}
+</script>
+<script>${BOOTSTRAP}</script>
 </body>
 </html>`;
 }

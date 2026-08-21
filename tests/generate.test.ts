@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { Window } from "happy-dom";
 import { generateHtml } from "../src/html/generate";
+import { readGzipBlock } from "../src/html/compress";
 import simpleFixture from "./fixtures/simple.json";
 import multiInstanceFixture from "./fixtures/multi-instance.json";
 import hierarchicalFixture from "./fixtures/hierarchical.json";
@@ -8,9 +9,18 @@ import nestedWideFixture from "./fixtures/nested-wide.json";
 import manySheetsFixture from "./fixtures/many-sheets.json";
 import type { ParameterSheetInput, VersionedSheetInput } from "../src/types";
 
+
+// The model, the viewer and the stylesheet travel COMPRESSED — see
+// html/compress.ts for why and by how much. A test asking "is this in the file"
+// asks it of the payload, which is where it is; the assertions themselves are
+// unchanged, since what they are about did not change.
+const expand = (html: string): string =>
+  html +
+  ["sheet-data-gz", "sheet-app-gz", "sheet-style-gz"].map((id) => readGzipBlock(html, id) ?? "").join("\n");
+
 describe("generateHtml", () => {
   it("generates valid HTML from Pattern A data", async () => {
-    const html = await generateHtml(simpleFixture as ParameterSheetInput);
+    const html = expand(await generateHtml(simpleFixture as ParameterSheetInput));
     expect(html).toContain("<!DOCTYPE html>");
     expect(html).toContain("<title>Parameter Sheet</title>");
     expect(html).toContain('"sheet-data"');
@@ -18,9 +28,9 @@ describe("generateHtml", () => {
   });
 
   it("generates valid HTML from Pattern B data", async () => {
-    const html = await generateHtml(
+    const html = expand(await generateHtml(
       multiInstanceFixture as ParameterSheetInput
-    );
+    ));
     expect(html).toContain("<!DOCTYPE html>");
     expect(html).toContain("<title>Application Settings</title>");
     expect(html).toContain("development");
@@ -28,7 +38,7 @@ describe("generateHtml", () => {
   });
 
   it("generates valid HTML from nested categories (multiple heading levels)", async () => {
-    const html = await generateHtml(hierarchicalFixture as ParameterSheetInput);
+    const html = expand(await generateHtml(hierarchicalFixture as ParameterSheetInput));
     expect(html).toContain("<!DOCTYPE html>");
     // The three nesting levels (Network Settings > bonding > bond0) all carry
     // through to the embedded sheet data.
@@ -39,7 +49,7 @@ describe("generateHtml", () => {
   });
 
   it("generates valid HTML from nested categories containing a wide instance table", async () => {
-    const html = await generateHtml(nestedWideFixture as ParameterSheetInput);
+    const html = expand(await generateHtml(nestedWideFixture as ParameterSheetInput));
     expect(html).toContain("<!DOCTYPE html>");
     // Deep heading levels...
     expect(html).toContain("Region: ap-northeast");
@@ -52,7 +62,7 @@ describe("generateHtml", () => {
   });
 
   it("generates valid HTML for many sheets (overflow tabs)", async () => {
-    const html = await generateHtml(manySheetsFixture as ParameterSheetInput);
+    const html = expand(await generateHtml(manySheetsFixture as ParameterSheetInput));
     expect(html).toContain("<!DOCTYPE html>");
     expect((manySheetsFixture as ParameterSheetInput).sheets.length).toBeGreaterThan(10);
     // Every sheet name carries through, including ones that overflow into the menu.
@@ -62,37 +72,37 @@ describe("generateHtml", () => {
   });
 
   it("overrides the title with the title option", async () => {
-    const html = await generateHtml(simpleFixture as ParameterSheetInput, {
+    const html = expand(await generateHtml(simpleFixture as ParameterSheetInput, {
       title: "Custom Title",
-    });
+    }));
     expect(html).toContain("<title>Custom Title</title>");
   });
 
   it("disables the review UI config with review: false", async () => {
-    const html = await generateHtml(simpleFixture as ParameterSheetInput, {
+    const html = expand(await generateHtml(simpleFixture as ParameterSheetInput, {
       review: false,
-    });
+    }));
     expect(html).toContain('"review":false');
   });
 
   it("enables the review UI config with review: true", async () => {
-    const html = await generateHtml(simpleFixture as ParameterSheetInput, {
+    const html = expand(await generateHtml(simpleFixture as ParameterSheetInput, {
       review: true,
-    });
+    }));
     expect(html).toContain('"review":true');
   });
 
   // Editing is off unless asked for. A delivered sheet that silently accepted
   // edits would let the recipient change values nobody knows changed.
   it("keeps editing off by default", async () => {
-    const html = await generateHtml(simpleFixture as ParameterSheetInput);
+    const html = expand(await generateHtml(simpleFixture as ParameterSheetInput));
     expect(html).toContain('"edit":false');
   });
 
   it("enables editing with edit: true", async () => {
-    const html = await generateHtml(simpleFixture as ParameterSheetInput, {
+    const html = expand(await generateHtml(simpleFixture as ParameterSheetInput, {
       edit: true,
-    });
+    }));
     expect(html).toContain('"edit":true');
   });
 
@@ -100,6 +110,10 @@ describe("generateHtml", () => {
   // rest of the document becomes markup. The app's own source contains one (it
   // reads its embedded history back out), and any config value could too — so
   // this is a live failure, not a hypothetical, and it looks like a blank page.
+  // The payload blocks are base64, and base64 has no "<" in its alphabet — so a
+  // value that spells `</script>` cannot end the element it sits in, whatever
+  // it says. That used to take an escaping pass over every embedded string;
+  // compression removed the class of bug rather than the bug.
   describe("embedded text cannot end its own script element", () => {
     const parse = (html: string): Document => {
       const w = new Window();
@@ -110,26 +124,32 @@ describe("generateHtml", () => {
       [...parse(html).querySelectorAll("script")].map((e) => e.textContent ?? "");
 
     it("keeps the app bundle whole", async () => {
-      const html = await generateHtml(simpleFixture as ParameterSheetInput, { edit: true });
-      const scripts = scriptsOf(html);
-      // theme, data, config, reviews, app — no more, or something was cut.
-      expect(scripts).toHaveLength(5);
-      const app = scripts[4];
+      const raw = await generateHtml(simpleFixture as ParameterSheetInput, { edit: true });
+      // theme, config, reviews, style-gz, data-gz, app-gz, bootstrap.
+      expect(scriptsOf(raw)).toHaveLength(7);
+      const app = readGzipBlock(raw, "sheet-app-gz") ?? "";
       expect(app.length).toBeGreaterThan(10_000);
       // Truncation happens INSIDE the bundle, so the tail is what proves it whole.
       expect(app.trimEnd().endsWith("</script>")).toBe(false);
-      expect(html.split("</script>")).toHaveLength(6); // 5 elements => 5 separators
     });
 
-    it("survives a config value that closes a script tag", async () => {
+    it("survives a value that closes a script tag", async () => {
       const nasty = JSON.parse(JSON.stringify(simpleFixture)) as ParameterSheetInput;
       nasty.sheets[0].categories[0].params![0].value = '</script><h1>gotcha</h1>';
-      const html = await generateHtml(nasty);
-      expect(scriptsOf(html)).toHaveLength(4); // theme, data, config, app
-      // The text is still in the file — inside the JSON, where it belongs. What
-      // must not happen is the browser reading it as markup.
-      expect(html).toContain("gotcha");
-      expect(parse(html).querySelector("h1")).toBeNull();
+      const raw = await generateHtml(nasty);
+      // Not in the file as text at all — it is inside the compressed block.
+      expect(raw).not.toContain("gotcha");
+      expect(readGzipBlock(raw, "sheet-data-gz") ?? "").toContain("gotcha");
+      expect(parse(raw).querySelector("h1")).toBeNull();
+    });
+
+    it("leaves nothing in a payload block that could close it", async () => {
+      const raw = await generateHtml(simpleFixture as ParameterSheetInput);
+      for (const id of ["sheet-style-gz", "sheet-data-gz", "sheet-app-gz"]) {
+        const at = raw.indexOf(`id="${id}"`);
+        const body = raw.slice(raw.indexOf(">", at) + 1, raw.indexOf("</script>", at));
+        expect(body).toMatch(/^[A-Za-z0-9+/=\s]+$/);
+      }
     });
   });
 
@@ -138,7 +158,7 @@ describe("generateHtml", () => {
       ...(simpleFixture as ParameterSheetInput),
       capabilities: { apply: false },
     };
-    const html = await generateHtml(input);
+    const html = expand(await generateHtml(input));
     expect(html).toContain('"capabilities":{"apply":false}');
   });
 
@@ -150,7 +170,7 @@ describe("generateHtml", () => {
         { version: "1.0", sheets: (simpleFixture as ParameterSheetInput).sheets },
       ],
     };
-    const html = await generateHtml(input);
+    const html = expand(await generateHtml(input));
     expect(html).toContain('"capabilities":{"apply":false}');
   });
 });
@@ -183,7 +203,7 @@ describe("generateHtml: the bundle actually runs", () => {
   }
 
   it("mounts without throwing and puts the sheet on the page", async () => {
-    const html = await generateHtml(multiInstanceFixture as ParameterSheetInput);
+    const html = expand(await generateHtml(multiInstanceFixture as ParameterSheetInput));
     const { text, errors } = await renderBundle(html);
     expect(errors).toEqual([]);
     // A blank page is ~0 characters; a rendered sheet is thousands. The exact
@@ -191,3 +211,4 @@ describe("generateHtml: the bundle actually runs", () => {
     expect(text.length).toBeGreaterThan(200);
   });
 });
+

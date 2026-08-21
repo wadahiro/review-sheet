@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { generateHtml, assembleVersions, allDated } from "../src/html/generate";
+import { readGzipBlock } from "../src/html/compress";
 import { validateVersionedInput, isVersionedInput, validateInput } from "../src/validate";
 import type { VersionedSheetInput, ParameterSheetInput } from "../src/types";
 
@@ -80,19 +81,22 @@ describe("assembleVersions", () => {
   });
 });
 
+// The payload travels compressed — see html/compress.ts.
+const expand = (html: string): string => html + (readGzipBlock(html, "sheet-data-gz") ?? "");
+
 describe("generateHtml — versioned", () => {
   it("embeds a versions payload and both snapshots", async () => {
-    const html = await generateHtml(versioned);
+    const html = expand(await generateHtml(versioned));
     expect(html).toContain('"versions"');
     expect(html).toContain('"version":"1.0"');
     expect(html).toContain('"version":"1.1"');
   });
 
   it("normalizes a single-version input into one version", async () => {
-    const html = await generateHtml(validateInput({
+    const html = expand(await generateHtml(validateInput({
       metadata: { version: "9.9" },
       sheets: [{ name: "S", categories: [{ name: "C", params: [{ key: "a", value: "1" }] }] }],
-    }));
+    })));
     expect(html).toContain('"versions"');
     expect(html).toContain('"version":"9.9"');
   });
