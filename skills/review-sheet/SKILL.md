@@ -1089,6 +1089,18 @@ Every heading gets an anchor; `nav_depth` decides only which of them the outline
 LISTS, and that decision is made at build time and recorded in the model — the
 viewer never re-derives it.
 
+**Write the page's title as an h1 and leave it there.** A markdown file worth
+reading on its own says what it is, and the outline does not list it: the sheet
+is already named after the page, so listing it would nest the page under itself
+("Page name > Page name > Section A"). Only the FIRST heading, and only when it
+is an h1 — a file that opens at h2 has no title to drop, and a later h1 is a
+section of a flat document rather than its name. It is still rendered, still
+anchored, and search still lands on it.
+
+Compared by POSITION, never against the sheet's label: a label is per-language
+and a heading is one language, so a match test would list the title in English
+and hide it in Japanese.
+
 Anchors are namespaced by the SHEET (`rs-doc-<sheet>-<heading>`), because a
 heading text is not unique across a document set — three sheets that each write
 `## ツリー` would otherwise share one id. Only the active sheet's body is in the

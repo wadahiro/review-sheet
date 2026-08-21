@@ -27,12 +27,14 @@ describe("document recipe", () => {
   it("produces a sheet with a document and no rows", () => {
     const si = documentRecipe.load(
       { name: "移行方針", file: "docs/policy.md" },
-      io({ "docs/policy.md": "# 移行方針\n\n本文。\n" })
+      io({ "docs/policy.md": "# 移行方針\n\n## 前提\n\n本文。\n" })
     );
     expect(si.name).toBe("移行方針");
     expect(si.layers).toEqual([]);
     expect(si.document?.html).toContain("<h1");
-    expect(si.document?.headings?.map((h) => h.text)).toEqual(["移行方針"]);
+    // The title is rendered and NOT listed: the sheet is already named after
+    // it, so listing it nests the page under itself.
+    expect(si.document?.headings?.map((h) => h.text)).toEqual(["前提"]);
   });
 
   it("resolves an image against the MARKDOWN's directory, not the spec's", () => {
@@ -71,10 +73,10 @@ describe("document recipe", () => {
 
   it("honours nav_depth", () => {
     const si = documentRecipe.load(
-      { name: "d", file: "m.md", nav_depth: 1 },
-      io({ "m.md": "# A\n\n## B\n" })
+      { name: "d", file: "m.md", nav_depth: 2 },
+      io({ "m.md": "# Title\n\n## B\n\n### C\n" })
     );
-    expect(si.document?.headings?.map((h) => h.text)).toEqual(["A"]);
+    expect(si.document?.headings?.map((h) => h.text)).toEqual(["B"]);
   });
 
   it("rejects a field it does not define", () => {
@@ -148,6 +150,8 @@ describe("document recipe: heading ids across sheets", () => {
   it("keys on the sheet's name, not its position", () => {
     // A prefix keyed on declaration order would re-point every anchor the
     // moment a sheet is inserted above this one.
-    expect(load("os directory db").document?.headings?.[0].id).toBe("rs-doc-os-directory-db-A");
+    // The first LISTED heading, which is `## ツリー`: the document's title is
+    // rendered and anchored but is not an outline entry.
+    expect(load("os directory db").document?.headings?.[0].id).toBe("rs-doc-os-directory-db-ツリー");
   });
 });
