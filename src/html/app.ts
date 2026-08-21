@@ -1382,6 +1382,7 @@ function DocumentModal({ sheet, current, original, onSave, onClose, t }: {
         </header>
         <div class="rs-new-review">
           <p class="rs-edit-note">${t.docImagesNote}</p>
+          ${/^\s*#\s+\S/.test(text) && html`<p class="rs-edit-note">${t.docTitleNote}</p>`}
           <div class="rs-form-row">
             <textarea class="rs-doc-source" ref=${ref} value=${text} spellcheck=${false}
                       onInput=${(e: Event) => setText((e.target as HTMLTextAreaElement).value)}
