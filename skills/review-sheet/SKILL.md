@@ -1108,6 +1108,17 @@ Compared by POSITION, never against the sheet's label: a label is per-language
 and a heading is one language, so a match test would list the title in English
 and hide it in Japanese.
 
+**A ```mermaid fence is drawn as a diagram.** It is the reason to keep a
+topology note in a document sheet rather than beside it: the picture is the
+text, so it diffs, and nothing has to be re-rendered by hand when the system
+changes. Drawn in the page — the build starts no browser, and a diagram somebody
+edits in the viewer is re-drawn from the text they edited.
+
+The renderer is 3.3 MB (1.2 MB compressed) against a 158 KB viewer, so a page
+carries it only when one of its documents actually draws something. A build
+without the optional `mermaid` dependency leaves the source showing as text,
+which is what a reader of the markdown file sees too.
+
 Anchors are namespaced by the SHEET (`rs-doc-<sheet>-<heading>`), because a
 heading text is not unique across a document set — three sheets that each write
 `## ツリー` would otherwise share one id. Only the active sheet's body is in the
