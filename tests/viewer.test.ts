@@ -2695,3 +2695,59 @@ describe("viewer: showing where a value is written", () => {
     expect(mountWith(false).textContent).toContain("/etc/httpd/conf/httpd.conf");
   });
 });
+
+
+// A category's heading and the path its settings land on, where those are the
+// same string. On a sheet whose components ARE files the project labels the
+// category `/etc/systemd/system/keycloak.service`, and the same path arrives
+// again as the category's file_path — so the heading printed it twice, one line
+// under the other.
+//
+// The guard for this existed and asked the wrong question: it compared against
+// the category's NAME (`keycloak.service`), while the heading shows its LABEL.
+describe("viewer: a category headed by the file it deploys", () => {
+  const doc = (label: string) => ({
+    metadata: { title: "t" },
+    versions: [
+      {
+        version: "current",
+        sheets: [
+          {
+            name: "os",
+            categories: [
+              {
+                name: "keycloak.service",
+                label: { ja: label, en: label },
+                file_path: "/etc/systemd/system/keycloak.service",
+                params: [{ key: "Unit.Description", value: "Keycloak", description: "d" }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  const mount = (label: string): HTMLElement => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: doc(label) as never, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    return host;
+  };
+
+  const headerText = (host: HTMLElement): string =>
+    (host.querySelector(".rs-category-header")?.textContent ?? "").trim();
+
+  it("names the path once when the heading is that path", () => {
+    const text = headerText(mount("/etc/systemd/system/keycloak.service"));
+    expect(text.split("/etc/systemd/system/keycloak.service")).toHaveLength(2);
+  });
+
+  // Still shown where it adds something: a heading that does NOT say where the
+  // settings land is exactly the case the line is for.
+  it("still names it when the heading says something else", () => {
+    const text = headerText(mount("Keycloak のユニット"));
+    expect(text).toContain("/etc/systemd/system/keycloak.service");
+  });
+});

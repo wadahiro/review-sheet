@@ -2721,7 +2721,23 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
           <span class=${`rs-cat-label ${catStatus === "removed" ? "rs-diff-strike" : ""}`}>${category.display ?? category.name}</span>
           ${effOutOfScope && html`<span class="rs-oos-badge">${t.outOfScope}</span>`}
           ${diff && diffBadge(catStatus)}
-          ${category.file_path && category.file_path !== sheetFilePath && category.file_path !== category.name && html`<span class="rs-cat-filepath">${category.file_path}</span>`}
+          ${(() => {
+            // The path this category's settings land on, beside its heading —
+            // unless the heading IS that path, which is the ordinary case for a
+            // sheet whose components are files: the project labels the category
+            // `/etc/systemd/system/keycloak.service` and the same string
+            // arrived again as its file_path, so the heading read it twice.
+            //
+            // Compared against what is SHOWN, not against `name`: the label is
+            // what a reader sees (`display`), and the guard that existed asked
+            // the other one — `keycloak.service` — which never matched. Same
+            // rule the key cell already follows for a label that repeats its
+            // key.
+            const heading = category.display ?? category.name;
+            return category.file_path && category.file_path !== sheetFilePath && category.file_path !== heading
+              ? html`<span class="rs-cat-filepath">${category.file_path}</span>`
+              : null;
+          })()}
           ${editEnabled && html`
             <span class="rs-header-actions">
               <button class="rs-head-tool rs-head-tool-add"
