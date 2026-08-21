@@ -896,4 +896,17 @@ export type GenerateOptions = {
   // offered one. Defaults to true, which is how it behaved before it could be
   // turned off.
   prompt?: boolean;
+  // Show WHERE each value is written — the file a row came from, the template a
+  // sheet was rendered from, the file a preview is of.
+  //
+  // On by default, because a sheet that says "edit that file" is answering the
+  // question a reviewer's finding turns into. Off for a reader who is judging
+  // the SETTINGS and has no part in maintaining the repository: on a real sheet
+  // 454 rows of 1536 carried a file name under the key, and a name that never
+  // becomes an action is a column of noise.
+  //
+  // A display switch, not redaction: the source map stays in the file, because
+  // apply and verify resolve every change through it. A document that must not
+  // name the repository at all is a different question, and this is not it.
+  sources?: boolean;
 };

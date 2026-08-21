@@ -27,6 +27,7 @@ review-sheet import   --spec review-sheet/build.yml   # build it from a declarat
 review-sheet generate -i input.json -o sheet.html   # build the HTML sheet
 review-sheet generate -i input.json --readonly -o sheet.html  # read-only copy
 review-sheet generate -i input.json --allow edit -o sheet.html  # maintainable copy: edit values/remarks, add rows, strike rows out (review OR edit, not both)
+review-sheet generate -i input.json --no-sources -o sheet.html  # hide WHERE each value is written (see below)
 review-sheet apply    -i input.json -r returned.html --emit-prompt  # the edited HTML is the review file; applies what a source map proves, prompts for the rest
 review-sheet validate -i input.json                 # a model
 review-sheet validate -i review.json                # a review export
@@ -1125,6 +1126,18 @@ heading text is not unique across a document set — three sheets that each writ
 DOM, so it is not the body that breaks: the outline lists every sheet's entries
 at once and marks the current one by comparing ids, so one id shared by three
 entries highlights all three.
+
+**`--no-sources` hides where each value is written.** Three places name a file:
+the tag under a row's key (the file that row came from), the "rendered from"
+line under a sheet's heading, and a preview's source line. They exist so a
+finding turns into an action — "edit that file" — and they are the wrong thing
+to show a reader who is judging the settings and has no part in maintaining the
+repository. On a real sheet 454 rows of 1536 carried one.
+
+A display switch, not redaction: the source map stays in the document, because
+apply and verify resolve every change through it, and the path the settings LAND
+on stays too — that is what the sheet is about. A document that must not name
+the repository at all is a different question, and this is not it.
 
 A document sheet generated with `--allow edit` can be edited in the browser, as
 markdown. Its source and its images are carried alongside the rendered html for
