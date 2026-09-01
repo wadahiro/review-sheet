@@ -45,6 +45,18 @@ export const BOOTSTRAP = `
   // Exposed for the app to inflate what it needs LATER — a diagram renderer is
   // 3.3 MB that a reader who never opens the document should not wait for.
   window.__rsInflate = inflate;
+  // The document AS IT WAS LOADED, captured here because here is the only place
+  // it still exists. Saving is this string with one block swapped, and the app
+  // used to re-serialize the DOM for it — which by then had been given an
+  // inflated <style> and an inflated data block on TOP of the compressed ones
+  // they came from. Measured: a 105 KB file saved as 219 KB, carrying both
+  // copies of everything, and the reopened copy would inflate a second data
+  // block over the first.
+  //
+  // This script is the last element in <body>, so everything above it is parsed
+  // and in the tree; serializing the tree closes what the parser has not read
+  // yet. Nothing has been added at this point — that is the next statement.
+  window.__rsPristine = "<!DOCTYPE html>\\n" + document.documentElement.outerHTML;
   var css = inflate("sheet-style-gz");
   var data = inflate("sheet-data-gz");
   var app = inflate("sheet-app-gz");
