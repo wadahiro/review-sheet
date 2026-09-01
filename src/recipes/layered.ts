@@ -438,7 +438,16 @@ function suggestKeyTransformSteps(collisions: InFileCollision[]): string[] {
   return lines;
 }
 
-function formatKeyCollisionError(what: string, file: string, collisions: InFileCollision[]): string {
+function formatKeyCollisionError(
+  what: string,
+  file: string,
+  collisions: InFileCollision[],
+  // Does this source already declare a `key:` transform? It changes the advice
+  // completely: without one the paths collided on their own and a transform is
+  // the fix, WITH one the transform is what merged them, and telling its author
+  // to add the thing they already have sends them looking in the wrong place.
+  transformed = false
+): string {
   const lines = [
     `layered recipe: ${what}: ${file} maps more than one structural location to the same key — ` +
       `the later one would silently replace the earlier, dropping a row with no error or warning:`,
@@ -449,6 +458,25 @@ function formatKeyCollisionError(what: string, file: string, collisions: InFileC
     for (const path of locations) lines.push(`    - ${path}`);
   }
   lines.push("");
+  if (transformed) {
+    lines.push(
+      `This source declares a "key" transform, and it is that transform which mapped these distinct paths onto one ` +
+        `key — they are distinct in the file.`
+    );
+    lines.push("");
+    lines.push(
+      `If the transform is \`from: key\`, it replaces the structural path with the LEAF name, so every nested ` +
+        `\`enabled\` becomes \`enabled\`. An include/exclude on this sheet cannot save you there: the selection is ` +
+        `applied to the key this transform produced, so a pattern written for the path (\`components**\`) no longer ` +
+        `matches anything and the rows it was keeping out come back.`
+    );
+    lines.push("");
+    lines.push(
+      `Use \`from: path\` with pattern/replace steps that keep the locations apart, or narrow this SOURCE's own ` +
+        `include/exclude (a static file that declares its own owns its selection) — see src/keytransform.ts.`
+    );
+    return lines.join("\n");
+  }
   const steps = suggestKeyTransformSteps(collisions);
   if (steps.length > 0) {
     lines.push(`Fix: give this source a "key" transform (from: path) that keeps them apart, e.g. paste as this source's own field:`);
@@ -847,7 +875,7 @@ function buildEmbeddedFromStaticFiles(
     for (const seen of seenInFile.values()) {
       for (const [key, locations] of seen) if (locations.length > 1) clashes.push({ key, locations });
     }
-    if (clashes.length > 0) throw new Error(formatKeyCollisionError("static file", file, clashes));
+    if (clashes.length > 0) throw new Error(formatKeyCollisionError("static file", file, clashes, sf.key !== undefined));
     if (transformer) {
       const unmatched = transformer.unmatchedDropPatterns();
       if (unmatched.length > 0) {

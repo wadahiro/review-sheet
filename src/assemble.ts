@@ -2566,26 +2566,6 @@ export function assembleSheetsWithReport(
       );
     }
     const drafts = buildDrafts(si, opts.hooks, underKey);
-    // Declared, and checked: a sheet claiming its components are comparable
-    // when they share no row at all would render a diagonal — every row filled
-    // in exactly one column — which is the same class of mistake as a `names:`
-    // entry no row produces. Counted over the drafts, since that is the row set
-    // the view would be built from.
-    if (compareComponents) {
-      const byKey = new Map<string, Set<string>>();
-      for (const d of drafts) {
-        if (d.component === undefined) continue;
-        byKey.set(d.key, (byKey.get(d.key) ?? new Set()).add(d.component));
-      }
-      const shared = [...byKey.values()].filter((c) => c.size > 1).length;
-      if (shared === 0) {
-        throw new Error(
-          `assemble: sheet "${si.name}" declares compare_components, but no parameter appears in more than one of its ` +
-            `components — read side by side every row would be filled in exactly one column. Components are not ` +
-            `necessarily comparable: several artifacts of one product, or several resource types, share nothing.`
-        );
-      }
-    }
     const components = new Set(drafts.map((d) => d.component).filter((c): c is string => c !== undefined));
     componentLevel.set(si.name, { shows: components.size > 1, only: components.size === 1 ? [...components][0] : undefined });
     // The other half of the same two-way check `component: names:` has: a
@@ -2781,6 +2761,73 @@ export function assembleSheetsWithReport(
       declaredDeployed.size > 0 ? declaredDeployed : si.deployedFiles,
       si.componentOrder
     );
+    // Declared, and checked: a sheet claiming its components are comparable
+    // when they share no row would render a diagonal — every row filled in
+    // exactly one column — which is the same class of mistake as a `names:`
+    // entry no row produces.
+    //
+    // Asked of the ASSEMBLED categories, with the identity the view itself
+    // joins on: the category path BELOW the component, plus the key (see
+    // `pivotSheet` in html/app.ts, whose PivotRow comment says the same thing —
+    // the path without the component level is what the components have in
+    // common). The check used to count DRAFTS by key alone, which is a weaker
+    // question than the view asks and passed a sheet that then rendered the
+    // diagonal anyway: under the default layout each component's rows are
+    // headed by the FILE they come from, and a comparison sheet's components
+    // have different files by construction, so `realm` under `a.yml` and
+    // `realm` under `b.yml` are two rows to the view and one row to the old
+    // count. Reported now, with the layout named, because that is the fix.
+    // Not while a row still has no category. That is a prior, different failure
+    // (thrown below, naming every offender), and the structure this reads has
+    // not been decided yet — asking it here would answer with a message about
+    // comparison for a sheet whose actual problem is that it has no headings.
+    if (compareComponents && missingCategory.length === 0) {
+      const joinIds = new Map<string, Set<string>>();
+      for (const component of categories) {
+        const add = (key: string, path: string[]): void => {
+          const id = `${path.join("/")}\u0000${key}`;
+          joinIds.set(id, (joinIds.get(id) ?? new Set()).add(component.name));
+        };
+        const walk = (cats: Category[] | undefined, path: string[]): void => {
+          for (const c of cats ?? []) {
+            const here = [...path, c.name];
+            for (const p of c.params ?? []) add(p.key, here);
+            walk(c.categories, here);
+          }
+        };
+        for (const p of component.params ?? []) add(p.key, []);
+        walk(component.categories, []);
+      }
+      const shared = [...joinIds.values()].filter((c) => c.size > 1).length;
+      if (shared === 0) {
+        // Two different mistakes reach here, and which one it is is knowable:
+        // components that genuinely share no parameter, and components that
+        // share every parameter but file them under headings that cannot line
+        // up. Only the second has a one-line fix, so it gets its own sentence
+        // rather than a shared one that fits neither.
+        const keysByComponent = new Map<string, Set<string>>();
+        for (const id of joinIds.keys()) {
+          const key = id.slice(id.indexOf("\u0000") + 1);
+          for (const comp of joinIds.get(id)!) {
+            keysByComponent.set(comp, (keysByComponent.get(comp) ?? new Set()).add(key));
+          }
+        }
+        const sets = [...keysByComponent.values()];
+        const sharedKeys = sets.length > 1 ? [...sets[0]].filter((k) => sets.every((set) => set.has(k))) : [];
+        throw new Error(
+          sharedKeys.length > 0
+            ? `assemble: sheet "${si.name}" declares compare_components, and its components DO share ` +
+                `${sharedKeys.length} parameter(s) (${sharedKeys.slice(0, 4).join(", ")}${sharedKeys.length > 4 ? ", …" : ""}) — ` +
+                `but each component files them under a heading of its own, so read side by side every row would be ` +
+                `filled in exactly one column. This sheet is headed by the FILE each row lands in, which a comparison's ` +
+                `components never share. Declare "layout: categories" on it (sheet.yml) so the headings come from the ` +
+                `product's own grouping, which they do share.`
+            : `assemble: sheet "${si.name}" declares compare_components, but no parameter appears in more than one of ` +
+                `its components — read side by side every row would be filled in exactly one column. Components are not ` +
+                `necessarily comparable: several artifacts of one product, or several resource types, share nothing.`
+        );
+      }
+    }
     sheets.push({
       name: si.name,
       // Display text from the project metadata, never from the build spec: the

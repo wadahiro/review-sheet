@@ -1669,6 +1669,25 @@ Both are DECLARED, never inferred, for the reason `compare_components` was
 declared in the first place — several components do not make a sheet
 comparable, and the person who wrote it already knows which it is.
 
+**A comparison sheet needs `layout: categories`.** The side-by-side view joins
+rows on the category path BELOW the component plus the key — the part the
+components have in common. Under the default layout a row is headed by the FILE
+it lands in, and a comparison's components have different files by construction
+(that is what makes them two things to compare), so nothing ever lines up: every
+row comes out filled in exactly one column and blank in the other.
+
+```yaml
+"realm upgrade":
+  layout: categories        # or nothing lines up
+  compare_components: always
+  categories_from: "26.7.0" # which side's dictionary decides the headings
+```
+
+The build refuses a sheet that would render that diagonal, and names this fix
+when the components DO share their keys. It cannot be inferred: a sheet whose
+components genuinely share nothing is a different mistake with no one-line fix,
+and the two look identical from the row set alone.
+
 Two RELEASES can be compared either way, and which one is right depends on
 what moved:
 
