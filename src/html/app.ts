@@ -5179,10 +5179,19 @@ function init() {
 
   const configEl = document.getElementById("sheet-config");
   const config = configEl ? JSON.parse(configEl.textContent ?? "{}") : {};
-  // The document exactly as it was generated/last saved, captured before the
-  // first render. Saving is this string with one block swapped, so a saved file
-  // is the same document — not a serialization of whatever the DOM had become.
-  const pristineHtml = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+  // The document exactly as it was generated/last saved. Saving is this string
+  // with one block swapped, so a saved file is the same document — not a
+  // serialization of whatever the DOM had become.
+  //
+  // Taken from the bootstrap, which captured it BEFORE inflating anything into
+  // the page (see html/compress.ts): by the time this runs the DOM also holds
+  // an inflated <style> and an inflated data block, and serializing it here
+  // wrote both those and the compressed blocks they came from into the saved
+  // file. The fallback is for a document with no bootstrap at all — one built
+  // before compression, and every test that renders `Root` directly.
+  const pristineHtml =
+    (window as unknown as { __rsPristine?: string }).__rsPristine ??
+    "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
   const embedded = readEmbeddedHistory(document);
   const reviewEnabled = config.review !== false;
   // Editing is opt-in at generation time (`--allow edit`): a generated sheet is
