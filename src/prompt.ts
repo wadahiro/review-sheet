@@ -2,6 +2,8 @@
 // CLI. No DOM or Node dependencies so it can run in either environment.
 
 import { pickLang, type LangText, type Origin, type SheetDocument } from "./types.js";
+import { unifiedDiff } from "./diff-text.js";
+import { markdownChangeReport, renderMarkdownChanges } from "./markdown-changes.js";
 
 // ============================================================
 // Shared data model (the embedded sheet-data / review shape)
@@ -105,6 +107,8 @@ export type CategoryData = {
   tag?: string;
   file_path?: string;
   source_file?: string;
+  // A paragraph beside the table — see types.ts's Category.note.
+  note?: LangText;
   out_of_scope?: { reason: LangText; owner?: string };
   params?: ParamData[];
   categories?: CategoryData[];
@@ -202,6 +206,12 @@ export const HELD_REASON_BASELINE =
 // A row somebody wrote into the sheet itself. There is no line to edit, so
 // where it belongs — which file, which section, what syntax — is a judgement
 // about the project's layout, not an edit.
+// A paragraph beside a table. It is already ON the sheet — this is the note
+// itself travelling to whoever keeps the project's own metadata, in case it
+// belongs there too.
+export const HELD_REASON_NOTE =
+  "Cannot apply directly: this is a note the reviewer wrote beside a section of the sheet — it is not a value in any file; decide whether the project's own metadata (sheet.yml) should carry it";
+
 export const HELD_REASON_ADDED_ROW =
   "Cannot apply directly: this row was written into the sheet and no config file has a line for it — decide where it belongs and add it";
 
@@ -244,6 +254,13 @@ export const HELD_REASON_CONTAINER_SUBJECT =
 // addresses and no parser edits.
 export const HELD_REASON_DOCUMENT =
   "Cannot apply directly: this is a whole markdown document, rewritten — replace the contents of the sheet's source_file with the text below";
+
+// A row's PROSE, rewritten — a remark, not a value. It goes to the project
+// metadata (sheet.yml), which is where a row's documentation is written, and
+// not to any config file: no line of the deployed system holds it, so no source
+// map addresses it and no parser edits it.
+export const HELD_REASON_DOCUMENTATION =
+  "Cannot apply directly: this is the row's documentation, not its value — it belongs in the project metadata (sheet.yml), which no source map addresses";
 
 export const HELD_REASON_SHARED_INSTANCE =
   "Cannot apply directly: the value is a single shared definition — changing it for one environment means adding an environment-level override, which is a structural decision";
@@ -465,9 +482,16 @@ export function locationHint(res: ResolvedSource): string {
 }
 
 // "Sheet > Category > key (instance)" for the doc/notes sections.
+//
+// The category is printed AS IT IS. It is a path joined with "/", and a
+// category is free to BE a path — a sheet whose components are deployed files
+// has one called `/etc/httpd/conf/httpd.conf` — so once joined, a separator and
+// a slash inside a name are the same character and any split is a guess. This
+// one guessed, and turned that category into `>  > etc > httpd > conf >
+// httpd.conf`: an empty first segment and four levels that do not exist.
 export function targetLabel(target: ReviewTarget): string {
   const parts: string[] = [target.sheet];
-  if (target.category) parts.push(target.category.replace(/\//g, " > "));
+  if (target.category) parts.push(target.category);
   if (target.param) parts.push(target.param);
   let s = parts.join(" > ");
   if (target.instance) s += ` (${target.instance})`;
@@ -591,10 +615,51 @@ export function buildPromptText(reviews: ReviewItem[], data: SheetData): string 
       // in this bucket, so it names it: an instruction to "replace the
       // contents" is useless without saying of what.
       if (c.field === "document" && r.target.param === undefined) {
-        const file = data.sheets.find((sh) => sh.name === r.target.sheet)?.source_file;
+        const sheet = data.sheets.find((sh) => sh.name === r.target.sheet);
+        // A sheet handed over AS markdown has no source file to replace — it was
+        // rendered from the model — and its text is the whole sheet, hundreds of
+        // lines of which nobody touched. What is wanted is what CHANGED, so that
+        // is what is written: the diff, and where the rest of the work is done.
+        if (sheet?.document?.mode === "sheet") {
+          // Per CHANGE, not as a diff: a row's description shares a line with
+          // its value, so a line diff reprints a paragraph to move one word —
+          // and the reader of this is a model with a budget. Measured on a real
+          // sheet: 129 characters here against 5.3 KB as a diff.
+          const report = markdownChangeReport(c.current ?? "", c.suggested, sheet.instances ?? [], "ja");
+          let doc = `- ${r.target.sheet} — handed over as markdown and edited by hand.`;
+          if (r.comment) doc += `\n  reason: ${r.comment}`;
+          doc +=
+            `\n  Run \`review-sheet apply -i <input.json> -r <this file> --write\` FIRST: it\n` +
+            `  writes back every value whose row still resolves, through the source map.\n` +
+            `  What follows is the whole change, one line each\n` +
+            `  (<heading> > <row> [column]: before -> after), so you can see what that\n` +
+            `  leaves you: a row added or removed, a section written, a column, a note.\n\n` +
+            renderMarkdownChanges(report.changes);
+          if (report.unaccounted !== "") {
+            doc += `\n\n  Also changed, and not covered by the lines above:\n\`\`\`diff\n${report.unaccounted}\n\`\`\``;
+          }
+          docLines.push(doc);
+          continue;
+        }
+        // A page somebody rewrote, going back to the markdown file it was
+        // rendered from. As a DIFF, not as the page: a document is mostly the
+        // parts nobody touched, and handing over all of them buries the change
+        // and costs its reader (often a model with a budget) the room to act on
+        // it. The file is named, so the diff has somewhere to land.
+        //
+        // The whole text is still written when there is nothing to diff FROM —
+        // a first rewrite of a page this document never carried a source for —
+        // because a diff against nothing is the page anyway, said less clearly.
+        const file = sheet?.source_file;
         let doc = `- ${r.target.sheet}${file ? ` — ${file}` : ""}`;
         if (r.comment) doc += `\n  reason: ${r.comment}`;
-        doc += `\n  Replace the whole file with:\n\n${c.suggested}`;
+        doc +=
+          (c.current ?? "") === ""
+            ? `\n  Replace the whole file with:\n\n${c.suggested}`
+            : `\n  Apply this diff to that file (line numbers are the file's own):\n\n` +
+              "```diff\n" +
+              unifiedDiff(c.current ?? "", c.suggested) +
+              "\n```";
         // A picture pasted into the document is referenced by PATH, and that
         // path is a file that does not exist yet. Saying "replace the text"
         // without saying "and write these" leaves a document whose images are

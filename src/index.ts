@@ -90,6 +90,12 @@ export type { JsonValue, RecipeIO, SheetRecipe } from "./recipe.js";
 export { renderMarkdown, imageRefs } from "./markdown.js";
 export type { RenderedDocument, DocHeading, ImageResolver, MarkdownOptions } from "./markdown.js";
 
+// A sheet as markdown, and what somebody changed in it. The viewer's full-edit
+// mode is built on these two, and so is anything that wants the same change set
+// outside a browser.
+export { toMarkdownSheet, renderSheetMarkdown, parseSheetMarkdown } from "./sheet-markdown.js";
+export type { MarkdownSheet, MarkdownSection, MarkdownRow } from "./sheet-markdown.js";
+
 export { MAX_PREVIEW_BYTES, addLineKey, previewId, previewFile, previewRendered } from "./preview.js";
 export type { LineKeys, PreviewSource } from "./preview.js";
 // BuildSpec loader: turns a declarative `build.yml` into a validated BuildSpec

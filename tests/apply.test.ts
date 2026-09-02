@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { computeApply } from "../src/apply";
-import { HELD_REASON_GENERATED, HELD_REASON_DEFAULT, HELD_REASON_SHARED_INSTANCE, type SheetData, type ReviewItem } from "../src/prompt";
+import { HELD_REASON_GENERATED, HELD_REASON_DEFAULT, HELD_REASON_SHARED_INSTANCE, HELD_REASON_DOCUMENTATION, type SheetData, type ReviewItem } from "../src/prompt";
 
 // A small sheet whose values map to two in-memory files.
 const data: SheetData = {
@@ -483,5 +483,76 @@ describe("edits made in the sheet itself", () => {
     const out = computeApply(data, [edit("rev_a", "60", "30", "2026-08-18T00:00:00Z"), finding], files({ "/etc/sysctl.conf": sysctl }));
     expect(out.edits).toHaveLength(1);
     expect(out.applied).toBeGreaterThan(0);
+  });
+});
+
+
+// A documentation edit — `remarks`, one of the two fields a sheet lets its owner
+// change. It has no line in any config file to rewrite, so it is held and goes
+// to the prompt, which is right. What was wrong is that it reached NOTHING
+// ELSE: every other hold on that path pushes a result beside the prompt entry,
+// and this one did not, so `apply` reported "1 applied" for a sheet carrying two
+// edits and the second one's existence was known only to whoever opened the
+// prompt.
+describe("an edit to a row's documentation", () => {
+  const data: SheetData = {
+    sheets: [
+      {
+        name: "s",
+        categories: [
+          {
+            name: "c",
+            params: [
+              {
+                key: "Timeout",
+                value: "60",
+                description: "d",
+                source: { file: "/f.conf", line: 1, anchor: "Timeout" },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  } as SheetData;
+
+  const edit = (field: string, current: string, suggested: string): ReviewItem =>
+    ({
+      id: "e_" + field,
+      target: { sheet: "s", category: "c", param: "Timeout", field },
+      status: "applied",
+      changes: [{ field, current, suggested }],
+      at: "2026-01-01T00:00:00Z",
+    }) as ReviewItem;
+
+  const run = (): ReturnType<typeof computeApply> =>
+    computeApply(data, [edit("value", "60", "90"), edit("remarks", "before", "after")], (p) =>
+      p === "/f.conf" ? "Timeout 60\n" : null
+    );
+
+  it("is reported as held, beside the value that applied", () => {
+    const out = run();
+    expect(out.results.map((r) => [r.target.field, r.status])).toEqual([
+      ["value", "applied"],
+      ["remarks", "held"],
+    ]);
+  });
+
+  it("is counted, so the summary cannot say one edit when there were two", () => {
+    const out = run();
+    expect(out.applied).toBe(1);
+    expect(out.held).toBe(1);
+  });
+
+  it("says where such an edit belongs, since no config file holds it", () => {
+    expect(run().results.find((r) => r.target.field === "remarks")?.reason).toBe(HELD_REASON_DOCUMENTATION);
+  });
+
+  // Unchanged: it was already reaching the prompt, and the value beside it was
+  // already applying.
+  it("still reaches the prompt, and does not disturb the value", () => {
+    const out = run();
+    expect(out.heldPrompt).toContain("after");
+    expect(out.files).toEqual([{ path: "/f.conf", content: "Timeout 90\n" }]);
   });
 });
