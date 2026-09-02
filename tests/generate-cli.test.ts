@@ -4,7 +4,8 @@
 // edits, or one that quietly refuses them.
 
 import { describe, it, expect, afterAll } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync } from "fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "fs";
+import { gunzipSync } from "zlib";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -120,5 +121,53 @@ describe("a document handed over as markdown", () => {
   // produce anything.
   it("keeps the prompt", () => {
     expect(caps("--full-edit")).toMatchObject({ prompt: true });
+  });
+});
+
+// The previewed files are a LENS on the deployed file as it was AT GENERATION.
+// A document maintained by hand keeps its values current and the preview does
+// not, so a delivery that will be edited for a long time may prefer to carry no
+// picture rather than one that quietly ages. It is a flag, not a rule: the
+// preview is at its most useful on the first read, before anything is edited.
+describe("leaving the previewed files out", () => {
+  // Built here rather than committed as a fixture: a file under fixtures/ is
+  // one every parser golden then answers for, and this one is a payload, not
+  // an extraction subject.
+  const withPreviews = join(work, "with-preview.json");
+  const model = JSON.parse(readFileSync(input, "utf-8")) as {
+    sheets: { name: string }[];
+    artifacts?: unknown[];
+  };
+  model.artifacts = [
+    {
+      id: "s::c",
+      sheet: model.sheets[0].name,
+      source_file: "conf/app.conf",
+      lines: [
+        { text: "listen 8080", kind: "verbatim" },
+        { text: "workers 4", kind: "verbatim" },
+      ],
+    },
+  ];
+  writeFileSync(withPreviews, JSON.stringify(model));
+
+  const previews = (...args: string[]): number => {
+    const out = join(work, `pv-${args.join("_").replace(/[^A-Za-z0-9]+/g, "") || "default"}.html`);
+    const proc = Bun.spawnSync(["bun", "run", cli, "generate", "-i", withPreviews, ...args, "-o", out]);
+    if (proc.exitCode !== 0) throw new Error(proc.stderr.toString());
+    // The payload is gzipped into the document, so it is read back the way the
+    // page reads it rather than searched as text.
+    const html = readFileSync(out, "utf-8");
+    const block = /id="sheet-data-gz"[^>]*>([^<]*)</.exec(html);
+    const json = block
+      ? gunzipSync(Buffer.from(block[1].trim(), "base64")).toString("utf-8")
+      : /id="sheet-data"[^>]*>([\s\S]*?)<\/script>/.exec(html)![1];
+    const data = JSON.parse(json) as { versions: { artifacts?: unknown[] }[] };
+    return data.versions.reduce((n, v) => n + (v.artifacts?.length ?? 0), 0);
+  };
+
+  it("carries them by default, and not when they are declined", () => {
+    expect(previews()).toBeGreaterThan(0);
+    expect(previews("--no-previews")).toBe(0);
   });
 });

@@ -294,6 +294,17 @@ function readReviewSource(path: string): ReviewDocument {
 // `--allow a,b`. Returns undefined when the flag was not given at all, so the
 // caller can fall back to --no-review. An unknown name is an error, not a
 // silently ignored word: a typo here would quietly ship a read-only document.
+// The previewed files, left out. A preview is a LENS on the deployed file as it
+// was when the document was generated; it does not follow the values a
+// recipient edits afterwards, and `--no-previews` is how a delivery says it
+// would rather carry no picture than one that ages.
+function withoutPreviews<T extends ParameterSheetInput | VersionedSheetInput>(input: T): T {
+  if ("versions" in input) {
+    return { ...input, versions: input.versions.map((v) => ({ ...v, artifacts: undefined })) };
+  }
+  return { ...input, artifacts: undefined };
+}
+
 function parseAllow(spec: string | undefined): Set<string> | undefined {
   if (spec === undefined) return undefined;
   const names = spec.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
@@ -330,8 +341,9 @@ program
   .option("--allow <caps>", "What the recipient may do: review OR edit, optionally with prompt. Omitted, the default is review,prompt (overrides --no-review)")
   .option("--no-sources", "Hide where each value is written (the file name under a row, the sheet's rendered-from line, a preview's source line). The source map stays in the file — apply and verify still work")
   .option("--lang <lang>", "UI language: ja | en (default: ja)", "ja")
+  .option("--no-previews", "Leave the previewed files out: the panel that shows a row's line in its deployed file, and the affordance that opens it. They are the file as it was AT GENERATION — a document maintained by hand afterwards keeps its values current and the preview does not, so a delivery that will be edited for a long time may prefer not to carry a picture that quietly ages. Also the biggest single part of the file (measured on a real document: 1.1 MB of payload against 0.6 MB without)")
   .option("--full-edit", "Hand the sheet over as a document its recipient maintains by hand: every sheet becomes markdown, in ONE language, and the whole page is editable. Implies --allow edit and turns the review affordances OFF (there is no cell to comment on — a note goes in the text). The per-cell review targets and the language toggle for content are not in such a document")
-  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; lang: string; fullEdit?: boolean }) => {
+  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; lang: string; fullEdit?: boolean }) => {
     try {
       const files = opts.input;
       let input: ParameterSheetInput | VersionedSheetInput;
@@ -356,6 +368,9 @@ program
       const baked = findBakedSecrets(input);
       if (baked.length > 0) console.error(formatBakedSecrets(baked));
 
+      // Dropped HERE, before anything reads them: a preview nobody asked for
+      // should not reach the payload, the viewer's index, or the file's size.
+      if (opts.previews === false) input = withoutPreviews(input);
       const lang = opts.lang === "en" ? "en" : "ja";
       // The content's language is decided HERE and never again: a full-edit
       // document carries text, not a model, so nothing downstream can re-resolve
