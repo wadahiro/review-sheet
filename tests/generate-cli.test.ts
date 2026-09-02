@@ -98,3 +98,27 @@ describe("generate capability flags", () => {
     expect(r.stderr).toContain("reviw");
   });
 });
+
+// A document handed over for hand maintenance has no cell to comment on: there
+// is no model behind it, so nothing carries a review target, and a finding
+// written against one would have nowhere to live. What its reader wants to say,
+// they write in the text.
+describe("a document handed over as markdown", () => {
+  it("is editable and offers no review affordance", () => {
+    expect(caps("--full-edit")).toMatchObject({ review: false, edit: true });
+  });
+
+  // …even when the permission set says otherwise: `--allow review` names a
+  // capability this document cannot have, and editing is what it IS.
+  it("stays that way even when review is asked for by name", () => {
+    expect(caps("--full-edit", "--allow", "review")).toMatchObject({ review: false, edit: true });
+  });
+
+  // The prompt is what carries the edited document to whoever applies it, so it
+  // survives review being off — unlike an ordinary sheet, where a prompt with
+  // neither review nor editing behind it would describe a button that cannot
+  // produce anything.
+  it("keeps the prompt", () => {
+    expect(caps("--full-edit")).toMatchObject({ prompt: true });
+  });
+});

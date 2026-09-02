@@ -7,8 +7,11 @@ import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { validateInput, validateReview, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { findBakedSecrets, formatBakedSecrets } from "./secrets.js";
+import { toFullEditInput } from "./full-edit.js";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument } from "./types.js";
-import { extractReviewsFromHtml } from "./edits.js";
+import { extractReviewsFromHtml, DOCUMENT_FIELD } from "./edits.js";
+import { documentEditRange, fullEditChanges } from "./full-edit-apply.js";
+import { renderMarkdownChanges } from "./markdown-changes.js";
 import { computeApply } from "./apply.js";
 import { verifySources } from "./verify.js";
 import { diffSheets, type CategoryDiff, type DiffResult } from "./diff.js";
@@ -327,7 +330,8 @@ program
   .option("--allow <caps>", "What the recipient may do: review OR edit, optionally with prompt. Omitted, the default is review,prompt (overrides --no-review)")
   .option("--no-sources", "Hide where each value is written (the file name under a row, the sheet's rendered-from line, a preview's source line). The source map stays in the file — apply and verify still work")
   .option("--lang <lang>", "UI language: ja | en (default: ja)", "ja")
-  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; lang: string }) => {
+  .option("--full-edit", "Hand the sheet over as a document its recipient maintains by hand: every sheet becomes markdown, in ONE language, and the whole page is editable. Implies --allow edit and turns the review affordances OFF (there is no cell to comment on — a note goes in the text). The per-cell review targets and the language toggle for content are not in such a document")
+  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; lang: string; fullEdit?: boolean }) => {
     try {
       const files = opts.input;
       let input: ParameterSheetInput | VersionedSheetInput;
@@ -353,6 +357,10 @@ program
       if (baked.length > 0) console.error(formatBakedSecrets(baked));
 
       const lang = opts.lang === "en" ? "en" : "ja";
+      // The content's language is decided HERE and never again: a full-edit
+      // document carries text, not a model, so nothing downstream can re-resolve
+      // a description into the other language.
+      if (opts.fullEdit === true) input = toFullEditInput(input, lang);
       const caps = parseAllow(opts.allow);
       // Both spellings of "read nothing else into this document".
       const readable = !(opts.readonly === true || opts.review === false);
@@ -360,14 +368,25 @@ program
         title: opts.title,
         // --allow, when given, states the whole permission set; otherwise the
         // older --no-review still decides, with editing off.
-        review: caps ? caps.has("review") : readable,
-        edit: caps ? caps.has("edit") : false,
+        // A hand-maintained document has nothing to comment ON: there is no
+        // model behind it, so no cell carries a review target, and a finding
+        // written against one would have nowhere to live. What a reader wants
+        // to say, they write in the text — which is the whole point of the
+        // mode. So the review affordances are off, whatever --allow says.
+        review: opts.fullEdit === true ? false : caps ? caps.has("review") : readable,
+        // A full-edit document is nothing BUT its editable text; handing one
+        // over with editing off would be a page nobody can maintain.
+        edit: opts.fullEdit === true || (caps ? caps.has("edit") : false),
         // Naming the set means naming ALL of it: a document handed to someone
         // else should not carry an affordance nobody asked to include.
         // Without --allow, the older behaviour stands and the prompt is there —
         // but never in a document that produces nothing to put in one, where
         // claiming the capability would describe a button that cannot exist.
-        prompt: (caps ? caps.has("prompt") : readable) && (caps ? caps.has("review") || caps.has("edit") : readable),
+        prompt: opts.fullEdit === true
+          ? caps
+            ? caps.has("prompt")
+            : readable
+          : (caps ? caps.has("prompt") : readable) && (caps ? caps.has("review") || caps.has("edit") : readable),
         // Not a capability — nobody is permitted or forbidden anything by it —
         // so a flag of its own rather than a name in --allow.
         sources: opts.sources,
@@ -1098,7 +1117,42 @@ program
         }
       };
 
-      const outcome = computeApply(input, reviewDoc.reviews, readFile, { marker: opts.annotationMarker });
+      // A sheet handed over as markdown comes back as ONE rewritten document.
+      // Line it up against the model here, where the model still is: whatever
+      // resolves to a row becomes an ordinary value edit and goes through the
+      // source-mapped path below; the rest is reported as the diff it is.
+      const fullEdits: ReviewItem[] = [];
+      const patches: { sheet: string; report: string; unaccounted: string; count: number }[] = [];
+      const ranges = documentEditRange(reviewDoc.reviews);
+      for (const sheet of input.sheets) {
+        const range = ranges.get(sheet.name);
+        if (!range || (sheet.categories ?? []).length === 0) continue;
+        const change = fullEditChanges(
+          sheet as never,
+          range.before,
+          range.after,
+          "ja",
+          new Date().toISOString()
+        );
+        fullEdits.push(...change.edits);
+        if (change.residue.length > 0 || change.unaccounted !== "") {
+          patches.push({
+            sheet: sheet.name,
+            report: renderMarkdownChanges(change.residue),
+            unaccounted: change.unaccounted,
+            count: change.residue.length,
+          });
+        }
+      }
+      // The document rewrite itself is replaced by what it turned into: keeping
+      // both would apply the same change twice — once as values, once as a page
+      // nobody can write back.
+      const reviews = [
+        ...reviewDoc.reviews.filter((r) => !(r.target.param === undefined && (r.target.field ?? "") === DOCUMENT_FIELD && ranges.has(r.target.sheet) && (input.sheets.find((s) => s.name === r.target.sheet)?.categories ?? []).length > 0)),
+        ...fullEdits,
+      ];
+
+      const outcome = computeApply(input, reviews, readFile, { marker: opts.annotationMarker });
 
       // Group applied/skipped results by file for a readable preview.
       const byFile = new Map<string, typeof outcome.results>();
@@ -1175,10 +1229,36 @@ program
           "."
       );
 
-      if (opts.emitPrompt && outcome.heldPrompt) {
+      // What a rewritten document asked for that no row could carry — a row
+      // added, a heading written, a column, a paragraph. Said as the diff it
+      // is, because text is the only thing that can carry all of it, and never
+      // silently: a document plainly edited whose changes all mapped to values
+      // and one whose changes mapped to nothing must not print the same.
+      if (patches.length > 0) {
+        const total = patches.reduce((n, p) => n + p.count, 0);
+        console.error(
+          `Note: ${patches.length} sheet(s) came back as an edited document` +
+            (total > 0 ? `; ${total} change(s) in them are not a value any source map addresses` : "") +
+            `. They are in the AI prompt.`
+        );
+      }
+      const patchText =
+        patches.length === 0
+          ? ""
+          : `\n\n${"-".repeat(60)}\nThe sheets below were handed over as markdown and edited by hand. Every value\nthat still resolved to a row is already listed above; what follows is the rest,\nstated per change. Apply it to the project's own sources — the configuration\nfiles, and the sheet's definition where a section, a row or a column was added.\n\nEach line is: <heading> > <row>[ column]: before -> after.\n` +
+            patches
+              .map(
+                (p) =>
+                  `\n### ${p.sheet}\n\n${p.report}` +
+                  (p.unaccounted === "" ? "" : `\n\nAlso changed, and not covered by the lines above:\n\`\`\`diff\n${p.unaccounted}\n\`\`\``)
+              )
+              .join("\n");
+      const prompt = outcome.heldPrompt ? `${outcome.heldPrompt}${patchText}` : patchText.trim();
+
+      if (opts.emitPrompt && prompt) {
         console.log(`\n${"=".repeat(60)}\nAI prompt for remaining work:\n${"=".repeat(60)}\n`);
-        console.log(outcome.heldPrompt);
-      } else if (outcome.heldPrompt) {
+        console.log(prompt);
+      } else if (prompt) {
         console.error(`Run with --emit-prompt to print the AI prompt for the held items.`);
       }
     } catch (e) {
