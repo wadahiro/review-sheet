@@ -139,6 +139,7 @@ type Messages = {
   editNewValue: string;
   editSave: string;
   editUnchanged: string;
+  editDiscardConfirm: string;
   editedBadge: string;
   editAnonymous: string;
   editSharedNote: string;
@@ -152,6 +153,25 @@ type Messages = {
   docTitleNote: string;
   docPasting: string;
   docNoSource: string;
+  mdHeldList: string;
+  mdHeldNote: string;
+  mdHeldTarget: string;
+  mdHeldWhat: string;
+  envManage: string;
+  envAdd: string;
+  envName: string;
+  envRemove: string;
+  envRemoveConfirm: (name: string) => string;
+  envRename: string;
+  envRemoveUnusedConfirm: (name: string) => string;
+  envInUse: string;
+  settingsMenu: string;
+  clearEditsMenu: string;
+  confirmClearEdits: (count: number) => string;
+  envSheetManage: string;
+  envSheetManageShort: string;
+  envRemoveFromSheetConfirm: (name: string) => string;
+  envNoneDefined: string;
   editMenu: (n: number) => string;
   restoredToast: (n: number) => string;
   saveDocument: string;
@@ -368,6 +388,7 @@ const ja: Messages = {
   editNewValue: "新しい値",
   editSave: "変更する",
   editUnchanged: "値が変わっていません",
+  editDiscardConfirm: "編集中の内容が保存されずに失われます。閉じますか？",
   editedBadge: "元の値から変更されています",
   editAnonymous: "記入者未設定",
   editSharedNote: "この値は全環境で共有されています。変更はすべての環境に及びます。",
@@ -381,6 +402,25 @@ const ja: Messages = {
   docTitleNote: "先頭の見出し（h1）はこのファイル自身のタイトルです。Markdown を単体で読む人のために残りますが、シートではこのページの見出しが使われるため本文には表示されません（見出しの文言は sheet.yml の label）。",
   docPasting: "画像を埋め込んでいます…",
   docNoSource: "この文書は Markdown の原文を持っていません（編集を有効にする前に生成されたものです）。編集するには生成し直してください。",
+  mdHeldList: "反映依頼",
+  mdHeldNote: "このシートの編集としては反映できない変更です。AI プロンプトに含まれます。",
+  mdHeldTarget: "対象",
+  mdHeldWhat: "内容",
+  envManage: "値の列を編集",
+  envAdd: "列を追加",
+  envName: "列名",
+  envRemove: "削除",
+  envRemoveConfirm: (name) => `「${name}」の列を、すべての表から削除します。書かれている値も消えます。よろしいですか？`,
+  envRename: "変更",
+  envRemoveUnusedConfirm: (name) => `列「${name}」を一覧から削除します。よろしいですか？`,
+  envInUse: "この列を使っているシートがあります。各シート見出しの「列」から外してから削除してください。",
+  settingsMenu: "設定",
+  clearEditsMenu: "編集をすべて取り消す…",
+  confirmClearEdits: (count) => `この文書の編集 ${count} 件をすべて取り消し、納品時の内容に戻しますか？（保存するまでファイルは変わりません）`,
+  envSheetManage: "このシートで使う列",
+  envSheetManageShort: "列",
+  envRemoveFromSheetConfirm: (name) => `このシートのすべての表から「${name}」の列を削除します。書かれている値も消えます。よろしいですか？`,
+  envNoneDefined: "値の列がまだ定義されていません。ツールバーの設定から追加してください。",
   editMenu: (n) => `変更 (${n})`,
   restoredToast: (n) => `前回このブラウザで作業した、保存されていない変更 ${n} 件を読み込みました`,
   saveDocument: "保存",
@@ -570,6 +610,7 @@ const en: Messages = {
   editNewValue: "New value",
   editSave: "Change",
   editUnchanged: "The value has not changed",
+  editDiscardConfirm: "You have unsaved changes here. Close and lose them?",
   editedBadge: "Changed from the original",
   editAnonymous: "no name recorded",
   editSharedNote: "This value is shared by every environment; changing it changes all of them.",
@@ -583,6 +624,25 @@ const en: Messages = {
   docTitleNote: "The leading h1 is this FILE's own title. It stays for anyone reading the markdown on its own, and is not shown in the body here — the sheet's heading names the page (its wording comes from sheet.yml's label).",
   docPasting: "Embedding the image…",
   docNoSource: "This document carries no markdown source (it was built before editing was enabled). Regenerate it to edit.",
+  mdHeldList: "Requests",
+  mdHeldNote: "Changes this sheet cannot carry as edits. They travel in the AI prompt.",
+  mdHeldTarget: "Target",
+  mdHeldWhat: "What",
+  envManage: "Edit value columns",
+  envAdd: "Add a column",
+  envName: "Column name",
+  envRemove: "Remove",
+  envRemoveConfirm: (name) => `Remove the "${name}" column from every table. The values written in it go too. Continue?`,
+  envRename: "Rename",
+  envRemoveUnusedConfirm: (name) => `Remove the "${name}" column from the list. Continue?`,
+  envInUse: "Sheets still carry this column. Remove it from them first, from each sheet's heading.",
+  settingsMenu: "Settings",
+  clearEditsMenu: "Discard all edits…",
+  confirmClearEdits: (count) => `Discard all ${count} edit(s) and return this document to the text it was delivered with? (The file itself changes only when you save.)`,
+  envSheetManage: "Columns on this sheet",
+  envSheetManageShort: "Columns",
+  envRemoveFromSheetConfirm: (name) => `Remove the "${name}" column from every table on this sheet. The values written in it go too. Continue?`,
+  envNoneDefined: "No value columns are defined yet. Add one from the toolbar settings.",
   editMenu: (n) => `Changes (${n})`,
   restoredToast: (n) => `Loaded ${n} unsaved change${n === 1 ? "" : "s"} from a previous session in this browser`,
   saveDocument: "Save",

@@ -222,7 +222,7 @@ export const customStyles = `
   border-color: #7f1d1d;
   color: var(--rs-danger);
 }
-[data-theme="dark"] .rs-btn-danger:hover {
+[data-theme="dark"] .rs-btn-danger:hover:not(:disabled) {
   background: #3d1818;
 }
 
@@ -329,7 +329,7 @@ export const customStyles = `
   :root:not([data-theme="light"]) .rs-target-info code { background: #334155; }
   :root:not([data-theme="light"]) .rs-modal-shortcuts kbd { background: var(--rs-subtle); }
   :root:not([data-theme="light"]) .rs-btn-danger { background: var(--rs-danger-bg); border-color: #7f1d1d; color: var(--rs-danger); }
-  :root:not([data-theme="light"]) .rs-btn-danger:hover { background: #3d1818; }
+  :root:not([data-theme="light"]) .rs-btn-danger:hover:not(:disabled) { background: #3d1818; }
   :root:not([data-theme="light"]) .rs-btn-cancel:hover { background: var(--rs-subtle); }
   :root:not([data-theme="light"]) .rs-overview-item { background: var(--rs-subtle); }
   :root:not([data-theme="light"]) .rs-version-bar { background: var(--rs-subtle); }
@@ -1494,6 +1494,8 @@ code {
   --rs-w-desc: 24rem;
   --rs-w-default: 8rem;
   --rs-w-value: 10rem;
+  /* Any other column a table carries — a remark, or one the reader added. */
+  --rs-w-remarks: 16rem;
   --rs-w-check: 7rem;
 }
 
@@ -1573,6 +1575,17 @@ code {
   width: var(--rs-w-value);
   min-width: var(--rs-w-value);
   max-width: var(--rs-w-value);
+}
+
+/* A column with no width of its own takes what is LEFT — and what is left
+   differs between a table that scrolls inside itself and the header lifted out
+   of it, so the two drifted apart by exactly that column's width and the
+   header's last pin came to sit over the next column along. Every column in a
+   split table has a width. */
+.rs-param-table-fixed.rs-param-table-wide .rs-col-remarks {
+  width: var(--rs-w-remarks);
+  min-width: var(--rs-w-remarks);
+  max-width: var(--rs-w-remarks);
 }
 
 
@@ -2259,8 +2272,57 @@ code {
 /* The document editor: a source pane, not a preview. It is markdown going back
    to a markdown file, and a second renderer running while someone types would
    be a second thing to keep honest. */
-.rs-doc-modal {
+/* Written as a PAIR of classes, both here and below: .rs-modal sets a width of
+   its own and is declared later in this file, so a single-class rule for a
+   particular modal loses to it and the dialog comes out the default size —
+   which is what happened, quietly, to every one of these until it was measured. */
+.rs-modal.rs-doc-modal {
   width: min(56rem, 92vw);
+}
+
+/* A sheet is a table, and a table is wide: the editor for one takes the room a
+   prose page does not need, in both directions. */
+.rs-modal.rs-doc-modal-wide {
+  /* Nearly the whole window: a sheet's row is one long line — key, description,
+     default and one cell per column — and every character that wraps is a
+     character the editor puts somewhere other than where the table has it. */
+  width: 98vw;
+  max-width: 98vw;
+  height: 96vh;
+  max-height: 96vh;
+  /* The modal itself does not scroll; the text does. Otherwise the actions sit
+     below a 78vh textarea and a reader has to scroll the DIALOG to find the
+     button that saves what they just typed. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rs-modal.rs-doc-modal-wide .rs-new-review {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.rs-modal.rs-doc-modal-wide .rs-form-row {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.rs-modal.rs-doc-modal-wide .rs-sheet-source {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  resize: none;
+}
+
+/* Always in reach, whatever the text is doing above it. */
+.rs-modal.rs-doc-modal-wide .rs-modal-footer {
+  flex: 0 0 auto;
+  background: var(--rs-surface);
+  padding-top: 0.75rem;
 }
 
 .rs-doc-source {
@@ -2270,6 +2332,64 @@ code {
   font-size: 0.82rem;
   line-height: 1.6;
   tab-size: 2;
+}
+
+/* The environment list: a name and its two actions per row. */
+.rs-env-table td { padding: 0.35rem 0.5rem; }
+.rs-env-actions {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+.rs-env-add {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+.rs-env-add input { flex: 1; }
+
+/* Which sheets an environment change reaches, and what each of them has. */
+.rs-env-sheet-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.15rem 0;
+}
+.rs-env-no-axis { opacity: 0.55; }
+.rs-env-count {
+  color: var(--rs-text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.rs-env-others {
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--rs-text-muted);
+  line-height: 1.7;
+}
+.rs-env-sheet {
+  display: inline-block;
+  min-width: 12rem;
+  color: var(--rs-text);
+}
+
+/* A paragraph beside a section's table. Written by whoever holds the sheet, so
+   it reads as prose and not as data: line breaks kept, no code face. */
+.rs-category-note {
+  margin: 0 0 0.75rem;
+  white-space: pre-wrap;
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: var(--rs-text);
+}
+
+/* A whole sheet is wider and longer than a document: its table rows are one
+   line each, and wrapping them makes the columns unreadable. */
+.rs-sheet-source {
+  min-height: 78vh;
+  white-space: pre;
+  overflow-x: auto;
 }
 
 .rs-doc-edited-note {
@@ -2729,7 +2849,7 @@ code {
   transition: background 0.15s;
 }
 
-.rs-btn-danger:hover {
+.rs-btn-danger:hover:not(:disabled) {
   background: #fecaca;
 }
 
@@ -3674,7 +3794,12 @@ tr.rs-jump-flash th {
   gap: 0.5rem;
 }
 
-.rs-btn-primary:disabled {
+/* A button that cannot act says so by looking that way. Only the primary one
+   said it, so a refused destructive action looked exactly like an available
+   one and answered a click with nothing — which reads as a broken button. */
+.rs-btn-primary:disabled,
+.rs-btn-danger:disabled,
+.rs-btn-cancel:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }

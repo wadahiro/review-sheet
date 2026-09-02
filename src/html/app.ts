@@ -8,6 +8,7 @@ import htm from "htm";
 import { getMessages, type Lang, type Messages } from "./i18n.js";
 import {
   buildPromptText,
+  targetLabel,
   retargetReviews,
   effectiveOrigin,
   HELD_REASON_GENERATED,
@@ -21,8 +22,21 @@ import {
   type SaveRecord,
 } from "../prompt.js";
 import { buildDiffModel, rowKey, instKey, catKey, sheetKey, type DiffStatusMap } from "../diffview.js";
-import { applyEdits, editsForCell, isEdit, isEditableField, isDeleted, planFromEdits, promptItemsFromPlan, documentSource, documentAssets, DOCUMENT_FIELD, cellKey as editCellKey, targetKey, type EditedSheets } from "../edits.js";
+import { documentEnvironments, ENVIRONMENTS_FIELD, applyEdits, editsForCell, isEdit, isEditableField, isDeleted, planFromEdits, promptItemsFromPlan, documentSource, documentAssets, DOCUMENT_FIELD, cellKey as editCellKey, targetKey, type EditedSheets } from "../edits.js";
+import { toMarkdownSheet, renderSheetMarkdown, parseSheetMarkdown } from "../sheet-markdown.js";
 import { getMarkdownRenderer } from "./markdown-runtime.js";
+import { MarkdownSheetBody } from "./md-sheet.js";
+import { navAnchorId, paramAnchorId, encodeIdPart } from "./anchors.js";
+import {
+  showCellTool,
+  hideCellToolSoon,
+  hideCellToolNow,
+  keepCellTool,
+  suppressCellToolWhileScrolling,
+  setCellToolSetter,
+  type CellToolCtx,
+} from "./cell-tool.js";
+import { markdownToCategories, declaredInstances, withEnvironment, withoutEnvironment, renameEnvironment } from "../sheet-markdown.js";
 import { runMermaid } from "./mermaid-runtime.js";
 import { setShowSources, showSources } from "./display-config.js";
 import { withEmbeddedHistory, readEmbeddedHistory, suggestedFileName, type EmbeddedHistory } from "./save.js";
@@ -142,6 +156,9 @@ function localizeCategory(c: CategoryData, lang: Lang): CategoryData {
     // sees, resolved here alongside every other LangText so the language
     // toggle switches a component's heading live — see types.ts's Category.
     display: (c.label ? pickLang(c.label, lang) : undefined) ?? c.name,
+    // Resolved here with every other LangText, so what reaches the render is a
+    // plain string and the language toggle re-resolves it live.
+    note: pickLang(c.note, lang),
     out_of_scope: localizeOutOfScope(c.out_of_scope, lang),
     params: c.params?.map((p) => localizeParam(p, lang)),
     categories: c.categories?.map((sc) => localizeCategory(sc, lang)),
@@ -215,7 +232,6 @@ function genId(): string {
   return "rev_" + Math.random().toString(36).substring(2, 14);
 }
 
-
 function copyToClipboard(value: string, btn: HTMLElement): void {
   navigator.clipboard.writeText(value).then(() => {
     const origHtml = btn.innerHTML;
@@ -230,65 +246,6 @@ function copyToClipboard(value: string, btn: HTMLElement): void {
 
 // ============================================================
 // Shared cell action toolbar
-// ============================================================
-// One floating toolbar for the whole table \u2014 not one per cell. Cells report the
-// hovered cell into this tiny module-level store; a single CellToolbarHost reads
-// it and renders the toolbar. This avoids the "afterimage" of several per-cell
-// toolbars overlapping while one fades out as the next appears.
-
-type CellToolCtx = {
-  rect: DOMRect;
-  target: ReviewItem["target"];
-  field: string;
-  effectiveValue: string;
-  // See ReviewModal: the clicked cell's row stores one value for every
-  // environment, so the finding's scope has to be asked rather than assumed.
-  sharedRow?: boolean;
-  hasReview: boolean;
-  canCopy: boolean;
-  reviewEnabled: boolean;
-  // Editing is offered only on the two fields the recipient owns (value,
-  // remarks) — see EDITABLE_FIELDS.
-  editEnabled: boolean;
-  hasEdit: boolean;
-  // Row-level: offered on the key cell only. `rowDeleted` flips the action
-  // between striking the row through and putting it back.
-  canDelete: boolean;
-  rowDeleted: boolean;
-  // The cell's horizontal scroll container, so wheel/swipe over the (fixed,
-  // overlaying) toolbar can be forwarded to the table beneath it.
-  scroller: HTMLElement | null;
-};
-
-let cellToolSetter: ((c: CellToolCtx | null) => void) | null = null;
-let cellToolTimer: ReturnType<typeof setTimeout> | undefined;
-// While scrolling, cells slide under a stationary cursor and each fires
-// mouseenter — which would re-show the toolbar on every frame (flicker). Suppress
-// re-showing until scrolling has settled for this long.
-let cellToolSuppressedUntil = 0;
-
-function suppressCellToolWhileScrolling(): void {
-  cellToolSuppressedUntil = Date.now() + 250;
-  hideCellToolNow();
-}
-
-function showCellTool(c: CellToolCtx): void {
-  if (Date.now() < cellToolSuppressedUntil) return;
-  if (cellToolTimer) clearTimeout(cellToolTimer);
-  cellToolSetter?.(c);
-}
-function keepCellTool(): void {
-  if (cellToolTimer) clearTimeout(cellToolTimer);
-}
-function hideCellToolSoon(): void {
-  if (cellToolTimer) clearTimeout(cellToolTimer);
-  cellToolTimer = setTimeout(() => cellToolSetter?.(null), 110);
-}
-function hideCellToolNow(): void {
-  if (cellToolTimer) clearTimeout(cellToolTimer);
-  cellToolSetter?.(null);
-}
-
 // ============================================================
 // localStorage persistence
 // ============================================================
@@ -1301,10 +1258,16 @@ const extensionOf = (uri: string): string => IMAGE_EXT[/^data:([^;,]+)/.exec(uri
 // editor, not a rich one: the file it came from is markdown, an edit that
 // travels back to it has to be markdown, and anything that renders while
 // typing would be a second renderer to keep honest.
-function DocumentModal({ sheet, current, original, onSave, onClose, t }: {
+function DocumentModal({ sheet, current, original, sheetMode, jumpTo, onSave, onClose, t }: {
   sheet: string;
   current: string;
   original: string;
+  // The document IS a sheet (full-edit mode): a wide editor, because what is
+  // being edited is a table, and none of the notes a prose page wants.
+  sheetMode?: boolean;
+  // A line to open at — the heading somebody clicked. Without it the editor
+  // opens where the document starts, which is where a reader starts.
+  jumpTo?: string;
   onSave: (review: ReviewItem) => void;
   onClose: () => void;
   t: Messages;
@@ -1349,13 +1312,41 @@ function DocumentModal({ sheet, current, original, onSave, onClose, t }: {
     reader.readAsDataURL(file);
   }, [text]);
 
+  // Closing with work in it is the one way to lose an edit that was never
+  // written anywhere — the overlay is a click away from the text, and Escape is
+  // a keystroke away. So the way out asks first, and only when there is
+  // something to lose.
+  const requestClose = useCallback(() => {
+    if (text !== current && !confirm(t.editDiscardConfirm)) return;
+    onClose();
+  }, [text, current, onClose, t]);
+
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") requestClose(); };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [requestClose]);
 
-  useEffect(() => { setTimeout(() => ref.current?.focus(), 50); }, [sheet]);
+  // Opened at the top, or at the heading somebody asked for — never at the end,
+  // which is where focusing a textarea leaves the caret and is the one place
+  // nobody meant to go.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const el = ref.current;
+      if (!el) return;
+      el.focus();
+      const at = jumpTo === undefined ? -1 : el.value.indexOf(jumpTo);
+      const pos = at >= 0 ? at : 0;
+      el.selectionStart = pos;
+      el.selectionEnd = pos;
+      // A textarea does not scroll to its caret on its own: put the line near
+      // the top, by the height of the lines above it.
+      const line = el.value.slice(0, pos).split("\n").length - 1;
+      const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
+      el.scrollTop = Math.max(0, line * lineHeight - lineHeight);
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [sheet, jumpTo]);
 
   const handleSave = useCallback(() => {
     if (text === current) {
@@ -1382,20 +1373,25 @@ function DocumentModal({ sheet, current, original, onSave, onClose, t }: {
   }, [handleSave]);
 
   return html`
-    <div class="rs-overlay" onClick=${(e: Event) => { if ((e.target as HTMLElement).classList.contains("rs-overlay")) onClose(); }}>
-      <div class="rs-modal rs-doc-modal" role="dialog" aria-label="${t.docEdit}">
+    <div class="rs-overlay" onClick=${(e: Event) => { if ((e.target as HTMLElement).classList.contains("rs-overlay")) requestClose(); }}>
+      <div class=${`rs-modal rs-doc-modal ${sheetMode ? "rs-doc-modal-wide" : ""}`} role="dialog" aria-label="${t.docEdit}">
         <header>
           <div>
             <h4>${t.docEdit}</h4>
             <div class="rs-modal-path">${sheet}</div>
           </div>
-          <button class="rs-modal-close" onClick=${onClose} aria-label="${t.shortcutClose}">\u00d7</button>
+          <button class="rs-modal-close" onClick=${requestClose} aria-label="${t.shortcutClose}">\u00d7</button>
         </header>
         <div class="rs-new-review">
-          <p class="rs-edit-note">${t.docImagesNote}</p>
-          ${/^\s*#\s+\S/.test(text) && html`<p class="rs-edit-note">${t.docTitleNote}</p>`}
+          ${/* Said on a prose page, where pasting a picture and the leading h1
+                are both real questions. On a SHEET they are not: nobody pastes
+                a screenshot into a parameter table, and the h1 is the sheet's
+                name. Two paragraphs of standing explanation above the thing
+                somebody came here to edit is in the way. */ ""}
+          ${sheetMode !== true && html`<p class="rs-edit-note">${t.docImagesNote}</p>`}
+          ${sheetMode !== true && /^\s*#\s+\S/.test(text) && html`<p class="rs-edit-note">${t.docTitleNote}</p>`}
           <div class="rs-form-row">
-            <textarea class="rs-doc-source" ref=${ref} value=${text} spellcheck=${false}
+            <textarea class=${`rs-doc-source ${sheetMode ? "rs-sheet-source" : ""}`} ref=${ref} value=${text} spellcheck=${false}
                       onInput=${(e: Event) => setText((e.target as HTMLTextAreaElement).value)}
                       onPaste=${handlePaste}
                       onKeyDown=${handleKeyDown}></textarea>
@@ -1410,6 +1406,170 @@ function DocumentModal({ sheet, current, original, onSave, onClose, t }: {
               <button class="rs-btn-primary" onClick=${handleSave}>${t.editSave}</button>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// The VALUE columns a hand-maintained document knows about.
+//
+// Called columns and not environments, because that is what they are here: the
+// axis is usually the project's environments, and nothing makes it so — a
+// document may just as well hold one column per node, per tenant, or per
+// release. The filter that hides them has always called them columns too. The
+// model's word for them is `instances`, and the change report keeps it, since
+// what it is read against IS an environment list (build.yml's).
+//
+// ONE set, for the whole document — an axis belongs to the document, not to a
+// page. Which sheets use which of them is not decided here and cannot be: a
+// table has the column or it does not, and that is the sheet's own business
+// (its heading carries the control for it).
+//
+// So this defines names. Adding one touches no table — there is nothing to put
+// in a column nobody has asked for yet. Renaming and removing DO touch every
+// table that has the column, because the alternative is a column naming an
+// environment that no longer exists, which is a document disagreeing with
+// itself.
+//
+// What this does NOT do is create the environment on the project's side: a
+// layer of configuration and the files behind it are decisions, and they are
+// stated in the change report for whoever applies the sheet.
+function EnvironmentModal({ environments, sheets, onSave, onClose, t }: {
+  environments: string[];
+  sheets: { name: string; display: string; markdown: string; instances: string[] }[];
+  onSave: (names: string[], edits: { sheet: string; markdown: string }[]) => void;
+  onClose: () => void;
+  t: Messages;
+}) {
+  const [adding, setAdding] = useState("");
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const add = (): void => {
+    const name = adding.trim();
+    if (name === "" || environments.includes(name)) return;
+    onSave([...environments, name], []);
+    setAdding("");
+  };
+
+  const rename = (from: string): void => {
+    const to = prompt(t.envRename, from);
+    if (to === null || to.trim() === "" || to.trim() === from || environments.includes(to.trim())) return;
+    onSave(
+      environments.map((n) => (n === from ? to.trim() : n)),
+      sheets.filter((s) => s.instances.includes(from)).map((s) => ({ sheet: s.name, markdown: renameEnvironment(s.markdown, from, to.trim()) }))
+    );
+  };
+
+  // Only ever reached for an environment no sheet carries a column for — the
+  // button is disabled otherwise — so there is no table to rewrite and nothing
+  // written in one to lose.
+  const remove = (name: string): void => {
+    if (!confirm(t.envRemoveUnusedConfirm(name))) return;
+    onSave(
+      environments.filter((n) => n !== name),
+      []
+    );
+  };
+
+  return html`
+    <div class="rs-overlay" onClick=${(e: Event) => { if ((e.target as HTMLElement).classList.contains("rs-overlay")) onClose(); }}>
+      <div class="rs-modal" role="dialog" aria-label="${t.envManage}">
+        <header>
+          <div><h4>${t.envManage}</h4></div>
+          <button class="rs-modal-close" onClick=${onClose} aria-label="${t.shortcutClose}">\u00d7</button>
+        </header>
+        <div class="rs-new-review">
+          <table class="rs-changelog-table rs-env-table">
+            <tbody>
+              ${environments.map((name) => {
+                // In use somewhere: removing it would take a column and the
+                // values in it out of a sheet nobody is looking at. The sheet
+                // says so first, from its own heading — the check is the rule,
+                // and a disabled button with the reason on it is the whole
+                // explanation this dialog needs.
+                const used = sheets.some((s) => s.instances.includes(name));
+                return html`
+                  <tr key=${name}>
+                    <td><code>${name}</code></td>
+                    <td class="rs-env-actions">
+                      <button class="rs-btn-cancel" onClick=${() => rename(name)}>${t.envRename}</button>
+                      <button class="rs-btn-danger" disabled=${used} title=${used ? t.envInUse : ""}
+                              onClick=${() => remove(name)}>${t.envRemove}</button>
+                    </td>
+                  </tr>
+                `;
+              })}
+            </tbody>
+          </table>
+          <div class="rs-form-row rs-env-add">
+            <input type="text" value=${adding} placeholder=${t.envName}
+                   onInput=${(e: Event) => setAdding((e.target as HTMLInputElement).value)}
+                   onKeyDown=${(e: KeyboardEvent) => { if (e.key === "Enter") add(); }} />
+            <button class="rs-btn-primary" onClick=${add} disabled=${adding.trim() === ""}>${t.envAdd}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Which of the document's value columns THIS sheet carries.
+//
+// The other half of the split, and the half that belongs to the sheet: a table
+// covers the environments it covers, and the ones it does not are simply not
+// there. Adding the column writes it into every table of the sheet, which is
+// the part nobody would do by hand.
+function SheetEnvironmentModal({ sheet, environments, markdown, onSave, onClose, t }: {
+  sheet: string;
+  environments: string[];
+  markdown: string;
+  onSave: (markdown: string) => void;
+  onClose: () => void;
+  t: Messages;
+}) {
+  const here = declaredInstances(markdown) ?? [];
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const toggle = (name: string): void => {
+    if (here.includes(name)) {
+      if (!confirm(t.envRemoveFromSheetConfirm(name))) return;
+      onSave(withoutEnvironment(markdown, name));
+      return;
+    }
+    onSave(withEnvironment(markdown, name));
+  };
+
+  return html`
+    <div class="rs-overlay" onClick=${(e: Event) => { if ((e.target as HTMLElement).classList.contains("rs-overlay")) onClose(); }}>
+      <div class="rs-modal" role="dialog" aria-label="${t.envSheetManage}">
+        <header>
+          <div>
+            <h4>${t.envSheetManage}</h4>
+            <div class="rs-modal-path">${sheet}</div>
+          </div>
+          <button class="rs-modal-close" onClick=${onClose} aria-label="${t.shortcutClose}">\u00d7</button>
+        </header>
+        <div class="rs-new-review">
+          <div class="rs-env-others">
+            ${environments.map((name) => html`
+              <label key=${name} class="rs-env-sheet-row">
+                <input type="checkbox" checked=${here.includes(name)} onChange=${() => toggle(name)} />
+                <code>${name}</code>
+              </label>
+            `)}
+          </div>
+          ${environments.length === 0 && html`<p class="rs-edit-note">${t.envNoneDefined}</p>`}
         </div>
       </div>
     </div>
@@ -1655,13 +1815,13 @@ function CellToolbarHost({ onOpenReview, onOpenEdit, onToggleDelete, t }: {
   // stationary cursor re-trigger hover every frame → flicker). One persistent
   // listener so suppression keeps refreshing across the whole scroll gesture.
   useEffect(() => {
-    cellToolSetter = setCtx;
+    setCellToolSetter(setCtx);
     const onScroll = (): void => suppressCellToolWhileScrolling();
     const onResize = (): void => hideCellToolNow();
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onResize);
     return () => {
-      cellToolSetter = null;
+      setCellToolSetter(null);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onResize);
     };
@@ -2651,9 +2811,13 @@ function HeaderInlineComment({ target, reviews, t }: {
 // a name check. An empty subtree (no params anywhere under it) does not
 // qualify: there is nothing to collapse, and vacuous truth is not materialize
 // noise.
-function categoryDefaultSummary(category: CategoryData): { count: number; allDefault: boolean } {
+function categoryDefaultSummary(category: CategoryData): { count: number; allDefault: boolean; noted: boolean } {
   let count = 0;
   let allDefault = true;
+  // A paragraph is content of its own. Hiding a section because every ROW in it
+  // is unset is right; hiding one that somebody wrote a note into — including a
+  // section that is nothing BUT a note — hides what they wrote.
+  let noted = typeof category.note === "string" && category.note !== "";
   for (const p of category.params ?? []) {
     count++;
     if (effectiveOrigin(p) !== "default") allDefault = false;
@@ -2662,8 +2826,9 @@ function categoryDefaultSummary(category: CategoryData): { count: number; allDef
     const s = categoryDefaultSummary(sub);
     count += s.count;
     if (!s.allDefault) allDefault = false;
+    if (s.noted) noted = true;
   }
-  return { count, allDefault };
+  return { count, allDefault, noted };
 }
 
 function CategorySection({ category, sheetName, sheetInstances, sheetIndex, sheetFilePath, parentPath, depth, columns, reviews, reviewEnabled, editEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, hiddenInstances, headingExtra, inheritedOutOfScope, onOpenReview, onOpenEdit, onAddRow, onToggleDelete, artifact, diff, t }: {
@@ -2704,7 +2869,8 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
   // show — and a heading over an empty table reads as a rendering bug. This is
   // not a small case: 15 of the Keycloak configuration sheet's 21 groups are
   // whole feature areas (Vault, Telemetry, OpenAPI) this project never touches.
-  if (!showDefaults && categoryDefaultSummary(category).allDefault) return null;
+  const summary = categoryDefaultSummary(category);
+  if (!showDefaults && summary.allDefault && !summary.noted) return null;
   const categoryPath = parentPath ? `${parentPath}/${category.name}` : category.name;
   const catStatus = diff?.get(catKey(sheetName, categoryPath));
   const catTarget = { sheet: sheetName, category: categoryPath };
@@ -2773,6 +2939,15 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
       </div>
       ${showComments && catReviewCount > 0 && html`
         <${HeaderInlineComment} target=${catTarget} reviews=${reviews} t=${t} />
+      `}
+
+      ${/* The section's own paragraph, above its table: what this section is, a
+            caveat about it, a decision recorded beside the rows rather than in
+            one of them. Plain text, deliberately — a markdown renderer here
+            would be a second one to keep honest, and this is a note, not a
+            page. */ ""}
+      ${typeof category.note === "string" && category.note !== "" && html`
+        <p class="rs-category-note">${category.note}</p>
       `}
 
       ${category.params && category.params.length > 0 && html`
@@ -2873,15 +3048,6 @@ function highlightMatch(text: string, q: string): Array<string | VNode> {
 //
 // `_` escapes itself, or `_5F` and a literal `_` would collide and the mapping
 // would stop being injective — which is the whole point.
-function encodeIdPart(s: string): string {
-  return s.replace(/[^A-Za-z0-9\u00A0-\uFFFF-]/g, (c) =>
-    c === "_" ? "_5F" : `_${c.codePointAt(0)!.toString(16).toUpperCase().padStart(2, "0")}`
-  );
-}
-
-function navAnchorId(sheetIndex: number, path: string): string {
-  return `nav-${sheetIndex}-${encodeIdPart(path)}`;
-}
 
 // Stable DOM id for a parameter row.
 // An id fragment inside an attribute selector. `CSS.escape` where it exists
@@ -2922,9 +3088,6 @@ function keyLeaf(param: ParamData): string {
 }
 
 
-function paramAnchorId(sheetIndex: number, path: string, key: string): string {
-  return `${navAnchorId(sheetIndex, path)}--${encodeIdPart(key)}`;
-}
 
 // Flatten every sheet's categories (depth-first); used by the outline and search.
 function collectNav(data: SheetData, showDefaults: boolean, pivoted: Set<string>): NavEntry[] {
@@ -2937,7 +3100,11 @@ function collectNav(data: SheetData, showDefaults: boolean, pivoted: Set<string>
     // Which headings appear was decided at build time (`nav_depth`) and is
     // stated in the model. Re-deciding it here would give the same document two
     // answers depending on which side of the pipeline you asked.
-    if (sheet.document) {
+    // A PROSE document's headings are its outline. A sheet handed over as
+    // markdown is not one: it has rows, and they are in the categories derived
+    // from its text — so it goes through the ordinary walk below, or the outline
+    // shows the sheet's name and nothing under it.
+    if (sheet.document && sheet.document.mode !== "sheet") {
       for (const h of sheet.document.headings ?? []) {
         out.push({
           kind: "category", sheetIndex, sheetName: sheet.name, path: h.text, name: h.text,
@@ -2998,7 +3165,8 @@ function collectNav(data: SheetData, showDefaults: boolean, pivoted: Set<string>
         // The outline must agree with the body about what exists. A category of
         // nothing but unset rows renders nothing while they are hidden, so an
         // entry for it would jump to a heading that is not there.
-        if (!showDefaults && categoryDefaultSummary(c).allDefault) return;
+        const sum = categoryDefaultSummary(c);
+        if (!showDefaults && sum.allDefault && !sum.noted) return;
         out.push({
           kind: "category", sheetIndex, sheetName: sheet.name, path, name: c.display ?? c.name, depth,
           id: navAnchorId(sheetIndex, path),
@@ -3956,10 +4124,42 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
     [editEnabled, diffMode, baseData, reviews, lang]
   );
   const editBaseline = edited.baseline;
-  const data = useMemo<SheetData>(
-    () => (edited.sheets === baseData.sheets ? baseData : { ...baseData, sheets: edited.sheets }),
-    [baseData, edited]
-  );
+  // The environments this document knows about: what it was generated with,
+  // unless somebody has since said otherwise. One set for the whole document —
+  // which sheets USE which is a matter of what columns their tables have.
+  const environments = useMemo(() => {
+    const seen: string[] = [];
+    for (const s of baseData.sheets) for (const n of s.instances ?? []) if (!seen.includes(n)) seen.push(n);
+    return documentEnvironments(reviews, seen);
+  }, [baseData, reviews]);
+
+  const data = useMemo<SheetData>(() => {
+    const base = edited.sheets === baseData.sheets ? baseData : { ...baseData, sheets: edited.sheets };
+    // A sheet handed over as markdown carries no categories — the text is the
+    // model. They are DERIVED here, from that text, so everything that asks
+    // "what rows does this sheet have" (the outline, the search palette, the
+    // side-by-side comparison) keeps working with no second implementation and
+    // no chance of disagreeing with the page. The BODY still renders from the
+    // text itself: this is an index, not a model.
+    if (!base.sheets.some((s) => s.document?.mode === "sheet")) return base;
+    return {
+      ...base,
+      sheets: base.sheets.map((s) => {
+        if (s.document?.mode !== "sheet") return s;
+        const markdown = (editEnabled ? documentSource(reviews, s.name) : undefined) ?? s.document.markdown ?? "";
+        // The environments the DOCUMENT declares. The model's list is what it
+        // was generated with; the document is what it says now, and in this
+        // mode the document is the model — an environment somebody added is an
+        // environment, everywhere, not a column the page treats as one and the
+        // rest of the viewer does not know about.
+        // The document's set decides what a column MEANS; this sheet's tables
+        // decide which of them it has. Both are needed: the first to read a
+        // header, the second to know what this sheet covers.
+        const here = (declaredInstances(markdown) ?? []).filter((n) => environments.includes(n));
+        return { ...s, instances: here, categories: markdownToCategories(markdown, environments, lang) };
+      }),
+    };
+  }, [baseData, edited, reviews, editEnabled, lang, environments]);
   const effEditEnabled = editEnabled && !diffMode;
   const hasMetadataInit = !!(data.metadata?.project || data.metadata?.version || data.metadata?.generated_at || data.metadata?.changelog?.length || data.metadata?.extra);
 
@@ -4006,6 +4206,9 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   const [editTarget, setEditTarget] = useState<{ target: ReviewItem["target"]; field: string; currentValue: string; sharedRow?: boolean } | null>(null);
   const [addRowTarget, setAddRowTarget] = useState<ReviewItem["target"] | null>(null);
   const [docTarget, setDocTarget] = useState<string | null>(null);
+  // The heading line the editor should open at, when it was opened from one.
+  const [docJump, setDocJump] = useState<string | undefined>(undefined);
+  const [envTarget, setEnvTarget] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [applyPanelOpen, setApplyPanelOpen] = useState(false);
@@ -4081,6 +4284,9 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   // as a row filtered out — more, since nothing on screen hints at its absence.
   const activeFilters = [filterCommented, hideOutOfScope, allInstances.some((n) => hiddenInstances.has(n))].filter(Boolean).length;
   // Every unset row in the document, for the toggle's own label.
+  // Does this document hand its sheets over as markdown? Read once: several
+  // controls exist or not depending on it.
+  const markdownSheets = data.sheets.some((s) => s.document?.mode === "sheet");
   const defaultRowCount = data.sheets.reduce((n, sheet) => {
     const walk = (cats: CategoryData[]): number =>
       cats.reduce(
@@ -4460,12 +4666,27 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   // the added and struck-out rows with the reason they cannot be written by a
   // source map. Without that the two would describe the same change
   // differently, and the browser's version would be the wrong one.
+  //
+  // The still-`pending` items go WITH it. Edit mode used to have none — every
+  // item it produced was an edit — and a markdown edit changed that: what the
+  // edit model cannot carry (a description, a moved row, prose about the sheet)
+  // becomes a pending item precisely so somebody can act on it, and the plan is
+  // built from applied items alone, so building the prompt from the plan ALONE
+  // dropped exactly the part that needed a reader.
   const promptReviews = useMemo(
     () => (effEditEnabled
-      ? promptItemsFromPlan(planFromEdits(reviews), { added: HELD_REASON_ADDED_ROW, struck: HELD_REASON_STRUCK_ROW, document: HELD_REASON_DOCUMENT }, baseData.sheets)
+      ? [
+          ...promptItemsFromPlan(planFromEdits(reviews), { added: HELD_REASON_ADDED_ROW, struck: HELD_REASON_STRUCK_ROW, document: HELD_REASON_DOCUMENT }, baseData.sheets),
+          ...reviews.filter((r) => !isEdit(r)),
+        ]
       : reviews),
     [effEditEnabled, reviews, baseData]
   );
+
+  // The pending items in an edit-mode document: everything a markdown edit
+  // could not carry. Read from `reviews` rather than from `promptReviews`,
+  // which has already been folded into prompt shape.
+  const heldRequests = useMemo(() => reviews.filter((r) => !isEdit(r)), [reviews]);
 
   const handleCopyPrompt = useCallback(() => {
     const text = buildPromptText(promptReviews, baseData);
@@ -4509,6 +4730,49 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   const handleSaveEdit = useCallback((edit: ReviewItem) => {
     setReviews((prev) => [...prev, edit]);
   }, []);
+
+  // A column added, renamed or removed: an ordinary document edit, because that
+  // is what it is — the tool typed the text nobody would type by hand.
+  const handleSheetMarkdown = useCallback((edits: { sheet: string; markdown: string }[]) => {
+    const at = new Date().toISOString();
+    const items: ReviewItem[] = [];
+    for (const { sheet, markdown } of edits) {
+      const current = documentSource(reviews, sheet) ?? baseData.sheets.find((s) => s.name === sheet)?.document?.markdown ?? "";
+      if (markdown === current) continue;
+      items.push({
+        id: genId(),
+        target: { sheet, field: DOCUMENT_FIELD },
+        changes: [{ field: DOCUMENT_FIELD, current, suggested: markdown }],
+        status: "applied",
+        at,
+      } as ReviewItem);
+    }
+    if (items.length > 0) setReviews((prev) => [...prev, ...items]);
+  }, [reviews, baseData]);
+
+  // The document's environment set, and whatever tables had to follow it. The
+  // set is an entry about the DOCUMENT — no sheet in particular — and the
+  // tables are ordinary document edits, so both travel, save and undo like
+  // everything else here.
+  const handleSaveEnvironments = useCallback(
+    (names: string[], edits: { sheet: string; markdown: string }[]) => {
+      const at = new Date().toISOString();
+      if (names.join(", ") !== environments.join(", ")) {
+        setReviews((prev) => [
+          ...prev,
+          {
+            id: genId(),
+            target: { sheet: "", field: ENVIRONMENTS_FIELD },
+            changes: [{ field: ENVIRONMENTS_FIELD, current: environments.join(", "), suggested: names.join(", ") }],
+            status: "applied",
+            at,
+          } as ReviewItem,
+        ]);
+      }
+      handleSheetMarkdown(edits);
+    },
+    [environments, handleSheetMarkdown]
+  );
 
   // Undo removes the most recent entry outright rather than appending an
   // inverse one. A mistyped value is not a decision worth recording, and a
@@ -4622,13 +4886,23 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
             // what it finds among exactly those (the product default moved
             // under a value nobody set). Reviewing is what diff mode disables;
             // deciding which rows are on screen is not reviewing.
-            (effReviewEnabled || diffMode) && html`
+            // …and in a full-edit document, where reviewing is off by
+            // definition: hiding the rows nobody set is what makes a 1500-row
+            // sheet readable, and it is not a review affordance.
+            (effReviewEnabled || diffMode || markdownSheets) && html`
             <${ToolbarMenu} label=${activeFilters > 0 ? t.filterMenuCount(activeFilters) : t.filterMenu}
                             active=${activeFilters > 0}
                             icon=${html`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>` as VNode}>
-              <${MenuCheck} label=${t.showCommentsToggle} checked=${showComments} onToggle=${() => setShowComments(!showComments)} />
-              <div class="rs-menu-divider"></div>
-              <${MenuCheck} label=${t.showCommentedOnly} checked=${filterCommented} onToggle=${() => setFilterCommented(!filterCommented)} />
+              ${/* Showing comments, and keeping only the rows that have one,
+                    are about FINDINGS — so they belong to a document that can
+                    hold findings. A hand-maintained one cannot: it has no cell
+                    to attach one to, and a filter for something that cannot
+                    exist only ever hides everything. */ ""}
+              ${effReviewEnabled && html`
+                <${MenuCheck} label=${t.showCommentsToggle} checked=${showComments} onToggle=${() => setShowComments(!showComments)} />
+                <div class="rs-menu-divider"></div>
+                <${MenuCheck} label=${t.showCommentedOnly} checked=${filterCommented} onToggle=${() => setFilterCommented(!filterCommented)} />
+              `}
               <${MenuCheck} label=${t.hideOutOfScope} checked=${hideOutOfScope} onToggle=${() => setHideOutOfScope(!hideOutOfScope)} />
               ${defaultRowCount > 0 && html`
                 <${MenuCheck} label=${t.showDefaults(defaultRowCount)} checked=${showDefaults}
@@ -4647,7 +4921,16 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                 `)}
               `}
             <//>
+          `}
 
+          ${/* Handing a REVIEW back — the export, the import, the clear — is
+                about findings, and belongs to a document that holds them. It
+                sits behind its own gate rather than the filters' widened one: a
+                hand-maintained document saves ITSELF, and a review.json beside
+                it is a second, lesser copy of what the file already carries —
+                one that looks like an alternative to saving, which is how work
+                gets lost. */ ""}
+          ${(effReviewEnabled || diffMode) && html`
             ${/* The one thing the session exists to produce, and the only filled
                   button on the bar. Same slot in both modes: hand the review
                   back (static) or write it into the files (serve). */ ""}
@@ -4686,6 +4969,25 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                 alternative to saving, which is how work gets lost. What is left
                 here is the prompt, for whoever maintains the sheet without a
                 CLI. */ ""}
+          ${/* What this document IS, rather than what is on screen: its own
+                settings. A menu because there will be more of them, and because
+                a setting is not something a reader reaches for often enough to
+                spend a button on. */ ""}
+          ${effEditEnabled && markdownSheets && html`
+            <${ToolbarMenu} label=${t.settingsMenu}
+                            icon=${html`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.2.61.76 1.03 1.4 1.05H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>` as VNode}>
+              <${MenuItem} label=${t.envManage} onClick=${() => setEnvTarget("*")} />
+              ${/* Back to what was handed over. The way out of an edit made by
+                    mistake, and the one thing an edit-only document had no way
+                    to do at all — its clear-all lived in the review menu, which
+                    a document that holds no findings does not have. */ ""}
+              ${reviews.length > 0 && html`
+                <div class="rs-menu-divider"></div>
+                <${MenuItem} label=${t.clearEditsMenu} danger=${true}
+                             onClick=${() => { if (confirm(t.confirmClearEdits(reviews.length))) setReviews([]); }} />
+              `}
+            <//>
+          `}
           ${effEditEnabled && promptEnabled && html`
             <button class="rs-toolbar-btn rs-toolbar-btn-labelled" onClick=${handleCopyPrompt} title=${t.aiPromptCopy}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
@@ -4717,10 +5019,18 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
               : html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`
             }
           </button>
-          <button class="rs-toolbar-btn rs-lang-switch" aria-label=${lang === "ja" ? "Switch to English" : "日本語に切り替え"}
-                  onClick=${() => setLang(lang === "ja" ? "en" : "ja")}>
-            ${lang === "ja" ? "EN" : "JA"}
-          </button>
+          ${/* The language toggle re-resolves the prose the MODEL carries, in
+                both languages, at display time. A document handed over as
+                markdown carries text instead — rendered once, in the language
+                it was generated in — so the switch would move the buttons and
+                leave every description, heading and column header as it was.
+                A control that half works is worse than one that is not there. */ ""}
+          ${!markdownSheets && html`
+            <button class="rs-toolbar-btn rs-lang-switch" aria-label=${lang === "ja" ? "Switch to English" : "日本語に切り替え"}
+                    onClick=${() => setLang(lang === "ja" ? "en" : "ja")}>
+              ${lang === "ja" ? "EN" : "JA"}
+            </button>
+          `}
         </div>
         <${SheetSubTabs} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet}
                          onSelect=${setActiveSheet} t=${t} />
@@ -4804,6 +5114,36 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
               </div>
             `}
 
+            ${/* What somebody asked for that this document cannot carry as an
+                  edit — a description, a moved row, a sheet that does not
+                  exist yet. It lands here because the alert that announced it
+                  is gone the moment it is dismissed, the cell affordances that
+                  would show a finding belong to review mode, and a request
+                  whose only trace is the prompt export is a request nobody
+                  reading the document can see. */ ""}
+            ${effEditEnabled && heldRequests.length > 0 && html`
+              <div class="rs-changelog-section">
+                <h2>${t.mdHeldList}</h2>
+                <p class="rs-edit-note">${t.mdHeldNote}</p>
+                <table class="rs-changelog-table">
+                  <thead><tr><th>${t.mdHeldTarget}</th><th>${t.mdHeldWhat}</th></tr></thead>
+                  <tbody>
+                    ${heldRequests.map((r, i) => html`
+                      <tr key=${r.id ?? i}>
+                        <td>${targetLabel(r.target)}</td>
+                        <td>
+                          ${(r.changes ?? []).map((c) => html`
+                            <div key=${c.field}><code>${c.field}</code>: ${c.current || "\u2205"} \u2192 ${c.suggested || "\u2205"}</div>
+                          `)}
+                          ${r.comment && html`<div class="rs-edit-when">${r.comment}</div>`}
+                        </td>
+                      </tr>
+                    `)}
+                  </tbody>
+                </table>
+              </div>
+            `}
+
             <div class="rs-overview-sheets">
               <h2>${t.sheetList}</h2>
               ${(data.groups?.length ?? 0) > 0
@@ -4869,6 +5209,32 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                       </button>
                     </span>
                   `}
+                  ${/* A hand-maintained sheet has no category heading to hang
+                        the side-by-side switch on, so it lives in the sheet's
+                        own heading — the comparison is about the whole sheet
+                        either way. */ ""}
+                  ${sheet.document?.mode === "sheet" && sheet.compare_components && !alwaysPivoted.has(sheet.name) && html`
+                    <span class="rs-header-actions">
+                      <${CompareToggle} on=${pivoted.has(sheet.name)} t=${t}
+                                        onToggle=${() => setPivoted((prev) => {
+                                          const next = new Set(prev);
+                                          if (next.has(sheet.name)) next.delete(sheet.name);
+                                          else next.add(sheet.name);
+                                          return next;
+                                        })} />
+                    </span>
+                  `}
+                  ${/* Which of the document's value columns this sheet has.
+                        The set is the document's; using one is the sheet's. */ ""}
+                  ${effEditEnabled && sheet.document?.mode === "sheet" && html`
+                    <span class="rs-header-actions">
+                      <button class="rs-head-tool" onClick=${() => setEnvTarget(sheet.name)}
+                              title="${t.envSheetManage}" aria-label="${t.envSheetManage}">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+                        <span class="rs-tool-label">${t.envSheetManageShort}</span>
+                      </button>
+                    </span>
+                  `}
                   ${effReviewEnabled && html`
                     <span class="rs-header-actions ${sheetReviewCount > 0 ? "rs-has-comment" : ""}">
                       <button class="rs-head-tool ${sheetReviewCount > 0 ? "rs-head-tool-on" : ""}"
@@ -4893,7 +5259,22 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                 </p>
               `}
 
-              ${sheet.document
+              ${sheet.document?.mode === "sheet" && pivoted.has(sheet.name)
+                ? html`<${PivotView} sheet=${sheet}
+                                     sheetIndex=${idx} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
+                                     reviews=${[]} reviewEnabled=${false} editEnabled=${false}
+                                     onOpenReview=${() => {}} onOpenEdit=${() => {}}
+                                     onLeave=${alwaysPivoted.has(sheet.name) ? undefined : () => setPivoted((prev) => { const next = new Set(prev); next.delete(sheet.name); return next; })} t=${t} />`
+                : sheet.document?.mode === "sheet"
+                ? html`<${MarkdownSheetBody}
+                          markdown=${(effEditEnabled ? documentSource(reviews, sheet.name) : undefined) ?? sheet.document.markdown ?? ""}
+                          instances=${sheet.instances ?? []} lang=${lang} sheetIndex=${idx}
+                          hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
+                          rowKeys=${sheet.document.row_keys} sheetName=${sheet.name} artifact=${artifactAccess}
+                          onEditSection=${effEditEnabled
+                            ? (line: string) => { setDocJump(line); setDocTarget(sheet.name); }
+                            : undefined} t=${t} />`
+                : sheet.document
                 ? html`<${DocumentBody} sheet=${sheet} reviews=${reviews} editEnabled=${effEditEnabled} t=${t} />`
                 : pivoted.has(sheet.name)
                 ? html`<${PivotView} sheet=${sheet} sheetIndex=${idx} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
@@ -4927,6 +5308,33 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                        showDefaults=${showDefaults} onToggleDefaults=${() => setShowDefaults((v) => !v)} t=${t} />
       `}
 
+      ${envTarget !== null && (() => {
+        // Every hand-maintained sheet, with the text it says NOW: the control
+        // works across the document, and a reader deciding about an axis should
+        // see the whole of it.
+        const sheets = data.sheets
+          .filter((s) => s.document?.mode === "sheet")
+          .map((s) => ({
+            name: s.name,
+            display: s.display ?? s.name,
+            markdown: (documentSource(reviews, s.name) ?? s.document?.markdown) ?? "",
+            instances: s.instances ?? [],
+          }));
+        if (sheets.length === 0) return null;
+        if (envTarget !== "*") {
+          const here = sheets.find((s) => s.name === envTarget);
+          if (here === undefined) return null;
+          return html`
+            <${SheetEnvironmentModal} sheet=${here.display} environments=${environments} markdown=${here.markdown}
+                                      onSave=${(next: string) => handleSheetMarkdown([{ sheet: here.name, markdown: next }])}
+                                      onClose=${() => setEnvTarget(null)} t=${t} />
+          `;
+        }
+        return html`
+          <${EnvironmentModal} environments=${environments} sheets=${sheets} onSave=${handleSaveEnvironments}
+                               onClose=${() => setEnvTarget(null)} t=${t} />
+        `;
+      })()}
       ${docTarget !== null && (() => {
         const sheet = baseData.sheets.find((s) => s.name === docTarget);
         const original = sheet?.document?.markdown;
@@ -4937,7 +5345,9 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
         return html`
           <${DocumentModal} sheet=${docTarget} original=${original}
                             current=${documentSource(reviews, docTarget) ?? original}
-                            onSave=${handleSaveEdit} onClose=${() => setDocTarget(null)} t=${t} />
+                            sheetMode=${sheet?.document?.mode === "sheet"} jumpTo=${docJump}
+                            onSave=${handleSaveEdit}
+                            onClose=${() => { setDocTarget(null); setDocJump(undefined); }} t=${t} />
         `;
       })()}
 
