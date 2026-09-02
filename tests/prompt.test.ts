@@ -201,3 +201,47 @@ describe("buildPromptText: per-environment overrides", () => {
     expect(text).not.toContain("# Per-environment overrides");
   });
 });
+
+// A page somebody rewrote, on its way back to the markdown file it came from.
+//
+// As a DIFF: a document is mostly the parts nobody touched, and handing over
+// all of them buries the change and spends its reader's budget on lines that
+// did not move. The line numbers are the file's own, because whoever acts on
+// this is going to open it and go there.
+describe("a rewritten document page", () => {
+  const data = {
+    sheets: [{ name: "arch", categories: [], source_file: "docs/01-architecture.md", document: { html: "" } }],
+  } as unknown as SheetData;
+  const before = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n");
+  const after = before.replace("line 12", "line twelve");
+
+  const promptFor = (current: string): string =>
+    buildPromptText(
+      [
+        {
+          id: "r1",
+          target: { sheet: "arch", field: "document" },
+          changes: [{ field: "document", current, suggested: after }],
+          status: "pending",
+        } as ReviewItem,
+      ],
+      data
+    );
+
+  it("names the file and states the change as a diff, with line numbers", () => {
+    const text = promptFor(before);
+    expect(text).toContain("docs/01-architecture.md");
+    expect(text).toContain("```diff");
+    expect(text).toContain("@@ -9,7 +9,7 @@");
+    expect(text).toContain("-line 12");
+    expect(text).toContain("+line twelve");
+    // Far from the change, and therefore not in the prompt at all.
+    expect(text).not.toContain("line 3");
+  });
+
+  // With nothing to diff from, the page IS the change; a diff against nothing
+  // says the same thing less clearly.
+  it("falls back to the whole page when there is no before", () => {
+    expect(promptFor("")).toContain("Replace the whole file with:");
+  });
+});

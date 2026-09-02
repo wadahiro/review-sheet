@@ -16,8 +16,10 @@ import {
   HELD_REASON_MEMBERSHIP,
   HELD_REASON_DEFAULT,
   HELD_REASON_BASELINE,
+  HELD_REASON_DOCUMENTATION,
   HELD_REASON_SHARED_INSTANCE,
   HELD_REASON_ADDED_ROW,
+  HELD_REASON_NOTE,
   HELD_REASON_NO_ROW,
   HELD_REASON_CONTAINER_SUBJECT,
   HELD_REASON_STRUCK_ROW,
@@ -153,7 +155,20 @@ export function computeApply(
 
     for (const c of changes) {
       if (c.field !== "value") {
-        heldChanges.push(c); // documentation edit -> prompt
+        // A documentation edit — `remarks` today. It reaches the prompt, and it
+        // used to reach NOTHING ELSE: every other hold on this path pushes a
+        // result beside the prompt entry, and this one did not, so it was
+        // absent from `results` and counted nowhere. `apply` then reported
+        // "1 applied" for a sheet carrying two edits, and the second one's
+        // existence was known only to whoever opened the prompt.
+        results.push({
+          target: { ...r.target, field: c.field },
+          status: "held",
+          reason: HELD_REASON_DOCUMENTATION,
+          current: c.current ?? "",
+          suggested: c.suggested ?? "",
+        });
+        heldChanges.push(c);
         continue;
       }
       const current = c.current ?? "";
@@ -333,8 +348,30 @@ export function computeApply(
   // prompt, which is what it is for.
   const REASONS = { added: HELD_REASON_ADDED_ROW, struck: HELD_REASON_STRUCK_ROW, document: HELD_REASON_DOCUMENT };
   heldReviews.push(
-    ...promptItemsFromPlan({ changes: [], added: plan.added, struck: plan.struck, documents: plan.documents }, REASONS, data.sheets)
+    ...promptItemsFromPlan(
+      {
+        changes: [],
+        added: plan.added,
+        struck: plan.struck,
+        notes: plan.notes,
+        documents: plan.documents,
+      },
+      REASONS,
+      data.sheets
+    )
   );
+  // A paragraph beside a section. On the sheet already; reported because the
+  // project may want it in its own metadata, and because a returned sheet that
+  // says nothing about what somebody wrote in it is not a report.
+  for (const r of plan.notes) {
+    results.push({
+      target: r.target,
+      status: "held",
+      reason: HELD_REASON_NOTE,
+      current: r.changes?.find((c) => c.field === "note")?.current ?? "",
+      suggested: r.changes?.find((c) => c.field === "note")?.suggested ?? "",
+    });
+  }
   for (const r of plan.added) {
     results.push({ target: r.target, status: "held", reason: REASONS.added, current: "", suggested: r.changes?.find((c) => c.field === "value")?.suggested ?? "" });
   }

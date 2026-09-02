@@ -312,6 +312,22 @@ export type Sheet = {
 };
 
 export type SheetDocument = {
+  // How the markdown is READ. "prose" (the default, and every document sheet
+  // before full-edit mode existed) is a page somebody wrote: rendered as
+  // markdown, `html` carrying the render. "sheet" says this markdown IS a
+  // parameter sheet — its tables are the sheet's tables and the viewer lays
+  // them out as such, so a delivered document looks like the sheet it replaced
+  // rather than like a markdown file about it.
+  mode?: "prose" | "sheet";
+  // For a "sheet" document: which row of the MODEL each row of the markdown was
+  // written from, keyed by the address the document itself states (its heading
+  // path and the chain of names that leads to the row).
+  //
+  // It is a lens, never data: the artifact preview is offered through it, and
+  // nothing else reads it. A row somebody edits or writes themselves simply has
+  // no entry, and gets no affordance — which is the rule the sheet already
+  // follows for a row no file has a line for.
+  row_keys?: Record<string, string>;
   html: string;
   // The markdown the html was rendered FROM, and the images it embeds, carried
   // only when the document is meant to be editable in the browser
@@ -421,6 +437,19 @@ export type Category = {
   tag?: string;
   file_path?: string;
   source_file?: string;
+  // A paragraph beside the table: what this section is, a caveat about it, a
+  // decision somebody wants recorded next to the rows rather than in one of
+  // them.
+  //
+  // `remarks` at the level of a section, and it follows `remarks`' rule rather
+  // than `description`'s: the recipient's own annotation applies immediately,
+  // while a statement about the PRODUCT (a description, a default) stays a
+  // request, because it is not theirs to restate. That is why an edit to this
+  // shows up on the sheet and an edit to a description does not.
+  //
+  // LangText for the same reason `remarks` is: a note written in Japanese must
+  // not stand in for a translation nobody made.
+  note?: LangText;
   // Mark a whole category (and its descendants) as not in review scope: greyed
   // out in the HTML, and skipped — not held — by verify/apply.
   out_of_scope?: OutOfScope;

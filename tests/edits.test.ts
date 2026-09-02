@@ -4,7 +4,8 @@
 // entry would still look correct on screen.
 
 import { describe, it, expect } from "bun:test";
-import { applyEdits, editsForCell, sortEdits, isEditableField, targetKey, deletionHistory, isDeleted } from "../src/edits";
+import { applyEdits, editsForCell, sortEdits, isEditableField, targetKey, deletionHistory, isDeleted, planFromEdits, promptItemsFromPlan } from "../src/edits";
+import { HELD_REASON_NOTE } from "../src/prompt";
 import type { SheetData, ReviewItem } from "../src/prompt";
 
 const sheets = (): SheetData["sheets"] => [
@@ -170,12 +171,60 @@ describe("rows the recipient added", () => {
   });
 
   // A regeneration can reorganise the sheet under a row somebody added. Losing
-  // it quietly is the one outcome that is not allowed.
+  // it quietly is the one outcome that is not allowed — and it is told apart
+  // from the case above by the DECLARATION, never by "the category does not
+  // resolve", which is what both look like from here.
   it("is reported, not dropped, when its category is gone", () => {
     const r = applyEdits(sheets(), [added("work_mem", "64MB", "存在しないカテゴリ")], "ja");
     expect(r.orphaned.map((o) => o.target.param)).toEqual(["work_mem"]);
     const allKeys = r.sheets[0].categories.flatMap((c) => c.params!.map((p) => p.key));
     expect(allKeys).not.toContain("work_mem");
+  });
+});
+
+// A paragraph beside a section. `remarks` at the level of a category: the
+// recipient's own annotation, so it takes effect on the sheet — unlike a
+// description or a default, which are the PRODUCT's words and stay requests.
+describe("a note written beside a section", () => {
+  const note = (suggested: string, lang?: "ja" | "en"): ReviewItem => ({
+    id: `rev_note_${suggested}_${lang ?? ""}`,
+    target: { sheet: "DB", category: "接続", field: "note" },
+    changes: [{ field: "note", current: "", suggested, lang }],
+    status: "applied",
+    at: "2026-08-18T00:00:00Z",
+  });
+
+  it("appears on its category", () => {
+    const r = applyEdits(sheets(), [note("この節は本番だけ効く。")], "ja");
+    expect(r.sheets[0].categories[0].note).toBe("この節は本番だけ効く。");
+  });
+
+  it("is the newest one, not every one", () => {
+    const r = applyEdits(sheets(), [note("ふるい"), { ...note("あたらしい"), at: "2026-09-01T00:00:00Z" }], "ja");
+    expect(r.sheets[0].categories[0].note).toBe("あたらしい");
+  });
+
+  // Clearing it removes the paragraph rather than leaving an empty one.
+  it("goes away when it is emptied", () => {
+    const r = applyEdits(sheets(), [note("いちど書いた"), { ...note(""), at: "2026-09-01T00:00:00Z" }], "ja");
+    expect(r.sheets[0].categories[0].note).toBeUndefined();
+  });
+
+  // Prose carries the language it was written in — a Japanese note must not
+  // stand in for a translation nobody made, exactly as `remarks` does not.
+  it("does not stand in for the language it was not written in", () => {
+    const r = applyEdits(sheets(), [note("日本語のメモ", "ja")], "en");
+    expect(r.sheets[0].categories[0].note).toBeUndefined();
+  });
+
+  it("reaches whoever applies the sheet", () => {
+    const items = promptItemsFromPlan(planFromEdits([note("この節は本番だけ効く。")]), {
+      added: "A",
+      struck: "S",
+      document: "D",
+    });
+    expect(items.map((i) => i.comment).join("\n")).toContain(HELD_REASON_NOTE);
+    expect(items[0].changes?.[0].suggested).toBe("この節は本番だけ効く。");
   });
 });
 

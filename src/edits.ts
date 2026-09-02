@@ -12,6 +12,7 @@
 // Pure: no DOM, no storage. The viewer supplies the reviews and the language.
 
 import type { SheetData, CategoryData, ParamData, ReviewItem } from "./prompt.js";
+import { HELD_REASON_NOTE } from "./prompt.js";
 import type { Lang } from "./html/i18n.js";
 
 // Only these two. `value` is what the sheet is for; `remarks` is where the
@@ -58,6 +59,34 @@ export const isEditableField = (field: string): field is EditableField =>
 
 // An edit is an `applied` item: it has already taken effect in the sheet.
 // A `pending` item is a review finding — a proposal — and does not move values.
+// A section's own paragraph. Deliberately NOT "remarks": that name is an
+// EDITABLE_FIELD, so a category-level item carrying it would be swept into the
+// per-cell collapse `planFromEdits` does and travel apply's source-map path with
+// no row to point at. A name of its own keeps it where it belongs.
+export const NOTE_FIELD = "note";
+
+// The environments a hand-maintained document knows about: its columns' names,
+// as a set, decided once for the whole document.
+//
+// A document-level entry — `target.sheet` is empty, because it is about no
+// sheet in particular — and the newest one states the whole list, so reading it
+// is one lookup rather than a fold. Which sheets USE which of them is not
+// stated here at all: a table has the column or it does not.
+export const ENVIRONMENTS_FIELD = "environments";
+
+export function documentEnvironments(reviews: ReviewItem[], fallback: string[]): string[] {
+  for (const r of sortEdits(reviews).reverse()) {
+    if (!isEdit(r) || r.target.sheet !== "" || (r.target.field ?? "") !== ENVIRONMENTS_FIELD) continue;
+    const change = r.changes?.find((c) => c.field === ENVIRONMENTS_FIELD);
+    if (change === undefined) continue;
+    return change.suggested
+      .split(",")
+      .map((n) => n.trim())
+      .filter((n) => n !== "");
+  }
+  return fallback;
+}
+
 export const isEdit = (r: ReviewItem): boolean => r.status === "applied";
 
 export function targetKey(t: ReviewItem["target"]): string {
@@ -191,13 +220,32 @@ function indexAdditions(reviews: ReviewItem[]): Map<string, ReviewItem[]> {
 // per-environment one.
 const instanceNames = (sheet: SheetData["sheets"][number]): string[] => sheet.instances ?? [];
 
+// The newest note per section, in the language being displayed. `indexEdits`
+// cannot carry these: it only indexes EDITABLE_FIELDS, and a note is not a cell
+// — it has no row, and nothing in a config file backs it.
+function indexNotes(reviews: ReviewItem[], lang: Lang): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const r of sortEdits(reviews).reverse()) {
+    if (!isEdit(r) || r.target.param !== undefined || (r.target.field ?? "") !== NOTE_FIELD) continue;
+    const key = `${r.target.sheet}::${r.target.category ?? ""}`;
+    if (out.has(key)) continue;
+    const change = r.changes?.find((c) => c.field === NOTE_FIELD);
+    if (change === undefined || !editApplies(change, lang)) continue;
+    out.set(key, change.suggested);
+  }
+  return out;
+}
+
 export function applyEdits(sheets: SheetData["sheets"], reviews: ReviewItem[], lang: Lang): EditedSheets {
   const index = indexEdits(reviews, lang);
+  const notes = indexNotes(reviews, lang);
   const additions = indexAdditions(reviews);
   const deletions = indexDeletions(reviews);
   const baseline = new Map<string, string>();
   const orphaned: ReviewItem[] = [];
-  if (index.size === 0 && additions.size === 0 && deletions.size === 0) return { sheets, baseline, orphaned };
+  if (index.size === 0 && additions.size === 0 && deletions.size === 0 && notes.size === 0) {
+    return { sheets, baseline, orphaned };
+  }
 
   const editParam = (sheet: string, path: string, p: ParamData, envs: string[]): ParamData => {
     const base = { sheet, category: path, param: p.key };
@@ -290,14 +338,26 @@ export function applyEdits(sheets: SheetData["sheets"], reviews: ReviewItem[], l
     const path = parentPath ? `${parentPath}/${c.name}` : c.name;
     const own = (c.params ?? []).map((p) => editParam(sheet, path, p, envs));
     const extra = addedParams(sheet, path, envs);
+    const note = notes.get(`${sheet}::${path}`);
     return {
       ...c,
+      // Written in one language, and shown as one: a note is prose, so it
+      // carries the language it was typed in exactly as `remarks` does — and
+      // clearing it (a suggestion of "") removes it rather than leaving an
+      // empty paragraph behind.
+      // Stored as a plain string, which `LangText` allows: WHICH language it is
+      // was already decided by `editApplies` when the note was chosen, so
+      // tagging it again would only invite a second, disagreeing answer.
+      ...(note === undefined ? {} : { note: note === "" ? undefined : note }),
       params: extra.length > 0 || c.params !== undefined ? [...own, ...extra] : undefined,
       categories: c.categories?.map((sc) => editCategory(sheet, path, sc, envs)),
     };
   };
 
-  const out = sheets.map((s) => ({ ...s, categories: s.categories.map((c) => editCategory(s.name, "", c, instanceNames(s))) }));
+  const out = sheets.map((s) => ({
+    ...s,
+    categories: s.categories.map((c) => editCategory(s.name, "", c, instanceNames(s))),
+  }));
   for (const [key, items] of additions) {
     if (!placed.has(key)) orphaned.push(...items);
   }
@@ -344,6 +404,10 @@ export type EditPlan = {
   // deterministically; both are real work and go to the AI prompt.
   added: ReviewItem[];
   struck: ReviewItem[];
+  // Paragraphs written beside a table. Documentation, like a document sheet's
+  // page: it is on the sheet already, and whether it belongs in the project's
+  // own sheet.yml is a decision for whoever maintains it.
+  notes: ReviewItem[];
 };
 
 // Collapse an edit history into what actually has to change in the files.
@@ -357,11 +421,23 @@ export type EditPlan = {
 // to write, for the same reason a cell edited three times is one change.
 function documentRewrites(reviews: ReviewItem[]): ReviewItem[] {
   const latest = new Map<string, ReviewItem>();
+  // Where the page STARTED: the first rewrite's own `current` is the document
+  // as it was handed over. Keeping the newest item's instead would take the
+  // second rewrite's starting point and call everything before it unchanged —
+  // which is the same collapse a cell needs, and the same reason.
+  const delivered = new Map<string, string>();
   for (const r of sortEdits(reviews)) {
     if (!isEdit(r) || r.target.param !== undefined || (r.target.field ?? "") !== DOCUMENT_FIELD) continue;
+    const change = r.changes?.find((c) => c.field === DOCUMENT_FIELD);
+    if (!delivered.has(r.target.sheet)) delivered.set(r.target.sheet, change?.current ?? "");
     latest.set(r.target.sheet, r);
   }
-  return [...latest.values()];
+  return [...latest.entries()].map(([sheet, r]) => ({
+    ...r,
+    changes: (r.changes ?? []).map((c) =>
+      c.field === DOCUMENT_FIELD ? { ...c, current: delivered.get(sheet) ?? c.current } : c
+    ),
+  }));
 }
 
 export function planFromEdits(reviews: ReviewItem[]): EditPlan {
@@ -399,7 +475,14 @@ export function planFromEdits(reviews: ReviewItem[]): EditPlan {
       status: "pending",
     });
   }
-  return { changes, added, struck, documents: documentRewrites(reviews) };
+  // The newest paragraph per section: one note written three times is one note,
+  // for the same reason a cell edited three times is one change.
+  const latestNote = new Map<string, ReviewItem>();
+  for (const r of sortEdits(reviews)) {
+    if (!isEdit(r) || r.target.param !== undefined || (r.target.field ?? "") !== NOTE_FIELD) continue;
+    latestNote.set(`${r.target.sheet}::${r.target.category ?? ""}`, r);
+  }
+  return { changes, added, struck, notes: [...latestNote.values()], documents: documentRewrites(reviews) };
 }
 
 // Rows whose newest delete/restore entry says "no longer set".
@@ -472,5 +555,12 @@ export function promptItemsFromPlan(
         reasons.struck
       );
     });
-  return [...plan.changes, ...plan.added.map((r) => withReason(r, reasons.added)), ...struck, ...plan.documents.map((r) => withReason(r, reasons.document))];
+  const notes = plan.notes.map((r) => withReason(r, HELD_REASON_NOTE));
+  return [
+    ...plan.changes,
+    ...plan.added.map((r) => withReason(r, reasons.added)),
+    ...notes,
+    ...struck,
+    ...plan.documents.map((r) => withReason(r, reasons.document)),
+  ];
 }

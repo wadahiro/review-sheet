@@ -198,6 +198,14 @@
             "html"
           ],
           "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["prose", "sheet"]
+            },
+            "row_keys": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            },
             "html": {
               "type": "string"
             },
@@ -261,6 +269,9 @@
         },
         "source_file": {
           "type": "string"
+        },
+        "note": {
+          "$ref": "#/$defs/langText"
         },
         "out_of_scope": {
           "$ref": "#/$defs/outOfScope"
