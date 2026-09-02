@@ -16,6 +16,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { h, render } from "preact";
 import { Root } from "../src/html/app";
 import { customStyles } from "../src/html/styles";
+import { getMessages } from "../src/html/i18n";
 import type { ParameterSheetInput, ReviewDocument } from "../src/types";
 
 const SHEET: ParameterSheetInput = {
@@ -2749,5 +2750,540 @@ describe("viewer: a category headed by the file it deploys", () => {
   it("still names it when the heading says something else", () => {
     const text = headerText(mount("Keycloak のユニット"));
     expect(text).toContain("/etc/systemd/system/keycloak.service");
+  });
+});
+
+// A paragraph written into a hand-maintained sheet: the case that was reported
+// as "## Test / aaaa is invisible", in the mode that replaced the one it was
+// reported against. It has to be on the page AND in the outline, since both are
+// built from the same text.
+// A hand-maintained document holds no findings, so the controls that exist to
+// show them — "show comments", "only rows with a comment" — are controls over
+// something that cannot be there. The filter menu itself stays: hiding the rows
+// nobody set is what makes a 1500-row sheet readable, and that is not reviewing.
+describe("the filters a hand-maintained document offers", () => {
+  const md = ["# os", "", "## SELinux", "", "| 設定項目 | デフォルト値 | 設定値 |", "| --- | --- | --- |", "| `state` |  | enforcing |", "| `unset` | 0 |  |", ""].join("\n");
+  const payload = {
+    metadata: { title: "t", version: "current" },
+    versions: [
+      {
+        version: "current",
+        sheets: [{ name: "os", instances: [], categories: [], document: { html: "", markdown: md, mode: "sheet" } }],
+      },
+    ],
+  };
+
+  const menuText = async (review: boolean): Promise<string> => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: payload as never, reviewEnabled: review, editEnabled: true, initialLang: "ja", server: false }), host);
+    await waitForEffects();
+    const btn = [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes(getMessages("ja").filterMenu));
+    (btn as HTMLElement)?.click();
+    await waitForEffects();
+    return host.textContent ?? "";
+  };
+
+  // The export hands a REVIEW back. A hand-maintained document saves itself and
+  // `apply -r sheet.html` reads it, so a review.json beside it is a second,
+  // lesser copy of what the file already carries — and one that reads as an
+  // alternative to saving, which is how work gets lost.
+  it("offers no review export", async () => {
+    const text = await menuText(false);
+    expect(text).not.toContain(getMessages("ja").exportReview);
+  });
+
+  // One editor: the document itself. There is nothing else to edit here — the
+  // page IS the text.
+  it("offers the document as the thing to edit", async () => {
+    const text = await menuText(false);
+    expect(text).toContain(getMessages("ja").docEditShort);
+  });
+
+  // The toggle re-resolves prose the MODEL carries in both languages. A
+  // hand-maintained document carries text, rendered once in the language it was
+  // generated in, so the switch would move the buttons and leave every
+  // description where it was.
+  it("offers no language switch", async () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
+    await waitForEffects();
+    expect(host.querySelector(".rs-lang-switch")).toBeNull();
+  });
+
+  it("offers the unset-row filter and no comment filter", async () => {
+    const text = await menuText(false);
+    expect(text).toContain(getMessages("ja").showDefaults(1));
+    expect(text).not.toContain(getMessages("ja").showCommentsToggle);
+    expect(text).not.toContain(getMessages("ja").showCommentedOnly);
+  });
+
+  // …and a document that CAN hold findings still has them.
+  it("keeps them where findings are possible", async () => {
+    const text = await menuText(true);
+    expect(text).toContain(getMessages("ja").showCommentsToggle);
+  });
+});
+
+// An environment added through the control, end to end: the document gains a
+// column, the page shows it, and the toggle that hides environment columns
+// knows about it — the piece that used to need a regeneration.
+// The document's VALUE columns — what the model calls its instances, and what
+// the filter has always called columns. The set belongs to the document; using
+// one is the sheet's own business.
+describe("the value columns of a hand-maintained document", () => {
+  const md = [
+    "# os",
+    "",
+    "## SELinux",
+    "",
+    "| 設定項目 | デフォルト値 | staging | production |",
+    "| --- | --- | --- | --- |",
+    "| `state` |  | enforcing | enforcing |",
+    "",
+  ].join("\n");
+  // A second sheet on the same axis, and a third with none of its own.
+  const other = md.replace("# os", "# app").replace("## SELinux", "## Tuning").replace("`state`", "`workers`");
+  const flat = ["# doc", "", "## c", "", "| 設定項目 | デフォルト値 | 設定値 |", "| --- | --- | --- |", "| `k` |  | 1 |", ""].join("\n");
+  const payload = {
+    metadata: { title: "t", version: "current" },
+    versions: [
+      {
+        version: "current",
+        sheets: [
+          { name: "os", instances: ["staging", "production"], categories: [], document: { html: "", markdown: md, mode: "sheet" } },
+          { name: "app", instances: ["staging", "production"], categories: [], document: { html: "", markdown: other, mode: "sheet" } },
+          { name: "doc", instances: [], categories: [], document: { html: "", markdown: flat, mode: "sheet" } },
+        ],
+      },
+    ],
+  };
+
+  const mountDoc = async (): Promise<HTMLElement> => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    window.alert = () => {};
+    window.confirm = () => true;
+    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
+    await waitForEffects();
+    return host;
+  };
+
+  const headers = (host: HTMLElement): (string | null)[] =>
+    [...host.querySelectorAll("th")].map((e) => (e.querySelector("span") ?? e).textContent);
+
+  // Through the settings menu, which is where a document's own settings live.
+  const openToolbar = async (host: HTMLElement): Promise<void> => {
+    const gear = [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").trim() === getMessages("ja").settingsMenu);
+    (gear as HTMLElement).click();
+    await waitForEffects();
+    const item = [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").trim() === getMessages("ja").envManage);
+    (item as HTMLElement).click();
+    await waitForEffects();
+  };
+  const openSheet = async (host: HTMLElement): Promise<void> => {
+    ([...host.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === getMessages("ja").envSheetManage) as HTMLElement).click();
+    await waitForEffects();
+  };
+
+  // Defining an environment says the document HAS one. It says nothing about
+  // which sheets carry a column for it — there is nothing to put in a column
+  // nobody asked for.
+  it("adds a name to the document, and no column to any table", async () => {
+    const host = await mountDoc();
+    await openToolbar(host);
+    const input = host.querySelector(".rs-env-add input") as HTMLInputElement;
+    input.value = "dr";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await waitForEffects();
+    ([...host.querySelectorAll("button")].find((b) => (b.textContent ?? "") === getMessages("ja").envAdd) as HTMLElement).click();
+    await waitForEffects();
+    expect(headers(host)).not.toContain("dr");
+    // …and it is on the list, used nowhere. (The dialog is still open: adding
+    // an environment is not the end of what somebody came here to do.)
+    expect(host.querySelector(".rs-env-table")?.textContent).toContain("dr");
+    // Nothing uses it, so it can be taken out again; the ones in use cannot.
+    const buttons = [...host.querySelectorAll(".rs-env-table button")].filter(
+      (b) => (b.textContent ?? "") === getMessages("ja").envRemove
+    ) as HTMLButtonElement[];
+    expect(buttons.map((b) => b.disabled)).toEqual([true, true, false]);
+  });
+
+  // Whether a sheet carries the column is the SHEET's, from its own heading.
+  it("gives the column to the sheet that asks for it, and to no other", async () => {
+    const host = await mountDoc();
+    await openToolbar(host);
+    const input = host.querySelector(".rs-env-add input") as HTMLInputElement;
+    input.value = "dr";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await waitForEffects();
+    ([...host.querySelectorAll("button")].find((b) => (b.textContent ?? "") === getMessages("ja").envAdd) as HTMLElement).click();
+    await waitForEffects();
+
+    await openSheet(host);
+    const boxes = [...host.querySelectorAll(".rs-env-sheet-row input")] as HTMLInputElement[];
+    expect(boxes.map((b) => b.checked)).toEqual([true, true, false]);
+    boxes[2].click();
+    await waitForEffects();
+    expect(headers(host)).toEqual(["設定項目", "デフォルト値", "staging", "production", "dr"]);
+
+    // The other sheet is untouched.
+    const tabs = [...(host.querySelector("nav")?.querySelectorAll("button") ?? [])];
+    (tabs.find((b) => (b.textContent ?? "").trim() === "app") as HTMLElement).click();
+    await waitForEffects();
+    expect(headers(host)).not.toContain("dr");
+  });
+
+  // Renaming is not optional per sheet: a column naming an environment that no
+  // longer exists is a document disagreeing with itself.
+  it("renames the column wherever it is", async () => {
+    const host = await mountDoc();
+    await openToolbar(host);
+    window.prompt = () => "stg";
+    ([...host.querySelectorAll(".rs-env-table button")].find((b) => (b.textContent ?? "") === getMessages("ja").envRename) as HTMLElement).click();
+    await waitForEffects();
+    expect(headers(host)).toContain("stg");
+    const tabs = [...(host.querySelector("nav")?.querySelectorAll("button") ?? [])];
+    (tabs.find((b) => (b.textContent ?? "").trim() === "app") as HTMLElement).click();
+    await waitForEffects();
+    expect(headers(host)).toContain("stg");
+  });
+});
+
+// The way back. A hand-maintained document holds no findings, so it has no
+// review menu — which is where "clear everything" used to live, leaving an
+// edit-only document with no way to undo a mistake at all.
+describe("discarding the edits of a hand-maintained document", () => {
+  const md = ["# os", "", "## SELinux", "", "| 設定項目 | デフォルト値 | 設定値 |", "| --- | --- | --- |", "| `state` |  | enforcing |", ""].join("\n");
+  const payload = {
+    metadata: { title: "t", version: "current" },
+    versions: [
+      {
+        version: "current",
+        sheets: [{ name: "os", instances: [], categories: [], document: { html: "", markdown: md, mode: "sheet" } }],
+      },
+    ],
+  };
+
+  it("returns the document to the text it was delivered with", async () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    window.alert = () => {};
+    window.confirm = () => true;
+    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
+    await waitForEffects();
+
+    // Edit the document…
+    ([...host.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === getMessages("ja").docEdit) as HTMLElement).click();
+    await waitForEffects();
+    const area = host.querySelector("textarea") as HTMLTextAreaElement;
+    area.value = area.value.replace("enforcing", "permissive");
+    area.dispatchEvent(new Event("input", { bubbles: true }));
+    await waitForEffects();
+    ([...host.querySelectorAll(".rs-doc-modal .rs-btn-primary")].pop() as HTMLElement).click();
+    await waitForEffects();
+    expect(host.textContent).toContain("permissive");
+
+    // …and take it back.
+    const gear = [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").trim() === getMessages("ja").settingsMenu);
+    (gear as HTMLElement).click();
+    await waitForEffects();
+    ([...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").trim() === getMessages("ja").clearEditsMenu) as HTMLElement).click();
+    await waitForEffects();
+    expect(host.textContent).not.toContain("permissive");
+    expect(host.textContent).toContain("enforcing");
+  });
+});
+
+// Editing one part of a page that is one text: the reader points at the heading
+// they can see, and the editor opens THERE. Opening at the end — where focusing
+// a textarea leaves the caret — is the one place nobody meant to go.
+describe("editing a hand-maintained sheet from a heading", () => {
+  const md = [
+    "# os",
+    "",
+    "## SELinux",
+    "",
+    "| 設定項目 | デフォルト値 | 設定値 |",
+    "| --- | --- | --- |",
+    "| `state` |  | enforcing |",
+    "",
+    "## firewalld",
+    "",
+    "| 設定項目 | デフォルト値 | 設定値 |",
+    "| --- | --- | --- |",
+    "| `ssh` |  | true |",
+    "",
+  ].join("\n");
+  const payload = {
+    metadata: { title: "t", version: "current" },
+    versions: [
+      {
+        version: "current",
+        sheets: [{ name: "os", instances: [], categories: [], document: { html: "", markdown: md, mode: "sheet" } }],
+      },
+    ],
+  };
+
+  const open = async (which: number): Promise<HTMLTextAreaElement> => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
+    await waitForEffects();
+    const buttons = [...host.querySelectorAll(".rs-category-header button")].filter(
+      (b) => b.getAttribute("aria-label") === getMessages("ja").docEdit
+    );
+    (buttons[which] as HTMLElement).click();
+    // The editor places its caret on a timer (it has to wait for the textarea
+    // to exist), so one pass is not always enough.
+    await waitForEffects();
+    await waitForEffects();
+    return host.querySelector("textarea") as HTMLTextAreaElement;
+  };
+
+  it("opens the editor at the heading that was clicked", async () => {
+    const area = await open(1);
+    expect(area.value.slice(area.selectionStart)).toStartWith("## firewalld");
+  });
+
+  it("opens at the top when the whole sheet is what was asked for", async () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
+    await waitForEffects();
+    const sheetButton = [...host.querySelectorAll(".rs-sheet-header button")].find(
+      (b) => b.getAttribute("aria-label") === getMessages("ja").docEdit
+    );
+    (sheetButton as HTMLElement).click();
+    await waitForEffects();
+    await waitForEffects();
+    const area = host.querySelector("textarea") as HTMLTextAreaElement;
+    expect(area.selectionStart).toBe(0);
+  });
+
+  // A sheet's editor is a table's editor: the notes a prose page carries are in
+  // the way of it, and the room it needs is nearly the whole window — a row is
+  // one long line, and every character that wraps is one the editor puts
+  // somewhere other than where the table has it.
+  it("is wide, and says nothing above the text", async () => {
+    const area = await open(0);
+    expect(area.className).toContain("rs-sheet-source");
+    expect(area.closest(".rs-doc-modal")?.className).toContain("rs-doc-modal-wide");
+    // …and the rule that widens it must OUT-SPECIFY `.rs-modal`, which sets a
+    // width of its own and is declared later in the sheet. Written as a single
+    // class it lost silently, and every one of these dialogs came out the
+    // default 34rem — which is exactly what "the editor is narrow" was.
+    expect(customStyles).toContain(".rs-modal.rs-doc-modal-wide {");
+    expect(customStyles).toContain(".rs-modal.rs-doc-modal {");
+    const wide = customStyles.slice(customStyles.indexOf(".rs-modal.rs-doc-modal-wide {"));
+    expect(wide.slice(0, wide.indexOf("}"))).toContain("width: 98vw");
+    expect(area.closest(".rs-modal")?.textContent).not.toContain(getMessages("ja").docImagesNote);
+  });
+});
+
+// Losing an edit that was never written anywhere is the worst thing this editor
+// can do, and the overlay is one click away from the text.
+describe("closing the editor with work in it", () => {
+  const md = ["# os", "", "## SELinux", "", "| 設定項目 | デフォルト値 | 設定値 |", "| --- | --- | --- |", "| `state` |  | enforcing |", ""].join("\n");
+  const payload = {
+    metadata: { title: "t", version: "current" },
+    versions: [
+      {
+        version: "current",
+        sheets: [{ name: "os", instances: [], categories: [], document: { html: "", markdown: md, mode: "sheet" } }],
+      },
+    ],
+  };
+
+  const openEditor = async (): Promise<HTMLElement> => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
+    await waitForEffects();
+    ([...host.querySelectorAll(".rs-sheet-header button")].find((b) => b.getAttribute("aria-label") === getMessages("ja").docEdit) as HTMLElement).click();
+    await waitForEffects();
+    return host;
+  };
+
+  const type = async (host: HTMLElement): Promise<void> => {
+    const area = host.querySelector("textarea") as HTMLTextAreaElement;
+    area.value = area.value.replace("enforcing", "permissive");
+    area.dispatchEvent(new Event("input", { bubbles: true }));
+    await waitForEffects();
+  };
+
+  it("asks before throwing the text away, and keeps it when the answer is no", async () => {
+    const host = await openEditor();
+    await type(host);
+    let asked = 0;
+    window.confirm = () => {
+      asked += 1;
+      return false;
+    };
+    (host.querySelector(".rs-overlay") as HTMLElement).click();
+    await waitForEffects();
+    expect(asked).toBe(1);
+    expect(host.querySelector("textarea")).not.toBeNull();
+    expect((host.querySelector("textarea") as HTMLTextAreaElement).value).toContain("permissive");
+  });
+
+  // …and closes without a word when there is nothing to lose.
+  it("closes silently when nothing was typed", async () => {
+    const host = await openEditor();
+    let asked = 0;
+    window.confirm = () => {
+      asked += 1;
+      return true;
+    };
+    (host.querySelector(".rs-overlay") as HTMLElement).click();
+    await waitForEffects();
+    expect(asked).toBe(0);
+    expect(host.querySelector("textarea")).toBeNull();
+  });
+});
+
+// The outline of a hand-maintained sheet: its own headings and rows, from the
+// same text the page renders. A PROSE document's outline is its headings, and a
+// sheet handed over as markdown is a document too — which made it take that
+// branch and show the sheet's name with nothing under it.
+describe("the outline of a hand-maintained sheet", () => {
+  const md = [
+    "# os",
+    "",
+    "## SELinux",
+    "",
+    "| 設定項目 | デフォルト値 | 設定値 |",
+    "| --- | --- | --- |",
+    "| `state` |  | enforcing |",
+    "",
+    "## firewalld",
+    "",
+    "| 設定項目 | デフォルト値 | 設定値 |",
+    "| --- | --- | --- |",
+    "| `ssh` |  | true |",
+    "",
+  ].join("\n");
+  const payload = {
+    metadata: { title: "t", version: "current" },
+    versions: [
+      {
+        version: "current",
+        sheets: [{ name: "os", instances: [], categories: [], document: { html: "", markdown: md, mode: "sheet" } }],
+      },
+    ],
+  };
+
+  it("lists the sections under the sheet", async () => {
+    localStorage.setItem("rs-outline-open", "1");
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
+    await waitForEffects();
+    const outline = host.querySelector(".rs-outline-body")?.textContent ?? "";
+    expect(outline).toContain("SELinux");
+    expect(outline).toContain("firewalld");
+  });
+});
+
+describe("a paragraph in a hand-maintained sheet", () => {
+  const md = ["# os", "", "## SELinux", "", "運用メモ: 本番のみ enforcing。", "", "| 設定項目 | デフォルト値 | 設定値 |", "| --- | --- | --- |", "| `state` |  | enforcing |", ""].join("\n");
+  const payload = {
+    metadata: { title: "t", version: "current" },
+    versions: [
+      {
+        version: "current",
+        sheets: [{ name: "os", instances: [], categories: [], document: { html: "", markdown: md, mode: "sheet" } }],
+      },
+    ],
+  };
+
+  it("is on the page", async () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
+    await waitForEffects();
+    expect(host.textContent).toContain("運用メモ: 本番のみ enforcing。");
+    expect(host.textContent).toContain("enforcing");
+  });
+});
+
+// A sheet handed over as markdown, compared side by side. The comparison is
+// built from the TEXT — so editing one component's table redraws it, which is
+// the reading the view exists for, and it survives the model going away.
+describe("a hand-maintained sheet, compared side by side", () => {
+  const md = [
+    "# clients",
+    "",
+    "## client-a",
+    "",
+    "### Settings",
+    "",
+    "| 設定項目 | デフォルト値 | 設定値 |",
+    "| --- | --- | --- |",
+    "| `publicClient` |  | false |",
+    "",
+    "## client-b",
+    "",
+    "### Settings",
+    "",
+    "| 設定項目 | デフォルト値 | 設定値 |",
+    "| --- | --- | --- |",
+    "| `publicClient` |  | true |",
+    "",
+  ].join("\n");
+  const payload = {
+    metadata: { title: "t", version: "current" },
+    versions: [
+      {
+        version: "current",
+        sheets: [
+          {
+            name: "clients",
+            instances: [],
+            compare_components: "always",
+            categories: [],
+            document: { html: "", markdown: md, mode: "sheet" },
+          },
+        ],
+      },
+    ],
+  };
+
+  it("puts one column per component, read from the markdown", async () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
+    await waitForEffects();
+    const heads = [...host.querySelectorAll(".rs-pivot th")].map((e) => (e.textContent ?? "").trim());
+    expect(heads).toEqual(["設定項目", "client-a", "client-b"]);
+    const row = [...host.querySelectorAll(".rs-pivot tbody tr")].find((r) => (r.textContent ?? "").includes("publicClient"));
+    expect([...(row?.querySelectorAll("td") ?? [])].map((c) => (c.textContent ?? "").trim())).toEqual([
+      "publicClient",
+      "false",
+      "true",
+    ]);
+  });
+});
+
+describe("a button that cannot act", () => {
+  it("is styled as disabled, whatever kind of button it is", () => {
+    const css = customStyles;
+    const rule = css.slice(css.indexOf(".rs-btn-primary:disabled"));
+    const block = rule.slice(0, rule.indexOf("}"));
+    expect(block).toContain(".rs-btn-danger:disabled");
+    expect(block).toContain("cursor: not-allowed");
+    // …and it must not light up under the pointer either.
+    expect(css).toContain(".rs-btn-danger:hover:not(:disabled)");
   });
 });
