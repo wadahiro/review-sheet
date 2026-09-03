@@ -84,6 +84,22 @@ describe("the sheet as markdown, written", () => {
     expect(line).toBe("|   `Nice` |  | 0 |  |  |");
   });
 
+  // WHERE each block is written. A double click on the page opens the editor
+  // there, so this is the number the whole jump rests on — counted while
+  // parsing, never searched for afterwards.
+  it("says which line every block starts on", () => {
+    const md = ["# S", "", "本文。", "", "## C", "", "| a | b |", "| --- | --- |", "| 1 | 2 |", "| 3 | 4 |", ""].join("\n");
+    const blocks = parseMarkdownBlocks(md);
+    expect(blocks.map((b) => [b.kind, b.line])).toEqual([
+      ["heading", 1],
+      ["prose", 3],
+      ["heading", 5],
+      ["table", 7],
+    ]);
+    const table = blocks.find((b) => b.kind === "table")!;
+    expect(table.kind === "table" && table.rows.map((r) => r.line)).toEqual([9, 10]);
+  });
+
   it("round-trips through its own parse", () => {
     const blocks = parseMarkdownBlocks(MD);
     const table = blocks.find((b) => b.kind === "table")!;

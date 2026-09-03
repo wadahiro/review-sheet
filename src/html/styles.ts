@@ -1993,12 +1993,44 @@ code {
   flex-shrink: 0;
 }
 
+/* At the RIGHT END of the heading, never beside the words. A heading is as long
+   as its title, so an action after it lands at a different place on every
+   section and reads as part of the text — the document's own headings put
+   theirs at the edge (rs-doc-head-tool), and one affordance should not sit in
+   two places. The first one takes the free space; the rest follow it, so
+   several actions group together instead of spreading across the line. */
+.rs-sheet-header h2,
+.rs-sheet-header h1 {
+  flex: 1;
+  min-width: 0;
+}
+
+.rs-sheet-header .rs-header-actions,
+.rs-category-header .rs-header-actions {
+  margin-left: auto;
+}
+
+.rs-sheet-header .rs-header-actions ~ .rs-header-actions,
+.rs-category-header .rs-header-actions ~ .rs-header-actions {
+  margin-left: 0;
+}
+
 .rs-header-actions.rs-has-comment {
   opacity: 1;
 }
 
 .rs-sheet-header:hover .rs-header-actions,
 .rs-category-header:hover .rs-header-actions {
+  opacity: 1;
+}
+
+/* In a document that may be EDITED, the heading's actions are simply there.
+   Hidden until hover, the one thing such a document is for has no visible
+   entrance: a reader looks before they explore, and a touch screen has no hover
+   at all. Muting them was tried and dropped — a control at half strength reads
+   as one that is not available yet, and the icon alone is small enough that a
+   sheet of ten sections carries ten of them without crowding the table. */
+.rs-edit-on .rs-header-actions {
   opacity: 1;
 }
 
@@ -4052,6 +4084,16 @@ tr.rs-jump-flash th {
   color: #1e293b;
   border-left: 4px solid var(--rs-primary);
   border-radius: 0 var(--rs-radius) var(--rs-radius) 0;
+  /* The section stays on screen while it is being read, the way a parameter
+     sheet's category heading does (.rs-category-header) — a page of prose is
+     read section by section too, and a reader scrolled into the middle of one
+     had nothing on screen saying which. Stacked the same way: h2 under the tab
+     bar, h3 under whatever h2 is holding, and each releases when its own
+     section ends. The heights are the ones set just above, stated as variables
+     because the top offset cannot measure them. */
+  position: sticky;
+  top: var(--rs-tabbar-h, 41px);
+  z-index: 59;
 }
 .rs-doc h3 {
   font-size: 0.9rem;
@@ -4061,6 +4103,33 @@ tr.rs-jump-flash th {
   color: #334155;
   border-left: 3px solid var(--rs-primary);
   border-radius: 0 var(--rs-radius) var(--rs-radius) 0;
+  position: sticky;
+  top: calc(var(--rs-tabbar-h, 41px) + var(--rs-doc-h2-h));
+  z-index: 58;
+}
+/* What an h2 occupies once it is stuck: its own line box plus its padding. A
+   heading long enough to wrap takes more, and the h3 below it then tucks under
+   the second line rather than beside it — the alternative, measuring every
+   heading in script, is a resize observer per page for a case a document can
+   avoid by not writing a heading that wraps. */
+:root { --rs-doc-h2-h: 2.4rem; }
+/* A dark page paints its own: the light fills above are literals (the sheet's
+   own category headings are, too), and a sticky heading has to be opaque or the
+   text it is holding above shows through it. */
+@media (prefers-color-scheme: dark) {
+  .rs-doc h2, .rs-doc h3 { background: var(--rs-surface); color: var(--rs-text); }
+}
+:root[data-theme="dark"] .rs-doc h2,
+:root[data-theme="dark"] .rs-doc h3 { background: var(--rs-surface); color: var(--rs-text); }
+:root[data-theme="light"] .rs-doc h2 { background: #f1f5f9; color: #1e293b; }
+:root[data-theme="light"] .rs-doc h3 { background: #f1f5f9; color: #334155; }
+
+/* The edit button a heading carries (DocumentBody appends it). At the right
+   end, and out of the text's way: the heading is a block, not a flex row, so it
+   floats rather than pushing the words around. */
+.rs-doc-head-tool {
+  float: right;
+  margin-left: 0.5rem;
 }
 .rs-doc h4, .rs-doc h5, .rs-doc h6 {
   font-size: 0.825rem;
