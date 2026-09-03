@@ -147,10 +147,11 @@ type Messages = {
   editUndo: string;
   editConfirmUndo: string;
   docEdit: string;
+  // How to open it without reaching for the button: the keystroke, said where
+  // the button is, because a shortcut nobody is told about is one nobody uses.
+  docEditKey: string;
   docEditShort: string;
   docRevert: string;
-  docImagesNote: string;
-  docTitleNote: string;
   docPasting: string;
   docNoSource: string;
   mdHeldList: string;
@@ -396,10 +397,9 @@ const ja: Messages = {
   editUndo: "この変更を取り消す",
   editConfirmUndo: "直近の変更を取り消しますか？（履歴からも消えます）",
   docEdit: "この文書を編集",
+  docEditKey: "この文書を編集（本文を選択して e キーでも開きます）",
   docEditShort: "編集",
   docRevert: "元の内容に戻す",
-  docImagesNote: "Markdown で編集します。画像はクリップボードから貼り付けると、その場で文書に埋め込まれます。",
-  docTitleNote: "先頭の見出し（h1）はこのファイル自身のタイトルです。Markdown を単体で読む人のために残りますが、シートではこのページの見出しが使われるため本文には表示されません（見出しの文言は sheet.yml の label）。",
   docPasting: "画像を埋め込んでいます…",
   docNoSource: "この文書は Markdown の原文を持っていません（編集を有効にする前に生成されたものです）。編集するには生成し直してください。",
   mdHeldList: "反映依頼",
@@ -618,10 +618,9 @@ const en: Messages = {
   editUndo: "Undo this change",
   editConfirmUndo: "Undo the most recent change? It is removed from the history too.",
   docEdit: "Edit this document",
+  docEditKey: "Edit this document (or select some text and press e)",
   docEditShort: "Edit",
   docRevert: "Restore the original",
-  docImagesNote: "Edited as markdown. Paste an image from the clipboard and it is embedded into the document where the cursor is.",
-  docTitleNote: "The leading h1 is this FILE's own title. It stays for anyone reading the markdown on its own, and is not shown in the body here — the sheet's heading names the page (its wording comes from sheet.yml's label).",
   docPasting: "Embedding the image…",
   docNoSource: "This document carries no markdown source (it was built before editing was enabled). Regenerate it to edit.",
   mdHeldList: "Requests",

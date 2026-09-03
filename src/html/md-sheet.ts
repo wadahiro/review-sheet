@@ -19,6 +19,7 @@ export { rowIsUnset, visibleRows } from "../sheet-markdown.js";
 import { getMarkdownRenderer } from "./markdown-runtime.js";
 import { navAnchorId, paramAnchorId } from "./anchors.js";
 import { showCellTool, hideCellToolSoon } from "./cell-tool.js";
+import type { DocJump } from "./doc-jump.js";
 import type { Messages } from "./i18n.js";
 
 const html = htm.bind(h);
@@ -70,10 +71,12 @@ export type MarkdownSheetProps = {
   rowKeys?: Record<string, string>;
   sheetName?: string;
   artifact?: { idFor: (sheet: string, category: string, key: string) => string | undefined; open: (id: string, key: string) => void };
-  // Open the editor at this section. The whole page is one text, so "edit this
-  // part" is the editor opened at the line the part starts on — the reader
-  // points at what they can see, rather than scrolling a thousand lines for it.
-  onEditSection?: (headingLine: string) => void;
+  // Open the editor at what the reader pointed at. The whole page is one text,
+  // so "edit this part" is the editor opened where that part is written — the
+  // reader points at what they can see, rather than scrolling a thousand lines
+  // for it. WHERE is a line of the markdown, carried by the parse rather than
+  // searched for afterwards (see DocumentModal).
+  onEditAt?: (jump: DocJump) => void;
   t: Messages;
 };
 
@@ -258,6 +261,7 @@ function MarkdownTable({
             });
           return html`
           <td key=${c.at} class=${`${c.cls} ${state}`}
+              data-rs-line=${row.line} data-rs-cell=${c.at}
               style=${c.cls === "rs-col-key" ? `--rs-block-depth:${row.indent}` : ""}
               onMouseEnter=${text === "" ? undefined : hover}
               onMouseLeave=${text === "" ? undefined : hideCellToolSoon}>
@@ -323,13 +327,13 @@ export function MarkdownSheetBody({
   rowKeys,
   sheetName,
   artifact,
-  onEditSection,
+  onEditAt,
   t,
 }: MarkdownSheetProps) {
   const renderProse = getMarkdownRenderer();
 
-  type Section = { path: string[]; depth: number; blocks: MarkdownBlock[]; children: Section[] };
-  const root: Section = { path: [], depth: 0, blocks: [], children: [] };
+  type Section = { path: string[]; depth: number; line: number; blocks: MarkdownBlock[]; children: Section[] };
+  const root: Section = { path: [], depth: 0, line: 1, blocks: [], children: [] };
   const stack: Section[] = [root];
   for (const block of parseMarkdownBlocks(markdown)) {
     if (block.kind === "heading") {
@@ -339,7 +343,7 @@ export function MarkdownSheetBody({
       const depth = Math.max(1, block.depth - 1);
       stack.length = Math.min(stack.length, depth);
       const parent = stack[stack.length - 1] ?? root;
-      const section: Section = { path: [...parent.path, block.text], depth, blocks: [], children: [] };
+      const section: Section = { path: [...parent.path, block.text], depth, line: block.line, blocks: [], children: [] };
       parent.children.push(section);
       stack.push(section);
       continue;
@@ -357,15 +361,20 @@ export function MarkdownSheetBody({
           renderProse === null
             ? null
             : renderProse(block.text, {}, { idPrefix: `rs-md-${sheetIndex}-${section.path.join("-")}-p${i}-` }).html;
+        // Every block says where it is written (doc-jump.ts). A DOUBLE CLICK
+        // does not open the editor — it selects a word, which is what a double
+        // click is for, and `e` then opens the editor on exactly that word.
         return rendered === null
-          ? html`<p key=${i} class="rs-category-note">${block.text}</p>`
-          : html`<div key=${i} class="rs-doc rs-md-prose" dangerouslySetInnerHTML=${{ __html: rendered }}></div>`;
+          ? html`<p key=${i} class="rs-category-note" data-rs-line=${block.line}>${block.text}</p>`
+          : html`<div key=${i} class="rs-doc rs-md-prose" data-rs-base=${block.line}
+                      dangerouslySetInnerHTML=${{ __html: rendered }}></div>`;
       }
       if (block.kind !== "table") return null;
       return html`
         <${MarkdownTable} key=${i} block=${block} path=${section.path} instances=${instances} lang=${lang}
                           sheetIndex=${sheetIndex} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
-                          rowKeys=${rowKeys} sheetName=${sheetName} artifact=${artifact} t=${t} />
+                          rowKeys=${rowKeys} sheetName=${sheetName} artifact=${artifact}
+                          t=${t} />
       `;
     });
 
@@ -394,14 +403,15 @@ export function MarkdownSheetBody({
                 coloured bar IS the heading element, and a sibling beside it
                 takes width from the bar — which then stops short of the button
                 and reads as a bar somebody cut off. */ ""}
-          <${Tag}>
+          <${Tag} data-rs-line=${section.line}>
             <span class="rs-cat-label">${section.path[section.path.length - 1]}</span>
-            ${onEditSection !== undefined && html`
+            ${onEditAt !== undefined && html`
               <span class="rs-header-actions">
-                <button class="rs-head-tool" title=${t.docEdit} aria-label=${t.docEdit}
-                        onClick=${() => onEditSection(`${"#".repeat(section.depth + 1)} ${section.path[section.path.length - 1]}`)}>
+                <button class="rs-head-tool" title=${t.docEditKey} aria-label=${t.docEdit}
+                        onClick=${() => onEditAt({ line: section.line })}>
+                  ${/* The icon alone, as the document's own headings carry it:
+                        one affordance, one look, wherever it sits. */ ""}
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                  <span class="rs-tool-label">${t.docEditShort}</span>
                 </button>
               </span>
             `}

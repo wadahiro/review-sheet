@@ -600,10 +600,15 @@ export function markdownToCategories(text: string, instances: string[], l: Lang 
 // own cells) rather than filing it into six named fields, and everything that
 // is not a heading or a table stays prose.
 
+// `line` is where the block is WRITTEN, 1-based, and a table row carries its
+// own: it is what a double click on the page resolves to, so the editor opens
+// on the line somebody pointed at instead of on whatever a search over the
+// rendered text happened to match first. Required, not optional — a block this
+// parse produced always came from somewhere.
 export type MarkdownBlock =
-  | { kind: "heading"; depth: number; text: string }
-  | { kind: "table"; head: string[]; rows: { indent: number; cells: string[] }[] }
-  | { kind: "prose"; text: string };
+  | { kind: "heading"; depth: number; text: string; line: number }
+  | { kind: "table"; head: string[]; rows: { indent: number; cells: string[]; line: number }[]; line: number }
+  | { kind: "prose"; text: string; line: number };
 
 // Leading spaces of the key cell, in levels: the parent/child relationship,
 // written the way a person writes one. Two spaces a level, and an odd number
@@ -614,34 +619,40 @@ export function parseMarkdownBlocks(text: string): MarkdownBlock[] {
   const lines = text.split("\n");
   const out: MarkdownBlock[] = [];
   let prose: string[] = [];
+  let proseAt = 0;
   const flush = (): void => {
     const body = prose.join("\n").replace(/^\n+|\n+$/g, "");
-    if (body !== "") out.push({ kind: "prose", text: body });
+    // The blank lines the trim took off are lines too: the block starts at the
+    // first one that carries something.
+    if (body !== "") out.push({ kind: "prose", text: body, line: proseAt + prose.findIndex((l) => l.trim() !== "") + 1 });
     prose = [];
   };
   for (let i = 0; i < lines.length; i++) {
     const h = HEADING.exec(lines[i]);
     if (h) {
       flush();
-      out.push({ kind: "heading", depth: h[1].length, text: h[2] });
+      out.push({ kind: "heading", depth: h[1].length, text: h[2], line: i + 1 });
       continue;
     }
     if (TABLE_ROW.test(lines[i]) && i + 1 < lines.length && SEPARATOR.test(lines[i + 1])) {
       flush();
       const head = splitCells(lines[i]).map((c) => c.trim());
+      const line = i + 1;
       i += 1;
-      const rows: { indent: number; cells: string[] }[] = [];
+      const rows: { indent: number; cells: string[]; line: number }[] = [];
       while (i + 1 < lines.length && TABLE_ROW.test(lines[i + 1]) && !SEPARATOR.test(lines[i + 1])) {
         const cells = splitCells(lines[++i]);
         const lead = /^ */.exec(cells[0] ?? "")![0].length;
         rows.push({
           indent: Math.floor(lead / INDENT_WIDTH),
           cells: cells.map((c, n) => unescapeCell(n === 0 ? c.trim() : c)),
+          line: i + 1,
         });
       }
-      out.push({ kind: "table", head, rows });
+      out.push({ kind: "table", head, rows, line });
       continue;
     }
+    if (prose.length === 0) proseAt = i;
     prose.push(lines[i]);
   }
   flush();

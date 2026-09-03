@@ -25,8 +25,8 @@ describe("markdown: headings and the outline", () => {
     // id that jump goes nowhere. (The document's TITLE is a different case: it
     // is not rendered at all — see "the document's own title" below.)
     const { html } = renderMarkdown("## A\n\n#### D\n", noImages, { navDepth: 2 });
-    expect(html).toContain('<h2 id="rs-doc-A">');
-    expect(html).toContain('<h4 id="rs-doc-D">');
+    expect(html).toContain('<h2 id="rs-doc-A"');
+    expect(html).toContain('<h4 id="rs-doc-D"');
   });
 
   it("keeps a Japanese heading's own text in its id", () => {
@@ -134,12 +134,12 @@ describe("markdown: GFM", () => {
   it("renders a table", () => {
     const { html } = renderMarkdown("| キー | 旧 |\n|---|---|\n| http-port | 8080 |\n", noImages);
     expect(html).toContain("<table>");
-    expect(html).toContain("<th>キー</th>");
+    expect(html).toContain(">キー</th>");
   });
 
   it("renders a fenced code block without treating it as markup", () => {
     const { html } = renderMarkdown("```yaml\nfoo: <bar>\n```\n", noImages);
-    expect(html).toContain("<pre>");
+    expect(html).toContain("<pre data-rs-line=");
     expect(html).toContain("&lt;bar&gt;");
   });
 });
@@ -160,7 +160,7 @@ describe("markdown: a wrapped Japanese paragraph", () => {
     // A naive replace consumes the character after the newline, so the next
     // break has nothing to match against and survives.
     const { html } = renderMarkdown("あ\nい\nう\nえ\n", noImages);
-    expect(html).toContain("<p>あいうえ</p>");
+    expect(html).toContain(">あいうえ</p>");
   });
 
   it("keeps the break — and so the space — between Japanese and a Latin word", () => {
@@ -240,7 +240,7 @@ describe("markdown: the document's own title", () => {
 describe("markdown: a mermaid fence", () => {
   it("becomes the element the renderer draws into, with the source escaped inside", () => {
     const { html } = renderMarkdown("```mermaid\ngraph LR\n  A[x] --> B\n```\n", noImages);
-    expect(html).toContain('<pre class="mermaid">');
+    expect(html).toContain('<pre class="mermaid"');
     expect(html).toContain("graph LR");
     // Escaped, or a label with a bracket would be markup.
     expect(html).toContain("--&gt;");
@@ -266,5 +266,65 @@ describe("markdown: a mermaid fence", () => {
   it("reads the fence's own spelling, not a word inside it", () => {
     const { html } = renderMarkdown("```text\nmermaid is a library\n```\n", noImages);
     expect(html).not.toContain('class="mermaid"');
+  });
+});
+
+// WHERE each block is written, carried into the page it renders to.
+//
+// This is what a double click resolves against, and it is the whole reason the
+// jump is deterministic: matching the RENDERED text back against the markdown
+// is a search, and a search over prose lands on the wrong paragraph often
+// enough to be untrustworthy — a heading loses its backticks, a wrapped
+// paragraph loses its newline, a common word occurs three times.
+describe("markdown: the line each block came from", () => {
+  // Line numbers are read off the attribute rather than recomputed, so the
+  // assertions below say what the page will actually be asked.
+  const linesOf = (html: string, tag: string): number[] =>
+    [...html.matchAll(new RegExp(`<${tag}[^>]*?\\sdata-rs-line="(\\d+)"`, "g"))].map((m) => Number(m[1]));
+
+  it("tells two identical paragraphs apart", () => {
+    const { html } = renderMarkdown("# T\n\n同じ文。\n\n同じ文。\n", noImages);
+    expect(linesOf(html, "p")).toEqual([3, 5]);
+  });
+
+  it("tells two identical list items apart", () => {
+    const { html } = renderMarkdown("# T\n\n- 同じ\n- 同じ\n", noImages);
+    expect(linesOf(html, "li")).toEqual([3, 4]);
+  });
+
+  // A block inside a list item is looked for INSIDE it. Searching on from the
+  // end of the item finds the next copy of the same text instead, and the
+  // cursor then runs ahead of the document — so everything after it is wrong
+  // too, not just the block that was mislaid.
+  it("does not let a fenced block inside a list item claim a later one", () => {
+    const source = ["# T", "", "- 手順", "", "  ```sh", "  echo hi", "  ```", "", "```sh", "echo hi", "```", "", "最後の段落。", ""].join("\n");
+    const { html } = renderMarkdown(source, noImages);
+    // The nested fence is written indented, so its own raw is not in the source
+    // verbatim and it carries no line of its own — the reader falls back to the
+    // item around it, which IS placed. What must not happen is the one that
+    // does: it takes line 9 from the fence that is actually written there.
+    expect(html.indexOf('data-rs-line="9"')).toBeGreaterThan(html.indexOf("</li>"));
+    expect(linesOf(html, "pre")).toEqual([9]);
+    expect(linesOf(html, "li")).toEqual([3]);
+    expect(linesOf(html, "p")).toContain(13);
+  });
+
+  it("counts a table's rows from its header, one line each", () => {
+    const source = ["# T", "", "| a | b |", "| --- | --- |", "| 1 | 2 |", "| 1 | 2 |", ""].join("\n");
+    const { html } = renderMarkdown(source, noImages);
+    expect(linesOf(html, "tr")).toEqual([3, 5, 6]);
+    // …and it is still an ordinary table, whose cells say which column they are.
+    expect(html).toContain('<td data-rs-cell="0">1</td>');
+  });
+
+  it("keeps a quoted paragraph on the quote's own line", () => {
+    const { html } = renderMarkdown("# T\n\n> 引用。\n\n本文。\n", noImages);
+    expect(linesOf(html, "blockquote")).toEqual([3]);
+    expect(linesOf(html, "p")).toContain(5);
+  });
+
+  it("puts a heading on the line it is written on, however it renders", () => {
+    const { html } = renderMarkdown("# T\n\n## 秘密は `/run` にしか無い\n\n本文。\n", noImages);
+    expect(linesOf(html, "h2")).toEqual([3]);
   });
 });

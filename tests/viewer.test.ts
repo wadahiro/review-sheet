@@ -2773,7 +2773,7 @@ describe("the filters a hand-maintained document offers", () => {
     ],
   };
 
-  const menuText = async (review: boolean): Promise<string> => {
+  const menuHost = async (review: boolean): Promise<HTMLElement> => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
@@ -2782,8 +2782,9 @@ describe("the filters a hand-maintained document offers", () => {
     const btn = [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes(getMessages("ja").filterMenu));
     (btn as HTMLElement)?.click();
     await waitForEffects();
-    return host.textContent ?? "";
+    return host;
   };
+  const menuText = async (review: boolean): Promise<string> => (await menuHost(review)).textContent ?? "";
 
   // The export hands a REVIEW back. A hand-maintained document saves itself and
   // `apply -r sheet.html` reads it, so a review.json beside it is a second,
@@ -2795,10 +2796,14 @@ describe("the filters a hand-maintained document offers", () => {
   });
 
   // One editor: the document itself. There is nothing else to edit here — the
-  // page IS the text.
+  // page IS the text. Found by what it SAYS it is rather than by a visible
+  // word: the button is the icon alone, the way every heading's own is.
   it("offers the document as the thing to edit", async () => {
-    const text = await menuText(false);
-    expect(text).toContain(getMessages("ja").docEditShort);
+    const host = await menuHost(false);
+    const edit = [...host.querySelectorAll("button")].filter(
+      (b) => b.getAttribute("aria-label") === getMessages("ja").docEdit
+    );
+    expect(edit.length).toBeGreaterThan(0);
   });
 
   // The toggle re-resolves prose the MODEL carries in both languages. A
@@ -3018,6 +3023,9 @@ describe("editing a hand-maintained sheet from a heading", () => {
     "| 設定項目 | デフォルト値 | 設定値 |",
     "| --- | --- | --- |",
     "| `ssh` |  | true |",
+    // The SAME key as the section above: which one a reader pointed at is said
+    // by the heading over it, and by nothing else.
+    "| `state` |  | running |",
     "",
   ].join("\n");
   const payload = {
@@ -3052,6 +3060,11 @@ describe("editing a hand-maintained sheet from a heading", () => {
     expect(area.value.slice(area.selectionStart)).toStartWith("## firewalld");
   });
 
+  // Opening at a ROW or a PARAGRAPH is the reader's own gesture — put the caret
+  // there and press `e` — and is covered in viewer-document-edit.test.ts, where
+  // a real markdown renderer is registered and the block-relative line numbers
+  // that path depends on are exercised. What stays here is the heading's own
+  // button, which needs no selection at all.
   it("opens at the top when the whole sheet is what was asked for", async () => {
     openSheetTab();
     const host = document.createElement("div");
@@ -3084,7 +3097,9 @@ describe("editing a hand-maintained sheet from a heading", () => {
     expect(customStyles).toContain(".rs-modal.rs-doc-modal {");
     const wide = customStyles.slice(customStyles.indexOf(".rs-modal.rs-doc-modal-wide {"));
     expect(wide.slice(0, wide.indexOf("}"))).toContain("width: 98vw");
-    expect(area.closest(".rs-modal")?.textContent).not.toContain(getMessages("ja").docImagesNote);
+    // Nothing above the text: a standing explanation is read once and is in
+    // the way every time after that.
+    expect(area.closest(".rs-new-review")?.querySelector(".rs-edit-note")).toBeNull();
   });
 });
 
@@ -3273,6 +3288,54 @@ describe("a hand-maintained sheet, compared side by side", () => {
       "false",
       "true",
     ]);
+  });
+});
+
+// A document that may be edited says so: the heading's actions are always
+// there. Hidden until hover, the one thing such a document is for has no
+// visible entrance — and a touch screen has no hover at all.
+describe("the heading's actions in a document that may be edited", () => {
+  it("are always visible there, at full strength, and only on hover elsewhere", () => {
+    const css = customStyles;
+    expect(css).toContain(".rs-edit-on .rs-header-actions {");
+    const rule = css.slice(css.indexOf(".rs-edit-on .rs-header-actions {"));
+    // Full strength, not muted: a control at half strength reads as one that is
+    // not available yet.
+    expect(rule.slice(0, rule.indexOf("}"))).toContain("opacity: 1");
+    // The review-only document keeps the older reading: nothing until hover.
+    const base = css.slice(css.indexOf(".rs-header-actions {"));
+    expect(base.slice(0, base.indexOf("}"))).toContain("opacity: 0");
+  });
+
+  // …and at the right END of the heading, wherever the heading is. A heading is
+  // as long as its title, so an action placed after it lands at a different
+  // spot on every section and reads as part of the text — reported on the
+  // sheet's own title, whose actions sat right beside the words while the
+  // document's own headings carried theirs at the edge.
+  it("sit at the right end of the heading, not beside its words", () => {
+    const css = customStyles;
+    const rule = css.slice(css.indexOf(".rs-sheet-header .rs-header-actions,"));
+    expect(rule.slice(0, rule.indexOf("}"))).toContain("margin-left: auto");
+    // …which needs the heading to fill the row it is in, or there is no free
+    // space for that margin to take.
+    const head = css.slice(css.indexOf(".rs-sheet-header h2,"));
+    expect(head.slice(0, head.indexOf("}"))).toContain("flex: 1");
+  });
+
+  it("marks the document itself, so the rule has something to hang on", async () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: PAYLOAD, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
+    await waitForEffects();
+    expect(host.querySelector(".rs-app")?.className).toContain("rs-edit-on");
+    document.body.innerHTML = "";
+
+    const host2 = document.createElement("div");
+    document.body.appendChild(host2);
+    render(h(Root, { payload: PAYLOAD, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host2);
+    await waitForEffects();
+    expect(host2.querySelector(".rs-app")?.className).not.toContain("rs-edit-on");
   });
 });
 

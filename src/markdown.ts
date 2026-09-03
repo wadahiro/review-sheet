@@ -186,6 +186,61 @@ export function renderMarkdown(source: string, resolveImage: ImageResolver, opts
   // document without a diagram must not pay.
   let mermaid = false;
 
+  // WHERE each block came from, so a reader can be taken back to it exactly.
+  //
+  // A token's `raw` is the source verbatim, and the renderers are called in
+  // document order, so a cursor walking the source finds each block's offset
+  // with no guessing — which is the whole point: matching the RENDERED text
+  // back against the markdown is a search, and a search over prose is wrong
+  // often enough to be untrustworthy (a heading loses its backticks, a wrapped
+  // paragraph loses its newline, a common word matches somewhere else).
+  let cursor = 0;
+  // How far the block being rendered may look. The whole source, except while
+  // a container's own children are rendering: a child written INDENTED (a fence
+  // inside a list item) has a `raw` the source does not hold verbatim, and
+  // without a limit it matches the next unindented copy of the same text —
+  // taking that block's line and dragging the cursor past it, so every block
+  // after it is wrong too. Bounded, such a child simply carries no line and the
+  // reader falls back to the item around it.
+  let limit = source.length;
+  const lineAt = (offset: number): number => {
+    let line = 1;
+    for (let i = 0; i < offset; i++) if (source[i] === "\n") line += 1;
+    return line;
+  };
+  // Where a LEAF block starts, the cursor stepping past it so the next one is
+  // looked for after it — which is what keeps two identical paragraphs two
+  // different lines. -1 when the raw could not be placed.
+  const lineOf = (raw: string): number => {
+    const found = source.indexOf(raw, cursor);
+    if (found < 0 || found + raw.length > limit) return -1;
+    cursor = found + raw.length;
+    return lineAt(found);
+  };
+  // The attribute a block carries. Absent when the raw could not be placed —
+  // better than a number that points at the wrong line.
+  const at = (raw: string): string => {
+    const line = lineOf(raw);
+    return line < 0 ? "" : ` data-rs-line="${line}"`;
+  };
+  // A block that HOLDS other blocks. Its own children are rendered while the
+  // cursor stands just INSIDE it, so each of them is found in its own copy of
+  // the text rather than in a later one that happens to read the same; and past
+  // it once they are done, so the next sibling is not looked for inside it.
+  // One character in, not none: a second list item spelled exactly like the
+  // first would otherwise find the first again and both would claim its line.
+  const within = (raw: string, body: () => string): { at: string; html: string } => {
+    const found = source.indexOf(raw, cursor);
+    if (found < 0 || found + raw.length > limit) return { at: "", html: body() };
+    const outer = limit;
+    cursor = found + 1;
+    limit = found + raw.length;
+    const html = body();
+    limit = outer;
+    cursor = Math.max(cursor, found + raw.length);
+    return { at: ` data-rs-line="${lineAt(found)}"`, html };
+  };
+
   const marked = new Marked({ gfm: true });
   marked.use({
     // Before rendering, so the headings collected below see the same text the
@@ -231,7 +286,7 @@ export function renderMarkdown(source: string, resolveImage: ImageResolver, opts
         // The id goes on EVERY heading, not only the listed ones: search can
         // land on a heading the outline chose not to show, and an anchorless
         // heading would make that jump go nowhere.
-        return `<h${token.depth} id="${escapeHtml(id)}">${this.parser.parseInline(token.tokens)}</h${token.depth}>\n`;
+        return `<h${token.depth} id="${escapeHtml(id)}"${at(token.raw)}>${this.parser.parseInline(token.tokens)}</h${token.depth}>\n`;
       },
       // A ```mermaid fence is a DIAGRAM, not a code sample. It is emitted as
       // the element mermaid itself looks for, with the source escaped inside,
@@ -244,12 +299,45 @@ export function renderMarkdown(source: string, resolveImage: ImageResolver, opts
       // see html/mermaid-runtime.ts. Without it the source shows as text, which
       // is what a reader of the markdown file sees too.
       code(token: Tokens.Code): string {
+        const where = at(token.raw);
         if ((token.lang ?? "").trim().toLowerCase() !== "mermaid") {
           const cls = token.lang ? ` class="language-${escapeHtml(token.lang.trim().split(/\s+/)[0])}"` : "";
-          return `<pre><code${cls}>${escapeHtml(token.text)}\n</code></pre>\n`;
+          return `<pre${where}><code${cls}>${escapeHtml(token.text)}\n</code></pre>\n`;
         }
         mermaid = true;
-        return `<pre class="mermaid">${escapeHtml(token.text)}</pre>\n`;
+        return `<pre class="mermaid"${where}>${escapeHtml(token.text)}</pre>\n`;
+      },
+      paragraph(token: Tokens.Paragraph): string {
+        return `<p${at(token.raw)}>${this.parser.parseInline(token.tokens)}</p>\n`;
+      },
+      listitem(token: Tokens.ListItem): string {
+        const it = within(token.raw, () => this.parser.parse(token.tokens));
+        return `<li${it.at}>${it.html}</li>\n`;
+      },
+      blockquote(token: Tokens.Blockquote): string {
+        const it = within(token.raw, () => this.parser.parse(token.tokens));
+        return `<blockquote${it.at}>\n${it.html}</blockquote>\n`;
+      },
+      // A table is rendered here only to say WHERE each of its rows is written.
+      // A GFM table is one row per line, so the rows are counted from the
+      // header rather than searched for — two rows of a parameter table read
+      // alike often enough that searching would be the guess this whole
+      // mechanism exists to remove.
+      table(token: Tokens.Table): string {
+        const start = lineOf(token.raw);
+        const where = (n: number): string => (start < 0 ? "" : ` data-rs-line="${start + n}"`);
+        const align = (a: string | null): string => (a ? ` align="${a}"` : "");
+        // …and WHICH column each cell is. A row is one line, so the line alone
+        // cannot tell two cells of it apart: a reader pointing at the third
+        // column gets a word the first column shares with it, which is the
+        // wrong cell however right the line was.
+        const cells = (row: Tokens.TableCell[], tag: "th" | "td"): string =>
+          row
+            .map((c, i) => `<${tag} data-rs-cell="${i}"${align(token.align[i] ?? null)}>${this.parser.parseInline(c.tokens)}</${tag}>`)
+            .join("");
+        const head = `<tr${where(0)}>${cells(token.header, "th")}</tr>`;
+        const body = token.rows.map((row, n) => `<tr${where(n + 2)}>${cells(row, "td")}</tr>`).join("\n");
+        return `<table>\n<thead>\n${head}\n</thead>\n<tbody>${body === "" ? "" : `\n${body}\n`}</tbody></table>\n`;
       },
       image(token: Tokens.Image): string {
         const src = inlineImage(token.href, resolveImage);

@@ -26,6 +26,7 @@ import { documentEnvironments, ENVIRONMENTS_FIELD, applyEdits, editsForCell, isE
 import { toMarkdownSheet, renderSheetMarkdown, parseSheetMarkdown } from "../sheet-markdown.js";
 import { getMarkdownRenderer } from "./markdown-runtime.js";
 import { MarkdownSheetBody } from "./md-sheet.js";
+import { jumpFromSelection, type DocJump, type DocPoint } from "./doc-jump.js";
 import { navAnchorId, paramAnchorId, encodeIdPart } from "./anchors.js";
 import {
   showCellTool,
@@ -1172,10 +1173,13 @@ function SaveModal({ count, defaultName, busy, onSave, onClose, t }: {
 // The html shown is RE-RENDERED from the edited markdown rather than stored
 // alongside it. Storing both would let them disagree, and the one that is a
 // fact is the markdown somebody typed.
-function DocumentBody({ sheet, reviews, editEnabled, t }: {
+function DocumentBody({ sheet, reviews, editEnabled, onEditAt, t }: {
   sheet: SheetData["sheets"][number];
   reviews: ReviewItem[];
   editEnabled: boolean;
+  // Open the editor at one of the document's own headings — see the buttons
+  // put on them below.
+  onEditAt?: (jump: DocJump) => void;
   t: Messages;
 }) {
   const edited = editEnabled ? documentSource(reviews, sheet.name) : undefined;
@@ -1198,6 +1202,42 @@ function DocumentBody({ sheet, reviews, editEnabled, t }: {
     runMermaid(body.current);
   }, [html_]);
 
+  // An edit button on every heading, the way a parameter sheet's categories
+  // carry one. A page is read section by section, and the one button in the
+  // sheet's own header meant scrolling back to the top to change the paragraph
+  // in front of you — and then finding it again in a thousand lines of source.
+  //
+  // Put on the rendered nodes rather than emitted by the renderer: what the
+  // renderer produces also travels into the .md file an edit goes back to, and
+  // a button is not part of anybody's document. Re-applied whenever the html
+  // changes, since that replaces the tree these were appended to.
+  useLayoutEffect(() => {
+    const root = body.current;
+    if (root === null || onEditAt === undefined) return;
+    const added: Element[] = [];
+    for (const heading of root.querySelectorAll("h1,h2,h3,h4,h5,h6")) {
+      const line = Number(heading.getAttribute("data-rs-line"));
+      if (!Number.isInteger(line) || line < 1) continue;
+      const button = document.createElement("button");
+      button.className = "rs-head-tool rs-doc-head-tool";
+      button.title = t.docEditKey;
+      button.setAttribute("aria-label", t.docEdit);
+      button.innerHTML =
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+      button.addEventListener("click", () => onEditAt({ line }));
+      heading.appendChild(button);
+      added.push(button);
+    }
+    return () => added.forEach((b) => b.remove());
+  }, [html_, onEditAt, t]);
+
+  // Nothing else here opens the editor by itself. Every block the renderer
+  // produced says WHERE it is written (`data-rs-line`, markdown.ts) and `e`
+  // reads that off the reader's own selection (doc-jump.ts) — so a double click
+  // stays what a double click is, selecting a word, and `e` then opens the
+  // editor on exactly that word with it selected. Taking the gesture for the
+  // editor cost both: the word could not be selected, and the editor could only
+  // be told where, never what.
   return html`
     ${edited !== undefined && html`<p class="rs-doc-edited-note">${t.editedBadge}</p>`}
     <div class="rs-doc" ref=${body} dangerouslySetInnerHTML=${{ __html: html_ }}></div>
@@ -1258,16 +1298,16 @@ const extensionOf = (uri: string): string => IMAGE_EXT[/^data:([^;,]+)/.exec(uri
 // editor, not a rich one: the file it came from is markdown, an edit that
 // travels back to it has to be markdown, and anything that renders while
 // typing would be a second renderer to keep honest.
-function DocumentModal({ sheet, current, original, sheetMode, jumpTo, onSave, onClose, t }: {
+function DocumentModal({ sheet, current, original, jump, onSave, onClose, t }: {
   sheet: string;
   current: string;
   original: string;
-  // The document IS a sheet (full-edit mode): a wide editor, because what is
-  // being edited is a table, and none of the notes a prose page wants.
-  sheetMode?: boolean;
-  // A line to open at — the heading somebody clicked. Without it the editor
-  // opens where the document starts, which is where a reader starts.
-  jumpTo?: string;
+  // Where to open, as a LINE of this text — see `DocJump` (md-sheet.ts). The
+  // page knows it: every block carries the line it was written on, so the jump
+  // is arithmetic rather than a search over prose, which is what it used to be
+  // and what kept landing on the wrong paragraph. Absent = the top, which is
+  // where a reader starts.
+  jump?: DocJump;
   onSave: (review: ReviewItem) => void;
   onClose: () => void;
   t: Messages;
@@ -1327,26 +1367,101 @@ function DocumentModal({ sheet, current, original, sheetMode, jumpTo, onSave, on
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [requestClose]);
 
-  // Opened at the top, or at the heading somebody asked for — never at the end,
-  // which is where focusing a textarea leaves the caret and is the one place
-  // nobody meant to go.
+  // Opened at the top, or where somebody asked for — never at the end, which is
+  // where focusing a textarea leaves the caret and is the one place nobody
+  // meant to go.
   useEffect(() => {
     const timer = setTimeout(() => {
       const el = ref.current;
       if (!el) return;
       el.focus();
-      const at = jumpTo === undefined ? -1 : el.value.indexOf(jumpTo);
-      const pos = at >= 0 ? at : 0;
+      const value = el.value;
+      // The line is COUNTED, not searched for: the page said which line it was,
+      // and the only question left is where that line begins in this text. A
+      // line the text does not have (an edit that shortened it since the page
+      // was drawn) resolves to the top rather than to the end.
+      const startOfLine = (line: number): number => {
+        if (line <= 1) return 0;
+        let at = 0;
+        for (let n = 1; n < line; n++) {
+          const next = value.indexOf("\n", at);
+          if (next < 0) return 0;
+          at = next + 1;
+        }
+        return at;
+      };
+
+      // One end of the jump, resolved. `from` is where the run BEGINS (a
+      // landing), `to` where it ENDS (the far end of a selection).
+      const place = (p: DocPoint, dir: "from" | "to"): number => {
+        const lineStart = startOfLine(p.line);
+        const nl = value.indexOf("\n", lineStart);
+        const lineEnd = nl < 0 ? value.length : nl;
+        const line = value.slice(lineStart, lineEnd);
+        // How far the run may be looked for. A CELL when the page named one — a
+        // table row is one line and its columns are told apart by the pipes, so
+        // the reader who pointed at the third column gets the third column and
+        // not a word the first one happens to share with it. Otherwise the
+        // BLOCK: a paragraph wrapped over three lines is one block, and the
+        // sentence somebody pointed at is as likely to be on its second line as
+        // on its first.
+        let from = lineStart;
+        let to = lineEnd;
+        if (p.cell !== undefined) {
+          let pipes = 0;
+          for (let i = 0; i < line.length; i++) {
+            if (line[i] !== "|") continue;
+            pipes += 1;
+            if (pipes !== p.cell + 1) continue;
+            // Past the delimiter and the one space the renderer pads with, so
+            // the caret sits where the cell's own text begins.
+            from = lineStart + i + (line[i + 1] === " " ? 2 : 1);
+            const next = line.indexOf("|", i + 1);
+            to = next < 0 ? lineEnd : lineStart + next;
+            break;
+          }
+        } else {
+          const gap = /\n[ \t]*\n/.exec(value.slice(lineStart));
+          to = gap === null ? value.length : lineStart + gap.index;
+        }
+        if (p.text === undefined) return from;
+        // The run comes off the RENDERED page, so the source may spell it with
+        // markers the reader never saw (`\`db-password\``, `**強調**`) — it is
+        // shortened, from the end when it begins at the point and from the
+        // front when it ends there, until it is one the source does hold. It
+        // can only ever move inside what the page already named, so a run it
+        // does not find leaves the landing exactly where it was.
+        const scope = value.slice(from, to);
+        if (dir === "from") {
+          for (let end = p.text.length; end >= 3; end--) {
+            const found = scope.indexOf(p.text.slice(0, end));
+            if (found >= 0) return from + found;
+          }
+          return from;
+        }
+        for (let cut = 0; cut <= p.text.length - 3; cut++) {
+          const run = p.text.slice(cut);
+          const found = scope.indexOf(run);
+          if (found >= 0) return from + found + run.length;
+        }
+        return from;
+      };
+
+      const pos = jump === undefined ? 0 : place(jump, "from");
+      // …and the far end, when the reader had something selected. The editor
+      // opens with the same words highlighted — they selected them in order to
+      // change them, and retyping a selection is one keystroke.
+      const endPos = jump?.end === undefined ? pos : Math.max(pos, place(jump.end, "to"));
       el.selectionStart = pos;
-      el.selectionEnd = pos;
+      el.selectionEnd = endPos;
       // A textarea does not scroll to its caret on its own: put the line near
       // the top, by the height of the lines above it.
-      const line = el.value.slice(0, pos).split("\n").length - 1;
+      const above = value.slice(0, pos).split("\n").length - 1;
       const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
-      el.scrollTop = Math.max(0, line * lineHeight - lineHeight);
+      el.scrollTop = Math.max(0, above * lineHeight - lineHeight);
     }, 50);
     return () => clearTimeout(timer);
-  }, [sheet, jumpTo]);
+  }, [sheet, jump?.line, jump?.cell, jump?.text, jump?.end?.line, jump?.end?.cell, jump?.end?.text]);
 
   const handleSave = useCallback(() => {
     if (text === current) {
@@ -1374,7 +1489,7 @@ function DocumentModal({ sheet, current, original, sheetMode, jumpTo, onSave, on
 
   return html`
     <div class="rs-overlay" onClick=${(e: Event) => { if ((e.target as HTMLElement).classList.contains("rs-overlay")) requestClose(); }}>
-      <div class=${`rs-modal rs-doc-modal ${sheetMode ? "rs-doc-modal-wide" : ""}`} role="dialog" aria-label="${t.docEdit}">
+      <div class="rs-modal rs-doc-modal rs-doc-modal-wide" role="dialog" aria-label="${t.docEdit}">
         <header>
           <div>
             <h4>${t.docEdit}</h4>
@@ -1383,15 +1498,12 @@ function DocumentModal({ sheet, current, original, sheetMode, jumpTo, onSave, on
           <button class="rs-modal-close" onClick=${requestClose} aria-label="${t.shortcutClose}">\u00d7</button>
         </header>
         <div class="rs-new-review">
-          ${/* Said on a prose page, where pasting a picture and the leading h1
-                are both real questions. On a SHEET they are not: nobody pastes
-                a screenshot into a parameter table, and the h1 is the sheet's
-                name. Two paragraphs of standing explanation above the thing
-                somebody came here to edit is in the way. */ ""}
-          ${sheetMode !== true && html`<p class="rs-edit-note">${t.docImagesNote}</p>`}
-          ${sheetMode !== true && /^\s*#\s+\S/.test(text) && html`<p class="rs-edit-note">${t.docTitleNote}</p>`}
+          ${/* Nothing above the text. Standing explanations — that a pasted
+                picture is embedded, what the leading h1 is for — are read once
+                and then in the way of the thing somebody came here to edit,
+                every time. */ ""}
           <div class="rs-form-row">
-            <textarea class=${`rs-doc-source ${sheetMode ? "rs-sheet-source" : ""}`} ref=${ref} value=${text} spellcheck=${false}
+            <textarea class="rs-doc-source rs-sheet-source" ref=${ref} value=${text} spellcheck=${false}
                       onInput=${(e: Event) => setText((e.target as HTMLTextAreaElement).value)}
                       onPaste=${handlePaste}
                       onKeyDown=${handleKeyDown}></textarea>
@@ -4207,7 +4319,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   const [addRowTarget, setAddRowTarget] = useState<ReviewItem["target"] | null>(null);
   const [docTarget, setDocTarget] = useState<string | null>(null);
   // The heading line the editor should open at, when it was opened from one.
-  const [docJump, setDocJump] = useState<string | undefined>(undefined);
+  const [docJump, setDocJump] = useState<DocJump | undefined>(undefined);
   const [envTarget, setEnvTarget] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -4443,6 +4555,37 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // `e` opens the editor where the caret is, and keeps what is selected.
+  //
+  // The same landing a double click makes, from the keyboard — a reader with a
+  // sentence already selected has said both where and what, and the double
+  // click can only say where. Selecting the words and pressing one key is the
+  // shortest way to "change these": the editor opens with them highlighted, so
+  // typing replaces them.
+  //
+  // Only what the page can address (doc-jump.ts) reacts, so this is silent on a
+  // sheet that is not a document, and never while an overlay or a field has the
+  // keystroke — where `e` is a letter somebody is typing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.isComposing || e.keyCode === 229) return;
+      if (e.key !== "e" && e.key !== "E") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (!effEditEnabled || docTarget !== null || paletteOpen) return;
+      const target = e.target as HTMLElement | null;
+      if (typeof target?.closest === "function" && target.closest("input, textarea, select, [contenteditable]")) return;
+      const sheet = data.sheets[activeSheet];
+      if (sheet?.document === undefined) return;
+      const jump = jumpFromSelection(null);
+      if (jump === null) return;
+      e.preventDefault();
+      setDocJump(jump);
+      setDocTarget(sheet.name);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [effEditEnabled, docTarget, paletteOpen, data, activeSheet]);
 
   // Scroll-spy: highlight the last category scrolled past a reference line near
   // the top. Unlike a fixed top band, this still resolves at the very bottom of
@@ -4865,7 +5008,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   const OVERVIEW_TAB = -1;
 
   return html`
-    <div class=${`rs-app ${outlineOpen ? "rs-outline-open" : ""} ${artifactTarget ? "rs-with-artifact" : ""}`}>
+    <div class=${`rs-app ${outlineOpen ? "rs-outline-open" : ""} ${artifactTarget ? "rs-with-artifact" : ""} ${effEditEnabled ? "rs-edit-on" : ""}`}>
       <nav class=${`rs-sheet-tabs ${(data.groups?.length ?? 0) > 0 ? "rs-sheet-tabs-grouped" : ""}`} role="tablist">
         <div class="rs-tabs-nav">
           <button class=${`rs-toolbar-btn ${outlineOpen ? "rs-toolbar-btn-active" : ""}`} onClick=${() => setOutlineOpen(!outlineOpen)}
@@ -5192,7 +5335,13 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
           return html`
             <section key=${sheet.name} id=${`sheet-${idx}`} class="rs-sheet">
               <div class="rs-sheet-header">
-                <h2>
+                ${/* On a DOCUMENT sheet this heading is the document's own
+                      title: markdown.ts drops the source's first `#` from the
+                      body (the page already carries its name here, in the
+                      reader's language), so line 1 has no other element on the
+                      page. Without this the one heading a reader is most likely
+                      to select was the one the keystroke could not address. */ ""}
+                <h2 ...${sheet.document === undefined ? {} : { "data-rs-line": 1 }}>
                   <span class=${diff?.get(sheetKey(sheet.name)) === "removed" ? "rs-diff-strike" : ""}>${sheet.display ?? sheet.name}</span>
                   ${diff && diffBadge(diff.get(sheetKey(sheet.name)))}
                   ${/* A document sheet's own action. In the heading, at the
@@ -5203,9 +5352,8 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                     <span class="rs-header-actions">
                       <button class=${`rs-head-tool ${documentSource(reviews, sheet.name) !== undefined ? "rs-head-tool-on" : ""}`}
                               onClick=${() => setDocTarget(sheet.name)}
-                              title="${t.docEdit}" aria-label="${t.docEdit}">
+                              title="${t.docEditKey}" aria-label="${t.docEdit}">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        <span class="rs-tool-label">${t.docEditShort}</span>
                       </button>
                     </span>
                   `}
@@ -5271,11 +5419,14 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                           instances=${sheet.instances ?? []} lang=${lang} sheetIndex=${idx}
                           hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
                           rowKeys=${sheet.document.row_keys} sheetName=${sheet.name} artifact=${artifactAccess}
-                          onEditSection=${effEditEnabled
-                            ? (line: string) => { setDocJump(line); setDocTarget(sheet.name); }
+                          onEditAt=${effEditEnabled
+                            ? (jump: DocJump) => { setDocJump(jump); setDocTarget(sheet.name); }
                             : undefined} t=${t} />`
                 : sheet.document
-                ? html`<${DocumentBody} sheet=${sheet} reviews=${reviews} editEnabled=${effEditEnabled} t=${t} />`
+                ? html`<${DocumentBody} sheet=${sheet} reviews=${reviews} editEnabled=${effEditEnabled}
+                                        onEditAt=${effEditEnabled
+                                          ? (jump: DocJump) => { setDocJump(jump); setDocTarget(sheet.name); }
+                                          : undefined} t=${t} />`
                 : pivoted.has(sheet.name)
                 ? html`<${PivotView} sheet=${sheet} sheetIndex=${idx} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
                                      reviews=${reviews} reviewEnabled=${effReviewEnabled} editEnabled=${effEditEnabled}
@@ -5345,7 +5496,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
         return html`
           <${DocumentModal} sheet=${docTarget} original=${original}
                             current=${documentSource(reviews, docTarget) ?? original}
-                            sheetMode=${sheet?.document?.mode === "sheet"} jumpTo=${docJump}
+                            jump=${docJump}
                             onSave=${handleSaveEdit}
                             onClose=${() => { setDocTarget(null); setDocJump(undefined); }} t=${t} />
         `;
