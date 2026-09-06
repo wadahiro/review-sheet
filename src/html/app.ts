@@ -5036,9 +5036,6 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                   title=${t.navOutlineTip} aria-label=${t.navOutlineTip} aria-pressed=${outlineOpen}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
           </button>
-          <button class="rs-toolbar-btn" onClick=${() => setPaletteOpen(true)} title=${t.navSearchTip} aria-label=${t.navSearchTip}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          </button>
         </div>
         ${/* A document SET is read as chapters, from the tree beside the text
               (nav-tree.ts) — a strip of a hundred tabs is a menu nobody can
@@ -5115,6 +5112,18 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
             <//>
           `}
 
+          ${/* Search sits with the tools rather than beside the chapters: the
+                button on the left opens the panel next to it — a control whose
+                target is there belongs there — while search has no place of its
+                own on the page, which is what a toolbar is for. AFTER the
+                filters, because those change what the page shows and keep a
+                count of it; a control with state deserves the fixed slot, and a
+                transient overlay can sit beside it. */ ""}
+          <button class="rs-toolbar-btn" onClick=${() => setPaletteOpen(true)} title=${t.navSearchTip} aria-label=${t.navSearchTip}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
+          <span class="rs-tabs-sep"></span>
+
           ${/* Handing a REVIEW back — the export, the import, the clear — is
                 about findings, and belongs to a document that holds them. It
                 sits behind its own gate rather than the filters' widened one: a
@@ -5149,8 +5158,6 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
               <div class="rs-menu-divider"></div>
               <${MenuItem} label=${t.clearAllMenu} onClick=${handleClearAll} danger=${true} />
             <//>
-
-            <span class="rs-tabs-sep"></span>
           `}
           ${/* No export here, deliberately. In REVIEW mode the document cannot
                 write itself and findings live only in this browser's storage,
@@ -5186,19 +5193,10 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
               <span class="rs-btn-label">${t.aiPromptCopy}</span>
             </button>
           `}
-          ${effEditEnabled && pristineHtml !== undefined && html`
-            ${/* The word collapses on a narrow window like every other button
-                  label; the COUNT does not. It is the one thing on the bar
-                  saying this document is holding work the file does not have,
-                  and it went with the label. */ ""}
-            <button class=${`rs-toolbar-btn rs-toolbar-btn-labelled ${unsaved.length > 0 ? "rs-toolbar-btn-primary" : ""}`}
-                    onClick=${openSave} title=${`${t.saveTooltip}${unsaved.length > 0 ? ` \u2014 ${t.saveCount(unsaved.length)}` : ""}`}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              <span class="rs-btn-label">${t.saveDocument}</span>
-              ${unsaved.length > 0 && html`<span class="rs-btn-count">(${unsaved.length})</span>`}
-            </button>
-            <span class="rs-tabs-sep"></span>
-          `}
+          ${/* How the document LOOKS, which is nobody's work and everybody's
+                preference: at the edge, past the actions, before the one
+                button with consequences. */ ""}
+          <span class="rs-tabs-sep"></span>
           <button class="rs-toolbar-btn" title=${t.themeToggle} aria-label=${t.themeToggle}
                   onClick=${() => {
                     const next = (document.documentElement.dataset.theme === 'dark') ? 'light' : 'dark';
@@ -5221,6 +5219,23 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
             <button class="rs-toolbar-btn rs-lang-switch" aria-label=${lang === "ja" ? "Switch to English" : "日本語に切り替え"}
                     onClick=${() => setLang(lang === "ja" ? "en" : "ja")}>
               ${lang === "ja" ? "EN" : "JA"}
+            </button>
+          `}
+          ${/* Last, always: the one action with consequences, in the slot a
+                dialog puts its primary button in. It sat between the action
+                menus and the display toggles — grouped with neither, and in a
+                place that moved as those appeared and disappeared. */ ""}
+          ${effEditEnabled && pristineHtml !== undefined && html`
+            <span class="rs-tabs-sep"></span>
+            ${/* The word collapses on a narrow window like every other button
+                  label; the COUNT does not. It is the one thing on the bar
+                  saying this document is holding work the file does not have,
+                  and it went with the label. */ ""}
+            <button class=${`rs-toolbar-btn rs-toolbar-btn-labelled ${unsaved.length > 0 ? "rs-toolbar-btn-primary" : ""}`}
+                    onClick=${openSave} title=${`${t.saveTooltip}${unsaved.length > 0 ? ` \u2014 ${t.saveCount(unsaved.length)}` : ""}`}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              <span class="rs-btn-label">${t.saveDocument}</span>
+              ${unsaved.length > 0 && html`<span class="rs-btn-count">(${unsaved.length})</span>`}
             </button>
           `}
         </div>

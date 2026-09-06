@@ -811,6 +811,16 @@ code {
   padding-left: 1rem;
 }
 
+/* Each group brings its own leading separator, and several of them are
+   conditional — so a separator with nothing before it, or a second one against
+   the first, is dropped here rather than by each group knowing what its
+   neighbours are doing. */
+.rs-tabs-right > .rs-tabs-sep:first-child,
+.rs-tabs-right > .rs-tabs-sep:last-child,
+.rs-tabs-right > .rs-tabs-sep + .rs-tabs-sep {
+  display: none;
+}
+
 .rs-tabs-sep {
   width: 1px;
   height: 1.25rem;
