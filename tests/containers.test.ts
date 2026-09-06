@@ -59,16 +59,19 @@ function collect(): Emitted[] {
 
 const join = (e: Entry): string => (e.containers ?? []).map((n) => n.pathSeg).join(".");
 
+// Both of these re-extract every fixture in the repository to decide one
+// thing, so they carry their own timeout: on a loaded machine the default 5s
+// fails them over the clock, which says nothing about the code.
 describe("container chain conformance", () => {
   it("only the parsers declared to emit a chain do", () => {
     const seen = [...new Set(emitted().map((e) => e.parser))].sort();
     expect(seen).toEqual([...EMITTING].sort());
-  });
+  }, 60_000);
 
   it("each declared parser actually produced some", () => {
     const seen = new Set(emitted().map((e) => e.parser));
     expect(EMITTING.filter((p) => !seen.has(p))).toEqual([]);
-  });
+  }, 60_000);
 
   it("the chain is the address's enclosing prefix, at a segment boundary", () => {
     const bad: string[] = [];

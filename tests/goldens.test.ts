@@ -25,6 +25,11 @@ describe("extraction goldens", () => {
   // never meant to claim, and this file passes alone while failing in the run.
   beforeEach(stubNonBuiltInParsers);
 
+  // A long timeout, not because the check is slow to decide but because it
+  // RE-EXTRACTS every fixture in the repository to decide it. On a loaded
+  // machine that crosses the default 5s and fails a suite over the clock, which
+  // is the worst kind of red: it says nothing about the code and teaches people
+  // to re-run instead of read.
   it("every parser still extracts exactly what it did", () => {
     const now = buildGoldens(goldenFiles());
     // Compared as maps, so a file ADDED to the repo reports as its own failure
@@ -38,7 +43,7 @@ describe("extraction goldens", () => {
       return n.parser !== r.parser || n.count !== r.count || n.sha !== r.sha;
     });
     expect(moved.map(([f]) => f)).toEqual([]);
-  });
+  }, 60_000);
 
   // The safety net is only as good as its coverage, and it started with none
   // for eight parsers — including every tree-bearing one due to be rebuilt.
