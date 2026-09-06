@@ -36,6 +36,7 @@ import { loadBuildSpec, specDirOf } from "./spec.js";
 import { inspectTs, lintTs } from "./parsers/ts.js";
 import { inspectPy, lintPy } from "./parsers/py.js";
 import { renderParserPage, renderParserList } from "./parser-docs.js";
+import { restrictInstances, instancesOf, formatRestrictReport, selectSheets, sheetsOf, formatSheetSelection } from "./restrict.js";
 import type { Category, ReviewItem } from "./types.js";
 
 // Best-effort open the default browser at a URL (used by `serve`).
@@ -342,8 +343,10 @@ program
   .option("--no-sources", "Hide where each value is written (the file name under a row, the sheet's rendered-from line, a preview's source line). The source map stays in the file — apply and verify still work")
   .option("--lang <lang>", "UI language: ja | en (default: ja)", "ja")
   .option("--no-previews", "Leave the previewed files out: the panel that shows a row's line in its deployed file, and the affordance that opens it. They are the file as it was AT GENERATION — a document maintained by hand afterwards keeps its values current and the preview does not, so a delivery that will be edited for a long time may prefer not to carry a picture that quietly ages. Also the biggest single part of the file (measured on a real document: 1.1 MB of payload against 0.6 MB without)")
+  .option("--sheets <names...>", "Make this document out of these sheets only. A requirements note, a parameter sheet and a test record are separate documents in the world — approved separately, revised on their own cycles — and one build can produce each of them. The sheets keep the document's own order; what is left out is reported")
+  .option("--instances <names...>", "Deliver only these environments: the columns, the per-environment values and the previews rendered for the others are left out of the document. Not every environment a build knows belongs to the same handover — one of them is usually the one an engineer keeps in order to build the others. What it drops is reported, including rows left with nothing to show")
   .option("--full-edit", "Hand the sheet over as a document its recipient maintains by hand: every sheet becomes markdown, in ONE language, and the whole page is editable. Implies --allow edit and turns the review affordances OFF (there is no cell to comment on — a note goes in the text). The per-cell review targets and the language toggle for content are not in such a document")
-  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; lang: string; fullEdit?: boolean }) => {
+  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; lang: string; fullEdit?: boolean; instances?: string[]; sheets?: string[] }) => {
     try {
       const files = opts.input;
       let input: ParameterSheetInput | VersionedSheetInput;
@@ -371,6 +374,40 @@ program
       // Dropped HERE, before anything reads them: a preview nobody asked for
       // should not reach the payload, the viewer's index, or the file's size.
       if (opts.previews === false) input = withoutPreviews(input);
+      // Which sheets this document is made of, before the environments: a sheet
+      // nobody is delivering has no environments worth reporting on.
+      if (opts.sheets !== undefined) {
+        const has = sheetsOf(input);
+        const unknown = opts.sheets.filter((n) => !has.includes(n));
+        if (unknown.length > 0) {
+          console.error(`Error: --sheets: ${unknown.join(", ")} — this document has ${has.join(", ")}`);
+          process.exit(1);
+        }
+        const done = selectSheets(input, opts.sheets);
+        input = done.input;
+        console.error(formatSheetSelection(done.report));
+      }
+      // …and the environments this delivery does not cover, for the same reason
+      // and at the same moment: before the markdown projection below reads the
+      // columns, and before anything is packaged.
+      if (opts.instances !== undefined && instancesOf(input).length > 0) {
+        // A document with no environment columns at all — a prose page, or a
+        // sheet whose subject has one configuration — has nothing to restrict,
+        // and says so rather than refusing: one delivery script names the
+        // environments once, for documents that have them and documents that do
+        // not.
+        const has = instancesOf(input);
+        const unknown = opts.instances.filter((i) => !has.includes(i));
+        if (unknown.length > 0) {
+          console.error(`Error: --instances: ${unknown.join(", ")} — this document has ${has.join(", ")}`);
+          process.exit(1);
+        }
+        const done = restrictInstances(input, opts.instances);
+        input = done.input;
+        // Always printed: a delivery that quietly left an environment out is
+        // the thing this flag must never be used to do by accident.
+        console.error(formatRestrictReport(done.report));
+      }
       const lang = opts.lang === "en" ? "en" : "ja";
       // The content's language is decided HERE and never again: a full-edit
       // document carries text, not a model, so nothing downstream can re-resolve
