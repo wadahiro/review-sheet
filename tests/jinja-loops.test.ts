@@ -642,3 +642,117 @@ describe("a loop row that lands on the instance axis", () => {
     expect(row.instances?.map((i) => i.source?.file)).toEqual(["/vars.yml"]);
   });
 });
+
+
+// A line whose KEY is produced by its own expression. `{{ '--x ' ~ v if v else '' }}`
+// is a one-line `{% if %}`, and the engine renders it correctly — but the row
+// never existed, because row identity is read off the MASKED template, where
+// the whole line is one placeholder and the option name is nowhere to be seen.
+// Measured on a real template: `--secret-id` and `--region`, written literally,
+// became rows; `--endpoint-url`, produced by the expression beside them, did
+// not, and its variable was left as a row of its own that no deployed file
+// holds.
+describe("a line whose key its own expression produces", () => {
+  const FILES6: Record<string, string> = {
+    "/vars.yml": "ep: ''\nsecret: s1\n",
+    "/local.yml": "ep: http://aws-stub:4566\n",
+    "/prod.yml": "{}\n",
+    "/f.sh.j2":
+      "#!/bin/sh\naws get \\\n  --secret-id {{ secret }} \\\n  {{ '--endpoint-url ' ~ ep if ep else '' }} \\\n  --query S\n",
+  };
+  const load = (files: Record<string, string> = FILES6, byPath = false) =>
+    getRecipe("ansible")!.load(
+      {
+        name: "s",
+        recipe: "ansible",
+        rows: "artifact",
+        // A list of maps is only addressable — hence loopable — when its keys
+        // carry their path, which is the declaration every loop needs.
+        defaults: byPath ? [{ path: "/vars.yml", key: { from: "path" } }] : "/vars.yml",
+        overlays: { local: "/local.yml", prod: "/prod.yml" },
+        templates: [{ path: "/f.sh.j2", component: "f", deployed_path: "/usr/local/bin/f.sh" }],
+      } as never,
+      { readFile: (p: string) => files[p] ?? null, specDir: "/", resolve: (p: string) => p, instances: ["local", "prod"] } as never
+    ) as unknown as {
+      embedded?: {
+        key: string;
+        value: string;
+        instances?: { name: string; value: string; source?: { file?: string; substituted?: boolean } }[];
+        absent_where_unlisted?: boolean;
+      }[];
+      layers: { entries: Map<string, unknown> }[];
+    };
+
+  it("is a row of the artifact, in the environments that render it", () => {
+    const rows = load().embedded ?? [];
+    const ep = rows.find((e) => e.key.startsWith("--endpoint-url"));
+    expect(ep).toBeDefined();
+    expect(ep!.instances?.map((i) => i.name)).toEqual(["local"]);
+    expect(ep!.instances?.[0].value).toBe("http://aws-stub:4566");
+    // The environments that render it to nothing do not have the line at all.
+    expect(ep!.absent_where_unlisted).toBe(true);
+  });
+
+  // The variable is the row's under_key, so it is not ALSO a row of its own —
+  // the same rule every other artifact row follows.
+  it("consumes the variable behind it", () => {
+    const base = [...load().layers[0].entries.keys()];
+    expect(base).not.toContain("ep");
+  });
+
+  // Its site is where the value is WRITTEN, never the template line, which
+  // holds an expression and not the value.
+  it("points at the variable's definition site", () => {
+    const ep = (load().embedded ?? []).find((e) => e.key.startsWith("--endpoint-url"))!;
+    expect(ep.instances?.[0].source?.file).toBe("/local.yml");
+    expect(ep.instances?.[0].source?.substituted).toBe(true);
+  });
+
+  // Inside a `{% for %}` the deployed file holds ONE COPY PER MEMBER, and the
+  // parser numbers them across the whole file. One row for all of them would be
+  // short by N-1 — silently, which is the loss this project refuses — so the
+  // artifact is rendered with its loops expanded and read as the file it is.
+  // The shape below is the real one: one such line outside a loop and one
+  // inside, sharing a name, so the occurrences have to interleave correctly.
+  it("has one row per copy the loop writes, numbered as the file numbers them", () => {
+    const looped = {
+      "/vars.yml": "ep: ''\nitems:\n  - name: a\n    secret: s-a\n  - name: b\n    secret: s-b\n",
+      "/local.yml": "ep: http://aws-stub:4566\n",
+      "/prod.yml": "{}\n",
+      "/f.sh.j2":
+        "#!/bin/sh\naws first \\\n  {{ '--endpoint-url ' ~ ep if ep else '' }} \\\n  --query S\n" +
+        "{% for v in items %}\naws get --secret-id {{ v.secret }} \\\n  {{ '--endpoint-url ' ~ ep if ep else '' }} \\\n  --query S\n{% endfor %}\n",
+    };
+    const rows = (load(looped, true).embedded ?? []).filter((e) => e.key.startsWith("--endpoint-url"));
+    // Three lines in the deployed file: one before the loop, two the loop wrote.
+    expect(rows.map((e) => e.key).sort()).toEqual(["--endpoint-url[0]", "--endpoint-url[1]", "--endpoint-url[2]"]);
+    for (const r of rows) {
+      expect(r.instances?.map((i) => i.name)).toEqual(["local"]);
+      expect(r.instances?.[0].value).toBe("http://aws-stub:4566");
+      expect(r.absent_where_unlisted).toBe(true);
+    }
+    // …and the siblings written literally keep exactly the numbering they had
+    // before this pass existed — including the loop expansion's own quirk of
+    // leaving the first copy unindexed when the template held the key once
+    // (pinned by its own test above). The two are numbered by different
+    // machines, and the point here is that neither moved the other.
+    const ids = (load(looped, true).embedded ?? []).filter((e) => e.key.startsWith("--secret-id"));
+    expect(ids.map((e) => e.key).sort()).toEqual(["--secret-id", "--secret-id[1]"]);
+  });
+
+  // …and never guesses. Two environments whose renderings are two DIFFERENT
+  // settings are not one row, and the engine's standing rule applies: report
+  // it, leave it out, rather than publish one of them under the other's name.
+  it("refuses a line that renders as a different setting per environment", () => {
+    const mixed = {
+      ...FILES6,
+      "/vars.yml": "ep: ''\nsecret: s1\nflag: ''\n",
+      "/local.yml": "ep: http://aws-stub:4566\nflag: yes\n",
+      "/prod.yml": "ep: http://other:1\n",
+      "/f.sh.j2":
+        "#!/bin/sh\naws get \\\n  --secret-id {{ secret }} \\\n  {{ ('--a ' ~ ep) if flag else ('--b ' ~ ep) }} \\\n  --query S\n",
+    };
+    const rows = load(mixed).embedded ?? [];
+    expect(rows.some((e) => e.key.startsWith("--a") || e.key.startsWith("--b"))).toBe(false);
+  });
+});

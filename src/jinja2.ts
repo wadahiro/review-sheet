@@ -28,6 +28,31 @@ export function jinjaVariables(text: string): string[] {
   return [...text.matchAll(/\{\{-?\s*([A-Za-z_][\w.]*)/g)].map((m) => m[1]);
 }
 
+// Every name an expression REFERENCES, not just the one it opens with.
+// `jinjaVariables` above answers "which variable IS this value", which is the
+// right question for a bare `{{ var }}` and returns NOTHING for
+// `{{ '--x ' ~ v if v else '' }}` — the expression opens with a literal, so the
+// first-identifier match finds no variable at all and the line reads as using
+// none. Widening that function instead would change what every 1:1 rule in the
+// ansible recipe counts, so this is a second, broader question with its own
+// name.
+//
+// String literals are removed first (a word inside one is text, not a name) and
+// the operator words are dropped. A filter name survives — it is an identifier
+// in the same position — and callers keep only the names they can resolve, so
+// an extra one costs nothing and a missing one costs a row.
+const JINJA_WORDS = new Set(["if", "else", "not", "and", "or", "in", "is", "true", "false", "none", "None", "True", "False"]);
+export function jinjaNames(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(/\{\{-?([\s\S]*?)-?\}\}/g)) {
+    const bare = m[1].replace(/'[^']*'|"[^"]*"/g, " ");
+    for (const id of bare.matchAll(/[A-Za-z_][\w.]*/g)) {
+      if (!JINJA_WORDS.has(id[0])) out.push(id[0]);
+    }
+  }
+  return [...new Set(out)];
+}
+
 // Substitute a line's `{{ var }}` references with the values they resolve to,
 // leaving everything else — the literal text a template puts around them —
 // exactly as written. This is what lets a row be the artifact's LINE rather

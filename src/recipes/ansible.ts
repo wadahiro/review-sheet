@@ -95,12 +95,15 @@ import { structuredFormat, STRUCTURED_FORMATS, parseSteps } from "../structural.
 import {
   baseFileName,
   jinjaVariables,
+  jinjaNames,
   substituteJinja,
   jinjaConditions,
   jinjaLoops,
+  jinjaLoopBlocks,
   truthyJinja,
   type LineCondition,
   type LineLoop,
+  type LoopBlock,
 } from "../jinja2.js";
 import { registerRecipe, type SheetRecipe, type RecipeIO, type JsonValue } from "../recipe.js";
 import { previewRendered, previewId, addLineKey, type LineKeys } from "../preview.js";
@@ -377,6 +380,65 @@ function readRequired(io: RecipeIO, path: string, what: string): { file: string;
   const content = io.readFile(file);
   if (content === null) throw new Error(`ansible recipe: ${what} not found: ${file}`);
   return { file, content };
+}
+
+// Lines whose KEY is produced by their own expression. `{{ '--x ' ~ v if v else
+// '' }}` writes the option NAME as well as its value, so nothing of the row's
+// identity survives masking: the parser that decides row identity sees one
+// placeholder and whatever whitespace or line-continuation surrounds it.
+//
+// Deliberately narrow. A line with any literal text of its own is keyed from
+// that text, as every artifact row is, and must keep being — this is only for
+// the line that has none. Returns 1-based line numbers, matching `source.line`.
+function expressionOnlyLines(content: string): Set<number> {
+  const out = new Set<number>();
+  content.split("\n").forEach((raw, i) => {
+    const spans = [...raw.matchAll(/\{\{.*?\}\}/g)];
+    if (spans.length !== 1) return;
+    // What is left once the expression is taken out may only be whitespace and
+    // a continuation marker — never a word, which would be the key.
+    const rest = raw.slice(0, spans[0].index) + raw.slice(spans[0].index + spans[0][0].length);
+    if (/^[\s\\]*$/.test(rest)) out.add(i + 1);
+  });
+  return out;
+}
+
+// The artifact this template deploys, for one instance — loops expanded, so
+// what comes out has the shape the deployed file has and a parser reading it
+// numbers repeated keys the way the file does. Not a full Jinja renderer: a
+// block tag other than a plain `{% for %}` is blanked, because the machinery
+// that decides those lines' fate is elsewhere and two engines disagreeing about
+// one line is worse than one engine admitting it stopped.
+function renderedArtifact(
+  content: string,
+  resolve: (name: string) => string | undefined,
+  blocks: LoopBlock[],
+  membersOf: (list: string) => { value?: string; fields?: Map<string, { value: string }> }[]
+): string {
+  const lines = content.split("\n");
+  const out: string[] = [];
+  const render = (raw: string, extra?: (name: string) => string | undefined): string =>
+    raw.includes("{%") ? "" : substituteJinja(raw, (n) => extra?.(n) ?? resolve(n)).text;
+  for (let i = 0; i < lines.length; i++) {
+    const block = blocks.find((b) => b.start === i + 1);
+    if (block === undefined) {
+      out.push(render(lines[i]));
+      continue;
+    }
+    const body = lines.slice(block.start, block.end - 1);
+    for (const m of membersOf(block.list)) {
+      const bind = (n: string): string | undefined => {
+        if (n === block.variable) return m.value;
+        if (m.fields !== undefined && n.startsWith(`${block.variable}.`)) {
+          return m.fields.get(n.slice(block.variable.length + 1))?.value;
+        }
+        return undefined;
+      };
+      for (const raw of body) out.push(render(raw, bind));
+    }
+    i = block.end - 1;
+  }
+  return out.join("\n");
 }
 
 export const ansibleRecipe: SheetRecipe = {
@@ -794,10 +856,18 @@ export const ansibleRecipe: SheetRecipe = {
       // directions of the preview panel hang off this: a row finds its place in
       // the file, and a line finds the row that reviews it.
       const keyAtLine = new Map<string, LineKeys>();
+      // Every key this recipe emits for a template, so a later pass can ask
+      // what is NOT there. Collected here because every emitted row passes
+      // through this call — a second list kept by hand is a second thing to
+      // forget, which is exactly how the gap below came to exist.
+      const keysOfTemplate = new Map<string, Set<string>>();
       const rowAtLine = (templatePath: string, line: number | undefined, key: string, member = 0): void => {
         const perFile = keyAtLine.get(templatePath) ?? new Map<number, string[][]>();
         addLineKey(perFile, line, key, member);
         keyAtLine.set(templatePath, perFile);
+        const keys = keysOfTemplate.get(templatePath) ?? new Set<string>();
+        keys.add(key);
+        keysOfTemplate.set(templatePath, keys);
       };
       // Filled by pass 1 below and handed to the model — see the return.
       const entryKeysByVariable = new Map<string, string[]>();
@@ -873,7 +943,7 @@ export const ansibleRecipe: SheetRecipe = {
       // whether an entry earns its product key or falls back to the variable
       // name.
       const bound: ExtractedMap = new Map();
-      for (const { spec, file, entries, structured, conditions, loops } of read) {
+      for (const { spec, file, content, entries, structured, conditions, loops } of read) {
         // The heading a reader wants is the file on the host, not the id this
         // spec files rows under: `logrotate-httpd` is the template's name,
         // `/etc/logrotate.d/httpd` is the thing being reviewed. The id stays
@@ -1505,6 +1575,125 @@ export const ansibleRecipe: SheetRecipe = {
           // "source"-only (no template) embedded path already use.
           bound.set(literalKey, { value: entry.value, source, origin: "embedded" });
           rowAtLine(spec.path, entry.source.line, literalKey);
+        }
+
+        // …and the lines the pass above could not see at all: the ones whose
+        // KEY their own expression writes (`{{ '--x ' ~ v if v else '' }}`).
+        // Masked, such a line is one placeholder, so the parser that decides
+        // row identity has nothing to key on and the row simply never existed —
+        // measured on a real template, where the two options written literally
+        // beside it became rows and this one did not, leaving its variable as a
+        // row of its own that no deployed file holds.
+        //
+        // Answered by RENDERING THE WHOLE ARTIFACT per instance, loops and all,
+        // and reading it with the artifact's own parser. Never the line on its
+        // own and never a template rendered line-by-line: a `{% for %}` writes
+        // its body once per member, so the deployed file holds several copies
+        // and the parser numbers them across the file — one row for all of them
+        // would be short by N-1, silently, and hand-numbering them here would
+        // be a second numbering machine to drift from the parser's.
+        const exprLines = rowsArtifact ? expressionOnlyLines(content) : new Set<number>();
+        // Which keys such a line can produce, and which variables are behind
+        // them. Read from the line ALONE — its own rendering is all that is
+        // needed to learn the NAME, and the whole-file pass below decides which
+        // occurrences of that name exist.
+        const exprBaseKeys = new Set<string>();
+        const exprVars = new Set<string>();
+        for (const at of exprLines) {
+          for (const v of jinjaNames(content.split("\n")[at - 1] ?? "")) {
+            if (defaultsMap.has(v)) exprVars.add(v);
+          }
+        }
+        // The whole file, rendered LINE BY LINE (no loop expansion) so line
+        // numbers still address the template — that is what says which entry
+        // came from an expression-only line. A line read on its own would not
+        // do: a format's own grammar is read over the file, not the line, and
+        // a lone `  --x v \` is not a statement any parser recognises.
+        if (exprLines.size > 0) {
+          for (const instance of io.instances.length > 0 ? io.instances : [undefined]) {
+            const flat = renderedArtifact(content, (n) => valueIn(instance, n), [], () => []);
+            for (const e of extractFile(flat, spec.deployedPath ?? file, formatOf(spec) as never, io.extractOptions)) {
+              if (e.source.line === undefined || !exprLines.has(e.source.line)) continue;
+              // The row's key is its structural path where the format has one
+              // — the same `literalKey` every other row here is named by. Using
+              // the leaf instead put a rotation policy's `daily` beside its own
+              // `/var/log/app/*.log.daily` and the file's directive appeared
+              // twice.
+              const named = e.source.path ?? e.key;
+              exprBaseKeys.add(splitIndex(named)?.base ?? named);
+            }
+          }
+        }
+        if (exprBaseKeys.size > 0) {
+          const names = io.instances.length > 0 ? io.instances : [undefined];
+          const blocks = jinjaLoopBlocks(content);
+          const emitted = keysOfTemplate.get(spec.path) ?? new Set<string>();
+          // key -> instance -> the value the artifact holds there
+          const found = new Map<string, Map<string | undefined, Entry>>();
+          for (const instance of names) {
+            const rendered = renderedArtifact(content, (n) => valueIn(instance, n), blocks, (list) =>
+              loopMembers(list, instance)
+            );
+            for (const e of extractFile(rendered, spec.deployedPath ?? file, formatOf(spec) as never, io.extractOptions)) {
+              // Only a name an expression-only line writes, and only an
+              // occurrence the ordinary pass did not already emit. Anything
+              // else that differs between the masked template and the rendered
+              // artifact is somebody else's report to make, not this pass's row
+              // to claim.
+              const named = e.source.path ?? e.key;
+              const base = splitIndex(named)?.base ?? named;
+              if (!exprBaseKeys.has(base) || emitted.has(named)) continue;
+              const per = found.get(named) ?? new Map<string | undefined, Entry>();
+              per.set(instance, e);
+              found.set(named, per);
+            }
+          }
+          for (const [key, per] of found) {
+            const perInstance = [...per].map(([instance, e]) => {
+              const site = [...exprVars].reduce<ReturnType<typeof overlayEntryFor>>(
+                (f, v) => f ?? (instance === undefined ? undefined : overlayEntryFor(instance, v)),
+                undefined
+              );
+              const base = [...exprVars].map((v) => defaultsMap.get(v)).find((d) => d !== undefined);
+              // Where the value is WRITTEN. Never the template line — it holds
+              // an expression and not the value — so the row points at the
+              // variable's own site, marked `substituted` like every other row
+              // whose value is a rendered line.
+              const from = site ?? base;
+              return {
+                name: instance as string,
+                value: e.value,
+                source:
+                  from === undefined
+                    ? { ...e.source, file: spec.path }
+                    : { ...from.source, substituted: true as const },
+              };
+            });
+            const one = [...per.values()][0];
+            embedded.push({
+              key,
+              value: perInstance[0].value,
+              source: perInstance[0].source,
+              component: spec.component,
+              categoryPath: one.categoryPath,
+              containers: one.containers,
+              instances: perInstance,
+              ...(spec.deployedPath !== undefined ? { deployed_file: spec.deployedPath } : {}),
+              // The environments it renders to nothing do not have the line.
+              ...(perInstance.length < names.length ? { absent_where_unlisted: true as const } : {}),
+            });
+            rowAtLine(spec.path, one.source.line, key);
+          }
+          // The variables behind them are the rows' under_key, so they are not
+          // ALSO rows of their own — the rule every other artifact row follows.
+          if (found.size > 0) {
+            for (const v of exprVars) consumedVars.add(v);
+            if (exprVars.size === 1) {
+              for (const key of found.keys()) {
+                keyMapCandidates.push({ key, variable: [...exprVars][0], component: spec.component });
+              }
+            }
+          }
         }
       }
       for (const [variable, component] of templateOfVariable) {
