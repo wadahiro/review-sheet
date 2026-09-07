@@ -255,6 +255,9 @@
               }
             }
           }
+        },
+        "test": {
+          "$ref": "#/$defs/testDeclaration"
         }
       },
       "if": {
@@ -596,6 +599,31 @@
           "items": {
             "$ref": "#/$defs/sheetGroup"
           }
+        },
+        "test": {
+          "$ref": "#/$defs/testDeclaration"
+        }
+      }
+    },
+    "testDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How this unit is tested — the part of a unit-test document nothing can derive from the model (testplan.ts). A unit that holds testable rows must declare either method or not_tested.",
+      "properties": {
+        "method": {
+          "$ref": "#/$defs/langText",
+          "description": "How this unit is tested at all. Written once per unit, which is the level a unit-test document is organised at."
+        },
+        "functional": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/langText"
+          },
+          "description": "Items with no row behind them: that a product starts, stops, restarts, that its console opens."
+        },
+        "not_tested": {
+          "$ref": "#/$defs/langText",
+          "description": "…or the unit is not tested in this phase, and why. A unit with neither this nor method fails the build."
         }
       }
     }

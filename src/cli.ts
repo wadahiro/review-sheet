@@ -37,6 +37,7 @@ import { inspectTs, lintTs } from "./parsers/ts.js";
 import { inspectPy, lintPy } from "./parsers/py.js";
 import { renderParserPage, renderParserList } from "./parser-docs.js";
 import { restrictInstances, instancesOf, formatRestrictReport, selectSheets, sheetsOf, formatSheetSelection } from "./restrict.js";
+import { buildTestPlan, formatTestPlanReport } from "./testplan.js";
 import type { Category, ReviewItem } from "./types.js";
 
 // Best-effort open the default browser at a URL (used by `serve`).
@@ -451,6 +452,48 @@ program
       } else {
         process.stdout.write(html);
       }
+    } catch (e) {
+      console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("test-plan")
+  .description("Derive the unit test's plan from a model: what to check, in which environment, and what is expected")
+  .requiredOption("-i, --input <file>", "Model (input.json)")
+  .option("-o, --output <file>", "Where to write the plan (default: stdout)")
+  .option("--instances <names...>", "Only these environments (default: every one the model has)")
+  .option("--sheets <names...>", "Only these sheets")
+  .action((opts: { input: string; output?: string; instances?: string[]; sheets?: string[] }) => {
+    try {
+      let input = JSON.parse(readFileSync(opts.input, "utf-8")) as ParameterSheetInput;
+      // The same two filters a delivery uses, and applied the same way: the
+      // MODEL is narrowed first and every loss is reported, so a plan that
+      // covers less than the document does says so out loud rather than being
+      // quietly shorter. See restrict.ts.
+      if (opts.sheets !== undefined) {
+        const has = sheetsOf(input);
+        const unknown = opts.sheets.filter((n) => !has.includes(n));
+        if (unknown.length > 0) throw new Error(`--sheets: ${unknown.join(", ")} — this document has ${has.join(", ")}`);
+        const done = selectSheets(input, opts.sheets);
+        input = done.input;
+        console.error(formatSheetSelection(done.report));
+      }
+      if (opts.instances !== undefined && instancesOf(input).length > 0) {
+        const has = instancesOf(input);
+        const unknown = opts.instances.filter((i) => !has.includes(i));
+        if (unknown.length > 0) throw new Error(`--instances: ${unknown.join(", ")} — this document has ${has.join(", ")}`);
+        const done = restrictInstances(input, opts.instances);
+        input = done.input;
+        console.error(formatRestrictReport(done.report));
+      }
+      const { plan, report } = buildTestPlan(input);
+      const json = JSON.stringify(plan, null, 2);
+      if (opts.output === undefined) console.log(json);
+      else writeFileSync(opts.output, json + "\n");
+      console.error(formatTestPlanReport(plan, report));
+      if (opts.output !== undefined) console.error(`Wrote ${opts.output}`);
     } catch (e) {
       console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
       process.exit(1);

@@ -224,6 +224,10 @@ export type SheetGroup = {
   // of its own is ordinary. Its own sheets come FIRST, before the child
   // chapters, which is the order a document is written in.
   groups?: SheetGroup[];
+  // How this UNIT is tested — see testplan.ts. It hangs here, on the chapter
+  // that holds sheets, because that is the level a unit-test document is
+  // organised at (大項目): one method for a server, not one per file it holds.
+  test?: TestDeclaration;
 };
 
 export type Capabilities = {
@@ -295,6 +299,10 @@ export type Sheet = {
   // builds produce the SAME review targets, and a wording can be fixed without
   // invalidating a review already in progress.
   label?: LangText;
+  // How this sheet is tested, when it belongs to no group and is therefore its
+  // own unit — see testplan.ts. A sheet inside a group is tested as part of
+  // that unit and this is not read for it.
+  test?: TestDeclaration;
   // Which group this sheet is read under (ParameterSheetInput.groups). Absent
   // = ungrouped, which is every document that declares no groups at all and is
   // what keeps a flat sheet set flat.
@@ -390,6 +398,20 @@ export type DocumentHeading = {
 // of the same sheet must not be shown it untranslated. `owner` is a team name
 // ("DBA", "Platform"), which is an identifier rather than prose, so it stays a
 // plain string.
+// How a UNIT of the design is tested — the part of a unit-test document that
+// nothing can derive from the model. Defined here because both a group and a
+// sheet may carry one; the derivation that reads it is testplan.ts.
+export type TestDeclaration = {
+  // （１）テスト方法 — how this unit is tested at all, written once per unit.
+  method?: LangText;
+  // Items with no row behind them: that a product starts, stops, restarts,
+  // that its console opens. A parameter sheet cannot produce these.
+  functional?: LangText[];
+  // …or the unit is not tested in this phase, and that is a decision, stated
+  // where a reader looks for its items. A unit with neither fails the build.
+  not_tested?: LangText;
+};
+
 export type OutOfScope = {
   reason: LangText;
   owner?: string;

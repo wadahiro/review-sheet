@@ -14,6 +14,7 @@
 
 import { parse } from "yaml";
 import { registerMetadataProvider, type MetadataProvider, type MetadataContext, type MetadataQuery, type MetadataResult, type LangText } from "../metadata.js";
+import type { TestDeclaration } from "../types.js";
 
 export type ProjectMetaParam = {
   // Assembler-only hint: which category this project key belongs to. NOT
@@ -191,7 +192,11 @@ export type ProjectMetaDoc = {
 };
 
 // A chapter, and the chapters inside it (types.ts's SheetGroup).
-export type SheetGroupMeta = { name: string; label?: LangText; groups?: SheetGroupMeta[] };
+// `test` is carried verbatim into the model's own groups (see assemble.ts,
+// which emits `declaredGroups` as they are read) because it is what the unit
+// test's plan is derived against — the one part of that document nothing can
+// derive. See testplan.ts.
+export type SheetGroupMeta = { name: string; label?: LangText; groups?: SheetGroupMeta[]; test?: TestDeclaration };
 
 // A `category:` list is a path, and every segment of it has to be a real name.
 // Checked once at load, where the file can be named, rather than per row deep
