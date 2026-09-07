@@ -246,3 +246,43 @@ describe("the declaration in a model", () => {
     expect(() => validateInput(doc)).not.toThrow();
   });
 });
+
+// WHERE to look. A collector cannot answer an item without it, and the plan is
+// what the collector reads — so the deployed path travels with the item rather
+// than being re-derived from the model by whoever is doing the looking.
+describe("the file an item is checked in", () => {
+  it("is the sheet's deployed path", () => {
+    const { plan } = buildTestPlan(
+      withGroup(TESTED, { instances: ["staging"], file_path: "/etc/httpd/conf/httpd.conf" })
+    );
+    expect(plan.items[0].file).toBe("/etc/httpd/conf/httpd.conf");
+  });
+
+  // …and the component's own, on a sheet that covers several artifacts: one
+  // path for the whole sheet would send the collector at the wrong file for
+  // every component but one.
+  it("is the component's own on a sheet that covers several", () => {
+    const { plan } = buildTestPlan(
+      withGroup(TESTED, {
+        instances: ["staging"],
+        file_path: "/etc/one",
+        categories: [
+          { name: "unit", file_path: "/etc/systemd/system/x.service", params: [{ key: "a", description: "d", origin: "common", value: "1" }] },
+          { name: "conf", file_path: "/etc/x.conf", params: [{ key: "b", description: "d", origin: "common", value: "2" }] },
+        ],
+      })
+    );
+    expect(plan.items.map((i) => [i.target.key, i.file])).toEqual([
+      ["a", "/etc/systemd/system/x.service"],
+      ["b", "/etc/x.conf"],
+    ]);
+  });
+
+  // A sheet whose subject is not a file on a host — a product's API-side
+  // configuration, a cloud resource — says nothing rather than guessing, and
+  // that silence is why such an item usually comes back not run.
+  it("is absent when the sheet describes no deployed file", () => {
+    const { plan } = buildTestPlan(withGroup(TESTED, { instances: ["staging"] }));
+    expect(plan.items[0].file).toBeUndefined();
+  });
+});

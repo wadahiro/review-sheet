@@ -34,6 +34,12 @@ export type TestItem = {
   // The deployed file the row belongs to, when the sheet says which — the
   // component is what a document sub-heads its items with.
   component?: string;
+  // …and WHERE that file lands on the host. What a collector needs in order to
+  // answer this item at all: the plan says what to check and where to look, and
+  // the thing that looks is outside. Absent where the sheet describes no
+  // deployed file (a product's API-side configuration, a cloud resource), which
+  // is itself the reason such an item usually comes back not run.
+  file?: string;
   kind: TestKind;
   // Absent on a `quiet` item and on `absent` items, which expect no value.
   expected?: string;
@@ -99,16 +105,19 @@ const expectedOf = (p: Parameter, instance: string, kind: TestKind): string | un
   return per === undefined ? ("value" in p ? p.value : undefined) : per.find((i) => i.name === instance)?.value;
 };
 
-type Row = { p: Parameter; path: string[]; component?: string; outOfScope?: OutOfScope };
+type Row = { p: Parameter; path: string[]; component?: string; file?: string; outOfScope?: OutOfScope };
 
 const rowsOf = (sheet: Sheet): Row[] => {
   const out: Row[] = [];
-  const walk = (cats: NonNullable<Sheet["categories"]>, path: string[], inherited?: OutOfScope): void => {
+  // The deployed path is the top-level category's own when it has one (a sheet
+  // covering several artifacts names each of them), and the sheet's otherwise.
+  const walk = (cats: NonNullable<Sheet["categories"]>, path: string[], inherited?: OutOfScope, file?: string): void => {
     for (const c of cats) {
       const oos = c.out_of_scope ?? inherited;
       const here = [...path, c.name];
-      for (const p of c.params ?? []) out.push({ p, path: here, component: here[0], outOfScope: p.out_of_scope ?? oos });
-      walk(c.categories ?? [], here, oos);
+      const where = path.length === 0 ? (c.file_path ?? sheet.file_path) : file;
+      for (const p of c.params ?? []) out.push({ p, path: here, component: here[0], ...(where === undefined ? {} : { file: where }), outOfScope: p.out_of_scope ?? oos });
+      walk(c.categories ?? [], here, oos, where);
     }
   };
   walk(sheet.categories ?? [], []);
@@ -174,6 +183,7 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
           ...(u.label === undefined ? {} : { unitLabel: u.label }),
           ...(sheet.label === undefined ? {} : { sheetLabel: sheet.label }),
           ...(row.component === undefined ? {} : { component: row.component }),
+          ...(row.file === undefined ? {} : { file: row.file }),
           kind,
           ...(row.p.secret === true ? { quiet: true as const } : expected === undefined ? {} : { expected }),
         });

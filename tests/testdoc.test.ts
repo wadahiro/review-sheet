@@ -51,10 +51,10 @@ describe("the tables a document is given", () => {
 
   it("puts each environment in its own section, with when it ran and where", () => {
     const b = renderTestDoc(plan(), results(), "server");
-    expect(b["test:items"]).toContain("## local");
+    expect(b["test:items"]).toContain("### local");
     expect(b["test:items"]).toContain("実施日時: 2026-09-07T07:36:49Z ／ 対象ホスト: web01, web02");
     // …and an environment nobody ran says so rather than looking blank.
-    expect(b["test:items"]).toContain("## prod");
+    expect(b["test:items"]).toContain("### prod");
     expect(b["test:items"]).toContain("実施日時: — ／ 対象ホスト: — （未実施）");
   });
 
@@ -88,6 +88,7 @@ describe("the tables a document is given", () => {
     const b = renderTestDoc(plan(), results(), "server");
     // 4 items shown (the default-in-force one is counted separately): Listen×2,
     // pw, Gone. Answered: all but the not_run one.
+    expect(b["test:summary"]).toContain("| テスト項目数 | 4（local 3 / prod 1） |");
     expect(b["test:summary"]).toContain("| 実施済み | 3 |");
     expect(b["test:summary"]).toContain("| 未実施 | 1 |");
     expect(b["test:summary"]).toContain("| 判定 | OK 2 / NG 1 |");
@@ -169,5 +170,14 @@ describe("putting them into the document", () => {
   it("refuses a marker nothing produced", () => {
     const asks = doc + "\n<!-- test:functional:start -->\n<!-- test:functional:end -->\n";
     expect(() => injectBlocks(asks, { "test:items": "X" })).toThrow(/test:functional/);
+  });
+});
+
+// The method is declared once, where the plan reads it, and rendered where the
+// document asks for it — never written twice.
+describe("the method a project declared", () => {
+  it("is rendered from the declaration", () => {
+    const b = renderTestDoc(plan(), results(), "server");
+    expect(b["test:method"]).toBe("実機のファイルを読む");
   });
 });

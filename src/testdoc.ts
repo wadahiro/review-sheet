@@ -167,6 +167,14 @@ export function renderTestDoc(
 
   const blocks: Record<string, string> = {};
 
+  // （１）テスト方法 — the project's own words, rendered where the document
+  // asks for them rather than written twice. The declaration is what the plan
+  // is derived against, so a document that restated it by hand would be a
+  // second copy free to drift from the one the build reads.
+  const method = unit.declaration.not_tested ?? unit.declaration.method;
+  const methodText = pickLang(method, lang);
+  if (methodText !== undefined) blocks["test:method"] = methodText.trim();
+
   // （２）テスト項目の考え方 — the taxonomy, and what this document does about
   // each level. The third row is the one that matters: it says the coverage is
   // derived, which is a claim the build keeps rather than a sentence.
@@ -176,8 +184,12 @@ export function renderTestDoc(
   const answered = shown.filter((i) => answerFor(index, i) !== undefined && answerFor(index, i)!.status !== "not_run");
   const ok = answered.filter((i) => answerFor(index, i)!.status === "pass").length;
   const ng = answered.length - ok;
+  // Per environment AND in total, because the two are not one number divided by
+  // the other: a row that states nothing in one environment has an item in the
+  // others, so the count differs between them and dividing produced a fraction.
+  const per = instances.map((i) => `${i} ${shown.filter((x) => x.target.instance === i).length}`).join(" / ");
   const summary: string[][] = [
-    [t.count, `${shown.length / Math.max(instances.length, 1)} × ${instances.length} = ${shown.length}`],
+    [t.count, `${shown.length}（${per}）`],
     [t.done, String(answered.length)],
     [t.todo, String(shown.length - answered.length)],
     [t.result, `${t.pass} ${ok} / ${t.fail} ${ng}`],
@@ -197,12 +209,12 @@ export function renderTestDoc(
   const sections: string[] = [];
   for (const instance of instances) {
     const run = results.runs?.[instance];
-    sections.push(`## ${instance}`, "", run?.at === undefined ? t.notRunYet : t.ranAt(run.at, (run.hosts ?? []).join(", ") || "—"), "");
+    sections.push(`### ${instance}`, "", run?.at === undefined ? t.notRunYet : t.ranAt(run.at, (run.hosts ?? []).join(", ") || "—"), "");
     let n = 0;
     const here = shown.filter((i) => i.target.instance === instance);
     const components = [...new Set(here.map((i) => i.component ?? ""))];
     for (const component of components) {
-      if (components.length > 1 && component !== "") sections.push(`### ${component}`, "");
+      if (components.length > 1 && component !== "") sections.push(`#### ${component}`, "");
       const rows = here
         .filter((i) => (i.component ?? "") === component)
         .map((i) => {
