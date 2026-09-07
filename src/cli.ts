@@ -6,7 +6,8 @@ import { resolve, relative, join } from "path";
 import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { validateInput, validateReview, validateResults, validateVersionedInput, isVersionedInput } from "./validate.js";
-import { checkResults, formatResultsCheck, resultsCheckFails } from "./testresults.js";
+import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
+import { renderTestDoc, renderExcluded, injectBlocks } from "./testdoc.js";
 import { findBakedSecrets, formatBakedSecrets } from "./secrets.js";
 import { toFullEditInput } from "./full-edit.js";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument } from "./types.js";
@@ -495,6 +496,49 @@ program
       else writeFileSync(opts.output, json + "\n");
       console.error(formatTestPlanReport(plan, report));
       if (opts.output !== undefined) console.error(`Wrote ${opts.output}`);
+    } catch (e) {
+      console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("test-doc")
+  .description("Put the unit test's tables into the document a project wrote for them")
+  .requiredOption("-i, --input <file>", "Model (input.json)")
+  .requiredOption("-u, --unit <name>", "Which unit's document this is")
+  .requiredOption("-d, --doc <file>", "The markdown document, edited IN PLACE between its <!-- test:*:start --> markers")
+  .option("-r, --results <file>", "The answers (omit for the specification before any run: every item reads 未実施)")
+  .option("--lang <lang>", "ja | en (default: ja)", "ja")
+  .option("--include-defaults", "Print the unset-parameter items as rows too, instead of one line counting them")
+  .action((opts: { input: string; unit: string; doc: string; results?: string; lang: string; includeDefaults?: boolean }) => {
+    try {
+      const model = JSON.parse(readFileSync(opts.input, "utf-8")) as ParameterSheetInput;
+      const { plan, report } = buildTestPlan(model);
+      const results: TestResults =
+        opts.results === undefined ? { results: [] } : validateResults(JSON.parse(readFileSync(opts.results, "utf-8")));
+      // A document is built from a record that ANSWERS the plan. Building one
+      // from a record that does not is how a run reports findings already
+      // fixed, or prints a page of passes with an item nobody attempted absent
+      // from it — see testresults.ts.
+      if (opts.results !== undefined) {
+        const check = checkResults(plan, results);
+        console.error(formatResultsCheck(check));
+        if (resultsCheckFails(check)) {
+          console.error(`Error: these results do not answer that plan, so no document is written.`);
+          process.exit(1);
+        }
+      }
+      const lang = opts.lang === "en" ? "en" : "ja";
+      const blocks = renderTestDoc(plan, results, opts.unit, { lang, includeDefaults: opts.includeDefaults === true });
+      blocks["test:excluded"] = renderExcluded(report.excluded, opts.unit, lang);
+      const before = readFileSync(opts.doc, "utf-8");
+      // The item tables are the run; a document that takes none of them has
+      // lost it. Everything else here is a restatement the document may decline.
+      const required = ["test:items", ...(blocks["test:functional"] === undefined ? [] : ["test:functional"])];
+      const after = injectBlocks(before, blocks, required);
+      writeFileSync(opts.doc, after);
+      console.error(`Wrote ${opts.doc}`);
     } catch (e) {
       console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
       process.exit(1);

@@ -504,6 +504,40 @@ Nothing here runs anything. The plan says what to check and what is expected; a
 collector and a judge outside answer it, in the shape `validate --plan` reads
 back.
 
+### `test-doc` — the tables, into the document a project wrote
+
+```sh
+review-sheet test-doc -i input.json -r results.json --unit server-sso -d tests-sso.md
+```
+
+A 単体テスト仕様書兼成績書 is mostly prose only a project can write, around
+tables only a machine should: they are a thousand rows long and they change with
+every run. So this does not generate the document — it fills the parts of one
+that are marked for it, in place, the way the parser tables are filled into this
+README:
+
+```md
+## （２）テスト項目の考え方
+<!-- test:taxonomy:start --><!-- test:taxonomy:end -->
+
+## （３）テスト項目・結果
+<!-- test:items:start --><!-- test:items:end -->
+```
+
+`test:items`, `test:functional`, `test:summary` (counts, computed — a written
+summary is the first thing to rot), `test:taxonomy` and `test:excluded`. A
+marker nothing fills is an error; a block that carries ANSWERS and has nowhere
+to go is an error; the rest a document may simply decline.
+
+Run without `-r`, it writes the specification before any run — every item, every
+environment, 未実施. With `-r`, the results must answer the plan (the same check
+`validate --plan` makes) or no document is written.
+
+The unset-parameter items are counted rather than listed, since two thousand
+"still on the product's default" rows are a real check and not what a reviewer
+signs; `--include-defaults` prints them as rows for a customer who wants the
+exhaustive list.
+
 ### `verify` — source maps vs. the real files
 
 ```sh
