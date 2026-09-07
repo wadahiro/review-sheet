@@ -4347,7 +4347,10 @@ tr.rs-jump-flash th {
      nowhere near a document default. */
   line-height: 1.75;
 }
-.rs-doc > *:first-child { margin-top: 0; }
+/* A document opening on a heading opens on a SECTION now, and the heading's
+   own margin collapses out through it — so the first child of that section is
+   what the rule has to reach. */
+.rs-doc > *:first-child, .rs-doc > .rs-doc-section:first-child > *:first-child { margin-top: 0; }
 /* No measure. The column is as wide as every other sheet's.
  *
  * A narrow one was tried, on the usual typographic ground that a paragraph read
@@ -4394,41 +4397,44 @@ tr.rs-jump-flash th {
      sheet's category heading does (.rs-category-header) — a page of prose is
      read section by section too, and a reader scrolled into the middle of one
      had nothing on screen saying which. Stacked the same way: h2 under the tab
-     bar, h3 under whatever h2 is holding, and each releases when its own
-     section ends. The heights are the ones set just above, stated as variables
-     because the top offset cannot measure them. */
+     What RELEASES a heading is the end of its containing block, and markdown
+     renders a flat run with no such block — so the viewer cuts the rendered
+     document into sections (doc-sections.ts) and this offset depends on that.
+     Without them nothing is ever released: six headings stack at this one
+     offset, with only the last of them visible. */
   position: sticky;
   top: var(--rs-tabbar-h, 41px);
   z-index: 59;
 }
+/* A filled band with a coloured bar is what a HELD heading looks like on this
+   page, so an h3 wearing one promised something it cannot do — a reader watched
+   the same object stay and then scroll away depending only on its level. It is
+   set as what it is instead: a step inside the section, marked the way h1 marks
+   itself, by a rule under its own words rather than a box around them. */
 .rs-doc h3 {
   font-size: 0.9rem;
-  margin: 1.25rem 0 0.4rem;
-  padding: 0.375rem 0.75rem;
-  background: #f1f5f9;
-  color: #334155;
-  border-left: 3px solid var(--rs-primary);
-  border-radius: 0 var(--rs-radius) var(--rs-radius) 0;
-  position: sticky;
-  top: calc(var(--rs-tabbar-h, 41px) + var(--rs-doc-h2-h));
-  z-index: 58;
+  margin: 1.5rem 0 0.5rem;
+  padding-bottom: 0.3rem;
+  color: var(--rs-text);
+  border-bottom: 1px solid var(--rs-border);
 }
-/* What an h2 occupies once it is stuck: its own line box plus its padding. A
-   heading long enough to wrap takes more, and the h3 below it then tucks under
-   the second line rather than beside it — the alternative, measuring every
-   heading in script, is a resize observer per page for a case a document can
-   avoid by not writing a heading that wraps. */
-:root { --rs-doc-h2-h: 2.4rem; }
+/* An h3 does NOT stick, and that is the whole of the second lesson here. Two
+   levels held at two offsets must CROSS whenever a subsection is the last thing
+   in its section: both are released by the same edge, the lower one starts
+   moving first, and it slides up through the heading above it — measured, a
+   band of the subsection's fill tore out from under its section's title for the
+   last 33px of every such section. No offset avoids it; the child's block ends
+   where the parent's does, and no CSS says "leave together". So one heading is
+   held at a time: the SECTION's, which is the one a reader scrolled into the
+   middle of and cannot otherwise name. */
 /* A dark page paints its own: the light fills above are literals (the sheet's
    own category headings are, too), and a sticky heading has to be opaque or the
    text it is holding above shows through it. */
 @media (prefers-color-scheme: dark) {
-  .rs-doc h2, .rs-doc h3 { background: var(--rs-surface); color: var(--rs-text); }
+  .rs-doc h2 { background: var(--rs-surface); color: var(--rs-text); }
 }
-:root[data-theme="dark"] .rs-doc h2,
-:root[data-theme="dark"] .rs-doc h3 { background: var(--rs-surface); color: var(--rs-text); }
+:root[data-theme="dark"] .rs-doc h2 { background: var(--rs-surface); color: var(--rs-text); }
 :root[data-theme="light"] .rs-doc h2 { background: #f1f5f9; color: #1e293b; }
-:root[data-theme="light"] .rs-doc h3 { background: #f1f5f9; color: #334155; }
 
 /* The edit button a heading carries (DocumentBody appends it). At the right
    end, and out of the text's way: the heading is a block, not a flex row, so it
@@ -4524,16 +4530,14 @@ tr.rs-jump-flash th {
   padding: 0.05em 0.35em;
 }
 
-/* The two headings above name their colours literally, as .rs-category-header
-   does, so the dark theme has to answer them the same way it answers those. */
-[data-theme="dark"] .rs-doc h2,
-[data-theme="dark"] .rs-doc h3 {
+/* The held heading names its colours literally, as .rs-category-header does, so
+   the dark theme has to answer it the same way it answers those. */
+[data-theme="dark"] .rs-doc h2 {
   background: var(--rs-subtle);
   color: var(--rs-text);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .rs-doc h2,
-  :root:not([data-theme="light"]) .rs-doc h3 {
+  :root:not([data-theme="light"]) .rs-doc h2 {
     background: var(--rs-subtle);
     color: var(--rs-text);
   }

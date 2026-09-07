@@ -27,6 +27,7 @@ import { toMarkdownSheet, renderSheetMarkdown, parseSheetMarkdown } from "../she
 import { getMarkdownRenderer } from "./markdown-runtime.js";
 import { MarkdownSheetBody } from "./md-sheet.js";
 import { NavTree, chapterPath } from "./nav-tree.js";
+import { sectionize } from "./doc-sections.js";
 import { jumpFromSelection, type DocJump, type DocPoint } from "./doc-jump.js";
 import { navAnchorId, paramAnchorId, encodeIdPart } from "./anchors.js";
 import {
@@ -1208,6 +1209,13 @@ function DocumentBody({ sheet, reviews, editEnabled, onEditAt, t }: {
   const body = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     runMermaid(body.current);
+  }, [html_]);
+
+  // The document is cut into sections so its sticky headings are released by
+  // the end of what they head (doc-sections.ts). Before paint, or the pile the
+  // sections exist to prevent is on screen for a frame.
+  useLayoutEffect(() => {
+    if (body.current !== null) sectionize(body.current);
   }, [html_]);
 
   // An edit button on every heading, the way a parameter sheet's categories
