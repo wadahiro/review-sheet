@@ -269,6 +269,21 @@ function copyToClipboard(value: string, btn: HTMLElement): void {
 // save's id separates them, and a file that has never been saved has no id and
 // keeps the bare key, which is what a freshly generated document has always
 // used.
+// The key the PANEL's own state hangs on — which chapters are folded, and where
+// the list is scrolled. Deliberately NOT getStorageKey: that one identifies a
+// REVISION, because an unsaved edit belongs to the copy it was typed into and
+// must never surface in another. Folds and a scroll position are not edits.
+// They are how a reader has arranged the room, and keying them to the revision
+// threw the arrangement away every time the document was regenerated or saved —
+// which, while a sheet is being built, is many times an hour.
+//
+// The document's own identity instead: project, version and title. Two
+// documents of one project keep their own arrangements (their titles differ),
+// and a new build of either walks back into the room it left.
+export function navStateKey(data: SheetData): string {
+  return "review-sheet:" + [data.metadata?.project ?? "", data.metadata?.version ?? "", data.metadata?.title ?? ""].join(":");
+}
+
 export function getStorageKey(data: SheetData, saves: SaveRecord[] = []): string {
   const parts = [
     data.metadata?.project ?? "",
@@ -4301,10 +4316,45 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   };
   const [activeSheet, setActiveSheetState] = useState(getInitialTab);
 
+  // WHERE IN the document, carried in the fragment beside which document it is.
+  // A reload otherwise put the reader back at the top of the right sheet, which
+  // on a long one is not where they were — and the browser cannot help, because
+  // it restores the scroll before this page has built the content that would
+  // make that position exist.
+  //
+  // The fragment and not a stored position, because this is an ADDRESS: it is
+  // the thing a reader copies into a mail to say "this row", and it survives
+  // back and forward without a second mechanism. Not a path either — a
+  // delivered document is opened from a file:// URL, where pushState with a
+  // path is a SecurityError (measured), so the fragment is the only address
+  // this document can have.
+  const [initialAnchor] = useState(() => {
+    const raw = location.hash.replace("#", "");
+    const slash = raw.indexOf("/");
+    if (slash < 0) return null;
+    try { return decodeURIComponent(raw.slice(slash + 1)) || null; } catch { return null; }
+  });
+
+  // Set while a JUMP is switching sheets (jumpToNav). A jump names a place
+  // inside the document it opens; choosing a document from the navigation names
+  // none, and the two want opposite things from the scroll — so the jump says
+  // so, and the selection below stands aside.
+  const jumpOwnsScroll = useRef(false);
+
   // Update URL hash on tab change (1-based)
   const setActiveSheet = useCallback((idx: number) => {
     setActiveSheetState(idx);
     location.hash = idx === -1 ? "overview" : String(idx + 1);
+    // …and the document opens at its BEGINNING. Switching sheets replaces what
+    // is on screen and leaves the scroll where it was, so choosing a document
+    // while deep inside another one landed that far down the new one —
+    // measured, 9000px in, with its first heading 3.1k pixels above the screen.
+    //
+    // HERE rather than on a change of activeSheet, because choosing the
+    // document already being read is the same request: a reader who jumped into
+    // the middle of it and then clicks its name in the tree is asking to go
+    // back to the top of it, and an act that does nothing looks broken.
+    if (!jumpOwnsScroll.current) window.scrollTo({ top: 0 });
   }, []);
   const [filterCommented, setFilterCommented] = useState(false);
   const [hideOutOfScope, setHideOutOfScope] = useState(false);
@@ -4545,7 +4595,20 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
     const scroll = () => {
       const el = document.getElementById(id) ?? (fallbackId ? document.getElementById(fallbackId) : null);
       if (!el) return;
-      el.scrollIntoView({ block: "start" });
+      // scrollIntoView aims at where a box IS, and a document's section heading
+      // is STICKY — so its box is wherever the scroll has pushed it, not where
+      // the section starts. Jumping from far away therefore missed by whatever
+      // the sticky shift was: measured on a real set, a jump to the first
+      // section of a test document landed 5.2k pixels down, at the very END of
+      // that section, because a section left behind holds its heading at its
+      // own bottom edge and that is the box the browser aimed at.
+      //
+      // So the sticking is suspended for the aim and restored immediately: the
+      // browser then sees the heading where the section actually begins, and
+      // the scroll-margin the heading already declares still applies. Nothing
+      // is painted in between — the class is added and removed inside one
+      // frame, around a call that scrolls synchronously.
+      aimAt(el);
       // Briefly flash the landed-on target so it's easy to spot.
       // The header ROW, not the heading inside it: the flash marks where you
       // landed, and a tint the width of the words is not that. What it paints
@@ -4564,15 +4627,16 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
       spySuppressUntil.current = Date.now() + 700;
     };
     const sheetChanged = sheetIndex !== activeSheet;
-    if (sheetChanged) setActiveSheet(sheetIndex);
+    if (sheetChanged) { jumpOwnsScroll.current = true; setActiveSheet(sheetIndex); }
     // Switching sheets only takes effect on the next render, so the target
     // isn't in the DOM yet this tick.
     if (sheetChanged) {
-      requestAnimationFrame(() => requestAnimationFrame(scroll));
+      requestAnimationFrame(() => requestAnimationFrame(() => { scroll(); jumpOwnsScroll.current = false; }));
     } else {
       scroll();
     }
   }, [activeSheet, setActiveSheet]);
+
 
   // Cmd/Ctrl+K opens search; Escape closes the overlays.
   useEffect(() => {
@@ -4661,6 +4725,32 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
       window.removeEventListener("resize", compute);
     };
   }, [activeSheet, data]);
+
+  // …and that is what goes in the fragment. replaceState, not an assignment to
+  // location.hash: a reader scrolling through a document would otherwise leave
+  // a history entry per section and could not get back out with the back
+  // button. The section is dropped on the overview, which has none.
+  useEffect(() => {
+    const base = activeSheet === -1 ? "overview" : String(activeSheet + 1);
+    const next = currentNavId === null || activeSheet === -1
+      ? `#${base}`
+      : `#${base}/${encodeURIComponent(currentNavId)}`;
+    if (location.hash !== next) history.replaceState(null, "", next);
+  }, [currentNavId, activeSheet]);
+
+  // Arriving with one: the document is already the right one (getInitialTab
+  // reads the same fragment), so all that is left is to land on the place it
+  // names. Two frames, for the same reason a jump across sheets takes them —
+  // the content has to be in the DOM before it can be measured. A fragment
+  // naming something this document no longer has simply stays at the top,
+  // which is what a stale link should do.
+  useEffect(() => {
+    if (initialAnchor === null) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const el = document.getElementById(initialAnchor);
+      if (el !== null) aimAt(el);
+    }));
+  }, []);
 
   const handleSaveReview = useCallback((review: ReviewItem) => {
     setReviews((prev) => {
@@ -5535,7 +5625,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
       ${bookNav && outlineOpen && html`
         <${NavTree} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet}
                     numbering=${baseData.numbering !== false} lang=${lang}
-                    filter=${navFilter} onFilter=${setNavFilter} docKey=${storageKey}
+                    filter=${navFilter} onFilter=${setNavFilter} docKey=${navStateKey(data)}
                     headings=${categoryEntries.map((e) => ({
                       sheetIndex: e.sheetIndex,
                       id: e.id,
@@ -5685,6 +5775,15 @@ const versionLabel = (v: SheetVersion): string => `${v.version}${v.date ? ` (${v
 // comparing — so the diff's own output (the summary) and its one filter belong
 // here, next to the selectors that produced them, rather than in the tab bar
 // across the screen.
+// Put a target under the top of the page, with any STICKING suspended for the
+// measurement — see jumpToNav for why that is not optional.
+function aimAt(el: Element): void {
+  const doc = el.closest(".rs-doc");
+  doc?.classList.add("rs-doc-unstuck");
+  el.scrollIntoView({ block: "start" });
+  doc?.classList.remove("rs-doc-unstuck");
+}
+
 function VersionBar({ versions, activeId, compare, fromId, toId, onSelect, onToggleCompare, onFrom, onTo, diffSummary, changedOnly, onChangedOnly, columnar, onColumnar, t }: {
   versions: SheetVersion[];
   activeId: string;

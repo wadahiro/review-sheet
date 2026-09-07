@@ -25,7 +25,7 @@
 //     reads as a jump that missed.
 
 import { html } from "htm/preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { VNode } from "preact";
 import type { SheetData, SheetGroupData } from "../prompt.js";
 import type { Messages } from "./i18n.js";
@@ -174,6 +174,82 @@ const caret = (open: boolean): VNode => html`
        aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
 `;
 
+// Bring the current document into the panel — and only when NONE of it is
+// there, so a reader who can see where they are is left where they put the
+// panel.
+//
+// What counts as "where they are" is the document's whole BLOCK, its own row
+// plus the sections under it, not the row alone. A reader reading the ninth
+// section of a document has scrolled its title off the top of this panel on
+// purpose; testing the row would call that lost and haul the panel back up, and
+// the section they were actually looking at goes off the bottom in exchange —
+// which is the same failure as not showing them anything, one step further on.
+//
+// Scrolled WITHIN the panel, never with scrollIntoView: that scrolls every
+// ancestor that can move, the PAGE behind this one included — the outline
+// drawer this replaced carries the same warning for the same reason.
+//
+// When it does move, it moves with ROOM. The obvious version travels the
+// smallest distance that makes the row fit, which lands it hard against
+// whichever edge it came from: the row is on screen and everything under it —
+// the rest of its own chapter — is not. A third of the way down shows the row
+// and what follows it, which is what somebody looking for their place reads.
+const reveal = (body: HTMLElement, row: Element, asked = false): void => {
+  const c = body.getBoundingClientRect();
+  const block = (row.parentElement ?? row).getBoundingClientRect();
+  if (!asked && block.bottom > c.top && block.top < c.bottom) return;
+  const r = row.getBoundingClientRect();
+  body.scrollTop = Math.max(0, body.scrollTop + r.top - c.top - c.height / 3);
+};
+
+// The arrow the edge marker carries: the same stroke as the fold's chevron, so
+// the panel has one drawing vocabulary rather than a chevron and an arrow.
+const arrow = (up: boolean): VNode => html`
+  <svg class="rs-navtree-away-arrow" width="11" height="11" viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <polyline points=${up ? "6 15 12 9 18 15" : "6 9 12 15 18 9"} />
+  </svg>
+`;
+
+// THE READER'S PLACE, as one row: the section being read when there is one and
+// the document otherwise.
+//
+// One definition for both the marker and the button it is, or they disagree
+// about what "your place" means — and they did. The marker was judged on the
+// document's whole block, so a reader inside a long document could scroll the
+// section they were reading right off the panel and be told nothing, because
+// the title above it was still on screen; then the button, when it finally
+// appeared, went to that title rather than to where they had been.
+const placeRow = (body: HTMLElement): Element | null =>
+  body.querySelector(".rs-navtree-here") ?? body.querySelector(".rs-navtree-current");
+
+// The section the address names, or null when it names only a document.
+const sectionOfAddress = (): string | null => {
+  const raw = location.hash.replace("#", "");
+  const slash = raw.indexOf("/");
+  if (slash < 0) return null;
+  try { return decodeURIComponent(raw.slice(slash + 1)) || null; } catch { return null; }
+};
+
+// The row that stands for a section id. Walked rather than selected, because
+// these ids come from a document's own headings and carry whatever a heading
+// carried — quotes, brackets, a slash — and a selector would have to escape
+// them all correctly to find one row.
+const rowFor = (body: HTMLElement, id: string): HTMLElement | null => {
+  for (const row of body.querySelectorAll<HTMLElement>("[data-nav-id]")) {
+    if (row.getAttribute("data-nav-id") === id) return row;
+  }
+  return null;
+};
+
+// As near the top as it goes — "as near" because the end of a list cannot reach
+// it, and the browser clamps that for us.
+const toTop = (body: HTMLElement, row: Element): void => {
+  const r = row.getBoundingClientRect();
+  const c = body.getBoundingClientRect();
+  body.scrollTop = Math.max(0, body.scrollTop + r.top - c.top - 8);
+};
+
 const storeKey = (docKey: string): string => `rs-nav-collapsed:${docKey}`;
 
 // What the reader has CLOSED — chapters and sheets alike. Everything is open
@@ -184,6 +260,14 @@ const storeKey = (docKey: string): string => `rs-nav-collapsed:${docKey}`;
 // document set that is 339 rows, which is a scroll, not a wall — and the price
 // of the other default was a click before you could see what a document
 // contained.
+//
+// What is kept here is what the reader FOLDED, and nothing else. Where the
+// panel is scrolled was kept too, for a while, and it was the wrong idea in the
+// most ordinary way: it made the panel's position a second source of truth
+// beside the address, and every load then had to arbitrate between them. Four
+// rounds of that produced four different wrong answers. The address already
+// says where the reader is; the panel is aimed at it, and there is nothing to
+// reconcile.
 type NavState = { closed: string[] };
 const loadState = (docKey: string): NavState => {
   try {
@@ -195,9 +279,9 @@ const loadState = (docKey: string): NavState => {
     return { closed: [] };
   }
 };
-const saveState = (docKey: string, closed: Set<string>): void => {
+const saveState = (docKey: string, patch: Partial<NavState>): void => {
   try {
-    localStorage.setItem(storeKey(docKey), JSON.stringify({ closed: [...closed] }));
+    localStorage.setItem(storeKey(docKey), JSON.stringify({ ...loadState(docKey), ...patch }));
   } catch {
     /* a document opened from a file:// URL may have no storage */
   }
@@ -236,6 +320,49 @@ export function NavTree({ sheets, groups, activeSheet, numbering, lang, headings
   // sheet hides its own sections.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(loadState(docKey).closed));
   const bodyRef = useRef<HTMLElement | null>(null);
+  // Which sheet the panel has already been moved FOR — see the effect that
+  // brings the current row into view.
+  const scrolledFor = useRef<number | null>(null);
+
+  // Where the document being read has gone, when it is not on this panel:
+  // "up" or "down", and null while any of it is in view. This is what lets the
+  // panel STAY where the reader put it — the question "where am I" gets an
+  // answer that costs them nothing, instead of an answer that moves the list
+  // out from under them.
+  const [away, setAway] = useState<"up" | "down" | null>(null);
+  const checkAway = (): void => {
+    const body = bodyRef.current;
+    const row = body === null ? null : placeRow(body);
+    if (body === null || row === null) { setAway(null); return; }
+    const c = body.getBoundingClientRect();
+    const r = row.getBoundingClientRect();
+    setAway(r.bottom <= c.top ? "up" : r.top >= c.bottom ? "down" : null);
+  };
+
+  // AIMED AT THE ADDRESS, once, before the first paint.
+  //
+  // The address already says where the reader is — the sheet, and the section
+  // inside it (app.ts keeps `#<sheet>/<section>` current as they read). So the
+  // panel puts that row as near the top as it goes, and there is nothing to
+  // reconcile: no stored panel position to weigh against the address, no
+  // reload-or-arrival to tell apart, nothing that a rebuild of the document can
+  // invalidate. Four earlier rounds all failed in the same shape — a second
+  // source of truth for where the reader is, and a rule for choosing between
+  // the two — and each rule was right about one case and wrong about the next.
+  //
+  // A layout effect, because doing it after paint is a panel that starts at the
+  // top and jumps.
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    if (body === null) return;
+    const section = sectionOfAddress();
+    const row = (section === null ? null : rowFor(body, section)) ?? body.querySelector(".rs-navtree-current");
+    if (row !== null) toTop(body, row);
+    scrolledFor.current = activeSheet;
+    const watch = (): void => checkAway();
+    body.addEventListener("scroll", watch);
+    return () => body.removeEventListener("scroll", watch);
+  }, [docKey]);
 
   // The chapters that lead to the current sheet, opened. Recomputed whenever
   // the sheet changes — including a jump from search into a chapter the reader
@@ -248,7 +375,7 @@ export function NavTree({ sheets, groups, activeSheet, numbering, lang, headings
       if (!ancestors.some((a) => prev.has(a))) return prev;
       const next = new Set(prev);
       for (const a of ancestors) next.delete(a);
-      saveState(docKey, next);
+      saveState(docKey, { closed: [...next] });
       return next;
     });
   }, [activeSheet, sheets, groups]);
@@ -264,14 +391,23 @@ export function NavTree({ sheets, groups, activeSheet, numbering, lang, headings
   // what a reader does by hand, and scrolling then is the panel refusing to
   // stay where it was put: fold a chapter at the end of a long set and the
   // panel jumps back to whatever is being read, every time.
-  const scrolledFor = useRef<number | null>(null);
   useEffect(() => {
-    if (scrolledFor.current === activeSheet) return;
-    const el = bodyRef.current?.querySelector(".rs-navtree-current");
-    if (el === null || el === undefined) return;
-    scrolledFor.current = activeSheet;
-    if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "nearest" });
-  }, [activeSheet, collapsed]);
+    const body = bodyRef.current;
+    const el = body?.querySelector(".rs-navtree-current");
+    if (body === null || body === undefined || el === null || el === undefined) { setAway(null); return; }
+    if (scrolledFor.current !== activeSheet) {
+      scrolledFor.current = activeSheet;
+      reveal(body, el);
+    }
+  }, [activeSheet, collapsed, filter]);
+
+  // The marker answers for the panel AS IT NOW STANDS, and what it is about —
+  // the section being read — changes as the reader scrolls the page, without
+  // this panel being touched at all. Watching only the panel's own scroll left
+  // it stale in exactly the case it exists for: the reader moves down the text,
+  // the marked row moves with them, and nothing here noticed.
+  const hereId = headings.find((h) => h.current)?.id ?? null;
+  useEffect(() => { checkAway(); }, [hereId, activeSheet, collapsed, filter]);
 
   const hidden = (e: TreeEntry): boolean =>
     entries.some((g) => g.kind === "group" && collapsed.has(g.key) && g.contains?.includes(e.key));
@@ -295,7 +431,7 @@ export function NavTree({ sheets, groups, activeSheet, numbering, lang, headings
       const next = new Set(prev);
       if (next.has(name)) next.delete(name);
       else next.add(name);
-      saveState(docKey, next);
+      saveState(docKey, { closed: [...next] });
       return next;
     });
 
@@ -326,6 +462,18 @@ export function NavTree({ sheets, groups, activeSheet, numbering, lang, headings
         <input class="rs-navtree-filter" type="search" value=${filter} aria-label=${t.navFilter}
                placeholder=${t.navFilter} onInput=${(e: Event) => onFilter((e.target as HTMLInputElement).value)} />
       </div>
+      <div class="rs-navtree-scroller">
+      ${away !== null && html`
+        <button class=${`rs-navtree-away rs-navtree-away-${away}`} title=${t.navHere} aria-label=${t.navHere}
+                onClick=${() => {
+                  const body = bodyRef.current;
+                  if (body === null || body === undefined) return;
+                  const el = placeRow(body);
+                  if (el !== null) { reveal(body, el, true); checkAway(); }
+                }}>
+          ${arrow(away === "up")}
+          <span class="rs-navtree-away-label">${t.navHere}</span>
+        </button>`}
       <nav class="rs-navtree-body rs-scroll-thin" ref=${bodyRef}>
         ${/* The front matter is NOT listed here. It was, for one round, because
               taking the tab strip away had left it unreachable — and then the
@@ -391,6 +539,7 @@ export function NavTree({ sheets, groups, activeSheet, numbering, lang, headings
               <div class="rs-navtree-headings">
                 ${mine.map((h) => html`
                   <div class=${`rs-navtree-row rs-navtree-heading ${h.current ? "rs-navtree-here" : ""}`} key=${h.id}
+                       data-nav-id=${h.id}
                        ${/* Counted from the DOCUMENT, not from the panel: the
                              block already begins where the document's own name
                              does, so a section's depth is how far it sits
@@ -415,6 +564,7 @@ export function NavTree({ sheets, groups, activeSheet, numbering, lang, headings
         })}
         ${shown.length === 0 && html`<p class="rs-navtree-empty">${t.navNoMatch}</p>`}
       </nav>
+      </div>
     </aside>
   `;
 }

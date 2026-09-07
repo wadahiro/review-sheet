@@ -12,7 +12,8 @@ if (typeof (globalThis as { document?: unknown }).document === "undefined") Glob
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { h, render } from "preact";
 import { act } from "preact/test-utils";
-import { Root } from "../src/html/app";
+import { Root, navStateKey, getStorageKey } from "../src/html/app";
+import { customStyles } from "../src/html/styles";
 import type { ParameterSheetInput } from "../src/types";
 
 const sheet = (name: string, group: string) => ({
@@ -52,6 +53,10 @@ const payload = (input: ParameterSheetInput) => ({
 
 beforeEach(() => localStorage.clear());
 afterEach(() => {
+  // UNMOUNTED, not just emptied: a tree left mounted keeps its listeners and
+  // its pending effects, and the next case's act() flushes those too — which
+  // showed up here as one extra write to a panel that is no longer on screen.
+  for (const el of [...document.body.children]) render(null, el as HTMLElement);
   document.body.innerHTML = "";
   localStorage.clear();
 });
@@ -66,13 +71,15 @@ const mount = (input: ParameterSheetInput, hash = "#1"): HTMLElement => {
 
 // The chapters and sheets. The current sheet's own headings hang under it in
 // the same panel and are asserted on their own.
+//
 // Remembered per DOCUMENT: every copy of every generated file opened from a
 // file:// URL shares one storage area, so a single key let one document's
 // collapsed chapters apply to the next one opened — under names that repeat
-// across documents. Same key as the unsaved edits (getStorageKey).
-// The payload's version label reaches the key (getStorageKey reads
-// metadata.version, which Root fills from the shown version).
-const collapseKey = (): string => "rs-nav-collapsed:review-sheet::current:";
+// across documents. The key is project : version : title (navStateKey), with
+// no generated_at and no save revision in it: those identify a REVISION, which
+// is right for an unsaved edit and wrong for how a reader has arranged the
+// room — keyed that way, every rebuild threw the arrangement away.
+const collapseKey = (): string => "rs-nav-collapsed:review-sheet::current:t";
 const closedNow = (): string[] => JSON.parse(localStorage.getItem(collapseKey()) ?? "{}").closed ?? [];
 
 // The whole ROW: the fold is a button beside the link rather than inside it (a
@@ -420,48 +427,270 @@ describe("what the tree spends on indenting", () => {
 // to wherever chapter 1 is, every time — measured in a real browser as a
 // scrollTop of 4546 becoming 49.
 describe("what the panel scrolls for", () => {
-  const scrolls = (): { calls: number; restore: () => void } => {
-    const proto = Element.prototype as unknown as { scrollIntoView?: () => void };
-    const had = Object.prototype.hasOwnProperty.call(proto, "scrollIntoView");
-    const before = proto.scrollIntoView;
-    const state = { calls: 0, restore: () => { if (had) proto.scrollIntoView = before; else delete proto.scrollIntoView; } };
-    proto.scrollIntoView = () => { state.calls += 1; };
-    return state;
+  // The panel scrolls ITSELF now — never scrollIntoView, which would take the
+  // page behind it along — so what is watched is what it writes to its own
+  // scrollTop. Rects are all zero in this DOM, so the two elements the decision
+  // is made from are given the geometry the case is about.
+  type Rect = { top: number; bottom: number };
+  const rect = (el: Element, r: Rect): void => {
+    (el as unknown as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () =>
+      ({ top: r.top, bottom: r.bottom, height: r.bottom - r.top, left: 0, right: 0, width: 0, x: 0, y: r.top, toJSON: () => ({}) }) as DOMRect;
+  };
+  const watch = (host: HTMLElement, rowRect: Rect): number[] => {
+    const body = host.querySelector(".rs-navtree-body") as HTMLElement;
+    rect(body, { top: 0, bottom: 400 });
+    // EVERY row, not the one that is current now: arriving somewhere makes a
+    // different row the current one, and a rect given only to today's would
+    // leave tomorrow's at zero — which is "already visible" by accident. The
+    // wrapper each row sits in gets the same, since that BLOCK is what the
+    // decision is made on.
+    for (const row of host.querySelectorAll(".rs-navtree-row")) {
+      rect(row, rowRect);
+      if (row.parentElement !== null) rect(row.parentElement, rowRect);
+    }
+    const writes: number[] = [];
+    Object.defineProperty(body, "scrollTop", { configurable: true, get: () => 0, set: (v: number) => { writes.push(v); } });
+    return writes;
   };
 
   it("does not chase the current sheet when a reader folds a chapter", () => {
-    const spy = scrolls();
-    try {
-      // Preact defers an effect to after paint, so the baseline is taken only
-      // once act() has flushed the mount's own — otherwise the assertion would
-      // compare against a count nothing had reached yet.
-      let host!: HTMLElement;
-      act(() => { host = mount(MODEL, "#1"); });
-      const first = spy.calls;
-      expect(first).toBeGreaterThan(0);
-      // Another chapter's fold — it says nothing about which sheet is read.
-      const caret = host.querySelectorAll("button.rs-navtree-caret")[1] as HTMLElement;
-      act(() => { caret.click(); });
-      expect(closedNow()).not.toEqual([]);
-      expect(spy.calls).toBe(first);
-    } finally {
-      spy.restore();
-    }
+    let host!: HTMLElement;
+    act(() => { host = mount(MODEL, "#1"); });
+    // Far below the panel, so nothing but the rule itself decides.
+    const writes = watch(host, { top: 900, bottom: 920 });
+    const caret = host.querySelectorAll("button.rs-navtree-caret")[1] as HTMLElement;
+    act(() => { caret.click(); });
+    expect(closedNow()).not.toEqual([]);
+    expect(writes).toEqual([]);
   });
 
   // …and the other half, or "does not chase" would be satisfied by a panel that
   // never scrolls at all: arriving at a sheet still brings its row into view.
   it("brings the sheet a reader arrives at into view", () => {
-    const spy = scrolls();
+    let host!: HTMLElement;
+    act(() => { host = mount(MODEL, "#1"); });
+    const writes = watch(host, { top: 900, bottom: 920 });
+    const other = [...host.querySelectorAll(".rs-navtree-item")].find((a) => (a.textContent ?? "").includes("OS 設定")) as HTMLElement;
+    act(() => { other.click(); });
+    expect(writes.length).toBeGreaterThan(0);
+  });
+
+  // A row already on screen is left alone — the panel is where the reader put
+  // it, and moving it to say something they can already see is the fold case
+  // over again.
+  it("leaves the panel alone when the row is already visible", () => {
+    let host!: HTMLElement;
+    act(() => { host = mount(MODEL, "#1"); });
+    const writes = watch(host, { top: 10, bottom: 30 });
+    const other = [...host.querySelectorAll(".rs-navtree-item")].find((a) => (a.textContent ?? "").includes("OS 設定")) as HTMLElement;
+    act(() => { other.click(); });
+    expect(writes).toEqual([]);
+  });
+});
+
+// Where the panel goes on a load. ONE source of truth: the address, which
+// app.ts keeps current as `#<sheet>/<section>` while the reader reads. Four
+// earlier rounds kept a second one — a stored panel position — and every load
+// then had to choose between them; each rule for choosing was right about one
+// case and wrong about the next.
+describe("what the panel is aimed at", () => {
+  const rectOf = (t: number, b: number): DOMRect =>
+    ({ top: t, bottom: b, height: b - t, left: 0, right: 0, width: 0, x: 0, y: t, toJSON: () => ({}) }) as DOMRect;
+
+  // The document's own row sits at 300, its sections at 900, so which one the
+  // panel aimed at is readable from the number it wrote.
+  const mountAimed = (hash: string): number[] => {
+    const writes: number[] = [];
+    const origRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+      if (this.classList.contains("rs-navtree-body")) return rectOf(0, 400);
+      if (this.classList.contains("rs-navtree-heading")) return rectOf(900, 920);
+      if (this.classList.contains("rs-navtree-row")) return rectOf(300, 320);
+      return origRect.call(this);
+    };
+    const orig = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTop");
+    Object.defineProperty(HTMLElement.prototype, "scrollTop", {
+      configurable: true, get: () => 0, set: (v: number) => { writes.push(v); },
+    });
     try {
-      let host!: HTMLElement;
-      act(() => { host = mount(MODEL, "#1"); });
-      const first = spy.calls;
-      const other = [...host.querySelectorAll(".rs-navtree-item")].find((a) => (a.textContent ?? "").includes("OS 設定")) as HTMLElement;
-      act(() => { other.click(); });
-      expect(spy.calls).toBeGreaterThan(first);
+      act(() => { mount(MODEL, hash); });
     } finally {
-      spy.restore();
+      Element.prototype.getBoundingClientRect = origRect;
+      if (orig) Object.defineProperty(HTMLElement.prototype, "scrollTop", orig);
+      else delete (HTMLElement.prototype as unknown as { scrollTop?: unknown }).scrollTop;
     }
+    return writes;
+  };
+
+  // The id a section row answers to, taken from the tree itself rather than
+  // guessed: it is whatever the document's own heading produced.
+  const someSectionId = (): string => {
+    const host = mount(MODEL, "#1");
+    const id = host.querySelector(".rs-navtree-heading[data-nav-id]")?.getAttribute("data-nav-id") ?? "";
+    render(null, host);
+    host.remove();
+    return id;
+  };
+
+  it("puts the section the address names as near the top as it goes", () => {
+    const id = someSectionId();
+    expect(id).not.toBe("");
+    // 900 (the section row) - 0 (the panel) - 8 of air.
+    expect(mountAimed(`#1/${encodeURIComponent(id)}`)).toEqual([892]);
+  });
+
+  it("aims at the document when the address names only a document", () => {
+    expect(mountAimed("#1")).toEqual([292]);
+  });
+
+  // A section the document no longer has is a stale link: it falls back to the
+  // document rather than leaving the panel wherever it happened to be.
+  it("falls back to the document for a section that is gone", () => {
+    expect(mountAimed("#1/nothing-here")).toEqual([292]);
+  });
+
+  it("keeps nothing about where the panel is scrolled", async () => {
+    const host = mount(MODEL, "#1");
+    const body = host.querySelector(".rs-navtree-body") as HTMLElement;
+    Object.defineProperty(body, "scrollTop", { configurable: true, get: () => 640, set: () => {} });
+    body.dispatchEvent(new Event("scroll"));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(JSON.parse(localStorage.getItem(collapseKey()) ?? "{}")).not.toHaveProperty("scroll");
+  });
+});
+
+// The panel does not move on a resume, so something else has to answer "where
+// am I" when the document being read is off this panel. A marker on the edge it
+// went past: it costs the reader nothing, and pressing it is an explicit act,
+// which is the only kind of act that may move the list.
+describe("the marker at the panel's edge", () => {
+  const withBlock = (top: number, bottom: number): { host: HTMLElement; writes: number[]; restore: () => void } => {
+    const rectOf = (t: number, b: number): DOMRect =>
+      ({ top: t, bottom: b, height: b - t, left: 0, right: 0, width: 0, x: 0, y: t, toJSON: () => ({}) }) as DOMRect;
+    const origRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+      if (this.classList.contains("rs-navtree-body")) return rectOf(0, 400);
+      if (this.firstElementChild?.classList.contains("rs-navtree-row")) return rectOf(top, bottom);
+      if (this.classList.contains("rs-navtree-row")) return rectOf(top, top + 20);
+      return origRect.call(this);
+    };
+    const writes: number[] = [];
+    const orig = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTop");
+    Object.defineProperty(HTMLElement.prototype, "scrollTop", {
+      configurable: true, get: () => 0, set: (v: number) => { writes.push(v); },
+    });
+    let host!: HTMLElement;
+    act(() => { host = mount(MODEL, "#1"); });
+    return {
+      host, writes,
+      restore: () => {
+        Element.prototype.getBoundingClientRect = origRect;
+        if (orig) Object.defineProperty(HTMLElement.prototype, "scrollTop", orig);
+        else delete (HTMLElement.prototype as unknown as { scrollTop?: unknown }).scrollTop;
+      },
+    };
+  };
+  const marker = (host: HTMLElement): string | null => host.querySelector(".rs-navtree-away")?.className ?? null;
+
+  it("points down when the document is below the panel", () => {
+    const w = withBlock(900, 1200);
+    try { expect(marker(w.host)).toContain("rs-navtree-away-down"); } finally { w.restore(); }
+  });
+
+  it("points up when the document is above it", () => {
+    const w = withBlock(-800, -400);
+    try { expect(marker(w.host)).toContain("rs-navtree-away-up"); } finally { w.restore(); }
+  });
+
+  it("is not there at all while the document is in view", () => {
+    const w = withBlock(50, 300);
+    try { expect(marker(w.host)).toBeNull(); } finally { w.restore(); }
+  });
+
+  // Labelled with what pressing it DOES, not with the name of a document: every
+  // row around it carries a document's name, and the first version of this —
+  // full-width, left-aligned, tinted, carrying the name — was a tree row in
+  // every respect a reader judges by, so the one thing it had to say was the
+  // one thing it did not.
+  it("is labelled as the act, not as another row", () => {
+    const w = withBlock(900, 1200);
+    try {
+      const label = w.host.querySelector(".rs-navtree-away-label")?.textContent ?? "";
+      expect(label).toBe("現在位置へ");
+      expect(label).not.toContain("要件一覧");
+    } finally { w.restore(); }
+  });
+
+  it("moves the panel when it is pressed, and only then", () => {
+    const w = withBlock(900, 1200);
+    try {
+      // The load aims at the address (the row, less a little air); pressing the
+      // marker is a different act, and puts it a third of the way down.
+      expect(w.writes).toEqual([892]);          // 900, less a little air
+      act(() => { (w.host.querySelector(".rs-navtree-away") as HTMLElement).click(); });
+      expect(w.writes).toEqual([892, 900 - 400 / 3]);
+    } finally { w.restore(); }
+  });
+});
+
+// The arrangement survives a rebuild. Folds and a scroll position are not
+// edits: an unsaved edit belongs to the copy it was typed into and is keyed to
+// a REVISION for that reason, but a reader who folded four chapters and
+// scrolled to the ninth has arranged the room, and a regenerated sheet is the
+// same room. Keyed to the revision, every rebuild swept it — which while a
+// sheet is being built is many times an hour.
+describe("what the panel's state is keyed to", () => {
+  const meta = (generated: string, rev?: string) => ({
+    metadata: { project: "p", version: "current", title: "t", generated_at: generated },
+  } as never);
+
+  it("does not change when the document is generated again", () => {
+    expect(navStateKey(meta("2026-09-07T00:00:00Z"))).toBe(navStateKey(meta("2026-09-07T09:30:00Z")));
+  });
+
+  it("still tells two documents of one project apart", () => {
+    const other = { metadata: { project: "p", version: "current", title: "another" } } as never;
+    expect(navStateKey(meta("x"))).not.toBe(navStateKey(other));
+  });
+
+  // …and it is NOT the key the unsaved edits use, which must keep the revision.
+  it("is not the key an edit hangs on", () => {
+    const data = meta("2026-09-07T00:00:00Z");
+    expect(navStateKey(data)).not.toBe(getStorageKey(data));
+  });
+});
+
+// WHOSE position the marker is about. A reader inside a long document could
+// scroll the section they were reading off the panel and be told nothing,
+// because the document's title was still on screen — and the button, when it
+// did appear, went to that title rather than to where they had been. Both are
+// the same defect: two definitions of "your place".
+describe("the place the marker is about", () => {
+  const rectOf = (t: number, b: number): DOMRect =>
+    ({ top: t, bottom: b, height: b - t, left: 0, right: 0, width: 0, x: 0, y: t, toJSON: () => ({}) }) as DOMRect;
+
+  // The document's title on screen, the section being read far below it.
+  const withSectionOffPanel = (): { host: HTMLElement; restore: () => void } => {
+    const origRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+      if (this.classList.contains("rs-navtree-body")) return rectOf(0, 400);
+      if (this.classList.contains("rs-navtree-here")) return rectOf(900, 920);
+      if (this.classList.contains("rs-navtree-current")) return rectOf(100, 120);
+      if (this.firstElementChild?.classList.contains("rs-navtree-row")) return rectOf(100, 1200);
+      return origRect.call(this);
+    };
+    let host!: HTMLElement;
+    act(() => { host = mount(MODEL, "#1"); });
+    // The scroll-spy marks a section once it has run.
+    act(() => { window.dispatchEvent(new Event("scroll")); });
+    return { host, restore: () => { Element.prototype.getBoundingClientRect = origRect; } };
+  };
+
+  it("appears when the section being read leaves, not when the title does", () => {
+    const w = withSectionOffPanel();
+    try {
+      expect(w.host.querySelector(".rs-navtree-here")).not.toBeNull();
+      expect(w.host.querySelector(".rs-navtree-away")?.className ?? "").toContain("rs-navtree-away-down");
+    } finally { w.restore(); }
   });
 });

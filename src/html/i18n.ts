@@ -39,6 +39,7 @@ type Messages = {
   navOutline: string;
   // The chapter tree beside a document set (nav: book).
   navFilter: string;
+  navHere: string;
   navCollapse: string;
   navExpand: string;
   navNoMatch: string;
@@ -316,6 +317,7 @@ const ja: Messages = {
   unfreezeColumnTip: "この列の固定を解除",
   navOutline: "目次",
   navFilter: "文書をしぼり込む…",
+  navHere: "現在位置へ",
   navCollapse: "閉じる",
   navExpand: "開く",
   navNoMatch: "該当する文書がありません",
@@ -541,6 +543,7 @@ const en: Messages = {
   unfreezeColumnTip: "Unfreeze this column",
   navOutline: "Outline",
   navFilter: "Filter documents…",
+  navHere: "Jump to current",
   navCollapse: "Collapse",
   navExpand: "Expand",
   navNoMatch: "No document matches",

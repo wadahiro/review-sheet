@@ -3211,11 +3211,66 @@ tr.rs-jump-flash th {
   color: var(--rs-text);
 }
 
+/* The panel's scrolling area, and the frame the edge marker is pinned inside —
+   which is why it exists: the marker has to sit at the top or the bottom of the
+   LIST, not of the panel, and the filter box above it is not a fixed height. */
+.rs-navtree-scroller {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
 .rs-navtree-body {
   flex: 1;
   overflow-y: auto;
   padding: 0.35rem 0 1.5rem;
 }
+
+/* WHERE THE READER IS, when it is not on this panel — an answer that costs
+   them nothing, in place of the one that used to move the list out from under
+   them on every reload.
+   A pill that FLOATS over the list, and every part of that is the first
+   version's mistake corrected: written full-width, left-aligned and tinted, it
+   was a tree row in every respect a reader judges by, sitting where a tree row
+   sits — so the one thing it had to say, that it is a control, was the one
+   thing it did not. Off the edge it names, lifted off the list, filled rather
+   than tinted, and labelled with what pressing it DOES rather than with the
+   name of a document, which is what every row around it carries. */
+.rs-navtree-away {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: calc(100% - 1.2rem);
+  padding: 0.32rem 0.75rem;
+  border: none;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  color: #fff;
+  background: var(--rs-primary);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.28);
+}
+
+.rs-navtree-away:hover { background: var(--rs-primary-dark); }
+.rs-navtree-away:focus-visible { outline: 2px solid var(--rs-primary-dark); outline-offset: 2px; }
+
+/* At the TOP whichever way it points, and that is not the tidy answer: sitting
+   on the edge the document went past said the same thing twice, once by the
+   arrow and once by the position. It cost more than it was worth — the bottom
+   of a left-hand panel is exactly where a browser prints the URL of whatever
+   link the pointer is over, and every row here is a link, so the one control on
+   this panel spent its time underneath a black tooltip. The arrow carries the
+   direction on its own. */
+.rs-navtree-away { top: 0.5rem; }
+.rs-navtree-away-arrow { flex: 0 0 auto; }
 
 .rs-navtree-row {
   display: flex;
@@ -3236,10 +3291,13 @@ tr.rs-jump-flash th {
 
 .rs-navtree-row:hover { background: var(--rs-subtle); }
 
-.rs-navtree-current {
-  background: var(--rs-primary-light);
-  border-left-color: var(--rs-primary);
-}
+/* An AREA, and the row below it is a POINT. The document being read was given
+   a tint, a bar and coloured bold text all at once, and the section inside it
+   carried a bar of its own directly underneath — two blue rules stacked one on
+   the other, which is a lot of ceremony for "you are here". The tint is the
+   document's whole extent and the bar belongs to the one row that is the
+   reader's actual place, so each keeps the device that fits it. */
+.rs-navtree-current { background: var(--rs-primary-light); }
 
 .rs-navtree-current .rs-navtree-label { color: var(--rs-primary-dark); font-weight: 600; }
 
@@ -3387,7 +3445,17 @@ tr.rs-jump-flash th {
    line down the left of the group already says what it belongs to. */
 .rs-navtree-heading .rs-navtree-caret { display: none; }
 
-.rs-navtree-here .rs-navtree-item { color: var(--rs-primary-dark); font-weight: 600; }
+/* WHERE THE READER IS, inside the document they are reading — and it has to
+   reach the LABEL, not the link around it. Every word in a row lives in the
+   label, and the label carries its own colour and weight (a section is set
+   lighter than a document, just above); a rule aimed at the link was therefore
+   overridden by the one aimed at the text, and the row a reader was standing in
+   looked exactly like the twelve around it while the class was on it all along.
+   Marked the way the current document is, one step quieter: the bar and the
+   ink, without the fill, so a document and a section inside it do not read as
+   two claims of the same size. */
+.rs-navtree-here { border-left-color: var(--rs-primary); }
+.rs-navtree-here .rs-navtree-label { color: var(--rs-primary-dark); font-weight: 600; }
 
 /* The strip's place in a book document: the chapters ABOVE this sheet, and not
    its name — that is on the page and in the tree already, and the same words in
@@ -4418,6 +4486,12 @@ tr.rs-jump-flash th {
   color: var(--rs-text);
   border-bottom: 1px solid var(--rs-border);
 }
+/* Held OFF while a jump is aimed at one of these — see app.ts's jumpToNav. A
+   sticky box is measured where the scroll has pushed it, so a heading whose
+   section is far above reports its own section's bottom edge, and a jump to it
+   lands there instead of at the section's start. */
+.rs-doc.rs-doc-unstuck h2 { position: static; }
+
 /* An h3 does NOT stick, and that is the whole of the second lesson here. Two
    levels held at two offsets must CROSS whenever a subsection is the last thing
    in its section: both are released by the same edge, the lower one starts
