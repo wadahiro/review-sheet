@@ -1,6 +1,6 @@
 // The unit test's document: what a person wrote, with the tables put in.
 //
-// A 単体テスト仕様書兼成績書 is mostly prose that only a project can write —
+// A unit-test specification-and-record is mostly prose only a project can write —
 // how this unit is tested, what is deliberately out of scope, what a reader
 // should conclude — around tables that only a machine should write, because
 // they are a thousand rows long and they change with every run. So this does
@@ -25,7 +25,7 @@ export type TestDocLang = "ja" | "en";
 
 type Words = {
   no: string; item: string; expected: string; verdict: string; ran: string; how: string; evidence: string; note: string;
-  // The three levels the taxonomy declares, spelled the same way HERE — a
+  // The three levels a project's taxonomy declares, spelled the same way HERE — a
   // reader maps the table onto the page by reading the same words twice.
   major: string; middle: string; subject: string;
   pass: string; fail: string; notRun: string;
@@ -34,7 +34,8 @@ type Words = {
   count: string; done: string; todo: string; result: string; unstated: string;
   defaults: (n: number, ok: number, ng: number) => string;
   ranAt: (at: string, hosts: string) => string; notRunYet: string;
-  excludedHead: string; excludedCols: string[]; taxonomyCols: string[]; taxonomy: string[][];
+  excludedHead: string; excludedCols: string[]; taxonomyCols: string[]; taxonomyWhere: string[];
+  taxonomyUndeclared: string;
 };
 
 const T: Record<TestDocLang, Words> = {
@@ -69,11 +70,15 @@ const T: Record<TestDocLang, Words> = {
     excludedHead: "対象外",
     excludedCols: ["設定項目", "理由", "所管"],
     taxonomyCols: ["項番", "項目", "項目の上げ方", "この文書での対応"],
-    taxonomy: [
-      ["1", "大項目", "サーバ／基盤の単位で分類する", "この文書の単位。項目表の冒頭に一度だけ書く"],
-      ["2", "中項目", "ソフトウェアコンポーネント単位で分類する", "詳細設計のシート。`#### 中項目: …` の見出し"],
-      ["3", "小項目", "詳細設計書に記載されている設定の確認を網羅する", "表の1行。シートの行から導出（漏れた場合は生成が失敗する）"],
+    // The tool's half of each row: where that level is on the page it just
+    // wrote. The project's half — what each level is called and how its items
+    // are raised — is `TestDeclaration.taxonomy`.
+    taxonomyWhere: [
+      "この文書の単位。項目表の冒頭に一度だけ書く",
+      "詳細設計のシート。`#### 中項目: …` の見出し",
+      "表の1行。シートの行から導出（漏れた場合は生成が失敗する）",
     ],
+    taxonomyUndeclared: "—",
   },
   en: {
     no: "No.",
@@ -106,11 +111,12 @@ const T: Record<TestDocLang, Words> = {
     excludedHead: "Out of scope",
     excludedCols: ["Parameter", "Reason", "Owner"],
     taxonomyCols: ["No.", "Level", "How items are raised", "In this document"],
-    taxonomy: [
-      ["1", "Unit", "One per server or platform", "This document's unit, stated once at the head of the item tables"],
-      ["2", "Component", "One per software component", "A sheet of the detailed design — the `#### Component: …` headings"],
-      ["3", "Setting", "Every setting the detailed design records", "One row of a table, derived from the sheet's rows; a gap fails the build"],
+    taxonomyWhere: [
+      "This document's unit, stated once at the head of the item tables",
+      "A sheet of the detailed design — the `#### Component: …` headings",
+      "One row of a table, derived from the sheet's rows; a gap fails the build",
     ],
+    taxonomyUndeclared: "—",
   },
 };
 
@@ -119,7 +125,7 @@ const code = (s: string | undefined): string => (s === undefined || s === "" ? "
 const table = (head: readonly string[], rows: string[][]): string =>
   [`| ${head.join(" | ")} |`, `| ${head.map(() => "---").join(" | ")} |`, ...rows.map((r) => `| ${r.join(" | ")} |`)].join("\n");
 
-// The 中項目 a row belongs to: the sheet it came from, named as the plan names
+// The middle level a row belongs to: the sheet it came from, named as the plan names
 // it. A plan that predates `sheetLabel` (or an item whose sheet has no label)
 // falls back to the sheet's own name rather than to an empty heading.
 const middleOf = (i: TestItem, lang: TestDocLang): string =>
@@ -182,7 +188,7 @@ export function renderTestDoc(
 
   const blocks: Record<string, string> = {};
 
-  // （１）テスト方法 — the project's own words, rendered where the document
+  // The method — the project's own words, rendered where the document
   // asks for them rather than written twice. The declaration is what the plan
   // is derived against, so a document that restated it by hand would be a
   // second copy free to drift from the one the build reads.
@@ -190,10 +196,26 @@ export function renderTestDoc(
   const methodText = pickLang(method, lang);
   if (methodText !== undefined) blocks["test:method"] = methodText.trim();
 
-  // （２）テスト項目の考え方 — the taxonomy, and what this document does about
+  // The taxonomy, and what this document does about
   // each level. The third row is the one that matters: it says the coverage is
   // derived, which is a claim the build keeps rather than a sentence.
-  blocks["test:taxonomy"] = table(t.taxonomyCols, t.taxonomy.map((r) => [...r]));
+  // Only when the project stated it. The tool has no classification of its own
+  // to offer here — the levels' names and the rule for raising items belong to
+  // whoever's test standard this document answers to — so an undeclared
+  // taxonomy produces no block, and a document that asks for one anyway gets
+  // `injectBlocks`' ordinary "a marker nothing produced" error.
+  const declared = unit.declaration.taxonomy;
+  if (declared !== undefined && declared.length > 0) {
+    blocks["test:taxonomy"] = table(
+      t.taxonomyCols,
+      declared.map((row, i) => [
+        String(i + 1),
+        cell(pickLang(row.level, lang)),
+        cell(pickLang(row.raised, lang)),
+        t.taxonomyWhere[i] ?? t.taxonomyUndeclared,
+      ])
+    );
+  }
 
   // The counts, computed. A hand-written summary is the first thing to rot.
   const answered = shown.filter((i) => answerFor(index, i) !== undefined && answerFor(index, i)!.status !== "not_run");
@@ -219,14 +241,14 @@ export function renderTestDoc(
   }
   blocks["test:summary"] = summaryBlock.join("\n");
 
-  // （３）テスト項目・結果. The taxonomy above names three levels, so all three
+  // The items and their results. A taxonomy names three levels, so all three
   // have to be POINTABLE on this page — the reason the sheet renders as a
-  // heading at all: it is the declared 中項目 and used to appear nowhere, while
+  // heading at all: it is the declared middle level and used to appear nowhere, while
   // the only heading inside an environment was the COMPONENT, which is
   // addressing detail inside a sheet and read exactly like the level the
   // taxonomy was talking about.
   //
-  // 大項目 is stated once rather than repeated down a column: it is constant
+  // The outermost level is stated once rather than repeated down a column: it is constant
   // for the whole document, and the paper form this follows solved that with a
   // merged cell, which markdown has no way to write.
   const sections: string[] = [`${t.major}: ${pickLang(unit.label, lang)}`, ""];

@@ -402,8 +402,17 @@ export type DocumentHeading = {
 // nothing can derive from the model. Defined here because both a group and a
 // sheet may carry one; the derivation that reads it is testplan.ts.
 export type TestDeclaration = {
-  // （１）テスト方法 — how this unit is tested at all, written once per unit.
+  // How this unit is tested at all, written once per unit.
   method?: LangText;
+  // How this project raises its items, one entry per level, outermost first.
+  // The WORDS are the project's — an organisation's test standard states them,
+  // and quoting one organisation's sentences inside a general-purpose tool
+  // would publish them to every other project it builds. What the tool adds is
+  // the other half of the row: where that level actually is on the page, which
+  // is a fact about the document it just wrote and not about anybody's
+  // standard. Levels beyond the third are the project's to name and get no
+  // location, since the tool renders three.
+  taxonomy?: { level: LangText; raised: LangText }[];
   // Items with no row behind them: that a product starts, stops, restarts,
   // that its console opens. A parameter sheet cannot produce these.
   functional?: LangText[];

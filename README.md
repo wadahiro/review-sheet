@@ -472,9 +472,9 @@ record with failures in it is doing its job.
 review-sheet test-plan -i input.json -o plan.json [--instances staging production] [--sheets ...]
 ```
 
-Derives the plan from the model, so the sentence such a document always carries
-— 詳細設計書に記載されている設定の確認を網羅する — is what the build enforces
-rather than a promise. What each row asks for follows from its origin: a row
+Derives the plan from the model, so the coverage such a document always claims —
+"every setting the detailed design records is checked" — is what the build
+enforces rather than a promise. What each row asks for follows from its origin: a row
 this project set is checked against its value in that environment, an unset row
 asserts that the product's own default still applies, and a row the vendor
 shipped and this project removed asserts that no line carries it.
@@ -484,16 +484,23 @@ or a sheet that belongs to none):
 
 ```yaml
 groups:
-  - name: server-sso
-    label: { ja: "SSO サーバ" }
+  - name: app-server
+    label: { en: Application server }
     test:
       method: |            # how this unit is tested at all — written once
-        対象ノードでデプロイ済みファイルを読み、詳細設計書の値と突き合わせる。
+        Read the deployed files on the host and compare them with the design.
       functional:          # items with no row behind them
-        - 起動・停止・再起動ができること
-  - name: unit-aws
+        - It starts, stops and restarts
+      taxonomy:            # how THIS organisation raises its items, per level
+        - level: { en: Unit }      # the words are the project's own test
+          raised: { en: One per server }   # standard, never the tool's
+        - level: { en: Component }
+          raised: { en: One per software component }
+        - level: { en: Setting }
+          raised: { en: Every setting the design records }
+  - name: network
     test:
-      not_tested: この工程では実施しない（terraform plan の差分で確認する）
+      not_tested: { en: Not tested in this phase — covered by the plan diff }
 ```
 
 A unit that holds testable rows and declares neither `method` nor `not_tested`
@@ -510,17 +517,17 @@ back.
 review-sheet test-doc -i input.json -r results.json --unit server-sso -d tests-sso.md
 ```
 
-A 単体テスト仕様書兼成績書 is mostly prose only a project can write, around
+A test specification-and-record is mostly prose only a project can write, around
 tables only a machine should: they are a thousand rows long and they change with
 every run. So this does not generate the document — it fills the parts of one
 that are marked for it, in place, the way the parser tables are filled into this
 README:
 
 ```md
-## （２）テスト項目の考え方
+## How items are classified
 <!-- test:taxonomy:start --><!-- test:taxonomy:end -->
 
-## （３）テスト項目・結果
+## Items and results
 <!-- test:items:start --><!-- test:items:end -->
 ```
 
@@ -529,16 +536,21 @@ summary is the first thing to rot), `test:taxonomy` and `test:excluded`. A
 marker nothing fills is an error; a block that carries ANSWERS and has nowhere
 to go is an error; the rest a document may simply decline.
 
-The three levels the taxonomy declares are all POINTABLE on the page, or the
-table describing them describes nothing a reader can find: 大項目 (the unit) is
-stated once at the head of the items, 中項目 (the sheet) is the `#### 中項目: …`
-heading, 小項目 is one row. What a row is ABOUT — the component, which is
-addressing detail inside a sheet — is a column rather than a heading, since a
-client identified by its URL makes an unreadable heading and a fine cell.
+The levels a project's `taxonomy` declares are all POINTABLE on the page, or the
+table describing them describes nothing a reader can find: the first (the unit)
+is stated once at the head of the items, the second (the sheet) is a heading,
+the third is one row. Their NAMES and the rule for raising their items are the
+project's words — an organisation's test standard states them, and quoting one
+organisation's sentences inside this tool would publish them to every other
+project it builds; what the tool adds is the other half of each row, where that
+level is on the page it just wrote. A taxonomy nobody declared renders no block
+at all. What a row is ABOUT — the component, which is addressing detail inside a
+sheet — is a column rather than a heading, since a client identified by its URL
+makes an unreadable heading and a fine cell.
 
 Run without `-r`, it writes the specification before any run — every item, every
-environment, 未実施. With `-r`, the results must answer the plan (the same check
-`validate --plan` makes) or no document is written.
+environment, not yet run. With `-r`, the results must answer the plan (the same
+check `validate --plan` makes) or no document is written.
 
 The unset-parameter items are counted rather than listed, since two thousand
 "still on the product's default" rows are a real check and not what a reviewer

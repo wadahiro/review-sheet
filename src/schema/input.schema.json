@@ -614,6 +614,19 @@
           "$ref": "#/$defs/langText",
           "description": "How this unit is tested at all. Written once per unit, which is the level a unit-test document is organised at."
         },
+        "taxonomy": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["level", "raised"],
+            "properties": {
+              "level": { "$ref": "#/$defs/langText", "description": "What this level is called." },
+              "raised": { "$ref": "#/$defs/langText", "description": "How this project raises the items at this level." }
+            }
+          },
+          "description": "How this project raises its items, one entry per level, outermost first. The WORDS are the project's — an organisation's test standard states them, and a general-purpose tool quoting one organisation's sentences would publish them to every other project it builds. The tool adds the other half of each row: where that level is on the page it wrote."
+        },
         "functional": {
           "type": "array",
           "items": {

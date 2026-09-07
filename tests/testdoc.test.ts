@@ -122,13 +122,29 @@ describe("the tables a document is given", () => {
     expect(b["test:functional"]).toContain("prod: 起動・停止ができること");
   });
 
-  // The claim the whole derivation exists to make, stated where a reader looks
-  // for the method.
-  it("states how items are raised, and that the coverage is derived", () => {
-    const b = renderTestDoc(plan(), results(), "server");
+  // The levels' names and the rule for raising items are the PROJECT's words —
+  // an organisation's test standard states them, and quoting one organisation's
+  // sentences inside a general-purpose tool would publish them to every other
+  // project it builds. What the tool adds is where each level actually is on
+  // the page it just wrote.
+  it("renders the project's classification, and says where each level is", () => {
+    const p = plan();
+    p.units[0].declaration.taxonomy = [
+      { level: { ja: "大項目" }, raised: { ja: "サーバ単位" } },
+      { level: { ja: "中項目" }, raised: { ja: "コンポーネント単位" } },
+      { level: { ja: "小項目" }, raised: { ja: "設定を網羅" } },
+    ];
+    const b = renderTestDoc(p, results(), "server");
     expect(b["test:taxonomy"]).toContain("大項目");
-    expect(b["test:taxonomy"]).toContain("小項目");
+    expect(b["test:taxonomy"]).toContain("サーバ単位");
     expect(b["test:taxonomy"]).toContain("漏れた場合は生成が失敗する");
+  });
+
+  // …and nothing of its own when the project stated nothing. A document that
+  // asks for the block anyway gets injectBlocks' "a marker nothing produced".
+  it("offers no classification the project did not write", () => {
+    const b = renderTestDoc(plan(), results(), "server");
+    expect(b["test:taxonomy"]).toBeUndefined();
   });
 
   it("refuses a unit this plan does not have", () => {

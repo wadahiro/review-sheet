@@ -1,11 +1,10 @@
 // The unit test's PLAN, derived from the sheet it tests.
 //
-// A Japanese unit-test document (単体テスト仕様書兼成績書) enumerates its items
-// under a three-level classification: 大項目 the unit under test, 中項目 the
-// software component inside it, 小項目 every setting the design records. The
-// third of those is where such a document usually makes a promise it cannot
-// keep — "詳細設計書に記載されている設定の確認を網羅する" is a sentence, and a
-// sentence is not a check.
+// A unit-test specification enumerates its items under a classification with
+// three levels: the unit under test, the software component inside it, and
+// every setting the design records. The third is where such a document usually
+// makes a promise it cannot keep — "every setting in the detailed design is
+// covered" is a sentence, and a sentence is not a check.
 //
 // Here it is not a promise. The items ARE the rows: what to test is derived
 // from the same model the parameter sheet is rendered from, so an item cannot
@@ -27,7 +26,7 @@ export type { TestDeclaration };
 export type TestItem = {
   // The row this item tests, spelled the way a result must answer it.
   target: { sheet: string; path: string[]; key: string; instance: string };
-  // 大項目 / 中項目, resolved to what a reader sees.
+  // The unit and the sheet, resolved to what a reader sees.
   unit: string;
   unitLabel?: LangText;
   sheetLabel?: LangText;
@@ -89,7 +88,7 @@ const walkGroups = (groups: SheetGroup[] | undefined, visit: (g: SheetGroup) => 
 
 // The unit a sheet is tested as: the chapter it belongs to, or itself when it
 // belongs to none. Not the chapter's PARENT — a unit is the level that holds
-// sheets, which is what a reader sees as 大項目.
+// sheets, which is the outermost level a reader sees.
 const unitOf = (sheet: Sheet, byName: Map<string, SheetGroup>): { name: string; label?: LangText; group?: SheetGroup } => {
   const g = sheet.group === undefined ? undefined : byName.get(sheet.group);
   return g === undefined ? { name: sheet.name, label: sheet.label } : { name: g.name, label: g.label, group: g };
