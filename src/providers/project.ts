@@ -171,8 +171,27 @@ export type ProjectMetaDoc = {
   // — and, once declared, it is checked BOTH ways like every other list here:
   // a sheet naming a group nobody declared, and a declared group no sheet uses,
   // are both errors rather than a tab that quietly appears or quietly does not.
-  groups?: { name: string; label?: LangText }[];
+  groups?: SheetGroupMeta[];
+  // How this document is READ. `tabs` (the default, and every document before
+  // this) is the horizontal strip: right for a handful of sheets. `book` is a
+  // document SET — requirements, design, build, test — read as chapters, with
+  // a tree beside the text instead of a strip above it.
+  //
+  // Declared here rather than in build.yml for the reason `categories:` and
+  // `under_key:` are: it is a fact about how the document is read, not about
+  // where its data comes from.
+  nav?: "tabs" | "book";
+  // Chapter numbers (1.2.3), on by default in `book` — a document set is cited
+  // by chapter, and a set without numbers reads as unfinished. Off for the
+  // projects that never number, so nobody has to look at a number they will not
+  // use. Never an ID: the numbers are DERIVED from declaration order, so
+  // inserting a chapter moves every one after it, while the anchors and the
+  // links keep using names.
+  numbering?: boolean;
 };
+
+// A chapter, and the chapters inside it (types.ts's SheetGroup).
+export type SheetGroupMeta = { name: string; label?: LangText; groups?: SheetGroupMeta[] };
 
 // A `category:` list is a path, and every segment of it has to be a real name.
 // Checked once at load, where the file can be named, rather than per row deep
@@ -259,13 +278,23 @@ export function loadProjectMeta(path: string, readFile: (path: string) => string
     // default — a project whose sheets all want one layout says it once. Carried
     // rather than dropped: a declaration this loader silently discarded would be
     // a line the author wrote, the build read, and nobody honoured.
-    return { sheets, ...(doc.groups ? { groups: doc.groups } : {}), ...(doc.layout ? { layout: doc.layout } : {}) };
+    checkGroupNames(doc, path);
+    return {
+      sheets,
+      ...(doc.groups ? { groups: doc.groups } : {}),
+      ...(doc.layout ? { layout: doc.layout } : {}),
+      ...(doc.nav ? { nav: doc.nav } : {}),
+      ...(doc.numbering === undefined ? {} : { numbering: doc.numbering }),
+    };
   }
   checkCategoryPaths(doc.params, "param ", path);
   checkLayout("(top level)", doc as Partial<ProjectMetaSheetDoc>, path);
+  checkGroupNames(doc, path);
   return {
     params: doc.params ?? {},
     ...(doc.groups ? { groups: doc.groups } : {}),
+    ...(doc.nav ? { nav: doc.nav } : {}),
+    ...(doc.numbering === undefined ? {} : { numbering: doc.numbering }),
     ...(doc.categories ? { categories: doc.categories } : {}),
     ...(doc.under_key ? { under_key: doc.under_key } : {}),
     ...(doc.label ? { label: doc.label } : {}),
@@ -380,9 +409,33 @@ export function groupForSheet(doc: ProjectMetaDoc, sheet: string | undefined): s
   return doc.sheets && sheet !== undefined ? doc.sheets[sheet]?.group : undefined;
 }
 
-// The document's declared groups, in reading order. Empty when it declares none.
-export function sheetGroups(doc: ProjectMetaDoc): { name: string; label?: LangText }[] {
+// The document's declared groups, in reading order — the tree as written.
+// Empty when it declares none.
+export function sheetGroups(doc: ProjectMetaDoc): SheetGroupMeta[] {
   return doc.groups ?? [];
+}
+
+// Every group of the tree, flattened, with the path that leads to it. What the
+// two-way checks are stated in terms of: a name is referenced by a sheet
+// wherever in the tree it sits, so "declared" and "used" are questions about
+// the whole tree, never about one level of it.
+export function flattenGroups(groups: SheetGroupMeta[] | undefined, path: string[] = []): { group: SheetGroupMeta; path: string[] }[] {
+  return (groups ?? []).flatMap((g) => [{ group: g, path: [...path, g.name] }, ...flattenGroups(g.groups, [...path, g.name])]);
+}
+
+// A sheet names its group by NAME and by nothing else, so the same name twice
+// anywhere in the tree is two chapters that would silently become one place.
+// Checked at load, where the file can be named.
+export function checkGroupNames(doc: ProjectMetaDoc, path: string): void {
+  const seen = new Map<string, number>();
+  for (const { group } of flattenGroups(doc.groups)) seen.set(group.name, (seen.get(group.name) ?? 0) + 1);
+  const twice = [...seen].filter(([, n]) => n > 1).map(([name]) => name);
+  if (twice.length > 0) {
+    throw new Error(
+      `project metadata ${path}: group name(s) declared more than once: ${twice.join(", ")}. ` +
+        `A sheet names its group by name alone, so two chapters with one name are one place — rename one of them.`
+    );
+  }
 }
 
 // This sheet's own display text, if any (Sheet.label). A flat doc describes one

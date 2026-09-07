@@ -70,6 +70,17 @@ export type ParameterSheetInput = {
   // it, which is the whole reason grouping is safe to add to an existing
   // document.
   groups?: SheetGroup[];
+  // How this document is READ. `tabs` (the default, and every document before
+  // this) is the horizontal strip above the sheet: right while a document is a
+  // handful of sheets. `book` is a document SET — requirements, design, build,
+  // test — read as chapters, with a tree beside the text instead of a strip
+  // above it, because a strip of a hundred tabs is a menu nobody can see.
+  nav?: "tabs" | "book";
+  // Chapter numbers (1.2.3) beside each entry, on by default under `nav: book`.
+  // DERIVED from the declared order and used for DISPLAY only: inserting a
+  // chapter moves every number after it, while anchors and links keep using
+  // names, so nothing in the document breaks when they move.
+  numbering?: boolean;
   sheets: Sheet[];
   // Optional capabilities the embedded viewer can rely on (e.g. whether a
   // `review-sheet serve` backend is reachable for direct apply). Carried
@@ -199,9 +210,20 @@ export type ArtifactPreview = {
 
 export type SheetGroup = {
   // Identity, referenced by each sheet's `group`. Same split as everywhere
-  // else: this never moves, `label` is what a reader sees.
+  // else: this never moves, `label` is what a reader sees. UNIQUE across the
+  // whole tree, not merely among siblings: a sheet names its group by this and
+  // nothing else, so two groups called "params" in two chapters would silently
+  // become one place.
   name: string;
   label?: LangText;
+  // Chapters inside this one. A flat list was enough while a document was a
+  // handful of sheets; a document set — requirements, design, build, test — is
+  // three or four levels deep, and a flat list can only render it as a strip.
+  //
+  // A group may hold sheets AND child groups: a chapter with an introduction
+  // of its own is ordinary. Its own sheets come FIRST, before the child
+  // chapters, which is the order a document is written in.
+  groups?: SheetGroup[];
 };
 
 export type Capabilities = {
@@ -232,6 +254,12 @@ export type SheetVersion = {
   // snapshot's sheets, and a regrouping between two revisions is a real change
   // the older document must not be redrawn with.
   groups?: SheetGroup[];
+  // How the document is read, and whether its chapters are numbered — carried
+  // per version like `groups`, since a snapshot's navigation describes THAT
+  // snapshot: a document that became a set between two releases says so on the
+  // release where it did.
+  nav?: "tabs" | "book";
+  numbering?: boolean;
   sheets: Sheet[];
   // Carried per version for the same reason `columns` and `groups` are: a
   // snapshot's artifacts are THAT snapshot's files, and a template that changed

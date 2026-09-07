@@ -2237,7 +2237,9 @@ fails when one of them is missing from this section):
 
 | where | field | what it decides |
 |---|---|---|
-| document | `groups:` | the sheet groups this document has, IN READING ORDER — the header's first row |
+| document | `groups:` | the sheet groups this document has, IN READING ORDER — the header's first row. A group may hold `groups:` of its own: a flat list is enough for a handful of sheets, and a document SET (requirements, design, build, test) is three or four levels deep. Names are unique across the whole tree, since a sheet names its group by name alone |
+| document | `nav:` | how the document is READ. `tabs` (default) is the horizontal strip; `book` is a document set read as chapters, with a tree beside the text instead of a strip above it |
+| document | `numbering:` | chapter numbers (1.2.3), on by default under `nav: book`. DERIVED from declaration order and used for display only — anchors and links keep using names, so inserting a chapter moves the numbers and breaks no link |
 | document | `sheets:` | per-sheet namespace (below); mutually exclusive with a top-level `params:` |
 | sheet | `group:` | which of `groups:` this sheet is read under |
 | sheet | `label:` | the sheet's display name, `{ ja, en }` — the name stays its identity |

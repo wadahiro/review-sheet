@@ -37,6 +37,8 @@ import {
   groupsByFile,
   layoutForSheet,
   sheetGroups,
+  flattenGroups,
+  type SheetGroupMeta,
   checkProjectMetaSheets,
   type ProjectMetaDoc,
   type UnderKeyMeta,
@@ -2975,7 +2977,11 @@ export function assembleSheetsWithReport(
   // the one thing this file never lets pass quietly.
   const declaredGroups = sheetGroups(projectMeta);
   if (declaredGroups.length > 0) {
-    const declared = new Set(declaredGroups.map((g) => g.name));
+    // The whole TREE, not one level of it: a sheet names its group by name
+    // wherever in the tree that group sits, so both directions of the check are
+    // questions about every group there is.
+    const everyGroup = flattenGroups(declaredGroups);
+    const declared = new Set(everyGroup.map((g) => g.group.name));
     const used = new Set(sheets.map((sh) => sh.group).filter((g): g is string => g !== undefined));
     const undeclared = [...used].filter((g) => !declared.has(g));
     if (undeclared.length > 0) {
@@ -2998,7 +3004,12 @@ export function assembleSheetsWithReport(
           `A grouped header has nowhere to show an ungrouped sheet — give each one a group, or remove groups: entirely.`
       );
     }
-    const unused = [...declared].filter((g) => !used.has(g));
+    // A chapter that holds no sheets ITSELF but holds chapters that do is used:
+    // it is the heading over them. One with nothing anywhere beneath it is the
+    // stale entry this check has always been for.
+    const holdsSomething = (g: SheetGroupMeta): boolean =>
+      used.has(g.name) || (g.groups ?? []).some(holdsSomething);
+    const unused = everyGroup.filter(({ group }) => !holdsSomething(group)).map(({ group }) => group.name);
     if (unused.length > 0) {
       throw new Error(
         `assemble: declared sheet group(s) that no sheet belongs to: ${unused.join(", ")}. ` +
@@ -3052,6 +3063,8 @@ export function assembleSheetsWithReport(
   const assembled: ParameterSheetInput = {
     ...(metadata ? { metadata } : {}),
     ...(declaredGroups.length > 0 ? { groups: declaredGroups } : {}),
+    ...(projectMeta.nav ? { nav: projectMeta.nav } : {}),
+    ...(projectMeta.numbering === undefined ? {} : { numbering: projectMeta.numbering }),
     ...(underKeyColumns.size > 0 ? { columns: [...underKeyColumns.values()] } : {}),
     ...(opts.capabilities ? { capabilities: opts.capabilities } : {}),
     sheets,

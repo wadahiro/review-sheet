@@ -26,6 +26,7 @@ import { documentEnvironments, ENVIRONMENTS_FIELD, applyEdits, editsForCell, isE
 import { toMarkdownSheet, renderSheetMarkdown, parseSheetMarkdown } from "../sheet-markdown.js";
 import { getMarkdownRenderer } from "./markdown-runtime.js";
 import { MarkdownSheetBody } from "./md-sheet.js";
+import { NavTree, chapterPath } from "./nav-tree.js";
 import { jumpFromSelection, type DocJump, type DocPoint } from "./doc-jump.js";
 import { navAnchorId, paramAnchorId, encodeIdPart } from "./anchors.js";
 import {
@@ -166,7 +167,14 @@ function localizeCategory(c: CategoryData, lang: Lang): CategoryData {
   };
 }
 function localizeGroups(groups: SheetData["groups"], lang: Lang): SheetData["groups"] {
-  return groups?.map((g) => ({ ...g, display: (g.label ? pickLang(g.label, lang) : undefined) ?? g.name }));
+  // Recursive: a chapter inside a chapter has a label of its own, and one left
+  // unresolved would show its name — the identity, not the words a reader was
+  // meant to see.
+  return groups?.map((g) => ({
+    ...g,
+    display: (g.label ? pickLang(g.label, lang) : undefined) ?? g.name,
+    ...(g.groups ? { groups: localizeGroups(g.groups, lang) } : {}),
+  }));
 }
 // A column's heading is a LangText when the project declared one (an under_key
 // label). Resolved here with the rest, so everything downstream sees a plain
@@ -4468,7 +4476,20 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
     return out;
   }, [data, reviews, diffMode]);
   const paletteEntries = useMemo(() => [...categoryEntries, ...paramEntries, ...commentEntries], [categoryEntries, paramEntries, commentEntries]);
-  const [outlineOpen, setOutlineOpen] = useState<boolean>(() => loadOutlineOpen());
+  // A book document opens WITH its chapters showing: the tree is the navigation
+  // there, not an aid to it, and a document set whose navigation starts hidden
+  // opens as a page with no way out of itself. A tabbed document keeps the
+  // drawer it has always had, closed until asked for.
+  const [outlineOpen, setOutlineOpen] = useState<boolean>(() => (baseData.nav === "book" ? true : loadOutlineOpen()));
+  // Held here rather than inside the tree: hiding the tree unmounts it, and a
+  // filter the reader had to type again every time they reclaimed the space is
+  // a filter that charges them for using the panel. Not persisted — reopening
+  // the document should show the document, not the last search.
+  const [navFilter, setNavFilter] = useState("");
+  // A document SET states that it is one (`nav: book`, types.ts). The tree
+  // replaces the tab strip and stands beside the text; every other document
+  // keeps the strip it has always had.
+  const bookNav = baseData.nav === "book";
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [currentNavId, setCurrentNavId] = useState<string | null>(null);
   // After an outline/palette click we pin the highlight to the clicked target and
@@ -5008,7 +5029,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   const OVERVIEW_TAB = -1;
 
   return html`
-    <div class=${`rs-app ${outlineOpen ? "rs-outline-open" : ""} ${artifactTarget ? "rs-with-artifact" : ""} ${effEditEnabled ? "rs-edit-on" : ""}`}>
+    <div class=${`rs-app ${outlineOpen ? "rs-outline-open" : ""} ${bookNav ? "rs-book" : ""} ${artifactTarget ? "rs-with-artifact" : ""} ${effEditEnabled ? "rs-edit-on" : ""}`}>
       <nav class=${`rs-sheet-tabs ${(data.groups?.length ?? 0) > 0 ? "rs-sheet-tabs-grouped" : ""}`} role="tablist">
         <div class="rs-tabs-nav">
           <button class=${`rs-toolbar-btn ${outlineOpen ? "rs-toolbar-btn-active" : ""}`} onClick=${() => setOutlineOpen(!outlineOpen)}
@@ -5019,8 +5040,36 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </button>
         </div>
-        <${SheetTabs} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet}
-                      hasMetadata=${hasMetadata} onSelect=${setActiveSheet} t=${t} />
+        ${/* A document SET is read as chapters, from the tree beside the text
+              (nav-tree.ts) — a strip of a hundred tabs is a menu nobody can
+              see. Everything else about the page is the same, and `tabs` stays
+              the default, so no document that predates this moves. */ ""}
+        ${bookNav
+          ? html`<nav class="rs-tabs-book" aria-label=${t.navOutline}>
+              ${/* The document itself is the root of the path and a LINK to its
+                    front matter — the convention every reader of a docs site
+                    already has, and the one place the front matter is reachable
+                    from with the tree hidden. It also puts the document's title
+                    into the chrome, which otherwise appears only on the page it
+                    links to. The chapters between are text: they are headings,
+                    not pages, and linking them would invent a destination. */ ""}
+              <a class="rs-crumb rs-crumb-root" href="#overview"
+                 aria-current=${activeSheet < 0 ? "page" : undefined}
+                 onClick=${(ev: MouseEvent) => {
+                   if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.button !== 0) return;
+                   ev.preventDefault();
+                   setActiveSheet(-1);
+                 }}>${data.metadata?.title ?? t.overview}</a>
+              ${(() => {
+                const path = chapterPath(data.groups, data.sheets, activeSheet, lang, baseData.numbering !== false);
+                return path.map(
+                  (seg, i) => html`<span class="rs-crumb" key=${i}
+                                         aria-current=${i === path.length - 1 ? "page" : undefined}>${seg}</span>`
+                );
+              })()}
+            </nav>`
+          : html`<${SheetTabs} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet}
+                      hasMetadata=${hasMetadata} onSelect=${setActiveSheet} t=${t} />`}
         <div class="rs-tabs-right">
           ${
             // Filters stay while comparing. They were gated on review being on,
@@ -5175,8 +5224,15 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
             </button>
           `}
         </div>
-        <${SheetSubTabs} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet}
-                         onSelect=${setActiveSheet} t=${t} />
+        ${/* Not in a book document: this row is the current chapter's sheets,
+              flat, with no numbers, no hierarchy and no filter — a subset of
+              what the tree shows a few centimetres to its left, answering no
+              question the tree does not. A reader who hides the tree traded
+              navigation for width on purpose; one click brings it back. */ ""}
+        ${!bookNav && html`
+          <${SheetSubTabs} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet}
+                           onSelect=${setActiveSheet} t=${t} />
+        `}
       </nav>
 
       <main class="rs-main">
@@ -5449,7 +5505,28 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
         })}
       </main>
 
-      ${outlineOpen && html`
+      ${/* ONE panel in a book document. The outline drawer and this tree would
+            otherwise be two lists of the same thing, both fixed to the left
+            edge, with no way to say which is for what — so the tree carries the
+            current sheet's own headings and the drawer is not offered here. */ ""}
+      ${bookNav && outlineOpen && html`
+        <${NavTree} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet}
+                    numbering=${baseData.numbering !== false} lang=${lang}
+                    filter=${navFilter} onFilter=${setNavFilter} docKey=${storageKey}
+                    headings=${categoryEntries.map((e) => ({
+                      sheetIndex: e.sheetIndex,
+                      id: e.id,
+                      name: e.name,
+                      depth: e.depth,
+                      current: currentNavId === e.id,
+                    }))}
+                    onSelect=${setActiveSheet}
+                    onJumpHeading=${(id: string) => {
+                      const e = categoryEntries.find((x) => x.id === id);
+                      if (e !== undefined) jumpToNav(e.sheetIndex, e.id, undefined, e.sheetName, e.categoryPath);
+                    }} t=${t} />
+      `}
+      ${!bookNav && outlineOpen && html`
         <${NavOutline} entries=${categoryEntries} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet} pivoted=${pivoted} currentId=${currentNavId}
                        onJump=${jumpToNav} onClose=${() => setOutlineOpen(false)} diff=${diff} t=${t} />
       `}
@@ -5570,6 +5647,9 @@ type SheetVersion = {
   note?: string;
   columns?: SheetData["columns"];
   groups?: SheetData["groups"];
+  // How this snapshot is read — carried per version like `groups` (types.ts).
+  nav?: SheetData["nav"];
+  numbering?: SheetData["numbering"];
   sheets: SheetData["sheets"];
   artifacts?: ArtifactPreview[];
 };
@@ -5710,6 +5790,8 @@ function Root({ payload, reviewEnabled, editEnabled, promptEnabled = true, showS
     metadata: { ...payload.metadata, version: shown.version, generated_at: shown.date },
     columns: localizeColumns(shown.columns, lang),
     groups: localizeGroups(shown.groups, lang),
+    ...(shown.nav ? { nav: shown.nav } : {}),
+    ...(shown.numbering === undefined ? {} : { numbering: shown.numbering }),
     sheets: diffModel ? diffModel.sheets : shownSheets,
   }), [shown, payload.metadata, diffModel, shownSheets, lang]);
 

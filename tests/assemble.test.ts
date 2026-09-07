@@ -1539,6 +1539,70 @@ sheets:
     expect(() => assembleSheets(twoSheets(), opts())).toThrow(/declared sheet group\(s\) that no sheet belongs to: forgotten/);
   });
 
+  // A document SET is chapters inside chapters. Both directions of the check
+  // are questions about the whole TREE: a sheet names its group by name
+  // wherever in the tree that group sits.
+  it("carries chapters inside chapters, and files each sheet under the one it names", () => {
+    files["p.yml"] = `
+groups:
+  - name: build
+    label: { ja: 構築, en: Build }
+    groups:
+      - name: params
+      - name: procedures
+sheets:
+  a: { group: params, params: { a_key: { category: C, description: d } } }
+  b: { group: procedures, params: { b_key: { category: C, description: d } } }
+`;
+    const input = assembleSheets(twoSheets(), opts());
+    expect(input.groups).toEqual([
+      { name: "build", label: { ja: "構築", en: "Build" }, groups: [{ name: "params" }, { name: "procedures" }] },
+    ]);
+    expect(input.sheets.map((s) => s.group)).toEqual(["params", "procedures"]);
+  });
+
+  // The chapter over them holds no sheet of its own and is still used — it is
+  // the heading the others are read under.
+  it("does not call a chapter unused when its own chapters hold the sheets", () => {
+    files["p.yml"] = `
+groups:
+  - name: build
+    groups: [{ name: params }, { name: procedures }]
+sheets:
+  a: { group: params, params: { a_key: { category: C, description: d } } }
+  b: { group: procedures, params: { b_key: { category: C, description: d } } }
+`;
+    expect(() => assembleSheets(twoSheets(), opts())).not.toThrow();
+  });
+
+  it("still fails on a chapter with nothing anywhere beneath it", () => {
+    files["p.yml"] = `
+groups:
+  - name: build
+    groups: [{ name: params }, { name: forgotten }]
+sheets:
+  a: { group: params, params: { a_key: { category: C, description: d } } }
+  b: { group: params, params: { b_key: { category: C, description: d } } }
+`;
+    expect(() => assembleSheets(twoSheets(), opts())).toThrow(/no sheet belongs to: forgotten/);
+  });
+
+  // A sheet names its group by NAME and by nothing else, so the same name in
+  // two chapters is two places that would silently become one.
+  it("refuses the same chapter name twice in the tree", () => {
+    files["p.yml"] = `
+groups:
+  - name: design
+    groups: [{ name: params }]
+  - name: build
+    groups: [{ name: params }]
+sheets:
+  a: { group: params, params: { a_key: { category: C, description: d } } }
+  b: { group: params, params: { b_key: { category: C, description: d } } }
+`;
+    expect(() => assembleSheets(twoSheets(), opts())).toThrow(/declared more than once: params/);
+  });
+
   it("fails on a sheet naming a group nobody declared, and suggests the near miss", () => {
     files["p.yml"] = `
 groups: [{ name: infra }, { name: app }]

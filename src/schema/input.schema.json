@@ -54,6 +54,22 @@
         }
       }
     },
+    "groups": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sheetGroup"
+      }
+    },
+    "nav": {
+      "type": "string",
+      "enum": [
+        "tabs",
+        "book"
+      ]
+    },
+    "numbering": {
+      "type": "boolean"
+    },
     "columns": {
       "type": "array",
       "items": {
@@ -200,11 +216,16 @@
           "properties": {
             "mode": {
               "type": "string",
-              "enum": ["prose", "sheet"]
+              "enum": [
+                "prose",
+                "sheet"
+              ]
             },
             "row_keys": {
               "type": "object",
-              "additionalProperties": { "type": "string" }
+              "additionalProperties": {
+                "type": "string"
+              }
             },
             "html": {
               "type": "string"
@@ -554,6 +575,27 @@
             "engine",
             "deploy-time"
           ]
+        }
+      }
+    },
+    "sheetGroup": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "label": {
+          "$ref": "#/$defs/langText"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sheetGroup"
+          }
         }
       }
     }

@@ -580,3 +580,28 @@ describe("a container row's instances", () => {
     expect(() => validateInput(doc)).toThrow(/embedded origin cannot have per-environment instances/);
   });
 });
+
+// The chapters a document set is read in. A flat list was enough while a
+// document was a handful of sheets; requirements → design → build → test is
+// three or four levels deep, and the field had never been schema'd at all —
+// which for a nested one would double the silent-typo surface this project
+// treats as its cardinal sin.
+describe("sheet groups", () => {
+  const doc = (groups: unknown) => ({
+    metadata: { title: "t" },
+    groups,
+    sheets: [{ name: "a", group: "g", categories: [{ name: "c", params: [{ key: "k", description: { en: "d" }, value: "1" }] }] }],
+  });
+
+  it("takes chapters inside chapters", () => {
+    expect(validateInput(doc([{ name: "top", label: { ja: "上", en: "top" }, groups: [{ name: "g" }] }]))).toBeDefined();
+  });
+
+  it("still takes the flat list every document before this had", () => {
+    expect(validateInput(doc([{ name: "g", label: { ja: "章", en: "chapter" } }]))).toBeDefined();
+  });
+
+  it("refuses a misspelled field instead of dropping the chapters under it", () => {
+    expect(() => validateInput(doc([{ name: "top", gorups: [{ name: "g" }] }]))).toThrow();
+  });
+});

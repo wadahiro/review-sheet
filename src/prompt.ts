@@ -124,6 +124,8 @@ export function effectiveOrigin(param: { origin?: Origin; instances?: { name: st
   return param.instances !== undefined ? "overlay" : "common";
 }
 
+export type SheetGroupData = { name: string; label?: LangText; display?: string; groups?: SheetGroupData[] };
+
 export type SheetData = {
   metadata?: {
     title?: string;
@@ -134,7 +136,12 @@ export type SheetData = {
     extra?: Record<string, string>;
   };
   columns?: { field: string; header: string; header_lang?: LangText; width?: string; align?: string; className?: string; render?: string; place?: "trailing" | "under_key" }[];
-  groups?: { name: string; label?: LangText; display?: string }[];
+  // A chapter, and the chapters inside it (types.ts's SheetGroup).
+  groups?: SheetGroupData[];
+  // How the document is read, and whether its chapters are numbered — see
+  // types.ts. Only the viewer reads these.
+  nav?: "tabs" | "book";
+  numbering?: boolean;
   sheets: {
     // Identity — see types.ts's Sheet. `label`/`display` are the display text.
     name: string;

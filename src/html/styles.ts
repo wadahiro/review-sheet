@@ -45,6 +45,9 @@ export const customStyles = `
   /* Width of the outline panel; reused as the content's left margin when open so
      the panel pushes the content instead of covering it. */
   --rs-outline-w: 16rem;
+  /* The chapter tree of a document set: wider than the outline drawer, because
+     it holds a number, an indent and a title rather than one heading. */
+  --rs-navtree-w: 19rem;
 
   --rs-success: #047857;
   --rs-success-bg: #ecfdf5;
@@ -3152,6 +3155,278 @@ tr.rs-jump-flash th {
   margin-left: var(--rs-outline-w);
 }
 
+/* ============================================================
+   The chapter tree of a document SET (nav: book)
+   ============================================================
+   Beside the text, not above it, and always there — a strip of a hundred tabs
+   is a menu nobody can see. The outline drawer above stays exactly as it is,
+   for the documents that keep the strip. */
+.rs-navtree {
+  position: fixed;
+  top: var(--rs-tabbar-h, 41px);
+  left: 0;
+  width: var(--rs-navtree-w);
+  height: calc(100vh - var(--rs-tabbar-h, 41px));
+  background: var(--rs-surface);
+  border-right: 1px solid var(--rs-border-light);
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  /* Read as much as the page is: this panel IS the navigation of a document set,
+     not an aid beside a table, and its entries are chapter and document names
+     that a reader scans for minutes at a time. */
+  font-size: 0.85rem;
+}
+
+/* …and the content moves over only while the tree is actually there. Keyed on
+   the mode alone, hiding the tree left its width behind as an empty margin —
+   the reader asked for the space back and got a blank column instead. */
+.rs-app.rs-book.rs-outline-open .rs-main {
+  margin-left: var(--rs-navtree-w);
+}
+
+.rs-navtree-head {
+  padding: 0.5rem 0.625rem;
+  border-bottom: 1px solid var(--rs-border-light);
+}
+
+.rs-navtree-filter {
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface);
+  color: var(--rs-text);
+}
+
+.rs-navtree-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.35rem 0 1.5rem;
+}
+
+.rs-navtree-row {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  /* One rhythm down the whole panel. Rows of two heights read as two widgets,
+     and the shorter of them read as the cramped one. */
+  line-height: 1.5;
+  /* One indent per level, from the depth the row carries: the tree is rendered
+     as a flat list so the arrow keys move in the same order the eye reads.
+     Half a character per level, not a whole one — a chapter inside a chapter
+     inside a document is four levels before a heading starts, and at the width
+     an indent normally has that is a fifth of the panel spent saying "deeper"
+     to a reader who can see it from the line above. */
+  padding-left: calc(0.25rem + var(--rs-nav-depth, 0) * 0.85rem);
+  border-left: 3px solid transparent;
+}
+
+.rs-navtree-row:hover { background: var(--rs-subtle); }
+
+.rs-navtree-current {
+  background: var(--rs-primary-light);
+  border-left-color: var(--rs-primary);
+}
+
+.rs-navtree-current .rs-navtree-label { color: var(--rs-primary-dark); font-weight: 600; }
+
+/* THREE KINDS OF THING, and they have to look like three kinds of thing.
+   Setting them all at one size was an over-correction: a document set has eight
+   to fifteen sections under every document, so at one size the sections are
+   most of the panel and the documents — the things a reader is actually
+   choosing between — disappear into them.
+
+   A chapter is a HEADING over the list, not a row in it: small, heavy, muted,
+   with air above it, which is what makes the list read as groups rather than as
+   one column forty rows long.
+   A document is the thing being chosen: full size, medium weight, full ink.
+   A section is inside one: a step down in size and ink, set tight, so a
+   document and its sections read as one block. */
+.rs-navtree-group .rs-navtree-label {
+  font-weight: 700;
+  color: var(--rs-text);
+}
+
+.rs-navtree-row.rs-navtree-d0 { margin-top: 0.9rem; }
+.rs-navtree-row.rs-navtree-d1 { margin-top: 0.5rem; }
+.rs-navtree-body > div:first-child .rs-navtree-row.rs-navtree-d0 { margin-top: 0.25rem; }
+
+.rs-navtree-item .rs-navtree-label { font-weight: 500; }
+
+/* A SCALE, not three fixed sizes: each level a hair smaller than the one it
+   sits under, the way an outline sets its headings, with a floor so the
+   deepest rows stay Japanese somebody can read. */
+.rs-navtree-label {
+  font-size: max(0.76rem, calc(0.92rem - var(--rs-nav-depth, 0) * 0.04rem));
+}
+
+.rs-navtree-heading .rs-navtree-label {
+  font-weight: 400;
+  color: var(--rs-text-secondary);
+  font-size: max(0.74rem, calc(0.8rem - var(--rs-nav-depth, 0) * 0.03rem));
+}
+
+.rs-navtree-heading .rs-navtree-item { padding-top: 0.16rem; padding-bottom: 0.16rem; }
+
+.rs-navtree-caret {
+  width: 1rem;
+  flex: 0 0 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  /* Recessive at rest, not invisible: a hundred of these run down the panel and
+     a control that shouts on every row is a row of punctuation — but a pale
+     grey mark on white fails the same legibility bar the labels just failed.
+     It comes forward under the pointer, where it is about to be used. */
+  color: var(--rs-text-muted);
+}
+
+/* A hair between the control and the name it opens: measured at 2.4px, which
+   is close enough that aiming at the first character of a document can toggle
+   it instead. A spacer, not the gutter this replaced. */
+.rs-navtree-caret { margin-right: 0.2rem; }
+
+.rs-navtree-row:hover .rs-navtree-caret { color: var(--rs-text); }
+.rs-navtree-caret:focus-visible { outline: 2px solid var(--rs-primary); outline-offset: -2px; border-radius: 3px; }
+
+.rs-caret {
+  transition: transform 0.12s ease;
+}
+
+.rs-caret-open { transform: rotate(90deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rs-caret { transition: none; }
+}
+
+.rs-navtree-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  padding: 0.3rem 0.5rem 0.3rem 0;
+  /* The documents are what this panel is FOR -- the things a reader clicks --
+     so they are set in the text colour, not in link blue, and never underlined:
+     a tree of two dozen underlined blue rows reads as a link farm, not an
+     outline. */
+  color: var(--rs-text);
+  text-decoration: none;
+}
+
+.rs-navtree-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rs-navtree-item:focus-visible {
+  outline: 2px solid var(--rs-primary);
+  outline-offset: -2px;
+}
+
+.rs-navtree-empty { color: var(--rs-text-muted); padding: 0.75rem 0.9rem; }
+
+/* The current sheet's own headings, inside the tree. One panel says both where
+   you are in the set and where you are in the document; two panels would say
+   the same things twice and leave a reader deciding which one to use. */
+/* A section is a STEP inside its document, not a column aligned to its name.
+   Aligning to the name put every section 4rem in — and sections are most of
+   the rows in this panel, so that is the width most of its text has to live in.
+   A step of about a character, hung off the document's own row, says the same
+   thing: the size, the ink and the guide line down the left of the block make
+   the belonging unambiguous without spending the width to prove it.
+
+   A guide, not a mark: the 3px bar means one thing in this panel — "you are on
+   this row" — so this one is a hairline. */
+.rs-navtree-headings {
+  border-left: 1px solid var(--rs-border-light);
+  margin-left: calc(0.25rem + var(--rs-parent-depth, 0) * 0.85rem + 1.2rem);
+  /* The block belongs to the document above it: no air between them, and air
+     after, so the eye takes the two as one thing. */
+  margin-bottom: 0.35rem;
+}
+
+/* A section reads a step below the document it is in — quieter, and the same
+   size: it is a line of Japanese somebody has to read, like every other. */
+.rs-navtree-heading .rs-navtree-item {
+  color: var(--rs-text-muted);
+}
+
+/* A heading has nothing to fold, so it needs no room for a caret — the guide
+   line down the left of the group already says what it belongs to. */
+.rs-navtree-heading .rs-navtree-caret { display: none; }
+
+.rs-navtree-here .rs-navtree-item { color: var(--rs-primary-dark); font-weight: 600; }
+
+/* The strip's place in a book document: the chapters ABOVE this sheet, and not
+   its name — that is on the page and in the tree already, and the same words in
+   three places say nothing the third time. The path is what neither of them
+   carries, and the bar is the sticky one, so it is what is left when a long
+   sheet has been scrolled past its own heading. */
+.rs-tabs-book {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  color: var(--rs-text-muted);
+  overflow: hidden;
+}
+
+.rs-crumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A long path gives way from the LEFT: the chapter a reader is nearest to is
+   the one that must survive the squeeze. */
+.rs-crumb:not(:last-child) { flex: 0 1 auto; }
+
+/* …except the document's own name, which goes last of all: it is the identity
+   of the thing being read, and the one crumb that is a link. */
+.rs-crumb-root {
+  color: var(--rs-primary);
+  text-decoration: none;
+  min-width: 6ch;
+  flex-shrink: 0.3;
+}
+
+.rs-crumb-root:hover { text-decoration: underline; }
+.rs-crumb-root:focus-visible { outline: 2px solid var(--rs-primary); outline-offset: 2px; border-radius: 3px; }
+.rs-crumb-root[aria-current="page"] { color: var(--rs-text); font-weight: 600; text-decoration: none; }
+/* The document's own name, and the one crumb that must not be squeezed out:
+   scrolled past its heading, this is the only thing on screen still saying
+   which document is being read. */
+.rs-crumb:last-child { flex: 0 0 auto; color: var(--rs-text); font-weight: 600; }
+
+/* The separator has to be READ, not merely present: at the crumbs' own 0.78rem
+   and in the border colour it was a speck between two words. Bigger than the
+   text it separates and in the muted text colour — with line-height pinned so
+   the taller glyph cannot grow the bar and move every sticky offset under it. */
+.rs-crumb + .rs-crumb::before {
+  content: "›";
+  color: var(--rs-text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  margin-right: 0.4rem;
+  position: relative;
+  top: 0.05em;
+}
+
 .rs-outline {
   position: fixed;
   top: var(--rs-tabbar-h, 41px);
@@ -3412,11 +3687,16 @@ tr.rs-jump-flash th {
   .rs-cell-toolbar,
   .rs-overlay,
   .rs-outline,
+  .rs-navtree,
   .rs-palette-overlay {
     display: none !important;
   }
 
   .rs-main { padding: 0; }
+
+  /* …and the space it held. On paper there is no panel to leave room for, and
+     a 19rem dead margin down every page is a third of the sheet. */
+  .rs-app.rs-book.rs-outline-open .rs-main { margin-left: 0; }
 
   .rs-sheet { page-break-before: always; }
   .rs-sheet:first-child { page-break-before: avoid; }
