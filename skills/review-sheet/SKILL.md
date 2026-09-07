@@ -1972,7 +1972,7 @@ required for `space`, which has no dedicated extension).
 | `ts` | In-source `@rs` annotations on TS/TSX config-as-code (CDK, Pulumi); value = the RHS expression. | [details](formats/ts.md) |
 | `xml` | Element text and attributes; reorder-robust paths via identity attributes. | [details](formats/xml.md) |
 | `yaml` | Nested leaves get a structural path; list-of-maps addressed by identity. | [details](formats/yaml.md) |
-| `dotenv` | .env KEY=value files; export prefix stripped; quotes KEPT; # comments. | [details](formats/dotenv.md) |
+| `dotenv` | .env KEY=value files; export prefix stripped; surrounding quotes read as syntax; `KEY=` kept as a row; # comments. | [details](formats/dotenv.md) |
 | `ini` | INI/CFG [section] files; sections become categories. | [details](formats/ini.md) |
 | `properties` | Java .properties key=value files; # and ! comments; no sections, so no category of its own. | [details](formats/properties.md) |
 | `sysctl` | sysctl-style key = value .conf files; # and ; comments. | [details](formats/sysctl.md) |

@@ -286,7 +286,15 @@ export function computeApply(
           anyHeld = true;
           continue;
         }
-        if (current === "") {
+        // An empty current used to be untargetable everywhere, and for a line
+        // scan that was simply true: the value is what the scan searches for,
+        // and every line contains the empty string. But a row that carries a
+        // LOCATOR does not depend on its value to be found — a `.env`
+        // assignment with nothing after it is located by the assignment itself
+        // (line-config.ts's empty-value test), and a structural row by its
+        // path. So the guard asks what it always meant to ask: is there
+        // anything here to aim at.
+        if (current === "" && tgt.source?.anchor === undefined && tgt.source?.path === undefined) {
           results.push({ ...base, status: "held", reason: "empty current value (cannot target)" });
           anyHeld = true;
           continue;

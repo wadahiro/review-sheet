@@ -145,7 +145,7 @@ Supported formats (inferred per file extension, or forced with `--format`):
 | `ts` | *.ts *.tsx *.mts *.cts (with @rs annotations) | In-source `@rs` annotations on TS/TSX config-as-code (CDK, Pulumi); value = the RHS expression. |
 | `xml` | *.xml | Element text and attributes; reorder-robust paths via identity attributes. |
 | `yaml` | *.yaml *.yml | Nested leaves get a structural path; list-of-maps addressed by identity. |
-| `dotenv` | *.env | .env KEY=value files; export prefix stripped; quotes KEPT; # comments. |
+| `dotenv` | *.env | .env KEY=value files; export prefix stripped; surrounding quotes read as syntax; `KEY=` kept as a row; # comments. |
 | `ini` | *.ini *.cfg | INI/CFG [section] files; sections become categories. |
 | `properties` | *.properties | Java .properties key=value files; # and ! comments; no sections, so no category of its own. |
 | `sysctl` | *.conf (lower priority than nginx/httpd/haproxy) | sysctl-style key = value .conf files; # and ; comments. |

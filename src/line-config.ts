@@ -47,6 +47,24 @@ export type LineConfig = {
   // downstream — the sheet cell, a review's `current`, a dictionary's
   // `default` — is text.
   bareFlag?: string;
+  // `KEY=` is a variable SET TO NOTHING, which is a statement — and in a
+  // layered project it is usually the statement that matters: an environment
+  // overriding a shared default back to empty. Dropped, the row keeps the
+  // shared value and the sheet claims something that environment does not have
+  // (measured: one environment's empty SMTP user read as the default's
+  // `smtp-relay`, against a server holding no such setting).
+  //
+  // Scoped like `bareFlag`, and for the same reason: in a properties or ini
+  // file `key=` is as likely to be a stub as a statement, and `generic` is the
+  // lowest-priority fallback that matches every file there is.
+  emptyValue?: true;
+  // A `.env` is read by a shell-like reader, and a matching pair of surrounding
+  // quotes is that reader's SYNTAX, not part of the value. Keeping them puts a
+  // value on the sheet that nothing downstream ever holds — measured against a
+  // running product, which held `IAM Platform` where the sheet showed
+  // `"IAM Platform"`. Only a matching pair, so a lone quote stays what it is:
+  // a character of the value.
+  unquote?: true;
 };
 
 // No invented fallback here. A format with no sections reports NO category, and
@@ -65,12 +83,22 @@ export type LineConfig = {
 
 export const LINE_CONFIGS: Record<"properties" | "dotenv" | "sysctl" | "ini" | "space" | "generic", LineConfig> = {
   properties: { delims: ["=", ":"], comments: ["#", "!"], sections: false, space: false, exportPrefix: false },
-  dotenv: { delims: ["="], comments: ["#"], sections: false, space: false, exportPrefix: true },
+  dotenv: { delims: ["="], comments: ["#"], sections: false, space: false, exportPrefix: true, emptyValue: true, unquote: true },
   sysctl: { delims: ["="], comments: ["#", ";"], sections: false, space: false, exportPrefix: false },
   ini: { delims: ["=", ":"], comments: ["#", ";"], sections: true, space: false, exportPrefix: false },
   space: { delims: [], comments: ["#"], sections: false, space: true, exportPrefix: false, bareFlag: PRESENCE_VALUE },
   generic: { delims: ["=", ":"], comments: ["#", ";", "!"], sections: false, space: false, exportPrefix: false },
 };
+
+// A matching pair of surrounding quotes, and nothing else. `"a` has no partner
+// and is a value beginning with a quote; `"a" "b"` is not a pair around the
+// whole value either, and is left alone rather than half-stripped.
+function unquoteValue(value: string): string {
+  const q = value[0];
+  if ((q !== '"' && q !== "'") || value.length < 2 || value[value.length - 1] !== q) return value;
+  const inner = value.slice(1, -1);
+  return inner.includes(q) ? value : inner;
+}
 
 export function extractLines(content: string, cfg: LineConfig): Entry[] {
   const out: Entry[] = [];
@@ -129,10 +157,12 @@ export function extractLines(content: string, cfg: LineConfig): Entry[] {
         key = body.slice(0, idx).trim();
         value = body.slice(idx + delim.length).trim();
         anchor = body.slice(0, idx + delim.length); // "key =" / "key:"
+        if (cfg.unquote) value = unquoteValue(value);
       }
     }
 
-    if (key === undefined || value === undefined || value === "") continue;
+    if (key === undefined || value === undefined) continue;
+    if (value === "" && cfg.emptyValue !== true) continue;
     out.push({
       categoryPath: section ? [section] : [],
       key,
@@ -171,7 +201,22 @@ export function locateLine(
 ): { idx: number } | { error: string } {
   const anchor = loc?.anchor;
   const asFlag = bareFlag !== undefined && current === bareFlag && anchor !== undefined;
-  const holds = (ln: string): boolean => (asFlag ? ln.trim() === anchor : ln.includes(current));
+  // An EMPTY value is a substring of every line there is, so the ordinary test
+  // accepts any of them — including one that sets the variable to something,
+  // which is the opposite of what the row says. The substitute test is the
+  // assignment itself with nothing after it (an empty pair of quotes writes the
+  // same thing and is the same statement), so `SSO_SMTP_USER=` resolves and
+  // `SSO_SMTP_USER=smtp-relay` does not.
+  const asEmpty = !asFlag && current === "" && anchor !== undefined;
+  const holdsEmpty = (ln: string): boolean => {
+    const t = ln.trim();
+    const a = anchor!.trim();
+    if (!t.startsWith(a)) return false;
+    const rest = t.slice(a.length).trim();
+    return rest === "" || rest === '""' || rest === "''";
+  };
+  const holds = (ln: string): boolean =>
+    asFlag ? ln.trim() === anchor : asEmpty ? holdsEmpty(ln) : ln.includes(current);
   if (loc?.line !== undefined) {
     const i = loc.line - 1;
     if (i >= 0 && i < lines.length) {
@@ -186,7 +231,13 @@ export function locateLine(
     }
     if (matches.length === 1) return { idx: matches[0] };
     if (matches.length > 1) return { error: `anchor matches ${matches.length} lines; ambiguous` };
-    return { error: asFlag ? "no line is exactly this directive" : "anchor not found with the current value" };
+    return {
+      error: asFlag
+        ? "no line is exactly this directive"
+        : asEmpty
+          ? "no line assigns this variable nothing"
+          : "anchor not found with the current value",
+    };
   }
   return { error: "no anchor to verify the location" };
 }
@@ -265,6 +316,16 @@ function editWithFlag(
   const res = locateLine(lines, source, current, bareFlag);
   if ("idx" in res) {
     const before = lines[res.idx];
+    // A value that is nowhere on the line cannot be replaced on it: `"".replace`
+    // inserts at position 0, which would write the value BEFORE the variable's
+    // name. The line is the assignment and nothing else, so the edit is the
+    // assignment with the value written after it.
+    if (current === "" && source.anchor !== undefined) {
+      const after = before.replace(/\s*(?:""|'')?\s*$/, "") + suggested;
+      if (after === before) return { status: "skipped" };
+      lines[res.idx] = after;
+      return { status: "applied", content: lines.join("\n"), before, after };
+    }
     if (before.includes(suggested) && !before.includes(current)) {
       return { status: "skipped" };
     }
