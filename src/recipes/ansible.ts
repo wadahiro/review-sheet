@@ -1348,7 +1348,17 @@ export const ansibleRecipe: SheetRecipe = {
                 return {
                   name: instance,
                   value: substituteJinja(entry.value, (n) => valueIn(instance, n)).text,
-                  source: site ? { ...site.source, substituted: true } : { ...entry.source, file },
+                  // Same rule the single-valued branch above follows: an entry
+                  // that already carries a file is one this recipe EXPANDED (a
+                  // `{% for %}` member, whose site is the element in the vars
+                  // file), and its own site wins. Overwriting it with the
+                  // template's sends verify at a line holding `{{ s }}`, which
+                  // can never contain the rendered value — invisible while such
+                  // a row stayed single-valued, and reached the moment anything
+                  // put it on the instance axis.
+                  source: site
+                    ? { ...site.source, substituted: true }
+                    : { ...entry.source, file: entry.source.file ?? file },
                 };
               });
               // Collapsed back to one value when there is nothing to tell

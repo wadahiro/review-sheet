@@ -594,3 +594,51 @@ describe("a template deployed only in some environments", () => {
     expect(() => load(["staging", "typo"])).toThrow(/typo/);
   });
 });
+
+
+// A loop member's row is EXPANDED by the recipe: its site is the element in the
+// vars file, never the template line the structure came from. The per-instance
+// branch used to overwrite that file with the template's — invisible while such
+// a row stayed single-valued, and reached the moment anything (an override, a
+// condition, an `instances:` declaration) put it on the instance axis. verify
+// then searched the rendered value in a file that holds `{{ s }}`.
+describe("a loop row that lands on the instance axis", () => {
+  const FILES5: Record<string, string> = {
+    "/vars.yml": "servers:\n  - a.example\n",
+    "/prod.yml": "{}\n",
+    "/chrony.conf.j2": "{% for s in servers %}\nserver {{ s }} iburst\n{% endfor %}\n",
+  };
+  const rowsOf = (instances?: string[]) =>
+    (
+      getRecipe("ansible")!.load(
+        {
+          name: "s",
+          recipe: "ansible",
+          rows: "artifact",
+          defaults: [{ path: "/vars.yml", key: { from: "path" } }],
+          overlays: { local: "/prod.yml", staging: "/prod.yml" },
+          templates: [
+            {
+              path: "/chrony.conf.j2",
+              component: "chrony",
+              deployed_path: "/etc/chrony.conf",
+              format: "space",
+              ...(instances !== undefined ? { instances } : {}),
+            },
+          ],
+        } as never,
+        { readFile: (p: string) => FILES5[p] ?? null, specDir: "/", resolve: (p: string) => p, instances: ["local", "staging"] }
+      ) as unknown as {
+        embedded?: { key: string; instances?: { name: string; value: string; source?: { file?: string } }[] }[];
+      }
+    ).embedded ?? [];
+
+  it("keeps pointing each instance at the element in the vars file", () => {
+    const row = rowsOf(["staging"]).find((e) => e.key.startsWith("server"))!;
+    expect(row.instances?.map((i) => i.name)).toEqual(["staging"]);
+    expect(row.instances?.map((i) => i.value)).toEqual(["a.example iburst"]);
+    // …the vars file, where `a.example` is written — not the template, which
+    // holds `{{ s }}` and would fail verify on every such row.
+    expect(row.instances?.map((i) => i.source?.file)).toEqual(["/vars.yml"]);
+  });
+});
