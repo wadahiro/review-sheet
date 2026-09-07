@@ -11,6 +11,7 @@ if (typeof (globalThis as { document?: unknown }).document === "undefined") Glob
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { h, render } from "preact";
+import { act } from "preact/test-utils";
 import { Root } from "../src/html/app";
 import type { ParameterSheetInput } from "../src/types";
 
@@ -74,9 +75,9 @@ const mount = (input: ParameterSheetInput, hash = "#1"): HTMLElement => {
 const collapseKey = (): string => "rs-nav-collapsed:review-sheet::current:";
 const closedNow = (): string[] => JSON.parse(localStorage.getItem(collapseKey()) ?? "{}").closed ?? [];
 
-// The whole ROW: the number is a column of the row, beside the fold and the
-// name, rather than part of the link — a button cannot live inside an anchor,
-// and the fold belongs next to what it opens.
+// The whole ROW: the fold is a button beside the link rather than inside it (a
+// button cannot live inside an anchor), so the row's text is the fold's label
+// plus the name — number included, since the number is part of the name.
 const rows = (host: HTMLElement): string[] =>
   [...host.querySelectorAll(".rs-navtree-row:not(.rs-navtree-heading)")].map((e) => (e.textContent ?? "").trim());
 
@@ -410,5 +411,57 @@ describe("what the tree spends on indenting", () => {
     // where the document's own name does. Three levels of section in the
     // fixture, and the third indents no further than the second.
     expect([...host.querySelectorAll(".rs-navtree-heading")].map(depthOf)).toEqual([0, 1, 2]);
+  });
+});
+
+// Folding a chapter is not going anywhere. The panel brings the sheet being
+// READ into view, which is right on a jump and wrong on a fold: a reader who
+// has scrolled down to chapter 5 and opens one of its chapters was thrown back
+// to wherever chapter 1 is, every time — measured in a real browser as a
+// scrollTop of 4546 becoming 49.
+describe("what the panel scrolls for", () => {
+  const scrolls = (): { calls: number; restore: () => void } => {
+    const proto = Element.prototype as unknown as { scrollIntoView?: () => void };
+    const had = Object.prototype.hasOwnProperty.call(proto, "scrollIntoView");
+    const before = proto.scrollIntoView;
+    const state = { calls: 0, restore: () => { if (had) proto.scrollIntoView = before; else delete proto.scrollIntoView; } };
+    proto.scrollIntoView = () => { state.calls += 1; };
+    return state;
+  };
+
+  it("does not chase the current sheet when a reader folds a chapter", () => {
+    const spy = scrolls();
+    try {
+      // Preact defers an effect to after paint, so the baseline is taken only
+      // once act() has flushed the mount's own — otherwise the assertion would
+      // compare against a count nothing had reached yet.
+      let host!: HTMLElement;
+      act(() => { host = mount(MODEL, "#1"); });
+      const first = spy.calls;
+      expect(first).toBeGreaterThan(0);
+      // Another chapter's fold — it says nothing about which sheet is read.
+      const caret = host.querySelectorAll("button.rs-navtree-caret")[1] as HTMLElement;
+      act(() => { caret.click(); });
+      expect(closedNow()).not.toEqual([]);
+      expect(spy.calls).toBe(first);
+    } finally {
+      spy.restore();
+    }
+  });
+
+  // …and the other half, or "does not chase" would be satisfied by a panel that
+  // never scrolls at all: arriving at a sheet still brings its row into view.
+  it("brings the sheet a reader arrives at into view", () => {
+    const spy = scrolls();
+    try {
+      let host!: HTMLElement;
+      act(() => { host = mount(MODEL, "#1"); });
+      const first = spy.calls;
+      const other = [...host.querySelectorAll(".rs-navtree-item")].find((a) => (a.textContent ?? "").includes("OS 設定")) as HTMLElement;
+      act(() => { other.click(); });
+      expect(spy.calls).toBeGreaterThan(first);
+    } finally {
+      spy.restore();
+    }
   });
 });

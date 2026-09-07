@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from "bun:test";
 import { treeEntries } from "../src/html/nav-tree";
+import { customStyles } from "../src/html/styles";
 import type { SheetData, SheetGroupData } from "../src/prompt";
 
 const sheet = (name: string, group?: string) => ({ name, ...(group ? { group } : {}), categories: [] });
@@ -74,4 +75,30 @@ describe("the chapter tree", () => {
     const stray = [...sheets, sheet("迷子", "nowhere")] as unknown as SheetData["sheets"];
     expect(treeEntries(GROUPS, stray, "ja").map((e) => e.label)).toContain("迷子");
   });
+});
+
+// Every entry is an anchor, so pressing on a chapter's name and sweeping it
+// made the browser DRAG THE LINK and select nothing — and the names are the one
+// thing in this panel a reader copies out of it, into a ticket or a search box.
+//
+// A PAIR, not two ideas: measured in Chromium against a page of link variants,
+// `-webkit-user-drag: none` alone still refuses to select and `user-select:
+// text` alone still drags, and only both together restore the selection. So the
+// pair is what is guarded here — the failure this catches is somebody deleting
+// one of them as redundant, which is exactly what each looks like beside the
+// other.
+describe("a name a reader can select", () => {
+  // Anchored: `.rs-navtree-heading .rs-navtree-item {` ends with the same text,
+  // and an unanchored match reads that one instead.
+  const ruleFor = (selector: string): string =>
+    new RegExp(`^\\${selector} \\{([^}]*)\\}`, "m").exec(customStyles)?.[1] ?? "";
+
+  // The sticky path bar carries the document's own name and is the same kind of
+  // row, so it answers to the same pair.
+  for (const selector of [".rs-navtree-item", ".rs-crumb"]) {
+    it(`keeps both halves of what makes ${selector}'s text selectable`, () => {
+      expect(ruleFor(selector)).toContain("-webkit-user-drag: none");
+      expect(ruleFor(selector)).toContain("user-select: text");
+    });
+  }
 });

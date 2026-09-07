@@ -257,9 +257,20 @@ export function NavTree({ sheets, groups, activeSheet, numbering, lang, headings
   // often outside the panel's own scroll, and a jump from search then lands on
   // a highlight nobody can see — the same failure as landing in a collapsed
   // chapter, one scroll position further out.
+  //
+  // Once per sheet ARRIVED AT, which is not the same as once per run of this
+  // effect. It has to run on a collapse too, since the row a jump lands on does
+  // not exist until the chapters above it have opened — but a collapse is also
+  // what a reader does by hand, and scrolling then is the panel refusing to
+  // stay where it was put: fold a chapter at the end of a long set and the
+  // panel jumps back to whatever is being read, every time.
+  const scrolledFor = useRef<number | null>(null);
   useEffect(() => {
+    if (scrolledFor.current === activeSheet) return;
     const el = bodyRef.current?.querySelector(".rs-navtree-current");
-    if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "nearest" });
+    if (el === null || el === undefined) return;
+    scrolledFor.current = activeSheet;
+    if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "nearest" });
   }, [activeSheet, collapsed]);
 
   const hidden = (e: TreeEntry): boolean =>

@@ -3329,7 +3329,18 @@ tr.rs-jump-flash th {
      outline. */
   color: var(--rs-text);
   text-decoration: none;
+  /* A chapter's name is TEXT somebody copies -- into a ticket, a mail, a search
+     box - and sweeping one selected NOTHING, because pressing on an anchor and
+     moving the mouse is how a browser drags a link, not how it selects.
+     BOTH of these are needed and neither works alone: measured in Chromium,
+     user-drag alone still refuses to select, and user-select alone still drags.
+     Nothing in this panel is a thing anyone drags, so nothing is given up. */
+  -webkit-user-drag: none;
+  user-select: text;
 }
+
+/* user-drag does not inherit, and the name is a span inside the link. */
+.rs-navtree-item * { -webkit-user-drag: none; }
 
 .rs-navtree-label {
   flex: 1;
@@ -3400,6 +3411,11 @@ tr.rs-jump-flash th {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* Selectable, for the same reason and by the same pair as a tree row: the
+     document's own name lives here, and it is the string a reader is most
+     likely to want out of the page. See .rs-navtree-item. */
+  -webkit-user-drag: none;
+  user-select: text;
 }
 
 /* A long path gives way from the LEFT: the chapter a reader is nearest to is
