@@ -190,20 +190,25 @@ describe("ansible recipe: a {% for %} over a list of maps", () => {
     expect(rows[0].source).toMatchObject({ file: "/vars.yml", path: "region", substituted: true });
   });
 
-  // The row would read ap-northeast-1 in an environment whose overlay says
-  // otherwise. Rendering a loop from the defaults is the existing choice; going
-  // quiet about what that costs is not.
-  it("says so when an overlay overrides a variable a loop line interpolates", () => {
+  // A loop line interpolating a variable an overlay overrides is per
+  // environment like any other line of the file. It used to be rendered from
+  // the defaults and stated for every environment — measured against a running
+  // host, the sheet said `--region ap-northeast-1` where the deployed file
+  // said us-east-1 — with a warning in place of the value. The count of members
+  // still comes from the defaults; what a member RENDERS does not.
+  it("renders a loop line per environment when an overlay overrides what it interpolates", () => {
     const warn: string[] = [];
     const orig = console.warn;
     console.warn = (...a: unknown[]) => void warn.push(String(a[0]));
+    type Row = { key: string; value: string; instances?: { name: string; value: string; source: { file?: string; substituted?: boolean } }[] };
+    let si!: { embedded?: Row[] };
     try {
       const FILES3: Record<string, string> = {
         "/vars.yml": FILES["/vars.yml"] + "region: ap-northeast-1\n",
         "/local.yml": "region: us-east-1\n",
         "/fetch.sh.j2": "#!/bin/sh\n{% for v in secrets %}\naws get --secret-id {{ v.secret_name }} --region {{ region }}\n{% endfor %}\n",
       };
-      getRecipe("ansible")!.load(
+      si = getRecipe("ansible")!.load(
         {
           name: "s",
           recipe: "ansible",
@@ -213,14 +218,17 @@ describe("ansible recipe: a {% for %} over a list of maps", () => {
           templates: [{ path: "/fetch.sh.j2", component: "fetch.sh", deployed_path: "/usr/local/bin/fetch.sh" }],
         } as never,
         { readFile: (p: string) => FILES3[p] ?? null, specDir: "/", resolve: (p: string) => p, instances: ["local"] }
-      );
+      ) as unknown as { embedded?: Row[] };
     } finally {
       console.warn = orig;
     }
-    const said = warn.find((w) => w.includes("interpolates region"));
-    expect(said).toBeDefined();
-    expect(said).toContain("local");
-    expect(said).toContain("ap-northeast-1");
+    const rows = (si.embedded ?? []).filter((e) => e.key.startsWith("--region"));
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(r.instances?.map((i) => [i.name, i.value])).toEqual([["local", "us-east-1"]]);
+    }
+    // …and the row points at the file that overrode it, not at the template.
+    expect(rows[0].instances?.[0].source).toMatchObject({ file: "/local.yml", substituted: true });
   });
 
   // The preview is the same claim as the rows, about the same lines. It walked

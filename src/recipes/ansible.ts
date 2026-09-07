@@ -1003,7 +1003,28 @@ export const ansibleRecipe: SheetRecipe = {
               }).text;
             const boundKey = bind(entry.key);
             const boundCategories = entry.categoryPath.map(bind);
-            const boundValue = bind(entry.value);
+            // The MEMBER's names only, and everything else left standing.
+            //
+            // A key has to be concrete — it is the row's address in the
+            // rendered file — so it is bound whole, from the defaults. A VALUE
+            // is not: what an ordinary artifact row does a few hundred lines
+            // below is render its line once per instance, and binding the line
+            // here would leave that pass nothing to resolve. That is exactly
+            // what happened: a loop line interpolating a variable an overlay
+            // overrides showed the DEFAULTS' value for every environment, and
+            // the sheet stated `--region ap-northeast-1` for an environment
+            // whose own file says us-east-1. Measured against the running
+            // system, which is how it was found.
+            const boundValue = substituteJinja(entry.value, (nm) => {
+              if (nm === loop.variable) return m.value;
+              if (m.fields !== undefined && nm.startsWith(`${loop.variable}.`)) {
+                const field = nm.slice(loop.variable.length + 1);
+                const f = m.fields.get(field);
+                if (f !== undefined) return f.value;
+                return m.identifier?.field === field ? m.identifier.value : undefined;
+              }
+              return undefined;
+            }).text;
             // The site the row POINTS AT: the first thing its VALUE
             // interpolated that has a definition site. Deterministic, and the
             // same rule the ordinary path uses a few hundred lines below for a
@@ -1015,24 +1036,6 @@ export const ansibleRecipe: SheetRecipe = {
             // text in an unrendered file and every such row would fail. Only a
             // line that interpolated nothing resolvable keeps it, and such a
             // line is literal, so the check holds.
-            // A loop line is rendered from the DEFAULTS, members and ordinary
-            // variables alike — the same choice the member count already makes
-            // ("the list as the defaults see it decides how many rows there
-            // are"). An overlay that overrides one of those variables is then a
-            // difference the row does not show, so it is said out loud rather
-            // than left to be discovered by reading the host.
-            for (const nm of jinjaVariables(entry.value)) {
-              if (nm === loop.variable || nm.startsWith(`${loop.variable}.`)) continue;
-              const base = defaultsMap.get(nm)?.value;
-              const differs = io.instances.filter((inst) => overlayEntryFor(inst, nm)?.value !== base);
-              if (differs.length > 0 && i === 0) {
-                console.warn(
-                  `ansible recipe: sheet "${name}": ${boundKey} repeats over ${loop.list} and interpolates ${nm}, ` +
-                    `which ${differs.join("/")} override(s) — a line inside a loop is rendered from the defaults, so ` +
-                    `the row shows ${JSON.stringify(base)} for every environment`
-                );
-              }
-            }
             const siteOf = jinjaVariables(entry.value).map(memberSite).find((x) => x !== undefined);
             const site =
               siteOf === undefined
@@ -1316,11 +1319,18 @@ export const ansibleRecipe: SheetRecipe = {
                 };
               });
               // Collapsed back to one value when there is nothing to tell
-              // apart: every instance renders the line and renders it the same.
-              // A sheet that has never had a per-environment difference keeps
-              // exactly the rows it had.
+              // apart: every instance renders the line, and renders it as the
+              // single value the row would otherwise show. A sheet that has
+              // never had a per-environment difference keeps exactly the rows
+              // it had.
+              //
+              // Compared against THAT value, not against the first instance's.
+              // The single-valued row displays the line as the defaults render
+              // it, so a sheet with one environment that overrides something —
+              // every instance agreeing, because there is only one — collapsed
+              // to a value none of its environments has.
               const varies =
-                onlyIn !== undefined || perInstance.some((i) => i.value !== perInstance[0]?.value);
+                onlyIn !== undefined || perInstance.some((i) => i.value !== text);
               if (varies && perInstance.length > 0) {
                 embedded.push({
                   key,
