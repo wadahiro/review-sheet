@@ -25,6 +25,9 @@ export type TestDocLang = "ja" | "en";
 
 type Words = {
   no: string; item: string; expected: string; verdict: string; ran: string; how: string; evidence: string; note: string;
+  // The three levels the taxonomy declares, spelled the same way HERE — a
+  // reader maps the table onto the page by reading the same words twice.
+  major: string; middle: string; subject: string;
   pass: string; fail: string; notRun: string;
   isSet: (k: string) => string; isDefault: (k: string) => string; isAbsent: (k: string) => string;
   functional: (t: string) => string;
@@ -37,7 +40,10 @@ type Words = {
 const T: Record<TestDocLang, Words> = {
   ja: {
     no: "No.",
-    item: "テスト項目",
+    item: "小項目(テスト項目)",
+    major: "大項目",
+    middle: "中項目",
+    subject: "対象",
     expected: "期待結果",
     verdict: "判定",
     ran: "実施日",
@@ -64,14 +70,17 @@ const T: Record<TestDocLang, Words> = {
     excludedCols: ["設定項目", "理由", "所管"],
     taxonomyCols: ["項番", "項目", "項目の上げ方", "この文書での対応"],
     taxonomy: [
-      ["1", "大項目", "サーバ／基盤の単位で分類する", "詳細設計の単位"],
-      ["2", "中項目", "ソフトウェアコンポーネント単位で分類する", "詳細設計のシート"],
-      ["3", "小項目", "詳細設計書に記載されている設定の確認を網羅する", "シートの行から導出（漏れた場合は生成が失敗する）"],
+      ["1", "大項目", "サーバ／基盤の単位で分類する", "この文書の単位。項目表の冒頭に一度だけ書く"],
+      ["2", "中項目", "ソフトウェアコンポーネント単位で分類する", "詳細設計のシート。`#### 中項目: …` の見出し"],
+      ["3", "小項目", "詳細設計書に記載されている設定の確認を網羅する", "表の1行。シートの行から導出（漏れた場合は生成が失敗する）"],
     ],
   },
   en: {
     no: "No.",
-    item: "Item",
+    major: "Unit",
+    middle: "Component",
+    subject: "Subject",
+    item: "Setting (test item)",
     expected: "Expected",
     verdict: "Result",
     ran: "Run on",
@@ -98,9 +107,9 @@ const T: Record<TestDocLang, Words> = {
     excludedCols: ["Parameter", "Reason", "Owner"],
     taxonomyCols: ["No.", "Level", "How items are raised", "In this document"],
     taxonomy: [
-      ["1", "Unit", "One per server or platform", "A unit of the detailed design"],
-      ["2", "Component", "One per software component", "A sheet of the detailed design"],
-      ["3", "Setting", "Every setting the detailed design records", "Derived from the sheet's rows; a gap fails the build"],
+      ["1", "Unit", "One per server or platform", "This document's unit, stated once at the head of the item tables"],
+      ["2", "Component", "One per software component", "A sheet of the detailed design — the `#### Component: …` headings"],
+      ["3", "Setting", "Every setting the detailed design records", "One row of a table, derived from the sheet's rows; a gap fails the build"],
     ],
   },
 };
@@ -109,6 +118,12 @@ const cell = (s: string | undefined): string => (s ?? "").replace(/\|/g, "\\|").
 const code = (s: string | undefined): string => (s === undefined || s === "" ? "" : `\`${cell(s)}\``);
 const table = (head: readonly string[], rows: string[][]): string =>
   [`| ${head.join(" | ")} |`, `| ${head.map(() => "---").join(" | ")} |`, ...rows.map((r) => `| ${r.join(" | ")} |`)].join("\n");
+
+// The 中項目 a row belongs to: the sheet it came from, named as the plan names
+// it. A plan that predates `sheetLabel` (or an item whose sheet has no label)
+// falls back to the sheet's own name rather than to an empty heading.
+const middleOf = (i: TestItem, lang: TestDocLang): string =>
+  (i.sheetLabel === undefined ? undefined : pickLang(i.sheetLabel, lang)) ?? i.target.sheet;
 
 const verdictOf = (t: Words, r: TestResult | undefined): string =>
   r === undefined ? t.notRun : r.status === "pass" ? t.pass : r.status === "fail" ? t.fail : t.notRun;
@@ -204,24 +219,39 @@ export function renderTestDoc(
   }
   blocks["test:summary"] = summaryBlock.join("\n");
 
-  // （３）テスト項目・結果 — per environment, and per component inside it,
-  // which is the order the design document reads in.
-  const sections: string[] = [];
+  // （３）テスト項目・結果. The taxonomy above names three levels, so all three
+  // have to be POINTABLE on this page — the reason the sheet renders as a
+  // heading at all: it is the declared 中項目 and used to appear nowhere, while
+  // the only heading inside an environment was the COMPONENT, which is
+  // addressing detail inside a sheet and read exactly like the level the
+  // taxonomy was talking about.
+  //
+  // 大項目 is stated once rather than repeated down a column: it is constant
+  // for the whole document, and the paper form this follows solved that with a
+  // merged cell, which markdown has no way to write.
+  const sections: string[] = [`${t.major}: ${pickLang(unit.label, lang)}`, ""];
   for (const instance of instances) {
     const run = results.runs?.[instance];
     sections.push(`### ${instance}`, "", run?.at === undefined ? t.notRunYet : t.ranAt(run.at, (run.hosts ?? []).join(", ") || "—"), "");
     let n = 0;
     const here = shown.filter((i) => i.target.instance === instance);
-    const components = [...new Set(here.map((i) => i.component ?? ""))];
-    for (const component of components) {
-      if (components.length > 1 && component !== "") sections.push(`#### ${component}`, "");
+    // By the sheet's LABEL, which is what a reader sees; two sheets sharing one
+    // label would be one heading, and that is the same statement the label
+    // makes. First-appearance order, like every other grouping here.
+    const middles = [...new Set(here.map((i) => middleOf(i, lang)))];
+    for (const middle of middles) {
+      if (middle !== "") sections.push(`#### ${t.middle}: ${middle}`, "");
       const rows = here
-        .filter((i) => (i.component ?? "") === component)
+        .filter((i) => middleOf(i, lang) === middle)
         .map((i) => {
           const r = answerFor(index, i);
           n += 1;
           return [
             String(n),
+            // The component is what the row is ABOUT, and it belongs in the
+            // table rather than in a heading: a client identified by its URL
+            // makes an unreadable heading and a perfectly good cell.
+            cell(i.component),
             itemText(t, i),
             i.quiet === true ? "—" : code(i.expected),
             verdictOf(t, r),
@@ -231,7 +261,7 @@ export function renderTestDoc(
             "",
           ];
         });
-      sections.push(table([t.no, t.item, t.expected, t.verdict, t.ran, t.how, t.evidence, t.note], rows), "");
+      sections.push(table([t.no, t.subject, t.item, t.expected, t.verdict, t.ran, t.how, t.evidence, t.note], rows), "");
     }
   }
   blocks["test:items"] = sections.join("\n").trimEnd();

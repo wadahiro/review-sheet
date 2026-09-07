@@ -21,7 +21,7 @@ const plan = (): TestPlan =>
       },
     ],
     items: [
-      { target: { sheet: "os", path: ["httpd.conf"], key: "Listen", instance: "local" }, unit: "server", component: "httpd.conf", kind: "value", expected: "80" },
+      { target: { sheet: "os", path: ["httpd.conf"], key: "Listen", instance: "local" }, unit: "server", sheetLabel: { ja: "OS 基盤" }, component: "httpd.conf", kind: "value", expected: "80" },
       { target: { sheet: "os", path: ["httpd.conf"], key: "Listen", instance: "prod" }, unit: "server", component: "httpd.conf", kind: "value", expected: "80" },
       { target: { sheet: "os", path: ["httpd.conf"], key: "pw", instance: "local" }, unit: "server", component: "httpd.conf", kind: "value", quiet: true },
       { target: { sheet: "os", path: ["httpd.conf"], key: "Timeout", instance: "local" }, unit: "server", component: "httpd.conf", kind: "default-in-force", expected: "60" },
@@ -47,6 +47,27 @@ describe("the tables a document is given", () => {
     expect(b["test:items"]).toContain("`Listen` が設定どおりであること");
     expect(b["test:items"]).toContain("`Timeout` が製品の既定値のままであること");
     expect(b["test:items"]).toContain("`Gone` が設定されていないこと");
+  });
+
+  // The taxonomy names three levels; a reader has to be able to point at each
+  // of them ON THE PAGE. The 中項目 is the SHEET, and it used to render nowhere
+  // at all — the only heading inside an environment was the component, which is
+  // addressing detail INSIDE a sheet, unlabelled and easily read as the level
+  // the taxonomy was talking about.
+  it("names the level of every heading, and puts the sheet where the taxonomy says it is", () => {
+    const b = renderTestDoc(plan(), results(), "server");
+    expect(b["test:items"]).toContain("大項目: SSO サーバ");
+    expect(b["test:items"]).toContain("#### 中項目: OS 基盤");
+  });
+
+  // …and the component moves into the table, because it is what each row is
+  // ABOUT and because a client identified by a URL makes an unreadable heading.
+  it("carries the component as a column of the row it belongs to", () => {
+    const b = renderTestDoc(plan(), results(), "server");
+    const head = b["test:items"].split("\n").find((l) => l.startsWith("| No."))!;
+    expect(head).toContain("対象");
+    expect(head).toContain("小項目");
+    expect(b["test:items"]).toContain("| httpd.conf |");
   });
 
   it("puts each environment in its own section, with when it ran and where", () => {

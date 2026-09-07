@@ -529,6 +529,13 @@ summary is the first thing to rot), `test:taxonomy` and `test:excluded`. A
 marker nothing fills is an error; a block that carries ANSWERS and has nowhere
 to go is an error; the rest a document may simply decline.
 
+The three levels the taxonomy declares are all POINTABLE on the page, or the
+table describing them describes nothing a reader can find: 大項目 (the unit) is
+stated once at the head of the items, 中項目 (the sheet) is the `#### 中項目: …`
+heading, 小項目 is one row. What a row is ABOUT — the component, which is
+addressing detail inside a sheet — is a column rather than a heading, since a
+client identified by its URL makes an unreadable heading and a fine cell.
+
 Run without `-r`, it writes the specification before any run — every item, every
 environment, 未実施. With `-r`, the results must answer the plan (the same check
 `validate --plan` makes) or no document is written.
