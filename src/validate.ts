@@ -1,12 +1,15 @@
 import Ajv, { type ErrorObject } from "ajv";
 import inputSchema from "./schema/input.schema.json";
 import reviewSchema from "./schema/review.schema.json";
+import resultsSchema from "./schema/results.schema.json";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, Category, SourceLocation } from "./types.js";
+import type { TestResults } from "./testresults.js";
 
 const ajv = new Ajv({ allErrors: true });
 
 const validateInputSchema = ajv.compile(inputSchema);
 const validateReviewSchema = ajv.compile(reviewSchema);
+const validateResultsSchema = ajv.compile(resultsSchema);
 
 // `out_of_scope` used to be a plain boolean plus a separate sibling reason
 // field; both are gone now — it must be the object form below. Surface a
@@ -199,4 +202,15 @@ export function validateReview(data: unknown): ReviewDocument {
     );
   }
   return data as ReviewDocument;
+}
+
+// The answers to a unit test's plan. SHAPE only — whether they answer the plan
+// is a different question, asked by testresults.ts's checkResults against the
+// plan itself, which this function has no access to and should not need.
+export function validateResults(data: unknown): TestResults {
+  if (!validateResultsSchema(data)) {
+    const errors = validateResultsSchema.errors ?? [];
+    throw new Error(`Test results validation error:\n${errors.map((e) => `${e.instancePath || "/"}: ${e.message}`).join("\n")}`);
+  }
+  return data as TestResults;
 }

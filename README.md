@@ -457,7 +457,52 @@ is an error, not an ignored word. See
 review-sheet validate -i input.json               # a model
 review-sheet validate -i review.json              # a review export
 review-sheet validate -i httpd@2.4.62.yml         # a dictionary (YAML), or its .overlay.yml
+review-sheet validate -i results.json             # a unit test's answers
+review-sheet validate -i results.json --plan plan.json   # …and whether they answer that plan
 ```
+
+With `--plan`, the shape check is followed by the one a test record actually
+needs: every item of the plan answered, every answer belonging to the plan, and
+nothing left `not_run` without a reason. It does NOT gate on pass/fail — a
+record with failures in it is doing its job.
+
+### `test-plan` — what the unit test has to check
+
+```sh
+review-sheet test-plan -i input.json -o plan.json [--instances staging production] [--sheets ...]
+```
+
+Derives the plan from the model, so the sentence such a document always carries
+— 詳細設計書に記載されている設定の確認を網羅する — is what the build enforces
+rather than a promise. What each row asks for follows from its origin: a row
+this project set is checked against its value in that environment, an unset row
+asserts that the product's own default still applies, and a row the vendor
+shipped and this project removed asserts that no line carries it.
+
+What no model can derive is declared per UNIT (a group in the project metadata,
+or a sheet that belongs to none):
+
+```yaml
+groups:
+  - name: server-sso
+    label: { ja: "SSO サーバ" }
+    test:
+      method: |            # how this unit is tested at all — written once
+        対象ノードでデプロイ済みファイルを読み、詳細設計書の値と突き合わせる。
+      functional:          # items with no row behind them
+        - 起動・停止・再起動ができること
+  - name: unit-aws
+    test:
+      not_tested: この工程では実施しない（terraform plan の差分で確認する）
+```
+
+A unit that holds testable rows and declares neither `method` nor `not_tested`
+FAILS: untested by accident and untested on purpose look identical in a finished
+document, and only the second is allowed to be silent.
+
+Nothing here runs anything. The plan says what to check and what is expected; a
+collector and a judge outside answer it, in the shape `validate --plan` reads
+back.
 
 ### `verify` — source maps vs. the real files
 

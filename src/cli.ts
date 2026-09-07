@@ -5,7 +5,8 @@ import { readFileSync, writeFileSync, readdirSync } from "fs";
 import { resolve, relative, join } from "path";
 import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
-import { validateInput, validateReview, validateVersionedInput, isVersionedInput } from "./validate.js";
+import { validateInput, validateReview, validateResults, validateVersionedInput, isVersionedInput } from "./validate.js";
+import { checkResults, formatResultsCheck, resultsCheckFails } from "./testresults.js";
 import { findBakedSecrets, formatBakedSecrets } from "./secrets.js";
 import { toFullEditInput } from "./full-edit.js";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument } from "./types.js";
@@ -30,14 +31,14 @@ import { suggestNearest } from "./schema-errors.js";
 // Every document this CLI can check, which is every document the pipeline
 // reads. A typo'd name is an error naming the set rather than a silent
 // fall-through to the model schema.
-const VALIDATE_SCHEMAS = ["input", "review", "dictionary", "overlay"];
+const VALIDATE_SCHEMAS = ["input", "review", "dictionary", "overlay", "results"];
 import "./recipes/index.js"; // self-registers built-in recipes
 import { loadBuildSpec, specDirOf } from "./spec.js";
 import { inspectTs, lintTs } from "./parsers/ts.js";
 import { inspectPy, lintPy } from "./parsers/py.js";
 import { renderParserPage, renderParserList } from "./parser-docs.js";
 import { restrictInstances, instancesOf, formatRestrictReport, selectSheets, sheetsOf, formatSheetSelection } from "./restrict.js";
-import { buildTestPlan, formatTestPlanReport } from "./testplan.js";
+import { buildTestPlan, formatTestPlanReport, type TestPlan } from "./testplan.js";
 import type { Category, ReviewItem } from "./types.js";
 
 // Best-effort open the default browser at a URL (used by `serve`).
@@ -505,7 +506,12 @@ program
   .description("Validate a model, a review document, or a dictionary")
   .requiredOption("-i, --input <file>", "File to validate (JSON or YAML)")
   .option("-s, --schema <type>", `Schema: ${VALIDATE_SCHEMAS.join(" | ")} (default: detected from the document)`)
-  .action((opts: { input: string; schema?: string }) => {
+  // Shape is one question and coverage is another. A results document can be
+  // perfectly formed and still answer half the plan, which is the failure a
+  // test record must never have — so the plan is asked for separately, and
+  // whoever has it gets the stronger check.
+  .option("--plan <file>", "For results: the plan they answer (test-plan). Checks that every item was answered, that every answer belongs to the plan, and that nothing was left not-run without a reason")
+  .action((opts: { input: string; schema?: string; plan?: string }) => {
     try {
       if (opts.schema !== undefined && !VALIDATE_SCHEMAS.includes(opts.schema)) {
         const hint = suggestNearest(opts.schema, VALIDATE_SCHEMAS);
@@ -529,7 +535,9 @@ program
       // inventing one.
       const schema =
         opts.schema ??
-        ("reviews" in data || "schema_version" in data
+        ("results" in data && Array.isArray((data as { results?: unknown }).results)
+          ? "results"
+          : "reviews" in data || "schema_version" in data
           ? "review"
           : "parameters" in data && "product" in data
             ? opts.input.endsWith(".overlay.yml") || opts.input.endsWith(".overlay.yaml")
@@ -537,7 +545,21 @@ program
               : "dictionary"
             : "input");
 
-      if (schema === "review") {
+      if (schema === "results") {
+        const results = validateResults(data);
+        console.log(`Test results: OK (${results.results.length} answer(s))`);
+        if (opts.plan !== undefined) {
+          const plan = JSON.parse(readFileSync(opts.plan, "utf-8")) as TestPlan;
+          const check = checkResults(plan, results);
+          console.log(formatResultsCheck(check));
+          if (resultsCheckFails(check)) {
+            console.error(
+              `Error: these results do not answer that plan. A record is not complete because what is missing from it is missing.`
+            );
+            process.exit(1);
+          }
+        }
+      } else if (schema === "review") {
         validateReview(data);
         console.log("Review document: OK");
       } else if (schema === "dictionary") {

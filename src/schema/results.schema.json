@@ -1,0 +1,266 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/wadahiro/review-sheet/results.schema.json",
+  "title": "Test results",
+  "description": "What a run of the unit test answered. Written by whatever collected and judged it — a live system is outside this tool — and read back here to build the record. It answers a plan (test-plan); the two are joined by `target`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "results"
+  ],
+  "properties": {
+    "runs": {
+      "type": "object",
+      "description": "One entry per environment actually run, keyed by the environment's name. Held ONCE per run rather than copied onto every item: an execution date and the person who ran it are facts about the run, and copying them onto two thousand rows is how they come to disagree.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "type": "string",
+            "description": "When it ran (ISO 8601). 実施日時."
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The hosts it reached."
+          },
+          "by": {
+            "type": "string",
+            "description": "実施者, when the runner knows it. Usually filled in the delivered document instead."
+          },
+          "collector": {
+            "type": "string",
+            "description": "What collected and judged it, with enough version to reproduce the run."
+          },
+          "model": {
+            "type": "string",
+            "description": "Which model this answers — a version, a commit, a generated_at. What makes the record reproducible."
+          }
+        }
+      }
+    },
+    "results": {
+      "type": "array",
+      "description": "One answer per plan item attempted. An item with no answer is NOT represented here — the join against the plan is what names it, so a missing answer cannot be mistaken for a passing one.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "target",
+          "status"
+        ],
+        "properties": {
+          "target": {
+            "$ref": "#/$defs/target"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "not_run"
+            ],
+            "description": "pass/fail is the judgement; not_run says it was not attempted and must say why."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why it was not run. REQUIRED on not_run: an unexplained gap in a test record is the same failure as a dropped row."
+          },
+          "actual": {
+            "type": "string",
+            "description": "What was observed. Left out on a quiet (secret) item, where the record carries the verdict and not the value."
+          },
+          "detail": {
+            "type": "string",
+            "description": "Anything the judge needs to say beyond the values — which channel decided, what the product reported as the source."
+          },
+          "evidence": {
+            "$ref": "#/$defs/evidence"
+          },
+          "at": {
+            "type": "string",
+            "description": "When this item was answered, if it differs from its run."
+          }
+        }
+      }
+    },
+    "unclaimed": {
+      "type": "array",
+      "description": "Observed on the system and answering no plan item — a setting the deployed file carries that no row of the sheet claims. The reverse direction of coverage, and the one a plan cannot derive: only something that looked at the system knows it is there.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instance",
+          "what"
+        ],
+        "properties": {
+          "instance": {
+            "type": "string"
+          },
+          "what": {
+            "type": "string",
+            "description": "What was seen, in the vocabulary of the thing that saw it."
+          },
+          "evidence": {
+            "$ref": "#/$defs/evidence"
+          }
+        }
+      }
+    },
+    "functional": {
+      "type": "array",
+      "description": "Answers to the items with no row behind them (a unit's `test.functional`), keyed by the unit and the item's own text.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "unit",
+          "item",
+          "instance",
+          "status"
+        ],
+        "properties": {
+          "unit": {
+            "type": "string"
+          },
+          "item": {
+            "type": "string",
+            "description": "The item as the declaration words it."
+          },
+          "instance": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "not_run"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/$defs/evidence"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sheet",
+        "key",
+        "instance"
+      ],
+      "description": "The plan item this answers. Spelled exactly as the plan spells it — this is the join.",
+      "properties": {
+        "sheet": {
+          "type": "string"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The category path, as the plan carries it."
+        },
+        "key": {
+          "type": "string"
+        },
+        "instance": {
+          "type": "string"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "WHERE the answer can be seen again — the same shape a row's `source` has, and for the same reason: a reference that can be resolved, never a copy of the thing itself. This tool does not store or embed evidence.",
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "command": {
+          "type": "string",
+          "description": "The command whose output was read, when the evidence is not a file."
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "description": "not_run must say why.",
+      "properties": {
+        "results": {
+          "items": {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "not_run"
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "type": "object"
+            },
+            "then": {
+              "required": [
+                "reason"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "array"
+        }
+      }
+    },
+    {
+      "description": "…and so must a functional item that was not run.",
+      "properties": {
+        "functional": {
+          "items": {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "not_run"
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "type": "object"
+            },
+            "then": {
+              "required": [
+                "reason"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "array"
+        }
+      }
+    }
+  ]
+}
