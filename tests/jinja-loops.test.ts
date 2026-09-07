@@ -548,3 +548,49 @@ describe("preview: an absent line is not rendered", () => {
     expect(line.text).not.toContain("Require ip \n");
   });
 });
+
+// An artifact a role does not deploy everywhere. The condition is a FACT about
+// the host — chrony on a container, where time is the kernel's business — so no
+// reading of the template can find it, and without a declaration the sheet
+// claims a file that is not there and every row of it reads as deployed.
+describe("a template deployed only in some environments", () => {
+  const FILES4: Record<string, string> = {
+    "/vars.yml": "servers: pool.ntp.org\n",
+    "/chrony.conf.j2": "server {{ servers }} iburst\n",
+  };
+  const load = (instances: string[]) =>
+    getRecipe("ansible")!.load(
+      {
+        name: "s",
+        recipe: "ansible",
+        rows: "artifact",
+        defaults: [{ path: "/vars.yml" }],
+        templates: [{ path: "/chrony.conf.j2", component: "chrony", deployed_path: "/etc/chrony.conf", format: "space", instances }],
+      } as never,
+      { readFile: (p: string) => FILES4[p] ?? null, specDir: "/", resolve: (p: string) => p, instances: ["local", "staging"] }
+    ) as unknown as {
+      embedded?: { key: string; instances?: { name: string }[]; absent_where_unlisted?: boolean }[];
+      artifacts?: { instances?: string[] }[];
+    };
+
+  it("says which environments have it, and that the others do not", () => {
+    const rows = (load(["staging"]).embedded ?? []).filter((e) => e.key.startsWith("server"));
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0].instances?.map((i) => i.name)).toEqual(["staging"]);
+    expect(rows[0].absent_where_unlisted).toBe(true);
+  });
+
+  // The panel's header claims the file IS what the host holds, so a preview
+  // for an environment the role skips puts a file on screen that is not there.
+  it("previews it only where it is deployed", () => {
+    const previews = load(["staging"]).artifacts ?? [];
+    expect(previews.length).toBeGreaterThan(0);
+    expect(previews.flatMap((a) => a.instances ?? [])).toEqual(["staging"]);
+  });
+
+  // …and an environment the sheet does not have narrows nothing while looking
+  // like it worked.
+  it("refuses an environment this sheet does not have", () => {
+    expect(() => load(["staging", "typo"])).toThrow(/typo/);
+  });
+});

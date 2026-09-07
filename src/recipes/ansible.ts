@@ -160,6 +160,13 @@ const schema = {
         properties: {
           path: { type: "string" },
           deployed_path: { type: "string" },
+          // The environments this artifact is deployed to, when it is not all
+          // of them. A role that skips a file on some hosts — chrony on a
+          // container, where time is the kernel's business — leaves a sheet
+          // claiming a file that is not there, and every row of it reads as
+          // deployed. Ansible decides that from a FACT about the host, which no
+          // sheet can derive, so it is declared.
+          instances: { type: "array", items: { type: "string" }, minItems: 1 },
           // Defaults to the template's file name without `.j2`
           // (keycloak.conf.j2 -> keycloak.conf), which is what a reviewer calls
           // the artifact. Override when that is not the name they use.
@@ -255,7 +262,7 @@ function productKeyOf(entry: Entry, structured: boolean): string {
 // because a sheet covering several artifacts must be able to say which row came
 // from which, and because two of them routinely share a row key (two systemd
 // units both have Unit.Description).
-type TemplateSpec = { path: string; deployedPath?: string; component?: string; format?: string };
+type TemplateSpec = { path: string; deployedPath?: string; component?: string; format?: string; instances?: string[] };
 
 // A template's format is the DEPLOYED artifact's format. The template's own
 // name is normally a good proxy (`keycloak.conf.j2` -> `.conf`... which is
@@ -345,6 +352,9 @@ function templateSpecs(sheetSpec: Record<string, JsonValue>, name: string): Temp
       // reviewer calls it.
       component: t.component !== undefined ? asString(t.component, "templates[].component") : baseFileName(path).split("/").pop()!,
       ...(t.format !== undefined ? { format: checkedFormat(t.format, name, "templates[].format") } : {}),
+      ...(t.instances !== undefined
+        ? { instances: (t.instances as JsonValue[]).map((i) => asString(i, "templates[].instances[]")) }
+        : {}),
     };
   });
 }
@@ -611,6 +621,19 @@ export const ansibleRecipe: SheetRecipe = {
     const componentFiles = new Map<string, { filePath?: string; sourceFile?: string }>();
 
     const specs = templateSpecs(sheetSpec as Record<string, JsonValue>, name);
+    // An environment named here that the sheet does not have narrows nothing
+    // and looks like it worked — the same silent-no-op a misspelled field would
+    // be, and the reason every declaration in this file is checked against what
+    // the build actually has.
+    for (const spec of specs) {
+      const stray = (spec.instances ?? []).filter((i) => !io.instances.includes(i));
+      if (stray.length > 0) {
+        throw new Error(
+          `ansible recipe: sheet "${name}": template ${spec.path} declares instances ${stray.join(", ")}, ` +
+            `which this sheet does not have (${io.instances.join(", ")})`
+        );
+      }
+    }
     // `templates:` means the sheet covers several artifacts, so every row has
     // to say which one it came from. `template:` means the sheet IS one, and a
     // component level would name it a second time above every category.
@@ -1156,7 +1179,17 @@ export const ansibleRecipe: SheetRecipe = {
               continue;
             }
           }
-          const onlyIn = rowsArtifact ? renderedIn(cond) : undefined;
+          // …and narrowed by what the sheet DECLARES about this artifact. The
+          // two are the same kind of fact — in which environments does this
+          // line exist — arrived at differently: one is read from the template's
+          // own `{% if %}`, the other stated because the role's condition is
+          // about the host and not about anything a sheet can see.
+          const declaredIn = spec.instances;
+          const fromCondition = rowsArtifact ? renderedIn(cond) : undefined;
+          const onlyIn =
+            declaredIn === undefined
+              ? fromCondition
+              : (fromCondition ?? io.instances).filter((i) => declaredIn.includes(i));
           // The test that decides it, carried onto the row. Only when the
           // presence actually varies (`onlyIn` set) and the condition is one
           // this evaluator reads: the same rule the rest of this module
@@ -1684,7 +1717,11 @@ export const ansibleRecipe: SheetRecipe = {
               source_file: file,
             },
             content,
-            io.instances,
+            // Only the environments this template is deployed to. The panel's
+            // header is a claim that this file IS what the host holds, so
+            // rendering it for an environment the role skips would put a file
+            // on screen that is not on the disk.
+            spec.instances ?? io.instances,
             (instance, n) => (n === "ansible_managed" ? ansibleManaged : valueIn(instance, n)),
             keys,
             DEPLOY_TIME_VARS,

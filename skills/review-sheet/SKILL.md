@@ -989,6 +989,30 @@ Before this, the flag was a row filed under the vars FILE it is defined in — a
 tab among tabs that are deployed files — and pinning it by hand was the only fix.
 It has no row now, so there is nothing to place.
 
+**`instances:` when the ROLE, not the template, decides where a file lands.**
+A `{% if %}` inside the template is readable, and the rows narrow themselves. A
+condition on the TASK is not — `when: ansible_virtualization_role != "guest"`
+skips the whole file, and nothing in the template says so. Declare it:
+
+```yaml
+templates:
+  - path: ../../roles/common/templates/chrony.conf.j2
+    component: chrony
+    deployed_path: /etc/chrony.conf
+    format: space
+    instances: [staging, production]   # not on the container-hosted one
+```
+
+Every row of that template becomes a Pattern B row covering only those
+environments, marked absent in the rest, and the preview panel renders it only
+for them — the panel's header claims the file IS what the host holds, so a
+rendering for an environment the role skips would put a file on screen that is
+not on the disk. An environment this sheet does not have fails the build rather
+than narrowing nothing while looking like it worked. Without the declaration the
+sheet claims a file that is not there and every row of it reads as deployed —
+which a test derived from the sheet then goes looking for on a host that never
+had it.
+
 **A part whose templates use no variables should not name a file at all.**
 `defaults:` is optional:
 
