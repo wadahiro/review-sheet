@@ -74,10 +74,14 @@ const T: Record<TestDocLang, Words> = {
     // The tool's half of each row: where that level is on the page it just
     // wrote. The project's half — what each level is called and how its items
     // are raised — is `TestDeclaration.taxonomy`.
+    // What a READER SEES, at each level, in the same shape three times. Not the
+    // markdown that produced it: `####` is syntax nobody reading the delivered
+    // document ever meets, and naming it there is the tool describing its own
+    // plumbing in a customer's paperwork.
     taxonomyWhere: [
-      "この文書の単位。各環境の見出しに書く",
-      "詳細設計のシート。項目表を分ける `####` の見出し",
-      "表の1行。シートの行から導出（漏れた場合は生成が失敗する）",
+      "この文書の単位。環境ごとの見出しが環境名とともに掲げる",
+      "詳細設計のシート。その環境の中の見出しで、項目表ごとに1つ",
+      "その表の1行。シートの行から導出（漏れた場合は生成が失敗する）",
     ],
     taxonomyUndeclared: "—",
   },
@@ -113,9 +117,9 @@ const T: Record<TestDocLang, Words> = {
     excludedCols: ["Parameter", "Reason", "Owner"],
     taxonomyCols: ["No.", "Level", "How items are raised", "In this document"],
     taxonomyWhere: [
-      "This document's unit, named in each environment's heading",
-      "A sheet of the detailed design — the `####` headings the item tables sit under",
-      "One row of a table, derived from the sheet's rows; a gap fails the build",
+      "This document's unit, named by each environment's heading beside the environment",
+      "A sheet of the detailed design — a heading inside that environment, one per item table",
+      "One row of that table, derived from the sheet's rows; a gap fails the build",
     ],
     taxonomyUndeclared: "—",
   },
