@@ -8,7 +8,7 @@ import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { validateInput, validateReview, validateResults, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
 import { renderTestDoc, renderExcluded, injectBlocks } from "./testdoc.js";
-import { findBakedSecrets, formatBakedSecrets } from "./secrets.js";
+import { findBakedSecrets, formatBakedSecrets, findSecretsInEvidence, formatEvidenceLeaks } from "./secrets.js";
 import { toFullEditInput } from "./full-edit.js";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, ArtifactPreview } from "./types.js";
 import { evidencePreviews } from "./evidence.js";
@@ -431,6 +431,12 @@ program
         console.error(
           `evidence: ${docs.length} document(s) carried${held > docs.length ? `, ${held - docs.length} left out by --instances` : ""}`
         );
+        // The sheet's own secret check ran above, over the VALUES. Evidence is
+        // raw host bytes, so a credential the sheet holds as a literal can be
+        // in it a second time under another name — asked here, of the text
+        // actually being carried, and only of the environments still in it.
+        const leaked = findSecretsInEvidence(input, (carried.evidence ?? []).filter((e) => opts.instances === undefined || opts.instances.includes(e.instance)));
+        if (leaked.length > 0) console.error(formatEvidenceLeaks(leaked));
       }
       const lang = opts.lang === "en" ? "en" : "ja";
       // The content's language is decided HERE and never again: a full-edit

@@ -83,3 +83,55 @@ export function formatBakedSecrets(found: BakedSecret[]): string {
     `A reference (\${...}, {{ ... }} or \$(...)) is not reported — only a value that IS the credential.`,
   ].join("\n");
 }
+
+// …and the same question asked of EVIDENCE. A collected file is raw host bytes,
+// so a credential the sheet holds as a literal can be in it a second time —
+// under a different name, in a file nobody chose line by line.
+//
+// What this can honestly check is exactly that: the literals the model itself
+// declares secret, searched in the text being carried. A credential the sheet
+// does NOT hold cannot be searched for, and guarding it is the collector's job
+// — it is the layer standing on the host, and it redacts before the bytes ever
+// travel. Saying so here matters: a check that looks total and is not teaches a
+// reader to stop looking.
+export type EvidenceLeak = { sheet: string; category: string; key: string; where: string; instance: string };
+
+export function findSecretsInEvidence(
+  input: ParameterSheetInput | VersionedSheetInput,
+  evidence: { instance: string; host: string; path?: string; command?: string; text: string }[]
+): EvidenceLeak[] {
+  const literals: { value: string; at: BakedSecret }[] = [];
+  const walk = (sheet: string, path: string, categories: Category[] | undefined): void => {
+    for (const c of categories ?? []) {
+      const here = path ? `${path} > ${c.name}` : c.name;
+      for (const p of c.params ?? []) {
+        if (p.secret !== true || p.origin === "default" || p.origin === "baseline") continue;
+        for (const v of [p.value, ...(p.instances ?? []).map((i) => i.value)]) {
+          if (isLiteral(v)) literals.push({ value: v as string, at: { sheet, category: here, key: p.key } });
+        }
+      }
+      walk(sheet, here, c.categories);
+    }
+  };
+  const sheets: Sheet[] = "versions" in input ? input.versions.flatMap((v) => v.sheets) : input.sheets;
+  for (const sh of sheets) walk(sh.name, "", sh.categories);
+
+  const out: EvidenceLeak[] = [];
+  for (const doc of evidence) {
+    for (const { value, at } of literals) {
+      if (!doc.text.includes(value)) continue;
+      out.push({ ...at, instance: doc.instance, where: `${doc.host} ${doc.path ?? doc.command ?? ""}` });
+    }
+  }
+  return out;
+}
+
+export function formatEvidenceLeaks(found: EvidenceLeak[]): string {
+  return [
+    `${found.length} value(s) declared secret also appear in the evidence being carried — the record would hand on the ` +
+      `credential itself, not an address for it:`,
+    ...found.map((f) => `  ${f.sheet} > ${f.category} > ${f.key} [${f.instance}] in ${f.where}`),
+    `Only the literals this model declares secret are searched. A credential the sheet does not hold cannot be, and ` +
+      `keeping it out is the collector's job — it stands on the host, and redacts before anything travels.`,
+  ].join("\n");
+}
