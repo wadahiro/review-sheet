@@ -347,13 +347,25 @@ export function renderTestDoc(
 
 // …and the excluded rows, which need the plan's report rather than the plan.
 export function renderExcluded(
-  excluded: { unit: string; sheet: string; key: string; reason: LangText; owner?: string }[],
+  excluded: { unit: string; sheet: string; component?: string; key: string; reason: LangText; owner?: string }[],
   unitName: string,
   lang: TestDocLang = "ja"
 ): string {
   const t = T[lang];
   const mine = excluded.filter((e) => e.unit === unitName);
-  return table(t.excludedCols, mine.map((e) => [`${cell(e.sheet)} > \`${cell(e.key)}\``, cell(pickLang(e.reason, lang)), cell(e.owner)]));
+  // Named by the component too, where the sheet has them. Two components share
+  // a key space by design — a federation sheet excludes
+  // `config.bindCredential[0]` under every provider it reviews — so the sheet
+  // and the key alone print one exclusion twice, identically, and a reader
+  // cannot tell which provider's credential each line is about.
+  return table(
+    t.excludedCols,
+    mine.map((e) => [
+      `${cell(e.sheet)}${e.component === undefined ? "" : ` > ${cell(e.component)}`} > \`${cell(e.key)}\``,
+      cell(pickLang(e.reason, lang)),
+      cell(e.owner),
+    ])
+  );
 }
 
 const START = (name: string): string => `<!-- ${name}:start -->`;

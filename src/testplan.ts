@@ -73,7 +73,11 @@ export type TestPlan = {
 // items than the sheet has rows would be the promise this file refuses to make.
 export type TestPlanReport = {
   // Rows the project itself put outside the review's remit.
-  excluded: { unit: string; sheet: string; key: string; reason: LangText; owner?: string }[];
+  // `component` for the same reason the items carry one: two components of a
+  // sheet share a key space by design, so `sheet > key` alone renders one
+  // exclusion twice — two real rows, one label, and a reader with no way to
+  // tell which provider's credential each line is about.
+  excluded: { unit: string; sheet: string; component?: string; key: string; reason: LangText; owner?: string }[];
   // A per-environment row that says nothing about an environment: no value for
   // it, so there is nothing to expect and nothing to check.
   unstated: { unit: string; sheet: string; key: string; instance: string }[];
@@ -161,6 +165,7 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
         report.excluded.push({
           unit: u.name,
           sheet: sheet.name,
+          ...(row.component === undefined ? {} : { component: row.component }),
           key: row.p.key,
           reason: row.outOfScope.reason,
           ...(row.outOfScope.owner === undefined ? {} : { owner: row.outOfScope.owner }),

@@ -184,6 +184,23 @@ describe("the tables a document is given", () => {
     expect(md).toContain("`db-password`");
     expect(md).toContain("DBA の管轄");
   });
+
+  // Two components of one sheet exclude the same key by design — a federation
+  // sheet's bind credential, once per provider. Without the component the two
+  // lines are identical, and a reader cannot tell which one each is about.
+  it("says which component an exclusion belongs to", () => {
+    const md = renderExcluded(
+      [
+        { unit: "server", sheet: "ldap", component: "corp", key: "config.bindCredential[0]", reason: { ja: "秘密" } },
+        { unit: "server", sheet: "ldap", component: "partner", key: "config.bindCredential[0]", reason: { ja: "秘密" } },
+      ],
+      "server"
+    );
+    const rows = md.split("\n").filter((l) => l.includes("bindCredential"));
+    expect(rows.length).toBe(2);
+    expect(rows[0]).toContain("ldap > corp >");
+    expect(rows[1]).toContain("ldap > partner >");
+  });
 });
 
 describe("putting them into the document", () => {
