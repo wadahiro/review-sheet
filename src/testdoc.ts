@@ -31,7 +31,7 @@ type Words = {
   major: string; middle: string; subject: string;
   pass: string; fail: string; notRun: string;
   // What the EXPECTED column says where the value cannot say it itself.
-  expectAbsent: string; expectDefaultSuffix: string;
+  expectAbsent: string; expectEmpty: string; expectDefaultSuffix: string;
   functional: (t: string) => string;
   count: string; done: string; todo: string; result: string; unstated: string;
   defaults: (n: number, ok: number, ng: number) => string;
@@ -57,6 +57,7 @@ const T: Record<TestDocLang, Words> = {
     fail: "NG",
     notRun: "未実施",
     expectAbsent: "未設定",
+    expectEmpty: "（空）",
     expectDefaultSuffix: "（製品既定）",
     functional: (t: string) => t,
     count: "テスト項目数",
@@ -102,6 +103,7 @@ const T: Record<TestDocLang, Words> = {
     fail: "NG",
     notRun: "not run",
     expectAbsent: "not set",
+    expectEmpty: "(empty)",
     expectDefaultSuffix: " (product default)",
     functional: (t: string) => t,
     count: "Items",
@@ -160,11 +162,19 @@ const dayOf = (r: TestResult | undefined, run: { at?: string } | undefined): str
 // one sentence instead of one column twice.
 const itemText = (t: Words, i: TestItem): string => `\`${cell(i.target.key)}\``;
 
+// Six things this column has to be able to say, and an empty cell is not one of
+// them. A value, and a value that IS the empty string — `SSO_SMTP_USER=` is a
+// setting turned off, not a row with nothing to expect — and each of those
+// again for a row on the product's own default, and a row the vendor shipped
+// that this project removed, and a secret whose value is deliberately withheld.
+// Two of them rendered blank until this, which reads as "nothing to say" about
+// a row that says something quite definite.
 const expectedText = (t: Words, i: TestItem): string => {
   if (i.quiet === true) return "—";
   if (i.kind === "absent") return t.expectAbsent;
-  const value = code(i.expected);
-  return i.kind === "default-in-force" && value !== "" ? `${value}${t.expectDefaultSuffix}` : value;
+  const own = i.expected === "" ? t.expectEmpty : code(i.expected);
+  if (own === "") return "";
+  return i.kind === "default-in-force" ? `${own}${t.expectDefaultSuffix}` : own;
 };
 
 // Keyed by the category PATH as well, because two components of one sheet share

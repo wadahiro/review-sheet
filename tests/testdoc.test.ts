@@ -58,6 +58,20 @@ describe("the tables a document is given", () => {
     expect(row("Gone")).toContain("| `Gone` | 未設定 |");
   });
 
+  // An expectation that IS the empty string is a setting turned off, not a row
+  // with nothing to expect — and rendered blank the two are the same cell.
+  it("says so when what is expected is emptiness itself", () => {
+    const p = plan();
+    p.items = [
+      { target: { sheet: "os", path: ["a"], key: "user", instance: "local" }, unit: "server", component: "a", kind: "value", expected: "" },
+      { target: { sheet: "os", path: ["a"], key: "rp", instance: "local" }, unit: "server", component: "a", kind: "default-in-force", expected: "" },
+    ] as never;
+    const b = renderTestDoc(p, { results: [] } as never, "server", { includeDefaults: true });
+    const row = (k: string): string => b["test:items"].split("\n").find((l) => l.includes(`\`${k}\``)) ?? "";
+    expect(row("user")).toContain("| `user` | （空） |");
+    expect(row("rp")).toContain("| `rp` | （空）（製品既定） |");
+  });
+
   // The taxonomy names three levels; a reader has to be able to point at each
   // of them ON THE PAGE. The 中項目 is the SHEET, and it used to render nowhere
   // at all — the only heading inside an environment was the component, which is
