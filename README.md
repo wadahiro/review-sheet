@@ -538,8 +538,8 @@ to go is an error; the rest a document may simply decline.
 
 The levels a project's `taxonomy` declares are all POINTABLE on the page, or the
 table describing them describes nothing a reader can find: the first (the unit)
-is stated once at the head of the items, the second (the sheet) is a heading,
-the third is one row. Their NAMES and the rule for raising their items are the
+is named in each environment heading, the second (the sheet) is a heading of
+its own, the third is one row. Their NAMES and the rule for raising their items are the
 project's words — an organisation's test standard states them, and quoting one
 organisation's sentences inside this tool would publish them to every other
 project it builds; what the tool adds is the other half of each row, where that

@@ -56,7 +56,7 @@ describe("the tables a document is given", () => {
   // the taxonomy was talking about.
   it("names the level of every heading, and puts the sheet where the taxonomy says it is", () => {
     const b = renderTestDoc(plan(), results(), "server");
-    expect(b["test:items"]).toContain("大項目: SSO サーバ");
+    expect(b["test:items"]).toContain("### SSO サーバ (local)");
     expect(b["test:items"]).toContain("#### OS 基盤");
   });
 
@@ -72,10 +72,10 @@ describe("the tables a document is given", () => {
 
   it("puts each environment in its own section, with when it ran and where", () => {
     const b = renderTestDoc(plan(), results(), "server");
-    expect(b["test:items"]).toContain("### local");
+    expect(b["test:items"]).toContain("### SSO サーバ (local)");
     expect(b["test:items"]).toContain("実施日時: 2026-09-07T07:36:49Z ／ 対象ホスト: web01, web02");
     // …and an environment nobody ran says so rather than looking blank.
-    expect(b["test:items"]).toContain("### prod");
+    expect(b["test:items"]).toContain("### SSO サーバ (prod)");
     expect(b["test:items"]).toContain("実施日時: — ／ 対象ホスト: — （未実施）");
   });
 

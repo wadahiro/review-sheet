@@ -138,7 +138,8 @@ describe("what becomes a test item", () => {
       })
     );
     expect(plan.items.map((i) => i.target.key)).toEqual(["a"]);
-    expect(report.excluded).toEqual([{ unit: "server", sheet: "os", key: "b", reason: { ja: "DBA の管轄" } }]);
+    // …with the component, since two of them can exclude the same key.
+    expect(report.excluded).toEqual([{ unit: "server", sheet: "os", component: "c", key: "b", reason: { ja: "DBA の管轄" } }]);
   });
 
   it("has nothing to say about a document sheet", () => {

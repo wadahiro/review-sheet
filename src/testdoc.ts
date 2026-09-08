@@ -75,7 +75,7 @@ const T: Record<TestDocLang, Words> = {
     // wrote. The project's half — what each level is called and how its items
     // are raised — is `TestDeclaration.taxonomy`.
     taxonomyWhere: [
-      "この文書の単位。項目表の冒頭に一度だけ書く",
+      "この文書の単位。各環境の見出しに書く",
       "詳細設計のシート。項目表を分ける `####` の見出し",
       "表の1行。シートの行から導出（漏れた場合は生成が失敗する）",
     ],
@@ -113,7 +113,7 @@ const T: Record<TestDocLang, Words> = {
     excludedCols: ["Parameter", "Reason", "Owner"],
     taxonomyCols: ["No.", "Level", "How items are raised", "In this document"],
     taxonomyWhere: [
-      "This document's unit, stated once at the head of the item tables",
+      "This document's unit, named in each environment's heading",
       "A sheet of the detailed design — the `####` headings the item tables sit under",
       "One row of a table, derived from the sheet's rows; a gap fails the build",
     ],
@@ -270,13 +270,21 @@ export function renderTestDoc(
   // addressing detail inside a sheet and read exactly like the level the
   // taxonomy was talking about.
   //
-  // The outermost level is stated once rather than repeated down a column: it is constant
-  // for the whole document, and the paper form this follows solved that with a
-  // merged cell, which markdown has no way to write.
-  const sections: string[] = [`${t.major}: ${pickLang(unit.label, lang)}`, ""];
+  // The outermost level is NOT repeated down a column — it is constant for the
+  // whole document, and the paper form this follows solved that with a merged
+  // cell, which markdown has no way to write. Nor is it a line of body text: a
+  // sentence naming the document, standing above the first heading, reads as
+  // something a reader is meant to act on.
+  //
+  // It goes in the ENVIRONMENT'S heading instead — `SSO server (local)`. That
+  // heading is where a reader lands from the outline, so naming the unit there
+  // answers "which unit am I in" at every one of them, and costs a document
+  // with one environment nothing.
+  const unitShown = pickLang(unit.label, lang) ?? unitName;
+  const sections: string[] = [];
   for (const instance of instances) {
     const run = results.runs?.[instance];
-    sections.push(`### ${instance}`, "", run?.at === undefined ? t.notRunYet : t.ranAt(run.at, (run.hosts ?? []).join(", ") || "—"), "");
+    sections.push(`### ${unitShown} (${instance})`, "", run?.at === undefined ? t.notRunYet : t.ranAt(run.at, (run.hosts ?? []).join(", ") || "—"), "");
     let n = 0;
     const here = shown.filter((i) => i.target.instance === instance);
     // By the sheet's LABEL, which is what a reader sees; two sheets sharing one
