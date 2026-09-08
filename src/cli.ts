@@ -535,7 +535,7 @@ program
   .requiredOption("-i, --input <file>", "Model (input.json)")
   .requiredOption("-u, --unit <name>", "Which unit's document this is")
   .requiredOption("-d, --doc <file>", "The markdown document, edited IN PLACE between its <!-- test:*:start --> markers")
-  .option("-r, --results <file>", "The answers (omit for the specification before any run: every item reads 未実施)")
+  .option("-r, --results <file>", "The answers (omit for the specification before any run: every item reads as not yet run)")
   .option("--lang <lang>", "ja | en (default: ja)", "ja")
   .option("--include-defaults", "Print the unset-parameter items as rows too, instead of one line counting them")
   .action((opts: { input: string; unit: string; doc: string; results?: string; lang: string; includeDefaults?: boolean }) => {

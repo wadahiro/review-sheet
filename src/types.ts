@@ -240,7 +240,8 @@ export type SheetGroup = {
   groups?: SheetGroup[];
   // How this UNIT is tested — see testplan.ts. It hangs here, on the chapter
   // that holds sheets, because that is the level a unit-test document is
-  // organised at (大項目): one method for a server, not one per file it holds.
+  // organised at — the outermost level: one method for a server, not one per
+  // file it holds.
   test?: TestDeclaration;
 };
 

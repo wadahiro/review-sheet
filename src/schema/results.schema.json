@@ -18,7 +18,7 @@
         "properties": {
           "at": {
             "type": "string",
-            "description": "When it ran (ISO 8601). 実施日時."
+            "description": "When it ran (ISO 8601). The date a record prints beside every item of the run."
           },
           "hosts": {
             "type": "array",
@@ -29,7 +29,7 @@
           },
           "by": {
             "type": "string",
-            "description": "実施者, when the runner knows it. Usually filled in the delivered document instead."
+            "description": "Who ran it, when the runner knows. Usually filled in the delivered document instead."
           },
           "collector": {
             "type": "string",
