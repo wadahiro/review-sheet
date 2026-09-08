@@ -4660,6 +4660,16 @@ tr.rs-jump-flash th {
   padding: 0.4rem 0.7rem;
   text-align: left;
   vertical-align: top;
+  /* A cell may wrap between words and never INSIDE one. A ten-column test
+     record is wider than any panel and the table already scrolls for that —
+     but the layout answered the squeeze by narrowing the short columns until
+     a six-character verdict stood one character per line, six rows tall. CJK
+     writes without spaces, so the default break-anywhere had nothing to stop
+     it, and the columns holding sentences kept their width while the ones
+     holding a single word became vertical strips. Scrolling a table sideways
+     is ordinary; reading a word downwards is not. */
+  word-break: keep-all;
+  overflow-wrap: normal;
 }
 .rs-doc th {
   background: var(--rs-subtle);

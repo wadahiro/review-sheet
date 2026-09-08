@@ -3180,8 +3180,13 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
 // Heading navigation (outline + command palette)
 // ============================================================
 
+// `text` is a line of a DOCUMENT sheet's own prose — a paragraph, a list item,
+// a row of one of its tables. Indexed because the palette is where a reader
+// looks for a word they remember, and a test record's items live in table rows
+// that no other entry kind reaches: searching for the setting a verdict is
+// about found the parameter sheet's row and never the record's.
 type NavEntry = {
-  kind: "category" | "param" | "comment";
+  kind: "category" | "param" | "comment" | "text";
   sheetIndex: number;
   sheetName: string;
   path: string;
@@ -3397,6 +3402,40 @@ function collectNav(data: SheetData, showDefaults: boolean, pivoted: Set<string>
 // Excluding them silently would be its own failure: "no match" would read as
 // "this product has no such setting" when the setting is there, at its default.
 // The palette says which scope it is in, always.
+// One entry per line of a document that carries words. The id is not an
+// element's — a document's blocks carry `data-rs-line`, not ids, since the
+// markdown they were rendered from is what a reader edits — so it names the
+// line and `jumpToNav` resolves it by that attribute.
+export const docLineId = (sheetIndex: number, line: number): string => `rs-doc-line:${sheetIndex}:${line}`;
+
+function collectDocLines(data: SheetData): NavEntry[] {
+  const out: NavEntry[] = [];
+  data.sheets.forEach((sheet, sheetIndex) => {
+    const md = sheet.document?.markdown;
+    if (md === undefined || sheet.document?.mode === "sheet") return;
+    // Headings are already entries of their own (the outline's), and a table's
+    // separator row is punctuation. A fenced block's contents are left in: a
+    // command somebody is looking for is as likely to be in one as in prose.
+    md.split("\n").forEach((raw, i) => {
+      const line = raw.trim();
+      if (line === "" || line.startsWith("#") || /^\|?[\s|:-]+\|?$/.test(line)) return;
+      if (line.startsWith("<!--")) return;
+      // A table row reads as its cells, not as its pipes.
+      const shown = (line.startsWith("|") ? line.replace(/^\||\|$/g, "").split("|").map((c) => c.trim()).filter((c) => c !== "").join(" / ") : line).trim();
+      if (shown === "") return;
+      out.push({
+        kind: "text", sheetIndex, sheetName: sheet.name, path: sheet.display ?? sheet.name,
+        name: shown.length > 80 ? `${shown.slice(0, 80)}…` : shown,
+        depth: 0,
+        id: docLineId(sheetIndex, i + 1),
+        search: `${shown} ${sheet.display ?? ""} ${sheet.name}`.toLowerCase(),
+        text: shown,
+      });
+    });
+  });
+  return out;
+}
+
 function collectParams(data: SheetData, showDefaults: boolean): NavEntry[] {
   const out: NavEntry[] = [];
   data.sheets.forEach((sheet, sheetIndex) => {
@@ -4606,6 +4645,9 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   // --- Heading navigation (outline + command palette) ---
   const categoryEntries = useMemo(() => collectNav(data, showDefaults, pivoted), [data, showDefaults, pivoted]);
   const paramEntries = useMemo(() => collectParams(data, showDefaults), [data, showDefaults]);
+  // A document's own words, so the palette reaches a test record's rows — the
+  // one place a reader's remembered word lives that no other entry kind holds.
+  const docTextEntries = useMemo(() => collectDocLines(data), [data]);
   // Review comments are searchable too; each jumps to its target row/category.
   const commentEntries = useMemo<NavEntry[]>(() => {
     if (diffMode) return []; // synthetic diff reviews are not searchable comments
@@ -4634,7 +4676,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
     });
     return out;
   }, [data, reviews, diffMode]);
-  const paletteEntries = useMemo(() => [...categoryEntries, ...paramEntries, ...commentEntries], [categoryEntries, paramEntries, commentEntries]);
+  const paletteEntries = useMemo(() => [...categoryEntries, ...paramEntries, ...docTextEntries, ...commentEntries], [categoryEntries, paramEntries, docTextEntries, commentEntries]);
   // A book document opens WITH its chapters showing: the tree is the navigation
   // there, not an aid to it, and a document set whose navigation starts hidden
   // opens as a page with no way out of itself. A tabbed document keeps the
@@ -4688,13 +4730,20 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
     window.setTimeout(land, 0);
   }, []);
 
+  // An ordinary anchor, or a document LINE — which has no id, because the
+  // markdown a reader edits is what those blocks are addressed by.
+  const resolveNavTarget = (id: string): HTMLElement | null => {
+    const at = /^rs-doc-line:\d+:(\d+)$/.exec(id);
+    if (at === null) return document.getElementById(id);
+    return document.querySelector(`.rs-doc [data-rs-line="${at[1]}"]`);
+  };
   const jumpToNav = useCallback((sheetIndex: number, id: string, fallbackId?: string, sheetName?: string, categoryPath?: string) => {
     setPaletteOpen(false);
     // Instant jump (no smooth animation) so far-away targets land immediately.
     // Fall back to the category when the exact row is not rendered (e.g. a
     // transposed table, where a parameter is a column rather than a row).
     const scroll = () => {
-      const el = document.getElementById(id) ?? (fallbackId ? document.getElementById(fallbackId) : null);
+      const el = resolveNavTarget(id) ?? (fallbackId ? resolveNavTarget(fallbackId) : null);
       if (!el) return;
       // scrollIntoView aims at where a box IS, and a document's section heading
       // is STICKY — so its box is wherever the scroll has pushed it, not where
