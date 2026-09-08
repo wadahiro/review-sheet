@@ -2110,6 +2110,33 @@ type TableViewPrefs = { view?: "normal" | "transposed"; freeze?: number };
 
 const VIEW_PREFS_KEY = "rs-table-view-prefs:v1";
 
+// Where the file panel sits. A preference about this READER's screen, not about
+// this document — a wide monitor wants the file beside the sheet, a laptop
+// wants it under a nine-column table — so it is stored once per browser rather
+// than per document, and it outlives the file being regenerated.
+//
+// Unset means "whatever the document being opened wants": a row's file to the
+// right, so the row stays beside it, and evidence along the bottom, so the wide
+// record it was opened from keeps its width. Choosing once overrides both,
+// which is the whole point of choosing.
+const DOCK_KEY = "rs-artifact-dock:v1";
+export type Dock = "right" | "below";
+function loadDock(): Dock | undefined {
+  try {
+    const v = localStorage.getItem(DOCK_KEY);
+    return v === "right" || v === "below" ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+function saveDock(d: Dock): void {
+  try {
+    localStorage.setItem(DOCK_KEY, d);
+  } catch {
+    /* a document opened where storage is refused still works, it just forgets */
+  }
+}
+
 // Namespace prefs per document so different sheets opened from disk do not share
 // table identities that happen to collide.
 function viewPrefsNamespace(): string {
@@ -4109,12 +4136,17 @@ export type ArtifactAccess = {
   open: (id: string, key: string) => void;
 };
 
-function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, t }: {
+function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, dock, onDock, t }: {
   previews: ArtifactPreview[];
   target: ArtifactTarget;
   onClose: () => void;
   onPick: (instance: string | undefined) => void;
   onJumpRow: (sheet: string, key: string) => void;
+  // Where the panel sits, and how the reader moves it. Both are here rather
+  // than in the CSS because the choice is the reader's: a wide monitor wants
+  // the file beside the sheet, a laptop wants it under a nine-column table.
+  dock: Dock;
+  onDock: (d: Dock) => void;
   t: Messages;
 }) {
   const mine = previews.filter((a) => a.id === target.id);
@@ -4147,11 +4179,24 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, t }: {
   const gaps = shown.lines.filter((l) => l.kind === "unrendered" && l.cause !== "deploy-time").length;
 
   return html`
-    <aside class="rs-artifact-panel" aria-label=${t.artifactTitle}>
+    <aside class=${`rs-artifact-panel ${dock === "below" ? "rs-artifact-below" : ""}`} aria-label=${t.artifactTitle}>
       <div class="rs-artifact-head">
         ${/* Pinned to the panel's own top-right corner rather than laid out
              beside the path: a deployed path is long and wraps, and a close
              button that moves with the text is one a reader has to look for. */ ""}
+        ${/* Where it sits, chosen once and remembered — the same control a
+             browser's own inspector puts here, for the same reason: the right
+             answer depends on the screen, not on the file. */ ""}
+        <div class="rs-artifact-dock">
+          <button class=${`rs-dock-btn ${dock === "right" ? "rs-dock-on" : ""}`} onClick=${() => onDock("right")}
+                  title=${t.artifactDockRight} aria-label=${t.artifactDockRight} aria-pressed=${dock === "right"}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="15" y1="4" x2="15" y2="20"/></svg>
+          </button>
+          <button class=${`rs-dock-btn ${dock === "below" ? "rs-dock-on" : ""}`} onClick=${() => onDock("below")}
+                  title=${t.artifactDockBelow} aria-label=${t.artifactDockBelow} aria-pressed=${dock === "below"}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="14" x2="21" y2="14"/></svg>
+          </button>
+        </div>
         <button class="rs-modal-close rs-artifact-close" onClick=${onClose} aria-label=${t.shortcutClose}>\u00d7</button>
         <div class="rs-artifact-title">
           <span class="rs-artifact-path">${shown.nature === "source" ? shown.source_file : (shown.deployed_path ?? shown.source_file)}</span>
@@ -4164,7 +4209,16 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, t }: {
                `nature: "source"` preview is the authored file itself, not
                something rendered FROM it — "Rendered from" would be a false
                claim, so it gets its own label instead. */ ""}
-          ${showSources() ? html`${artifactProvenance(shown, t)}: <code>${shown.source_file}</code>` : null}
+          ${/* …and the path only when it says something the title has not. An
+               OBSERVED document's source IS the subject the title already
+               names — the file it was read from, or the command it is the
+               output of — so repeating it puts the same string on screen
+               twice, once as a heading and once as evidence of itself. */ ""}
+          ${showSources()
+            ? html`${artifactProvenance(shown, t)}${(shown.deployed_path ?? shown.source_file) === shown.source_file && shown.nature === "observed"
+                ? null
+                : html`: <code>${shown.source_file}</code>`}`
+            : null}
           ${/* The exception, and only when there IS one. Costs nothing at zero,
                and when it fires it is the index that makes a marked line 200
                rows down get found instead of scrolled past. */ ""}
@@ -5093,6 +5147,18 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   const title = data.metadata?.title ?? t.defaultTitle;
 
   const [artifactTarget, setArtifactTarget] = useState<ArtifactTarget | null>(null);
+  // Which SHAPE the open document wants. An observed document was reached from
+  // a record whose rows are nine columns wide, and a panel that takes 34rem off
+  // the width leaves that table unreadable — see the CSS. Read off the document
+  // itself rather than remembered from how it was opened: the panel can only
+  // ever show one, and the document knows what it is.
+  const evidenceOpen =
+    artifactTarget !== null &&
+    (artifacts ?? []).some((a) => a.id === artifactTarget.id && a.nature === "observed");
+  const [dock, setDock] = useState<Dock | undefined>(loadDock);
+  const pickDock = (d: Dock): void => { setDock(d); saveDock(d); };
+  // The reader's choice, or what the document being opened wants.
+  const dockNow: Dock = dock ?? (evidenceOpen ? "below" : "right");
   // Which preview a row belongs to, resolved once per document. A sheet
   // covering several artifacts keys them by component, which the viewer only
   // knows as the outermost category — the same resolution `assembleSheets`
@@ -5180,7 +5246,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   const OVERVIEW_TAB = -1;
 
   return html`
-    <div class=${`rs-app ${outlineOpen ? "rs-outline-open" : ""} ${bookNav ? "rs-book" : ""} ${artifactTarget ? "rs-with-artifact" : ""} ${effEditEnabled ? "rs-edit-on" : ""}`}>
+    <div class=${`rs-app ${outlineOpen ? "rs-outline-open" : ""} ${bookNav ? "rs-book" : ""} ${artifactTarget ? (dockNow === "below" ? "rs-with-evidence" : "rs-with-artifact") : ""} ${effEditEnabled ? "rs-edit-on" : ""}`}>
       <nav class=${`rs-sheet-tabs ${(data.groups?.length ?? 0) > 0 ? "rs-sheet-tabs-grouped" : ""}`} role="tablist">
         <div class="rs-tabs-nav">
           <button class=${`rs-toolbar-btn ${outlineOpen ? "rs-toolbar-btn-active" : ""}`} onClick=${() => setOutlineOpen(!outlineOpen)}
@@ -5784,7 +5850,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
       `}
 
       ${artifactTarget && html`
-        <${ArtifactPanel} previews=${artifacts ?? []} target=${artifactTarget}
+        <${ArtifactPanel} previews=${artifacts ?? []} target=${artifactTarget} dock=${dockNow} onDock=${pickDock}
                           onClose=${() => setArtifactTarget(null)}
                           onPick=${(instance: string | undefined) => setArtifactTarget((c) => (c ? { ...c, instance } : c))}
                           onJumpRow=${jumpToRow} t=${t} />

@@ -4239,6 +4239,70 @@ tr.rs-jump-flash th {
   z-index: 150;
 }
 
+/* EVIDENCE opens along the bottom instead, and the difference is not taste.
+ *
+ * The right-hand panel exists so a ROW stays beside its file — a setting is
+ * judged by the lines around it, and taking the row off screen to show the file
+ * shows the context INSTEAD of the thing it is context for. What a reader came
+ * from here is a different shape: a test record's row is nine columns wide, and
+ * a panel that takes 34rem off the width leaves the table it was read in
+ * unreadable. Width is what that table needs and height is what it can spare,
+ * so the split turns ninety degrees.
+ *
+ * The line the verdict was read at is still the point, so the document opens
+ * scrolled to it exactly as the side panel does. */
+.rs-artifact-panel.rs-artifact-below {
+  top: auto;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  max-width: none;
+  height: var(--rs-evidence-h, 22rem);
+  max-height: 60vh;
+  border-left: 0;
+  border-top: 1px solid var(--rs-border);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.rs-app.rs-with-evidence {
+  padding-right: 0;
+  padding-bottom: var(--rs-evidence-h, 22rem);
+}
+
+/* Where the panel sits, chosen in its own corner — beside the close button and
+   before it, since "move it" is the commoner intent of the two once a reader
+   has decided they want the file at all. */
+.rs-artifact-dock {
+  position: absolute;
+  top: 0.45rem;
+  right: 2.1rem;
+  display: flex;
+  gap: 0.15rem;
+}
+.rs-dock-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--rs-text-muted);
+  cursor: pointer;
+}
+.rs-dock-btn:hover {
+  background: var(--rs-subtle);
+  color: var(--rs-text);
+}
+.rs-dock-btn.rs-dock-on {
+  color: var(--rs-primary);
+  border-color: var(--rs-border);
+  background: var(--rs-surface);
+}
+
 .rs-artifact-head {
   position: relative;
   padding: 0.6rem 0.9rem;
@@ -4339,9 +4403,27 @@ tr.rs-jump-flash th {
   background: var(--rs-subtle);
 }
 
+/* THE line — the one the row is, or the one a verdict was read at.
+ *
+ * A pale tint was enough when the document was a 30-line config and the reader
+ * had just clicked the row above it. It is not enough in a 1,500-line realm
+ * document opened from a test record: the panel scrolls to the middle of a wall
+ * of JSON, and "which line is this about" has to be answerable at a glance,
+ * from a page the reader did not scroll to themselves. So the marker is on all
+ * three parts of the line — the bar, the ground, and the number, which is the
+ * one thing that says WHERE. */
 .rs-artifact-line.rs-here {
   background: var(--rs-primary-light);
-  box-shadow: inset 3px 0 0 var(--rs-primary);
+  box-shadow: inset 4px 0 0 var(--rs-primary);
+  font-weight: 600;
+}
+.rs-artifact-line.rs-here .rs-artifact-no {
+  color: var(--rs-primary);
+  opacity: 1;
+  font-weight: 700;
+}
+.rs-artifact-line.rs-here .rs-artifact-text {
+  color: var(--rs-text);
 }
 
 /* A line this instance does not render. Kept and greyed rather than removed:

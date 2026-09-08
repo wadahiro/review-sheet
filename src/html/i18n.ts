@@ -96,6 +96,8 @@ type Messages = {
   // `{host}` / `{at}` — where an OBSERVED document was read and when. Not
   // "rendered from": nothing rendered it, a host had it.
   artifactCollectedFrom: string;
+  artifactDockRight: string;
+  artifactDockBelow: string;
   artifactInstance: string;
   artifactKindAbsent: string;
   artifactKindUnrendered: string;
@@ -357,6 +359,8 @@ const ja: Messages = {
   artifactRenderedFrom: "生成元",
   artifactSourceFile: "ソースファイル",
   artifactCollectedFrom: "{host} から {at} に取得",
+  artifactDockRight: "右に表示",
+  artifactDockBelow: "下に表示",
   artifactInstance: "環境",
   artifactKindAbsent: "この環境では出力されない（条件: {reason}）",
   artifactKindUnrendered: "この箇所は評価されていません（{reason}）— テンプレートの記述をそのまま表示",
@@ -584,6 +588,8 @@ const en: Messages = {
   artifactRenderedFrom: "Rendered from",
   artifactSourceFile: "Source file",
   artifactCollectedFrom: "Collected from {host} at {at}",
+  artifactDockRight: "Dock to the right",
+  artifactDockBelow: "Dock to the bottom",
   artifactInstance: "Instance",
   artifactKindAbsent: "not rendered for this instance (condition: {reason})",
   artifactKindUnrendered: "not evaluated here ({reason}) — the template text is shown as written",
