@@ -148,13 +148,36 @@ const dayOf = (r: TestResult | undefined, run: { at?: string } | undefined): str
 const itemText = (t: Words, i: TestItem): string =>
   i.kind === "default-in-force" ? t.isDefault(i.target.key) : i.kind === "absent" ? t.isAbsent(i.target.key) : t.isSet(i.target.key);
 
-const answerIndex = (results: TestResults): Map<string, TestResult> => {
-  const m = new Map<string, TestResult>();
-  for (const r of results.results) m.set(`${r.target.sheet}\u0000${r.target.key}\u0000${r.target.instance}`, r);
-  return m;
+// Keyed by the category PATH as well, because two components of one sheet share
+// a key space by design — a federation sheet has
+// `config.usernameLDAPAttribute[0]` under every provider it reviews. Keyed by
+// sheet+key alone, every one of them got the LAST component's answer: its
+// verdict, its date, its evidence. Measured on a real record, where internal-ldap's
+// row carried supplier-ldap's line of the collected document.
+//
+// The loose key is kept as a FALLBACK, and that is deliberate rather than
+// leftover: a judge answering by sheet and key alone is answering the question a
+// reader asks, and `checkResults` (testresults.ts) accepts that shape for the
+// same reason. What must not happen is a loose answer winning over the row's
+// own.
+const pathOf = (t: { sheet: string; path?: string[]; key: string; instance: string }): string =>
+  `${t.sheet}\u0000${t.key}\u0000${t.instance}\u0000${(t.path ?? []).join("\u0000")}`;
+const looseOf = (t: { sheet: string; key: string; instance: string }): string =>
+  `${t.sheet}\u0000${t.key}\u0000${t.instance}`;
+
+type AnswerIndex = { byPath: Map<string, TestResult>; byKey: Map<string, TestResult> };
+
+const answerIndex = (results: TestResults): AnswerIndex => {
+  const byPath = new Map<string, TestResult>();
+  const byKey = new Map<string, TestResult>();
+  for (const r of results.results) {
+    if (r.target.path !== undefined) byPath.set(pathOf(r.target), r);
+    byKey.set(looseOf(r.target), r);
+  }
+  return { byPath, byKey };
 };
-const answerFor = (index: Map<string, TestResult>, i: TestItem): TestResult | undefined =>
-  index.get(`${i.target.sheet}\u0000${i.target.key}\u0000${i.target.instance}`);
+const answerFor = (index: AnswerIndex, i: TestItem): TestResult | undefined =>
+  index.byPath.get(pathOf(i.target)) ?? index.byKey.get(looseOf(i.target));
 
 export type TestDocOptions = {
   lang?: TestDocLang;

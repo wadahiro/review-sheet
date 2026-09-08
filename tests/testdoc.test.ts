@@ -147,6 +147,34 @@ describe("the tables a document is given", () => {
     expect(b["test:taxonomy"]).toBeUndefined();
   });
 
+  // Two components of one sheet share a key space BY DESIGN — a federation
+  // sheet has `config.usernameLDAPAttribute[0]` under every provider — so an
+  // answer index keyed by sheet+key alone gives every one of them the LAST
+  // component's answer. Measured on a real record: the internal-ldap row showed
+  // supplier-ldap's verdict, its date, its evidence and (once evidence became a
+  // link) opened supplier-ldap's line in the collected document.
+  it("gives each component its own answer, not the last one's", () => {
+    const p = plan();
+    p.items = [
+      { target: { sheet: "os", path: ["corp"], key: "attr", instance: "local" }, unit: "server", component: "corp", kind: "value", expected: "sAMAccountName" },
+      { target: { sheet: "os", path: ["partner"], key: "attr", instance: "local" }, unit: "server", component: "partner", kind: "value", expected: "uid" },
+    ] as never;
+    const r = results();
+    r.results = [
+      { target: { sheet: "os", path: ["corp"], key: "attr", instance: "local" }, status: "pass", evidence: { host: "n1", file: "/realm", line: 845 } },
+      { target: { sheet: "os", path: ["partner"], key: "attr", instance: "local" }, status: "fail", actual: "uid", evidence: { host: "n1", file: "/realm", line: 1071 } },
+    ] as never;
+    const b = renderTestDoc(p, r, "server");
+    const rows = b["test:items"].split("\n").filter((l) => l.includes("`attr`"));
+    expect(rows.length).toBe(2);
+    expect(rows[0]).toContain("| corp |");
+    expect(rows[0]).toContain("OK");
+    expect(rows[0]).toContain(":845");
+    expect(rows[1]).toContain("| partner |");
+    expect(rows[1]).toContain("NG");
+    expect(rows[1]).toContain(":1071");
+  });
+
   it("refuses a unit this plan does not have", () => {
     expect(() => renderTestDoc(plan(), results(), "nope")).toThrow(/server/);
   });
