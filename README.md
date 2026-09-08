@@ -539,7 +539,11 @@ to go is an error; the rest a document may simply decline.
 The levels a project's `taxonomy` declares are all POINTABLE on the page, or the
 table describing them describes nothing a reader can find: the first (the unit)
 is named in each environment heading, the second (the sheet) is a heading of
-its own, the third is one row. Their NAMES and the rule for raising their items are the
+its own, the third is one row. Each row says WHAT is expected and, beside it, WHO decided
+it — this project, the vendor's own configuration kept or changed, the product's
+default, or the vendor's line this project removed. Those are two questions, and
+a record that answers only the first cannot say whether `Listen 80` is a decision
+or an inheritance. Their NAMES and the rule for raising their items are the
 project's words — an organisation's test standard states them, and quoting one
 organisation's sentences inside this tool would publish them to every other
 project it builds; what the tool adds is the other half of each row, where that

@@ -29,9 +29,11 @@ type Words = {
   // The three levels a project's taxonomy declares, spelled the same way HERE — a
   // reader maps the table onto the page by reading the same words twice.
   major: string; middle: string; subject: string;
+  // The column that says WHO decided the expected value, and its five answers.
+  decider: string; deciders: Record<string, string>;
   pass: string; fail: string; notRun: string;
   // What the EXPECTED column says where the value cannot say it itself.
-  expectAbsent: string; expectEmpty: string; expectDefaultSuffix: string;
+  expectAbsent: string; expectEmpty: string;
   functional: (t: string) => string;
   count: string; done: string; todo: string; result: string; unstated: string;
   defaults: (n: number, ok: number, ng: number) => string;
@@ -47,6 +49,14 @@ const T: Record<TestDocLang, Words> = {
     major: "大項目",
     middle: "中項目",
     subject: "対象",
+    decider: "由来",
+    deciders: {
+      project: "本案件で設定",
+      "vendor-kept": "ベンダ配布のまま",
+      "vendor-changed": "ベンダ配布から変更",
+      "product-default": "製品の既定値",
+      "vendor-removed": "ベンダ配布から削除",
+    },
     expected: "期待結果",
     verdict: "判定",
     ran: "実施日",
@@ -56,9 +66,8 @@ const T: Record<TestDocLang, Words> = {
     pass: "OK",
     fail: "NG",
     notRun: "未実施",
-    expectAbsent: "未設定",
+    expectAbsent: "（設定なし）",
     expectEmpty: "（空）",
-    expectDefaultSuffix: "（製品既定）",
     functional: (t: string) => t,
     count: "テスト項目数",
     done: "実施済み",
@@ -92,6 +101,14 @@ const T: Record<TestDocLang, Words> = {
     major: "Unit",
     middle: "Component",
     subject: "Subject",
+    decider: "Decided by",
+    deciders: {
+      project: "This project",
+      "vendor-kept": "The vendor's, unchanged",
+      "vendor-changed": "The vendor's, changed here",
+      "product-default": "The product's default",
+      "vendor-removed": "The vendor's, removed here",
+    },
     item: "Setting (test item)",
     expected: "Expected",
     verdict: "Result",
@@ -102,9 +119,8 @@ const T: Record<TestDocLang, Words> = {
     pass: "OK",
     fail: "NG",
     notRun: "not run",
-    expectAbsent: "not set",
+    expectAbsent: "(nothing set)",
     expectEmpty: "(empty)",
-    expectDefaultSuffix: " (product default)",
     functional: (t: string) => t,
     count: "Items",
     done: "Run",
@@ -162,19 +178,16 @@ const dayOf = (r: TestResult | undefined, run: { at?: string } | undefined): str
 // one sentence instead of one column twice.
 const itemText = (t: Words, i: TestItem): string => `\`${cell(i.target.key)}\``;
 
-// Six things this column has to be able to say, and an empty cell is not one of
-// them. A value, and a value that IS the empty string — `SSO_SMTP_USER=` is a
-// setting turned off, not a row with nothing to expect — and each of those
-// again for a row on the product's own default, and a row the vendor shipped
-// that this project removed, and a secret whose value is deliberately withheld.
-// Two of them rendered blank until this, which reads as "nothing to say" about
-// a row that says something quite definite.
+// WHAT is expected, and nothing about who decided it — that is the column
+// beside this one. Three things it must be able to say and an empty cell is
+// none of them: a value; a value that IS the empty string (`SSO_SMTP_USER=` is
+// a setting turned off, not a row with nothing to expect); and the absence of
+// any value at all, which is what a row the vendor shipped and this project
+// removed expects. A secret's value is withheld and says so.
 const expectedText = (t: Words, i: TestItem): string => {
   if (i.quiet === true) return "—";
   if (i.kind === "absent") return t.expectAbsent;
-  const own = i.expected === "" ? t.expectEmpty : code(i.expected);
-  if (own === "") return "";
-  return i.kind === "default-in-force" ? `${own}${t.expectDefaultSuffix}` : own;
+  return i.expected === "" ? t.expectEmpty : code(i.expected);
 };
 
 // Keyed by the category PATH as well, because two components of one sheet share
@@ -341,6 +354,7 @@ export function renderTestDoc(
             cell(i.component),
             itemText(t, i),
             expectedText(t, i),
+            t.deciders[i.decider] ?? "",
             verdictOf(t, r),
             dayOf(r, run),
             cell(r?.detail),
@@ -348,7 +362,10 @@ export function renderTestDoc(
             "",
           ];
         });
-      sections.push(table([t.no, t.subject, t.item, t.expected, t.verdict, t.ran, t.how, t.evidence, t.note], rows), "");
+      sections.push(
+        table([t.no, t.subject, t.item, t.expected, t.decider, t.verdict, t.ran, t.how, t.evidence, t.note], rows),
+        ""
+      );
     }
   }
   blocks["test:items"] = sections.join("\n").trimEnd();

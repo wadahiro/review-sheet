@@ -21,11 +21,11 @@ const plan = (): TestPlan =>
       },
     ],
     items: [
-      { target: { sheet: "os", path: ["httpd.conf"], key: "Listen", instance: "local" }, unit: "server", sheetLabel: { ja: "OS 基盤" }, component: "httpd.conf", kind: "value", expected: "80" },
-      { target: { sheet: "os", path: ["httpd.conf"], key: "Listen", instance: "prod" }, unit: "server", component: "httpd.conf", kind: "value", expected: "80" },
-      { target: { sheet: "os", path: ["httpd.conf"], key: "pw", instance: "local" }, unit: "server", component: "httpd.conf", kind: "value", quiet: true },
-      { target: { sheet: "os", path: ["httpd.conf"], key: "Timeout", instance: "local" }, unit: "server", component: "httpd.conf", kind: "default-in-force", expected: "60" },
-      { target: { sheet: "os", path: ["httpd.conf"], key: "Gone", instance: "local" }, unit: "server", component: "httpd.conf", kind: "absent" },
+      { target: { sheet: "os", path: ["httpd.conf"], key: "Listen", instance: "local" }, unit: "server", sheetLabel: { ja: "OS 基盤" }, component: "httpd.conf", kind: "value", decider: "project", expected: "80" },
+      { target: { sheet: "os", path: ["httpd.conf"], key: "Listen", instance: "prod" }, unit: "server", component: "httpd.conf", kind: "value", decider: "project", expected: "80" },
+      { target: { sheet: "os", path: ["httpd.conf"], key: "pw", instance: "local" }, unit: "server", component: "httpd.conf", kind: "value", decider: "project", quiet: true },
+      { target: { sheet: "os", path: ["httpd.conf"], key: "Timeout", instance: "local" }, unit: "server", component: "httpd.conf", kind: "default-in-force", decider: "product-default", expected: "60" },
+      { target: { sheet: "os", path: ["httpd.conf"], key: "Gone", instance: "local" }, unit: "server", component: "httpd.conf", kind: "absent", decider: "vendor-removed" },
     ],
   }) as TestPlan;
 
@@ -50,12 +50,12 @@ describe("the tables a document is given", () => {
     const b = renderTestDoc(plan(), results(), "server", { includeDefaults: true });
     const row = (key: string): string =>
       b["test:items"].split("\n").find((l) => l.includes(`\`${key}\``)) ?? "";
-    expect(row("Listen")).toContain("| `Listen` | `80` |");
+    expect(row("Listen")).toContain("| `Listen` | `80` | 本案件で設定 |");
     // …a row still on the product's own default says WHICH, beside the value.
-    expect(row("Timeout")).toContain("| `Timeout` | `60`（製品既定） |");
+    expect(row("Timeout")).toContain("| `Timeout` | `60` | 製品の既定値 |");
     // …and one the vendor shipped and this project removed has no value to
     // state, so the column states the absence itself.
-    expect(row("Gone")).toContain("| `Gone` | 未設定 |");
+    expect(row("Gone")).toContain("| `Gone` | （設定なし） | ベンダ配布から削除 |");
   });
 
   // An expectation that IS the empty string is a setting turned off, not a row
@@ -63,13 +63,13 @@ describe("the tables a document is given", () => {
   it("says so when what is expected is emptiness itself", () => {
     const p = plan();
     p.items = [
-      { target: { sheet: "os", path: ["a"], key: "user", instance: "local" }, unit: "server", component: "a", kind: "value", expected: "" },
-      { target: { sheet: "os", path: ["a"], key: "rp", instance: "local" }, unit: "server", component: "a", kind: "default-in-force", expected: "" },
+      { target: { sheet: "os", path: ["a"], key: "user", instance: "local" }, unit: "server", component: "a", kind: "value", decider: "project", expected: "" },
+      { target: { sheet: "os", path: ["a"], key: "rp", instance: "local" }, unit: "server", component: "a", kind: "default-in-force", decider: "product-default", expected: "" },
     ] as never;
     const b = renderTestDoc(p, { results: [] } as never, "server", { includeDefaults: true });
     const row = (k: string): string => b["test:items"].split("\n").find((l) => l.includes(`\`${k}\``)) ?? "";
-    expect(row("user")).toContain("| `user` | （空） |");
-    expect(row("rp")).toContain("| `rp` | （空）（製品既定） |");
+    expect(row("user")).toContain("| `user` | （空） | 本案件で設定 |");
+    expect(row("rp")).toContain("| `rp` | （空） | 製品の既定値 |");
   });
 
   // The taxonomy names three levels; a reader has to be able to point at each
@@ -179,8 +179,8 @@ describe("the tables a document is given", () => {
   it("gives each component its own answer, not the last one's", () => {
     const p = plan();
     p.items = [
-      { target: { sheet: "os", path: ["corp"], key: "attr", instance: "local" }, unit: "server", component: "corp", kind: "value", expected: "sAMAccountName" },
-      { target: { sheet: "os", path: ["partner"], key: "attr", instance: "local" }, unit: "server", component: "partner", kind: "value", expected: "uid" },
+      { target: { sheet: "os", path: ["corp"], key: "attr", instance: "local" }, unit: "server", component: "corp", kind: "value", decider: "project", expected: "sAMAccountName" },
+      { target: { sheet: "os", path: ["partner"], key: "attr", instance: "local" }, unit: "server", component: "partner", kind: "value", decider: "project", expected: "uid" },
     ] as never;
     const r = results();
     r.results = [

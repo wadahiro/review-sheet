@@ -40,6 +40,12 @@ export type TestItem = {
   // is itself the reason such an item usually comes back not run.
   file?: string;
   kind: TestKind;
+  // WHO decided the expected value — a different question from what it is, and
+  // from how it was checked. A record that answers only the first cannot say
+  // whether `Listen 80` is this project's decision or a line it inherited
+  // unchanged from the vendor's own configuration, and those are signed off
+  // differently.
+  decider: TestDecider;
   // Absent on a `quiet` item and on `absent` items, which expect no value.
   expected?: string;
   // A value that must not be written into a record. The item is still tested;
@@ -55,6 +61,22 @@ export type TestItem = {
 //   absent            the vendor shipped it and this project removed it, so no
 //                     line of the deployed file may carry it
 export type TestKind = "value" | "default-in-force" | "absent";
+
+// Who decided the value this item expects.
+//
+//   project         this project set it, and the vendor said nothing about it
+//                   (or ships no configuration this sheet compares against)
+//   vendor-kept     the vendor's own file carries it and this project deploys
+//                   it unchanged — inherited, not chosen
+//   vendor-changed  the vendor's file carries it and this project deploys
+//                   something else
+//   product-default nobody set it anywhere; the product's own default applies
+//   vendor-removed  the vendor shipped it and this project does not deploy it
+//
+// Derived, never declared: `origin` says whether anything of ours sets the row,
+// and `baseline` (ParameterBase.baseline) says what the vendor shipped — the
+// two together answer this, and neither answers it alone.
+export type TestDecider = "project" | "vendor-kept" | "vendor-changed" | "product-default" | "vendor-removed";
 
 export type TestUnit = {
   name: string;
@@ -100,6 +122,17 @@ const unitOf = (sheet: Sheet, byName: Map<string, SheetGroup>): { name: string; 
 
 const kindOf = (p: Parameter): TestKind =>
   p.origin === "default" ? "default-in-force" : p.origin === "baseline" ? "absent" : "value";
+
+const deciderOf = (p: Parameter, kind: TestKind, expected: string | undefined): TestDecider => {
+  if (kind === "default-in-force") return "product-default";
+  if (kind === "absent") return "vendor-removed";
+  const shipped = "baseline" in p ? p.baseline : undefined;
+  if (shipped === undefined) return "project";
+  // Compared against THIS environment's expected value, not the row's, because
+  // a Pattern B row can inherit the vendor's line in one environment and
+  // override it in another.
+  return shipped === expected ? "vendor-kept" : "vendor-changed";
+};
 
 const expectedOf = (p: Parameter, instance: string, kind: TestKind): string | undefined => {
   if (kind === "absent") return undefined;
@@ -189,6 +222,7 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
           ...(row.component === undefined ? {} : { component: row.component }),
           ...(row.file === undefined ? {} : { file: row.file }),
           kind,
+          decider: deciderOf(row.p, kind, expected),
           ...(row.p.secret === true ? { quiet: true as const } : expected === undefined ? {} : { expected }),
         });
       }
