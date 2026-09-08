@@ -38,6 +38,10 @@ review-sheet apply    -i input.json -r review.json --write        # write them
 review-sheet apply    -i input.json -r review.json --emit-prompt  # prompt for the rest
 review-sheet diff     -i reviewed.json -i input.json # what changed since the reviewed revision
 review-sheet serve    -i input.json                 # localhost UI that applies edits directly to local files
+review-sheet test-plan -i input.json -o plan.json   # what a unit test has to check, derived from the sheets
+review-sheet validate -i results.json --plan plan.json  # do these answers answer that plan
+review-sheet test-doc -i input.json -r results.json --unit <name> -d record.md  # the tables, into the record a project wrote
+review-sheet generate -i input.json --evidence results.json -o sheet.html  # …carrying what the verdicts were read from
 ```
 
 ## Generating input.json from existing files
@@ -3445,6 +3449,143 @@ Rules:
   describe the sheet itself, not deployed config — do not give them a `source`.
 
 Then validate: `review-sheet validate -i input.json`.
+
+## The unit test: a plan, a run, and a record that carries its own evidence
+
+A parameter sheet says what a system SHOULD hold. A unit-test record says
+whether it does, and is the document a customer signs. The tool derives the
+first from the model and renders the third; the middle — reaching a host and
+judging what it holds — is deliberately outside it.
+
+```sh
+review-sheet test-plan -i input.json -o plan.json      # what has to be checked, derived from the sheets
+review-sheet validate  -i results.json --plan plan.json # do these answers answer that plan
+review-sheet test-doc  -i input.json -r results.json --unit <name> -d record.md
+review-sheet generate  -i input.json --evidence results.json -o sheet.html
+```
+
+**What the tool decides.** Which items exist, and what each asks for, follows
+from a row's `origin`: a row this project set is checked against its value in
+that environment (`kind: "value"`), an unset row asserts the product's own
+default still applies (`default-in-force`), and a row the vendor shipped and
+this project removed asserts that no line carries it (`absent`). An item cannot
+be missing for a row that exists — that is the whole reason to derive rather
+than write, since the sentence such a document always carries ("every setting in
+the design is covered") is otherwise a promise nothing keeps.
+
+**What a project declares**, per unit (a `groups[].test`, or a sheet in no
+group) — none of it derivable:
+
+```yaml
+groups:
+  - name: app-server
+    test:
+      method: |            # how this unit is tested at all
+        Read the deployed files on the host and compare them with the design.
+      functional:          # items with no row behind them
+        - It starts, stops and restarts
+      taxonomy:            # how THIS organisation raises its items, per level
+        - { level: { en: Unit },      raised: { en: One per server } }
+        - { level: { en: Component }, raised: { en: One per software component } }
+        - { level: { en: Setting },   raised: { en: Every setting the design records } }
+  - name: network
+    test:
+      not_tested: { en: Not tested in this phase }
+```
+
+A unit holding testable rows that declares neither `method` nor `not_tested`
+FAILS the build: untested by accident and untested on purpose look identical in
+a finished document, and only the second is allowed to be silent. The taxonomy's
+WORDS are the project's — an organisation's test standard states them, and a
+tool quoting one organisation's sentences would publish them to every other
+project it builds.
+
+### The judge — the part you write
+
+Nothing above touches a live system. A collector and a judge outside answer the
+plan, in the shape `validate --plan` reads back. Writing one is a day's work and
+the rules below are the ones that cost the most to learn:
+
+**Answer by the row's PATH, not by its key.** Two components of one sheet share
+a key space by design — a federation sheet has `config.usernameLDAPAttribute[0]`
+under every provider. A judge that answers by sheet+key alone gives every one of
+them the last component's verdict, its date and its evidence, and the numbers
+still add up. (Measured on a real record: 1,641 of 3,205 items.)
+
+**A verdict and the bytes it was read from must be the same file and line.** If
+the answer came from a file the subject merely INCLUDES, the evidence names that
+file, not the subject — otherwise the reader is sent to `httpd.conf` to look for
+a line that is in `conf.d`.
+
+**Say which host.** Every channel must, including the ones that ask a product
+rather than a file (`GET /admin/realms/app`): a pointer without a host names a
+document nothing can match.
+
+**Check that the host is the build the sheet describes.** A "the product's
+default applies" row is a claim about one build — its compiled-in defaults, and
+the files its package ships. Judged against another one the row is answered by a
+product the sheet does not describe, and the answer looks exactly like a correct
+one. Compare the pinned dictionary versions (`build.yml`'s `dictionaries:`) with
+`rpm -q` on the host, and answer `not_run` with the mismatch when they differ.
+
+**A run that found something still writes the record.** Aborting on the first
+finding leaves a delivered document showing the last GREEN run's answers, which
+is the one thing a test record must never do. Hold the status, write the
+document, exit non-zero last.
+
+**Derive the plan from THIS run's model.** Regenerating the model after judging
+means the plan was one run old — a change to the spec is then judged a run late,
+silently.
+
+### Evidence: what the verdicts were read from
+
+A verdict names an address (`web01 /etc/httpd/conf/httpd.conf:12`), and until
+the record carries what that address names, it points at a machine nobody
+reading it can reach. `--evidence` carries it: each collected file and each
+command's output becomes a document in the page, and the record's evidence cell
+becomes a link that opens it at the line the verdict was read at.
+
+The judge writes them into the results:
+
+```json
+{ "results": [ … ],
+  "evidence": [
+    { "instance": "prod", "host": "web01", "at": "2026-09-08T10:12:21Z",
+      "sheet": "httpd reverse proxy", "component": "httpd.conf",
+      "path": "/etc/httpd/conf/httpd.conf", "text": "…" },
+    { "instance": "prod", "host": "web01", "at": "2026-09-08T10:12:21Z",
+      "sheet": "os basics", "command": "getsebool -a", "text": "…" }
+  ] }
+```
+
+**WHAT MAY TRAVEL IS THE JUDGE'S DECISION, and that is why the tool does not
+make it.** The collector stands on the host; it is the layer that can redact a
+credential before the bytes ever leave. The tool asks one more question of what
+it is handed — whether a value the model declares `secret` appears in the text —
+and that reaches only literals the model itself holds, which is exactly why the
+redaction has to happen before, not after.
+
+Four things follow, and each was a defect before it was a rule:
+
+- **One document per (environment, host, subject)**, never merged across hosts
+  even when the bytes agree: the moment they were taken differs, and a merged
+  document can no longer say which host a verdict was read from. Collect the
+  realm from every node and only ONE of them can be cited — carry that one.
+- **Point at a line whenever there is one.** `getsebool -a` is 341 lines; a
+  document without a line hands the reader a haystack. Where there is genuinely
+  no line — "no file sets this", "the vendor's directive is gone" — the absence
+  IS the answer and pointing anywhere would contradict it.
+- **`--instances` narrows evidence as it narrows values.** An environment a
+  delivery does not cover is not in the file, not hidden in it. One delivery
+  script then hands over a document whose evidence covers exactly what it
+  delivers.
+- **Without the flag the cell stays plain text**, not a dead link. An affordance
+  that opens nothing is worse than none.
+
+The observed document keeps out of the row->preview index on purpose: a sheet
+row already routes to exactly one file, and an observed copy of the same file
+would make which one it opens depend on emission order. Evidence is reached from
+the verdict that cites it — the reader who wants it is the one reading a verdict.
 
 ## Applying a review
 
