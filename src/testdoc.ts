@@ -30,7 +30,8 @@ type Words = {
   // reader maps the table onto the page by reading the same words twice.
   major: string; middle: string; subject: string;
   pass: string; fail: string; notRun: string;
-  isSet: (k: string) => string; isDefault: (k: string) => string; isAbsent: (k: string) => string;
+  // What the EXPECTED column says where the value cannot say it itself.
+  expectAbsent: string; expectDefaultSuffix: string;
   functional: (t: string) => string;
   count: string; done: string; todo: string; result: string; unstated: string;
   defaults: (n: number, ok: number, ng: number) => string;
@@ -55,9 +56,8 @@ const T: Record<TestDocLang, Words> = {
     pass: "OK",
     fail: "NG",
     notRun: "未実施",
-    isSet: (k: string) => `\`${k}\` が設定どおりであること`,
-    isDefault: (k: string) => `\`${k}\` が製品の既定値のままであること`,
-    isAbsent: (k: string) => `\`${k}\` が設定されていないこと`,
+    expectAbsent: "未設定",
+    expectDefaultSuffix: "（製品既定）",
     functional: (t: string) => t,
     count: "テスト項目数",
     done: "実施済み",
@@ -101,9 +101,8 @@ const T: Record<TestDocLang, Words> = {
     pass: "OK",
     fail: "NG",
     notRun: "not run",
-    isSet: (k: string) => `\`${k}\` is set as designed`,
-    isDefault: (k: string) => `\`${k}\` is still the product's own default`,
-    isAbsent: (k: string) => `\`${k}\` is not set at all`,
+    expectAbsent: "not set",
+    expectDefaultSuffix: " (product default)",
     functional: (t: string) => t,
     count: "Items",
     done: "Run",
@@ -150,8 +149,23 @@ const evidenceOf = (r: TestResult | undefined, carried: NonNullable<TestResults[
 const dayOf = (r: TestResult | undefined, run: { at?: string } | undefined): string =>
   (r?.at ?? run?.at ?? "").slice(0, 10);
 
-const itemText = (t: Words, i: TestItem): string =>
-  i.kind === "default-in-force" ? t.isDefault(i.target.key) : i.kind === "absent" ? t.isAbsent(i.target.key) : t.isSet(i.target.key);
+// The item is the SETTING, and nothing else. It used to carry what to expect of
+// it as a sentence — "`Listen` が設定どおりであること" — and that put the same
+// nine characters on 997 of 1,012 rows while the column beside it, the one whose
+// whole job is to say what is expected, sat empty for the exceptions.
+//
+// So the kind moved into the expected column, where it belongs: a value states
+// itself, an unset row states that it is unset, and a row on the product's own
+// default says which. Nothing is lost — the reader now reads the two columns as
+// one sentence instead of one column twice.
+const itemText = (t: Words, i: TestItem): string => `\`${cell(i.target.key)}\``;
+
+const expectedText = (t: Words, i: TestItem): string => {
+  if (i.quiet === true) return "—";
+  if (i.kind === "absent") return t.expectAbsent;
+  const value = code(i.expected);
+  return i.kind === "default-in-force" && value !== "" ? `${value}${t.expectDefaultSuffix}` : value;
+};
 
 // Keyed by the category PATH as well, because two components of one sheet share
 // a key space by design — a federation sheet has
@@ -316,7 +330,7 @@ export function renderTestDoc(
             // makes an unreadable heading and a perfectly good cell.
             cell(i.component),
             itemText(t, i),
-            i.quiet === true ? "—" : code(i.expected),
+            expectedText(t, i),
             verdictOf(t, r),
             dayOf(r, run),
             cell(r?.detail),

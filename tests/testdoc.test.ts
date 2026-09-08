@@ -42,11 +42,20 @@ const results = (): TestResults => ({
 });
 
 describe("the tables a document is given", () => {
-  it("says what each item is, in the words of the claim it checks", () => {
+  // The item is the SETTING; what to expect of it belongs in the column whose
+  // whole job is to say so. Carrying it as a sentence put the same nine
+  // characters on 997 of 1,012 rows of a real record while the expected column
+  // sat empty for the exceptions.
+  it("names the setting, and lets the expected column say what to expect", () => {
     const b = renderTestDoc(plan(), results(), "server", { includeDefaults: true });
-    expect(b["test:items"]).toContain("`Listen` が設定どおりであること");
-    expect(b["test:items"]).toContain("`Timeout` が製品の既定値のままであること");
-    expect(b["test:items"]).toContain("`Gone` が設定されていないこと");
+    const row = (key: string): string =>
+      b["test:items"].split("\n").find((l) => l.includes(`\`${key}\``)) ?? "";
+    expect(row("Listen")).toContain("| `Listen` | `80` |");
+    // …a row still on the product's own default says WHICH, beside the value.
+    expect(row("Timeout")).toContain("| `Timeout` | `60`（製品既定） |");
+    // …and one the vendor shipped and this project removed has no value to
+    // state, so the column states the absence itself.
+    expect(row("Gone")).toContain("| `Gone` | 未設定 |");
   });
 
   // The taxonomy names three levels; a reader has to be able to point at each
