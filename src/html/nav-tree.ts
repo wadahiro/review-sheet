@@ -543,9 +543,16 @@ export function NavTree({ sheets, groups, activeSheet, numbering, lang, headings
                        ${/* Counted from the DOCUMENT, not from the panel: the
                              block already begins where the document's own name
                              does, so a section's depth is how far it sits
-                             inside its document — capped, since a fourth-level
-                             heading is still a heading of that document. */ ""}
-                       style=${`--rs-nav-depth:${Math.min(h.depth, 3) - 1}`}>
+                             inside its document.
+                             Capped at the FOURTH level, not the third. A test
+                             record's sections are h4 — a component inside an
+                             environment inside the results — and flattening
+                             them onto their parent's indent said they were its
+                             siblings, which is the one thing an outline is for.
+                             Beyond four the panel is 19rem wide and the label
+                             is what a reader needs, so the nesting stops
+                             showing and the heading still gets its entry. */ ""}
+                       style=${`--rs-nav-depth:${Math.min(h.depth, 4) - 1}`}>
                     <span class="rs-navtree-caret" aria-hidden="true"></span>
                     <a class="rs-navtree-item" href=${`#${(e.index ?? 0) + 1}`}
                        onClick=${(ev: MouseEvent) => {

@@ -76,7 +76,7 @@ const T: Record<TestDocLang, Words> = {
     // are raised — is `TestDeclaration.taxonomy`.
     taxonomyWhere: [
       "この文書の単位。項目表の冒頭に一度だけ書く",
-      "詳細設計のシート。`#### 中項目: …` の見出し",
+      "詳細設計のシート。項目表を分ける `####` の見出し",
       "表の1行。シートの行から導出（漏れた場合は生成が失敗する）",
     ],
     taxonomyUndeclared: "—",
@@ -114,7 +114,7 @@ const T: Record<TestDocLang, Words> = {
     taxonomyCols: ["No.", "Level", "How items are raised", "In this document"],
     taxonomyWhere: [
       "This document's unit, stated once at the head of the item tables",
-      "A sheet of the detailed design — the `#### Component: …` headings",
+      "A sheet of the detailed design — the `####` headings the item tables sit under",
       "One row of a table, derived from the sheet's rows; a gap fails the build",
     ],
     taxonomyUndeclared: "—",
@@ -284,7 +284,13 @@ export function renderTestDoc(
     // makes. First-appearance order, like every other grouping here.
     const middles = [...new Set(here.map((i) => middleOf(i, lang)))];
     for (const middle of middles) {
-      if (middle !== "") sections.push(`#### ${t.middle}: ${middle}`, "");
+      // The heading is the SHEET'S NAME and nothing else. It carried the level's
+      // name for a while, so a reader could point at what the taxonomy names —
+      // and that put one word on twenty-one navigation entries whose
+      // indentation already says which level they are, and pushed the name
+      // itself out of a 19rem panel. Which level a heading is belongs in the
+      // taxonomy table, which says it once.
+      if (middle !== "") sections.push(`#### ${middle}`, "");
       const rows = here
         .filter((i) => middleOf(i, lang) === middle)
         .map((i) => {

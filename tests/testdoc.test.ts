@@ -57,7 +57,7 @@ describe("the tables a document is given", () => {
   it("names the level of every heading, and puts the sheet where the taxonomy says it is", () => {
     const b = renderTestDoc(plan(), results(), "server");
     expect(b["test:items"]).toContain("大項目: SSO サーバ");
-    expect(b["test:items"]).toContain("#### 中項目: OS 基盤");
+    expect(b["test:items"]).toContain("#### OS 基盤");
   });
 
   // …and the component moves into the table, because it is what each row is
