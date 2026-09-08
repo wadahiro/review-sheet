@@ -137,7 +137,7 @@ describe("the tables a document is given", () => {
     const b = renderTestDoc(p, results(), "server");
     expect(b["test:taxonomy"]).toContain("大項目");
     expect(b["test:taxonomy"]).toContain("サーバ単位");
-    expect(b["test:taxonomy"]).toContain("漏れた場合は生成が失敗する");
+    expect(b["test:taxonomy"]).toContain("シートの行から自動導出する");
   });
 
   // …and nothing of its own when the project stated nothing. A document that

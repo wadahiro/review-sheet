@@ -75,13 +75,14 @@ const T: Record<TestDocLang, Words> = {
     // wrote. The project's half — what each level is called and how its items
     // are raised — is `TestDeclaration.taxonomy`.
     // What a READER SEES, at each level, in the same shape three times. Not the
-    // markdown that produced it: `####` is syntax nobody reading the delivered
-    // document ever meets, and naming it there is the tool describing its own
-    // plumbing in a customer's paperwork.
+    // markdown that produced it (`####` is syntax nobody reading the delivered
+    // document ever meets) and not what happens when it goes wrong: "a gap
+    // fails the build" is this tool's own guarantee mechanism, and a customer's
+    // paperwork is not where a tool explains how it keeps its promises.
     taxonomyWhere: [
       "この文書の単位。環境ごとの見出しが環境名とともに掲げる",
       "詳細設計のシート。その環境の中の見出しで、項目表ごとに1つ",
-      "その表の1行。シートの行から導出（漏れた場合は生成が失敗する）",
+      "その表の1行。シートの行から自動導出する",
     ],
     taxonomyUndeclared: "—",
   },
@@ -119,7 +120,7 @@ const T: Record<TestDocLang, Words> = {
     taxonomyWhere: [
       "This document's unit, named by each environment's heading beside the environment",
       "A sheet of the detailed design — a heading inside that environment, one per item table",
-      "One row of that table, derived from the sheet's rows; a gap fails the build",
+      "One row of that table, derived from the sheet's rows",
     ],
     taxonomyUndeclared: "—",
   },
