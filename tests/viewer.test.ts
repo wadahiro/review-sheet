@@ -14,7 +14,7 @@ if (typeof (globalThis as { document?: unknown }).document === "undefined") Glob
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { h, render } from "preact";
-import { Root } from "../src/html/app";
+import { Root, artifactProvenance } from "../src/html/app";
 import { customStyles } from "../src/html/styles";
 import { getMessages } from "../src/html/i18n";
 import type { ParameterSheetInput, ReviewDocument } from "../src/types";
@@ -1512,7 +1512,73 @@ const WITH_SOURCE_ARTIFACT = {
   ],
 };
 
+// A `nature: "observed"` document is what a HOST actually held — the evidence a
+// test result points at, not what this document says the file will be. It is the
+// same shape and the same panel, and it must NOT join the row->preview index:
+// a row already routes to exactly one document, and an observed copy of the
+// same file would make which one it opens depend on emission order.
+const WITH_OBSERVED = {
+  metadata: { title: "t" },
+  versions: [
+    {
+      version: "current",
+      sheets: [
+        {
+          name: "web",
+          categories: [{ name: "httpd.conf", params: [{ key: "Listen", value: "80", description: "Port" }] }],
+        },
+      ],
+      artifacts: [
+        {
+          id: "web",
+          sheet: "web",
+          deployed_path: "/etc/httpd/conf/httpd.conf",
+          source_file: "roles/httpd/templates/httpd.conf.j2",
+          lines: [{ text: "Listen 80", kind: "substituted" as const, key: "Listen" }],
+        },
+        {
+          id: "web::observed:node1:/etc/httpd/conf/httpd.conf",
+          sheet: "web",
+          source_file: "/etc/httpd/conf/httpd.conf",
+          nature: "observed" as const,
+          observed: { host: "node1", at: "2026-09-08T00:11:22Z" },
+          lines: [{ text: "Listen 80", kind: "verbatim" as const, key: "Listen" }],
+        },
+      ],
+    },
+  ],
+};
+
 describe("artifact panel", () => {
+  // The row keeps routing to the document this sheet DESCRIBES, whatever else
+  // was collected under the same key.
+  it("never routes a row to an observed document", async () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: WITH_OBSERVED, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    const chip = host.querySelector(".rs-artifact-chip") as HTMLElement | null;
+    expect(chip).not.toBeNull();
+    chip!.click();
+    await Promise.resolve();
+    const header = host.querySelector(".rs-artifact-panel")?.textContent ?? "";
+    expect(header).toContain("roles/httpd/templates/httpd.conf.j2");
+    expect(header).not.toContain("2026-09-08T00:11:22Z");
+  });
+
+  // …and when it IS opened, the panel says where it came from and when — never
+  // "Rendered from", which is a claim about a file this document produced.
+  it("says an observed document was collected, with the host and the moment", () => {
+    const t = getMessages("ja");
+    const line = artifactProvenance({ nature: "observed", observed: { host: "node1", at: "2026-09-08T00:11:22Z" } }, t);
+    expect(line).toContain("node1");
+    expect(line).toContain("2026-09-08T00:11:22Z");
+    expect(line).not.toContain("生成元");
+    // …and the other two keep exactly the claims they had.
+    expect(artifactProvenance({}, t)).toBe(t.artifactRenderedFrom);
+    expect(artifactProvenance({ nature: "source" }, t)).toBe(t.artifactSourceFile);
+  });
+
   it("does not offer one component's file to another component's row", () => {
     openSheetTab();
     const host = document.createElement("div");

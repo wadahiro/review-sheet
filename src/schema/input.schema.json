@@ -536,8 +536,20 @@
           "type": "string",
           "enum": [
             "artifact",
-            "source"
-          ]
+            "source",
+            "observed"
+          ],
+          "description": "What this document IS, for the header's claim. `artifact` (default) is what this document says the deployed file will be, `source` the authored file it was derived from, `observed` what a host was actually found holding — evidence a test result points at, which is not indexed by row (see types.ts)."
+        },
+        "observed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["host", "at"],
+          "properties": {
+            "host": { "type": "string" },
+            "at": { "type": "string" }
+          },
+          "description": "Required by `nature: \"observed\"` and meaningless without it: which host it was read from and at what moment. A record whose evidence cannot say when it was taken cannot be re-checked."
         },
         "lines": {
           "type": "array",

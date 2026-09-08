@@ -54,6 +54,18 @@ export type TestRun = {
 export type TestResults = {
   runs?: Record<string, TestRun>;
   results: TestResult[];
+  // The raw material a result points at — see evidence.ts. Written by the judge
+  // (which decides what may travel), carried by `generate --evidence`.
+  evidence?: {
+    instance: string;
+    host: string;
+    at: string;
+    sheet: string;
+    component?: string;
+    path?: string;
+    command?: string;
+    text: string;
+  }[];
   unclaimed?: { instance: string; what: string; evidence?: TestEvidence }[];
   functional?: { unit: string; item: string; instance: string; status: TestStatus; reason?: string; detail?: string; evidence?: TestEvidence }[];
 };

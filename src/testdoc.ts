@@ -20,6 +20,7 @@ import type { LangText } from "./types.js";
 import { pickLang } from "./types.js";
 import type { TestItem, TestPlan, TestUnit } from "./testplan.js";
 import type { TestResult, TestResults } from "./testresults.js";
+import { evidenceCell } from "./evidence.js";
 
 export type TestDocLang = "ja" | "en";
 
@@ -134,14 +135,12 @@ const middleOf = (i: TestItem, lang: TestDocLang): string =>
 const verdictOf = (t: Words, r: TestResult | undefined): string =>
   r === undefined ? t.notRun : r.status === "pass" ? t.pass : r.status === "fail" ? t.fail : t.notRun;
 
-const evidenceOf = (r: TestResult | undefined): string =>
-  r?.evidence === undefined
-    ? ""
-    : cell(
-        [r.evidence.host, r.evidence.file === undefined ? undefined : `${r.evidence.file}${r.evidence.line === undefined ? "" : `:${r.evidence.line}`}`, r.evidence.command]
-          .filter((x): x is string => x !== undefined)
-          .join(" ")
-      );
+// The address a verdict was read at — a LINK to the document that address names
+// when the record is carrying it, plain text when it is not. `evidenceCell`
+// owns both, so the "an affordance that opens nothing is worse than none" rule
+// is decided in one place rather than in each renderer.
+const evidenceOf = (r: TestResult | undefined, carried: NonNullable<TestResults["evidence"]>): string =>
+  cell(evidenceCell(r, carried)).replace(/\\\|/g, "|");
 
 const dayOf = (r: TestResult | undefined, run: { at?: string } | undefined): string =>
   (r?.at ?? run?.at ?? "").slice(0, 10);
@@ -279,7 +278,7 @@ export function renderTestDoc(
             verdictOf(t, r),
             dayOf(r, run),
             cell(r?.detail),
-            evidenceOf(r),
+            evidenceOf(r, results.evidence ?? []),
             "",
           ];
         });
@@ -306,7 +305,7 @@ export function renderTestDoc(
           answer === undefined ? t.notRun : answer.status === "pass" ? t.pass : answer.status === "fail" ? t.fail : t.notRun,
           (results.runs?.[instance]?.at ?? "").slice(0, 10),
           cell(answer?.detail),
-          evidenceOf(answer as TestResult | undefined),
+          evidenceOf(answer as TestResult | undefined, results.evidence ?? []),
           "",
         ]);
       }

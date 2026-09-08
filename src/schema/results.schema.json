@@ -86,6 +86,64 @@
         }
       }
     },
+    "evidence": {
+      "type": "array",
+      "description": "The RAW material a result points at — a deployed file as the host held it, or a command's output — kept so the record carries its own evidence instead of an address into a machine nobody can reach any more. The judge decides WHAT may travel (a value redacted on the node stays redacted here); the tool only carries it. Embedded by `generate --evidence`, and never without it: a document that circulates and a document that carries hosts' files are two different deliverables.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instance",
+          "host",
+          "at",
+          "sheet",
+          "text"
+        ],
+        "properties": {
+          "instance": {
+            "type": "string",
+            "description": "The environment it was collected from. `generate --instances` narrows evidence the same way it narrows values — the environments a delivery does not cover are not in the file."
+          },
+          "host": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "description": "When it was collected. A record whose evidence cannot say when it was taken cannot be re-checked."
+          },
+          "sheet": {
+            "type": "string",
+            "description": "Which sheet's rows this answers for."
+          },
+          "component": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "The file on the host. Mutually exclusive with `command`."
+          },
+          "command": {
+            "type": "string",
+            "description": "The command whose output this is. Mutually exclusive with `path`."
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "path"
+            ]
+          },
+          {
+            "required": [
+              "command"
+            ]
+          }
+        ]
+      }
+    },
     "unclaimed": {
       "type": "array",
       "description": "Observed on the system and answering no plan item — a setting the deployed file carries that no row of the sheet claims. The reverse direction of coverage, and the one a plan cannot derive: only something that looked at the system knows it is there.",

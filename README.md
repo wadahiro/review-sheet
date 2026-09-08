@@ -557,6 +557,39 @@ The unset-parameter items are counted rather than listed, since two thousand
 signs; `--include-defaults` prints them as rows for a customer who wants the
 exhaustive list.
 
+### Evidence — the raw material a verdict was read from
+
+```sh
+review-sheet generate -i input.json --evidence results.json -o sheet.html
+```
+
+A verdict names an address — `web01 /etc/httpd/conf/httpd.conf:12` — and
+until this flag existed the thing that address named lived only on a machine
+nobody reading the record could reach. `--evidence` carries it: each collected
+file, and each command's output, becomes a document in the page, and the record's
+evidence cell becomes a link that opens it at the line the verdict was read at.
+The link is markdown's own (`rs-evidence:` — a scheme nothing outside the page
+resolves), because the record is a document a project owns and its renderer
+escapes raw HTML in it: an `<a>` written into a cell shows up as visible markup.
+
+It is the same answer the artifact panel gave the sheet's rows, one journey
+over, and it reuses the same panel — with two rules that are not decoration:
+
+- The header says the document was **collected**, from which host and at what
+  moment (`nature: "observed"`), never "Rendered from". Those are opposite
+  claims about who produced the bytes.
+- An observed document is NOT in the row->preview index. A row already routes to
+  exactly one document, and an observed copy of the same file would make which
+  one it opens depend on emission order. It is reached from the verdict that
+  cites it, which is the reader who wants it.
+
+What may travel is the JUDGE's decision, not the tool's: the thing that collected
+the bytes is the layer that already redacts a credential before it leaves the
+host, and it writes `evidence` into the results. And `--instances` narrows
+evidence exactly as it narrows values — the environments a delivery does not
+cover are not in the file, not hidden in it. A page built without the flag keeps
+the address as plain text: an affordance that opens nothing is worse than none.
+
 ### `verify` — source maps vs. the real files
 
 ```sh

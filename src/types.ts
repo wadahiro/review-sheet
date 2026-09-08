@@ -204,7 +204,21 @@ export type ArtifactPreview = {
   // either way), not review scope. A source preview is simply all-`verbatim`
   // in practice, since there is no substitution engine standing between the
   // authored text and what is shown.
-  nature?: "artifact" | "source";
+  // "observed" is the third: what a HOST actually held, collected by a test run
+  // — the evidence a result points at, not what this document says the file
+  // will be. Two things follow, and both are the point. Its header says where
+  // it was collected FROM and WHEN (`observed` below) rather than what it was
+  // rendered from, which is a claim only the tool's own output can make. And it
+  // does NOT join the row->preview index (`artifactIndex` in app.ts skips it):
+  // a row already routes to exactly one document, and an observed copy of the
+  // same file would make which one it opens depend on emission order. It is
+  // reached from the test record's evidence instead — the reader who wants it
+  // is the one reading a verdict, and that is the journey it exists for.
+  nature?: "artifact" | "source" | "observed";
+  // Required by `nature: "observed"` and meaningless without it: which host it
+  // was read from and at what moment. A record whose evidence cannot say when
+  // it was taken is a record that cannot be re-checked.
+  observed?: { host: string; at: string };
   lines: ArtifactLine[];
 };
 

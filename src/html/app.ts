@@ -25,6 +25,7 @@ import { buildDiffModel, rowKey, instKey, catKey, sheetKey, type DiffStatusMap }
 import { documentEnvironments, ENVIRONMENTS_FIELD, applyEdits, editsForCell, isEdit, isEditableField, isDeleted, planFromEdits, promptItemsFromPlan, documentSource, documentAssets, DOCUMENT_FIELD, cellKey as editCellKey, targetKey, type EditedSheets } from "../edits.js";
 import { toMarkdownSheet, renderSheetMarkdown, parseSheetMarkdown } from "../sheet-markdown.js";
 import { getMarkdownRenderer } from "./markdown-runtime.js";
+import { EVIDENCE_SCHEME } from "../evidence.js";
 import { MarkdownSheetBody } from "./md-sheet.js";
 import { NavTree, chapterPath } from "./nav-tree.js";
 import { sectionize } from "./doc-sections.js";
@@ -59,6 +60,21 @@ const html = htm.bind(h);
 //
 // For "default" there is no file — that IS the point — so it keeps a word.
 // overlay/common render no marker: the value columns already convey those.
+// What the panel's provenance line CLAIMS about the document under it. Three
+// kinds, three different claims, and the wrong one is a lie the reader has no
+// way to detect: "Rendered from" over an authored `.tf` says this tool produced
+// it, and over an OBSERVED file it says the tool produced what a host was found
+// holding — the opposite of what evidence is for.
+export function artifactProvenance(a: { nature?: string; observed?: { host: string; at: string } }, t: Messages): string {
+  if (a.nature === "source") return t.artifactSourceFile;
+  if (a.nature === "observed") {
+    return t.artifactCollectedFrom
+      .replace("{host}", a.observed?.host ?? "")
+      .replace("{at}", a.observed?.at ?? "");
+  }
+  return t.artifactRenderedFrom;
+}
+
 function originTag(param: ParamData, t: Messages): { label: string; title: string } | null {
   // Checked first, and it wins: a row the recipient wrote has no origin in the
   // configuration at all, which is a stronger statement than any of the below.
@@ -1197,13 +1213,17 @@ function SaveModal({ count, defaultName, busy, onSave, onClose, t }: {
 // The html shown is RE-RENDERED from the edited markdown rather than stored
 // alongside it. Storing both would let them disagree, and the one that is a
 // fact is the markdown somebody typed.
-function DocumentBody({ sheet, reviews, editEnabled, onEditAt, t }: {
+function DocumentBody({ sheet, reviews, editEnabled, onEditAt, onEvidence, t }: {
   sheet: SheetData["sheets"][number];
   reviews: ReviewItem[];
   editEnabled: boolean;
   // Open the editor at one of the document's own headings — see the buttons
   // put on them below.
   onEditAt?: (jump: DocJump) => void;
+  // Open the document a verdict's evidence cell cites. Absent when this page
+  // carries no evidence, and then the cell was never a link either — the
+  // rule is decided once, where the cell is written (evidence.ts).
+  onEvidence?: (id: string, line?: number) => void;
   t: Messages;
 }) {
   const edited = editEnabled ? documentSource(reviews, sheet.name) : undefined;
@@ -1269,9 +1289,22 @@ function DocumentBody({ sheet, reviews, editEnabled, onEditAt, t }: {
   // editor on exactly that word with it selected. Taking the gesture for the
   // editor cost both: the word could not be selected, and the editor could only
   // be told where, never what.
+  // An evidence cell's link, delegated at the document root: the cells are
+  // markdown the record wrote, so nothing here can attach a handler per cell
+  // without re-rendering somebody's document.
+  const openEvidence = (e: Event): void => {
+    if (onEvidence === undefined) return;
+    const a = (e.target as Element | null)?.closest?.(`a[href^="${EVIDENCE_SCHEME}"]`);
+    const ref = a?.getAttribute("href");
+    if (ref === null || ref === undefined) return;
+    e.preventDefault();
+    const { id, line } = parseEvidenceRef(ref);
+    onEvidence(id, line);
+  };
+
   return html`
     ${edited !== undefined && html`<p class="rs-doc-edited-note">${t.editedBadge}</p>`}
-    <div class="rs-doc" ref=${body} dangerouslySetInnerHTML=${{ __html: html_ }}></div>
+    <div class="rs-doc" ref=${body} onClick=${openEvidence} dangerouslySetInnerHTML=${{ __html: html_ }}></div>
   `;
 }
 
@@ -4055,7 +4088,20 @@ function PivotView({ sheet, pivot, sheetIndex, hiddenInstances, showDefaults, re
 // place in the search index. The rows remain the only reviewable values. The
 // one thing it does besides scroll-and-highlight is the inverse jump — click a
 // line, land on its row.
-type ArtifactTarget = { id: string; key?: string; instance?: string };
+// `key` is how a ROW opens the panel — highlight the line that IS this row.
+// `line` is how the test record's evidence opens it: a verdict was read at a
+// line number, not at a key, and an observed document carries no keys at all
+// (types.ts) precisely so it can never be reached the other way.
+type ArtifactTarget = { id: string; key?: string; instance?: string; line?: number };
+
+// `<preview id>#L<n>` — what an evidence cell puts in `data-rs-evidence`
+// (evidence.ts). Parsed rather than split blind: an id contains spaces and
+// slashes, and the line suffix is the only part with a fixed shape.
+export function parseEvidenceRef(value: string): { id: string; line?: number } {
+  const raw = value.startsWith(EVIDENCE_SCHEME) ? decodeURIComponent(value.slice(EVIDENCE_SCHEME.length)) : value;
+  const m = /^(.*?)(?:#L(\d+))?$/.exec(raw);
+  return { id: m?.[1] ?? raw, ...(m?.[2] === undefined ? {} : { line: Number(m[2]) }) };
+}
 
 // What a row needs in order to offer "show me this line in the file".
 export type ArtifactAccess = {
@@ -4082,7 +4128,7 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, t }: {
     const el = bodyRef.current?.querySelector(".rs-here");
     if (el) (el as HTMLElement).scrollIntoView({ block: "center" });
     else bodyRef.current?.scrollTo({ top: 0 });
-  }, [target.id, target.key, shown]);
+  }, [target.id, target.key, target.line, shown]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -4118,9 +4164,7 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, t }: {
                `nature: "source"` preview is the authored file itself, not
                something rendered FROM it — "Rendered from" would be a false
                claim, so it gets its own label instead. */ ""}
-          ${showSources()
-            ? html`${shown.nature === "source" ? t.artifactSourceFile : t.artifactRenderedFrom}: <code>${shown.source_file}</code>`
-            : null}
+          ${showSources() ? html`${artifactProvenance(shown, t)}: <code>${shown.source_file}</code>` : null}
           ${/* The exception, and only when there IS one. Costs nothing at zero,
                and when it fires it is the index that makes a marked line 200
                rows down get found instead of scrolled past. */ ""}
@@ -4140,7 +4184,10 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, t }: {
       </div>
       <div class="rs-artifact-body" ref=${bodyRef}>
         ${shown.lines.map((line, i) => {
-          const here = (line.keys ?? (line.key === undefined ? [] : [line.key])).includes(target.key ?? "");
+          const here =
+            target.line !== undefined
+              ? i + 1 === target.line
+              : (line.keys ?? (line.key === undefined ? [] : [line.key])).includes(target.key ?? "");
           const title =
             line.kind === "absent"
               ? t.artifactKindAbsent.replace("{reason}", line.reason ?? "")
@@ -5053,6 +5100,11 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   // sheet's previews needs no disambiguation at all, which is every
   // single-artifact sheet.
   const artifactIndex = useMemo(() => {
+    // …and never an OBSERVED one. Its lines carry the same keys — it is the
+    // same file, read off a host — so admitting it here would make a row's
+    // "show me this line" open the evidence or the rendered artifact depending
+    // on which was emitted last. The row's document is the one this sheet
+    // describes; evidence is reached from the record that cites it.
     // Keyed by sheet AND component, never by key alone. Two components of one
     // sheet share a key space by design — a Keycloak realm sheet has `enabled`
     // under every realm — so a component-scoped index is what stops a row
@@ -5060,6 +5112,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
     // sheet: 28 lines in one file were matching 46 rows.
     const out = new Map<string, string>();
     for (const a of artifacts ?? []) {
+      if (a.nature === "observed") continue;
       for (const line of a.lines) {
         // Every row the line IS, not only the one it jumps back to: a line
         // holding two settings is two rows, and both want the button.
@@ -5595,6 +5648,9 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                 ? html`<${DocumentBody} sheet=${sheet} reviews=${reviews} editEnabled=${effEditEnabled}
                                         onEditAt=${effEditEnabled
                                           ? (jump: DocJump) => { setDocJump(jump); setDocTarget(sheet.name); }
+                                          : undefined}
+                                        onEvidence=${(artifacts ?? []).some((a) => a.nature === "observed")
+                                          ? (id: string, line?: number) => setArtifactTarget({ id, line })
                                           : undefined} t=${t} />`
                 : pivoted.has(sheet.name)
                 ? html`<${PivotView} sheet=${sheet} sheetIndex=${idx} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}

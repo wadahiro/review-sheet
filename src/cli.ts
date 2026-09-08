@@ -10,7 +10,8 @@ import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults }
 import { renderTestDoc, renderExcluded, injectBlocks } from "./testdoc.js";
 import { findBakedSecrets, formatBakedSecrets } from "./secrets.js";
 import { toFullEditInput } from "./full-edit.js";
-import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument } from "./types.js";
+import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, ArtifactPreview } from "./types.js";
+import { evidencePreviews } from "./evidence.js";
 import { extractReviewsFromHtml, DOCUMENT_FIELD } from "./edits.js";
 import { documentEditRange, fullEditChanges } from "./full-edit-apply.js";
 import { renderMarkdownChanges } from "./markdown-changes.js";
@@ -348,8 +349,9 @@ program
   .option("--no-previews", "Leave the previewed files out: the panel that shows a row's line in its deployed file, and the affordance that opens it. They are the file as it was AT GENERATION — a document maintained by hand afterwards keeps its values current and the preview does not, so a delivery that will be edited for a long time may prefer not to carry a picture that quietly ages. Also the biggest single part of the file (measured on a real document: 1.1 MB of payload against 0.6 MB without)")
   .option("--sheets <names...>", "Make this document out of these sheets only. A requirements note, a parameter sheet and a test record are separate documents in the world — approved separately, revised on their own cycles — and one build can produce each of them. The sheets keep the document's own order; what is left out is reported")
   .option("--instances <names...>", "Deliver only these environments: the columns, the per-environment values and the previews rendered for the others are left out of the document. Not every environment a build knows belongs to the same handover — one of them is usually the one an engineer keeps in order to build the others. What it drops is reported, including rows left with nothing to show")
+  .option("--evidence <file>", "Carry the RAW material the test results point at — the deployed files as the hosts held them, the output of the commands that were run — as documents in the page, beside the verdicts that cite them. Without it a verdict names an address on a machine the reader cannot reach. The judge that wrote the results decided what may travel; this only carries it, and --instances narrows it exactly as it narrows values")
   .option("--full-edit", "Hand the sheet over as a document its recipient maintains by hand: every sheet becomes markdown, in ONE language, and the whole page is editable. Implies --allow edit and turns the review affordances OFF (there is no cell to comment on — a note goes in the text). The per-cell review targets and the language toggle for content are not in such a document")
-  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; lang: string; fullEdit?: boolean; instances?: string[]; sheets?: string[] }) => {
+  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; lang: string; fullEdit?: boolean; instances?: string[]; sheets?: string[]; evidence?: string }) => {
     try {
       const files = opts.input;
       let input: ParameterSheetInput | VersionedSheetInput;
@@ -410,6 +412,25 @@ program
         // Always printed: a delivery that quietly left an environment out is
         // the thing this flag must never be used to do by accident.
         console.error(formatRestrictReport(done.report));
+      }
+      // AFTER --instances, so a delivery narrows its evidence with the same
+      // list and by the same rule: the environments it does not cover are not
+      // in the file. Appended to the artifacts the model already carries —
+      // observed documents share the panel and stay out of the row index, so
+      // nothing about the sheet's own previews changes (types.ts).
+      if (opts.evidence !== undefined) {
+        const carried = validateResults(JSON.parse(readFileSync(opts.evidence, "utf-8")));
+        const docs = evidencePreviews(carried, opts.instances);
+        for (const v of "versions" in input ? input.versions : [input]) {
+          (v as { artifacts?: ArtifactPreview[] }).artifacts = [...((v as { artifacts?: ArtifactPreview[] }).artifacts ?? []), ...docs];
+        }
+        // Always said, like every other narrowing here: evidence that was in
+        // the results and is not in the document is exactly what a reader must
+        // not have to discover by its absence.
+        const held = (carried.evidence ?? []).length;
+        console.error(
+          `evidence: ${docs.length} document(s) carried${held > docs.length ? `, ${held - docs.length} left out by --instances` : ""}`
+        );
       }
       const lang = opts.lang === "en" ? "en" : "ja";
       // The content's language is decided HERE and never again: a full-edit
