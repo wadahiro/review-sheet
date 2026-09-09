@@ -147,6 +147,31 @@ describe("the evidence cell", () => {
 });
 
 
+// Two documents at one address is a judge bug this tool must not paper over:
+// the link resolves to whichever came first, and a reader is then shown bytes
+// no verdict was read from.
+describe("a document carried twice", () => {
+  it("is said out loud rather than quietly deduped", () => {
+    const said: string[] = [];
+    const said_to = console.error;
+    console.error = (m: string) => said.push(m);
+    const twice = {
+      results: [],
+      evidence: [
+        { instance: "local", host: "web01", at: "x", sheet: "web", command: "GET /login", text: "a" },
+        { instance: "local", host: "web01", at: "x", sheet: "web", command: "GET /login", text: "b" },
+      ],
+    };
+    const out = evidencePreviews(twice, undefined);
+    console.error = said_to;
+    expect(said.join("\n")).toContain("carried more than once");
+    expect(said.join("\n")).toContain("observed local web01 GET /login");
+    // …and both are still emitted: which of the two is right is not this tool's
+    // to decide, and picking one silently is the failure it would be hiding.
+    expect(out.length).toBe(2);
+  });
+});
+
 // The reference an evidence cell carries, read back. The id holds spaces and
 // slashes — it names a host and a path — so only the line suffix has a shape
 // worth parsing, and splitting the whole thing blind would cut ids in half.

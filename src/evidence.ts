@@ -24,6 +24,20 @@ const idOf = (e: { instance: string; host: string; path?: string; command?: stri
 
 export function evidencePreviews(results: TestResults, instances: string[] | undefined): ArtifactPreview[] {
   const out: ArtifactPreview[] = [];
+  // Two documents at one address is a judge bug, and a silent one: the link a
+  // verdict carries resolves to whichever was emitted first, so a reader can be
+  // shown bytes that are not the ones that verdict was read from. Reported
+  // rather than deduped — which of the two is right is not this tool's to
+  // decide, and quietly picking one is exactly the failure it would be hiding.
+  const seen = new Map<string, number>();
+  for (const e of results.evidence ?? []) seen.set(idOf(e), (seen.get(idOf(e)) ?? 0) + 1);
+  const twice = [...seen].filter(([, n]) => n > 1).map(([id]) => id);
+  if (twice.length > 0) {
+    console.error(
+      `evidence: ${twice.length} document(s) carried more than once, so a verdict citing one gets whichever came first — ` +
+        twice.slice(0, 3).join(", ") + (twice.length > 3 ? ", …" : "")
+    );
+  }
   for (const e of results.evidence ?? []) {
     // `--instances` narrows evidence exactly as it narrows values: an
     // environment a delivery does not cover is NOT IN THE FILE. The same claim
