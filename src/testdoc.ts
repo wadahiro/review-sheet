@@ -18,7 +18,7 @@
 
 import type { LangText } from "./types.js";
 import { pickLang } from "./types.js";
-import type { TestItem, TestPlan, TestUnit } from "./testplan.js";
+import type { FunctionalTestItem, TestItem, TestPlan, TestUnit } from "./testplan.js";
 import type { TestResult, TestResults } from "./testresults.js";
 import { evidenceCell } from "./evidence.js";
 
@@ -34,11 +34,19 @@ type Words = {
   pass: string; fail: string; notRun: string;
   // What the EXPECTED column says where the value cannot say it itself.
   expectAbsent: string; expectEmpty: string;
-  functional: (t: string) => string;
+  // The functional subsection: its heading, the one line saying what it is,
+  // and what a record prints where an item nobody was allowed to run would
+  // otherwise read as an ordinary "not run".
+  functionalHead: string; functionalLead: string; consentNeeded: string;
   count: string; done: string; todo: string; result: string; unstated: string;
   defaults: (n: number, ok: number, ng: number) => string;
   ranAt: (at: string, hosts: string) => string; notRunYet: string;
-  excludedHead: string; excludedCols: string[]; taxonomyCols: string[]; taxonomyWhere: string[];
+  excludedHead: string; excludedCols: string[]; taxonomyCols: string[];
+  // Where each level is on the page this run wrote — which depends on what it
+  // wrote. A unit with functional items has a sub-heading no sheet is behind,
+  // and a row no sheet row derived; a unit without one has neither, and saying
+  // otherwise would describe a page the reader is not holding.
+  taxonomyWhere: (hasFunctional: boolean) => string[];
   taxonomyUndeclared: string;
 };
 
@@ -68,7 +76,9 @@ const T: Record<TestDocLang, Words> = {
     notRun: "未実施",
     expectAbsent: "（設定なし）",
     expectEmpty: "（空）",
-    functional: (t: string) => t,
+    functionalHead: "機能確認",
+    functionalLead: "設定値ではなく、動作として確認する項目。",
+    consentNeeded: "実行者が明示的に許可したときだけ実施する項目",
     count: "テスト項目数",
     done: "実施済み",
     todo: "未実施",
@@ -89,10 +99,12 @@ const T: Record<TestDocLang, Words> = {
     // document ever meets) and not what happens when it goes wrong: "a gap
     // fails the build" is this tool's own guarantee mechanism, and a customer's
     // paperwork is not where a tool explains how it keeps its promises.
-    taxonomyWhere: [
+    taxonomyWhere: (f: boolean) => [
       "この文書の単位。環境ごとの見出しが環境名とともに掲げる",
-      "詳細設計のシート。その環境の中の見出しで、項目表ごとに1つ",
-      "その表の1行。シートの行から自動導出する",
+      f
+        ? "その環境の中の見出し。詳細設計のシート1つにつき1つ、および「機能確認」"
+        : "詳細設計のシート。その環境の中の見出しで、項目表ごとに1つ",
+      f ? "その表の1行。シートの行から自動導出し、機能確認は宣言した項目を並べる" : "その表の1行。シートの行から自動導出する",
     ],
     taxonomyUndeclared: "—",
   },
@@ -121,7 +133,9 @@ const T: Record<TestDocLang, Words> = {
     notRun: "not run",
     expectAbsent: "(nothing set)",
     expectEmpty: "(empty)",
-    functional: (t: string) => t,
+    functionalHead: "Functional checks",
+    functionalLead: "Checked as behaviour rather than as a value.",
+    consentNeeded: "run only when the operator explicitly allows it",
     count: "Items",
     done: "Run",
     todo: "Not run",
@@ -134,10 +148,12 @@ const T: Record<TestDocLang, Words> = {
     excludedHead: "Out of scope",
     excludedCols: ["Parameter", "Reason", "Owner"],
     taxonomyCols: ["No.", "Level", "How items are raised", "In this document"],
-    taxonomyWhere: [
+    taxonomyWhere: (f: boolean) => [
       "This document's unit, named by each environment's heading beside the environment",
-      "A sheet of the detailed design — a heading inside that environment, one per item table",
-      "One row of that table, derived from the sheet's rows",
+      f
+        ? "A heading inside that environment: one per sheet of the detailed design, plus the functional checks"
+        : "A sheet of the detailed design — a heading inside that environment, one per item table",
+      f ? "One row of that table: derived from the sheet's rows, or one of the declared functional items" : "One row of that table, derived from the sheet's rows",
     ],
     taxonomyUndeclared: "—",
   },
@@ -161,8 +177,14 @@ const verdictOf = (t: Words, r: TestResult | undefined): string =>
 // when the record is carrying it, plain text when it is not. `evidenceCell`
 // owns both, so the "an affordance that opens nothing is worse than none" rule
 // is decided in one place rather than in each renderer.
-const evidenceOf = (r: TestResult | undefined, carried: NonNullable<TestResults["evidence"]>): string =>
-  cell(evidenceCell(r, carried)).replace(/\\\|/g, "|");
+// An answer's evidence cell. The instance is passed rather than dug out of the
+// answer, because a functional answer names one and has no `target` to dig in —
+// and reaching into a shape only half the callers have is how this threw on the
+// first record that had both.
+const evidenceOf = (
+  r: { instance: string; evidence?: TestResult["evidence"] } | undefined,
+  carried: NonNullable<TestResults["evidence"]>
+): string => cell(evidenceCell(r, carried)).replace(/\\\|/g, "|");
 
 const dayOf = (r: TestResult | undefined, run: { at?: string } | undefined): string =>
   (r?.at ?? run?.at ?? "").slice(0, 10);
@@ -221,6 +243,16 @@ const answerIndex = (results: TestResults): AnswerIndex => {
 const answerFor = (index: AnswerIndex, i: TestItem): TestResult | undefined =>
   index.byPath.get(pathOf(i.target)) ?? index.byKey.get(looseOf(i.target));
 
+// The same two-address lookup for a functional item: the declaration's id where
+// both sides carry one, and the sentence otherwise. Matching on prose alone was
+// what the id exists to stop — a judge writing answers against a sentence
+// someone may reword joins on nothing the day it is reworded.
+type FunctionalAnswer = NonNullable<TestResults["functional"]>[number];
+const functionalAnswerFor = (results: TestResults, f: FunctionalTestItem, text: string): FunctionalAnswer | undefined => {
+  const here = (results.functional ?? []).filter((x) => x.unit === f.unit && x.instance === f.instance);
+  return (f.id === undefined ? undefined : here.find((x) => x.id === f.id)) ?? here.find((x) => x.item === text);
+};
+
 export type TestDocOptions = {
   lang?: TestDocLang;
   // Whether the 2,000-odd "still on the product's default" items are printed as
@@ -249,6 +281,15 @@ export function renderTestDoc(
   const instances = [...new Set(mine.map((i) => i.target.instance))];
   const shown = mine.filter((i) => opts.includeDefaults === true || i.kind !== "default-in-force");
   const defaults = mine.filter((i) => i.kind === "default-in-force");
+  // Items of this unit test like any other — planned, counted and covered
+  // beside the derived ones, and rendered inside the environment they belong to
+  // rather than in a section of their own. Which half of the document a tool
+  // derived and which a person wrote is not a reader's question; "is staging
+  // finished" is, and it is answered in one place.
+  const mineFunctional = plan.functional.filter((f) => f.unit === unitName);
+  const functionalAnswers = new Map<FunctionalTestItem, FunctionalAnswer | undefined>(
+    mineFunctional.map((f) => [f, functionalAnswerFor(results, f, pickLang(f.text, lang) ?? "")])
+  );
 
   const blocks: Record<string, string> = {};
 
@@ -270,29 +311,37 @@ export function renderTestDoc(
   // `injectBlocks`' ordinary "a marker nothing produced" error.
   const declared = unit.declaration.taxonomy;
   if (declared !== undefined && declared.length > 0) {
+    const where = t.taxonomyWhere(mineFunctional.length > 0);
     blocks["test:taxonomy"] = table(
       t.taxonomyCols,
       declared.map((row, i) => [
         String(i + 1),
         cell(pickLang(row.level, lang)),
         cell(pickLang(row.raised, lang)),
-        t.taxonomyWhere[i] ?? t.taxonomyUndeclared,
+        where[i] ?? t.taxonomyUndeclared,
       ])
     );
   }
 
   // The counts, computed. A hand-written summary is the first thing to rot.
   const answered = shown.filter((i) => answerFor(index, i) !== undefined && answerFor(index, i)!.status !== "not_run");
-  const ok = answered.filter((i) => answerFor(index, i)!.status === "pass").length;
-  const ng = answered.length - ok;
+  const fAnswered = mineFunctional.filter((f) => {
+    const a = functionalAnswers.get(f);
+    return a !== undefined && a.status !== "not_run";
+  });
+  const ok = answered.filter((i) => answerFor(index, i)!.status === "pass").length + fAnswered.filter((f) => functionalAnswers.get(f)!.status === "pass").length;
+  const ng = answered.length + fAnswered.length - ok;
   // Per environment AND in total, because the two are not one number divided by
   // the other: a row that states nothing in one environment has an item in the
   // others, so the count differs between them and dividing produced a fraction.
-  const per = instances.map((i) => `${i} ${shown.filter((x) => x.target.instance === i).length}`).join(" / ");
+  const countIn = (i: string): number =>
+    shown.filter((x) => x.target.instance === i).length + mineFunctional.filter((f) => f.instance === i).length;
+  const per = instances.map((i) => `${i} ${countIn(i)}`).join(" / ");
+  const total = shown.length + mineFunctional.length;
   const summary: string[][] = [
-    [t.count, `${shown.length}（${per}）`],
-    [t.done, String(answered.length)],
-    [t.todo, String(shown.length - answered.length)],
+    [t.count, `${total}（${per}）`],
+    [t.done, String(answered.length + fAnswered.length)],
+    [t.todo, String(total - answered.length - fAnswered.length)],
     [t.result, `${t.pass} ${ok} / ${t.fail} ${ng}`],
   ];
   const summaryBlock = [table(["", ""], summary)];
@@ -358,7 +407,7 @@ export function renderTestDoc(
             verdictOf(t, r),
             dayOf(r, run),
             cell(r?.detail),
-            evidenceOf(r, results.evidence ?? []),
+            evidenceOf(r === undefined ? undefined : { instance: i.target.instance, ...(r.evidence === undefined ? {} : { evidence: r.evidence }) }, results.evidence ?? []),
             "",
           ];
         });
@@ -367,34 +416,36 @@ export function renderTestDoc(
         ""
       );
     }
+
+    // …and this environment's functional items, last, as one more sub-heading.
+    // The columns are deliberately not the ones above: a functional item has no
+    // sheet row behind it, so it has no 対象 and no 由来, and the sentence IS
+    // the expectation. That difference is where a reader sees which items came
+    // from the design and which a person wrote — the boundary survives without
+    // splitting the document in two.
+    const fHere = mineFunctional.filter((f) => f.instance === instance);
+    if (fHere.length > 0) {
+      sections.push(`#### ${t.functionalHead}`, "", t.functionalLead, "");
+      const rows = fHere.map((f) => {
+        const a = functionalAnswers.get(f);
+        n += 1;
+        return [
+          String(n),
+          cell(pickLang(f.text, lang) ?? ""),
+          a === undefined ? t.notRun : a.status === "pass" ? t.pass : a.status === "fail" ? t.fail : t.notRun,
+          dayOf(a as TestResult | undefined, run),
+          cell(a?.detail),
+          evidenceOf(a === undefined ? undefined : { instance: f.instance, ...(a.evidence === undefined ? {} : { evidence: a.evidence }) }, results.evidence ?? []),
+          // An intrusive item nobody ran did not fall through a gap — it was
+          // never permitted. Saying so is the difference between a record a
+          // reader can act on and one that just looks unfinished.
+          f.intrusive && (a === undefined || a.status === "not_run") ? t.consentNeeded : cell(a?.reason),
+        ];
+      });
+      sections.push(table([t.no, t.item, t.verdict, t.ran, t.how, t.evidence, t.note], rows), "");
+    }
   }
   blocks["test:items"] = sections.join("\n").trimEnd();
-
-  // The items with no row behind them, which a project wrote by hand and a run
-  // answers the same way.
-  const functional = unit.declaration.functional ?? [];
-  if (functional.length > 0) {
-    const rows: string[][] = [];
-    let n = 0;
-    for (const instance of instances) {
-      for (const f of functional) {
-        const text = pickLang(f, lang);
-        const answer = (results.functional ?? []).find((x) => x.unit === unitName && x.instance === instance && x.item === text);
-        n += 1;
-        rows.push([
-          String(n),
-          `${instance}: ${cell(text)}`,
-          "",
-          answer === undefined ? t.notRun : answer.status === "pass" ? t.pass : answer.status === "fail" ? t.fail : t.notRun,
-          (results.runs?.[instance]?.at ?? "").slice(0, 10),
-          cell(answer?.detail),
-          evidenceOf(answer as TestResult | undefined, results.evidence ?? []),
-          "",
-        ]);
-      }
-    }
-    blocks["test:functional"] = table([t.no, t.item, t.expected, t.verdict, t.ran, t.how, t.evidence, t.note], rows);
-  }
 
   return blocks;
 }

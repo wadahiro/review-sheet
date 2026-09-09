@@ -3483,7 +3483,10 @@ groups:
       method: |            # how this unit is tested at all
         Read the deployed files on the host and compare them with the design.
       functional:          # items with no row behind them
-        - It starts, stops and restarts
+        - It starts and stops
+        - id: restart      # …or the fuller shape, where the item needs it
+          text: { en: It restarts under load }
+          intrusive: true
       taxonomy:            # how THIS organisation raises its items, per level
         - { level: { en: Unit },      raised: { en: One per server } }
         - { level: { en: Component }, raised: { en: One per software component } }
@@ -3492,6 +3495,29 @@ groups:
     test:
       not_tested: { en: Not tested in this phase }
 ```
+
+`functional` items are ITEMS OF THE PLAN: planned once per environment, counted
+in the summary, and covered by `validate --plan` exactly like the derived ones.
+They used to be read straight from the declaration at render time, which meant a
+run that answered none of them produced a record that looked finished. Two
+optional fields matter:
+
+- **`id` is the join; the sentence is the label.** A judge writing answers
+  programmatically against prose someone may reword joins on nothing the day it
+  is reworded. Answer with `{"unit": …, "id": "restart", "instance": …}`.
+- **`intrusive` says that ANSWERING the item disturbs the running system** —
+  stopping a service to prove it stops. The tool runs nothing, so this is not a
+  switch: the runner gates on it (an explicit opt-in from whoever is running the
+  test, in every environment), and the record prints "run only when the operator
+  explicitly allows it" instead of a bare "not run", so a reader can tell a gap
+  from a decision.
+
+They render as a `機能確認` sub-heading INSIDE each environment's section, after
+that environment's component tables — not as a section of their own. Which half
+of a document a tool derived and which a person wrote is not a reader's
+question; "is staging finished" is, and it is answered in one place. The columns
+differ (no subject, no decider, and the sentence is the expectation), which is
+where the provenance boundary stays visible.
 
 A unit holding testable rows that declares neither `method` nor `not_tested`
 FAILS the build: untested by accident and untested on purpose look identical in

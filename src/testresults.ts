@@ -21,7 +21,8 @@
 // legitimate deliverable — that is what a test record is for — so nothing here
 // gates on pass/fail.
 
-import type { TestItem, TestPlan } from "./testplan.js";
+import type { FunctionalTestItem, TestItem, TestPlan } from "./testplan.js";
+import type { LangText } from "./types.js";
 
 export type TestStatus = "pass" | "fail" | "not_run";
 
@@ -67,7 +68,11 @@ export type TestResults = {
     text: string;
   }[];
   unclaimed?: { instance: string; what: string; evidence?: TestEvidence }[];
-  functional?: { unit: string; item: string; instance: string; status: TestStatus; reason?: string; detail?: string; evidence?: TestEvidence }[];
+  // Answers to the functional items. `id` is the join where the declaration
+  // gave one; `item` is the prose, kept as the fallback join and as what a
+  // record prints. Same shape as the value answers: the id is the row's own
+  // address and the loose key only narrows when nothing better exists.
+  functional?: { unit: string; id?: string; item: string; instance: string; status: TestStatus; reason?: string; detail?: string; evidence?: TestEvidence }[];
 };
 
 // The join key. The category path is part of a row's identity — two components
@@ -87,7 +92,26 @@ export type ResultsCheck = {
   // Answers whose plan item is quiet and which carry a value anyway. The plan
   // withheld it on purpose; a record that puts it back has published it.
   leaked: TestResult[];
+  // The same three questions, asked of the functional items. Kept apart because
+  // they are a different shape, counted together because they are the same
+  // unit test: `answered` and `byStatus` above hold both.
+  unansweredFunctional: FunctionalTestItem[];
+  unknownFunctional: NonNullable<TestResults["functional"]>;
+  silentFunctional: NonNullable<TestResults["functional"]>;
 };
+
+// Where a functional answer and a functional item meet. Two addresses, the
+// stronger one first, exactly as the value answers work: the declaration's id
+// when both sides have one, and the sentence otherwise.
+//
+// The sentence is indexed in EVERY language the declaration wrote it in — a
+// judge answers in the words it was handed, and a document rendered in the
+// other language would otherwise find nothing.
+const functionalId = (t: { unit: string; instance: string }, id: string): string => `${t.unit}\u0000${t.instance}\u0000#${id}`;
+const functionalTexts = (t: { unit: string; instance: string }, text: LangText): string[] =>
+  (typeof text === "string" ? [text] : [text.ja, text.en])
+    .filter((x): x is string => x !== undefined && x !== "")
+    .map((x) => `${t.unit}\u0000${t.instance}\u0000${x}`);
 
 export function checkResults(plan: TestPlan, results: TestResults): ResultsCheck {
   const byPath = new Map<string, TestItem>();
@@ -105,6 +129,9 @@ export function checkResults(plan: TestPlan, results: TestResults): ResultsCheck
     unknown: [],
     silent: [],
     leaked: [],
+    unansweredFunctional: [],
+    unknownFunctional: [],
+    silentFunctional: [],
   };
   const seen = new Set<TestItem>();
 
@@ -125,6 +152,30 @@ export function checkResults(plan: TestPlan, results: TestResults): ResultsCheck
     if (matched.some((m) => m.quiet === true) && r.actual !== undefined) check.leaked.push(r);
   }
   check.unanswered = plan.items.filter((i) => !seen.has(i));
+
+  // …and the same pass over the functional items, whose answers count into the
+  // same totals: they are items of this unit test, not a postscript to it.
+  const fById = new Map<string, FunctionalTestItem>();
+  const fByText = new Map<string, FunctionalTestItem>();
+  for (const f of plan.functional) {
+    if (f.id !== undefined) fById.set(functionalId(f, f.id), f);
+    for (const k of functionalTexts(f, f.text)) fByText.set(k, f);
+  }
+  const seenF = new Set<FunctionalTestItem>();
+  for (const r of results.functional ?? []) {
+    const m =
+      (r.id === undefined ? undefined : fById.get(functionalId(r, r.id))) ??
+      fByText.get(`${r.unit}\u0000${r.instance}\u0000${r.item}`);
+    if (m === undefined) {
+      check.unknownFunctional.push(r);
+      continue;
+    }
+    seenF.add(m);
+    check.answered += 1;
+    check.byStatus[r.status] += 1;
+    if (r.status === "not_run" && (r.reason === undefined || r.reason.trim() === "")) check.silentFunctional.push(r);
+  }
+  check.unansweredFunctional = plan.functional.filter((f) => !seenF.has(f));
   return check;
 }
 
@@ -150,11 +201,31 @@ export function formatResultsCheck(check: ResultsCheck): string {
   if (check.leaked.length > 0) {
     lines.push(`  carries a value the plan withheld (${check.leaked.length}): ${some(check.leaked, (r) => `${r.target.sheet} > ${r.target.key}`)}`);
   }
+  const say = (f: { unit: string; instance: string }, what: string): string => `${f.unit} > ${what} [${f.instance}]`;
+  if (check.unansweredFunctional.length > 0) {
+    lines.push(
+      `  functional, unanswered (${check.unansweredFunctional.length}): ${some(check.unansweredFunctional, (f) => say(f, f.id ?? (typeof f.text === "string" ? f.text : (f.text.ja ?? f.text.en ?? ""))))}`
+    );
+  }
+  if (check.unknownFunctional.length > 0) {
+    lines.push(`  functional, answers no item in this plan (${check.unknownFunctional.length}): ${some(check.unknownFunctional, (r) => say(r, r.id ?? r.item))}`);
+  }
+  if (check.silentFunctional.length > 0) {
+    lines.push(`  functional, not run, with no reason (${check.silentFunctional.length}): ${some(check.silentFunctional, (r) => say(r, r.id ?? r.item))}`);
+  }
   return lines.join("\n");
 }
 
 // …and whether that is a failure. Coverage and consistency only: a run with
 // failing items has done its job.
 export function resultsCheckFails(check: ResultsCheck): boolean {
-  return check.unanswered.length > 0 || check.unknown.length > 0 || check.silent.length > 0 || check.leaked.length > 0;
+  return (
+    check.unanswered.length > 0 ||
+    check.unknown.length > 0 ||
+    check.silent.length > 0 ||
+    check.leaked.length > 0 ||
+    check.unansweredFunctional.length > 0 ||
+    check.unknownFunctional.length > 0 ||
+    check.silentFunctional.length > 0
+  );
 }

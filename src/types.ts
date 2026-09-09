@@ -416,6 +416,23 @@ export type DocumentHeading = {
 // How a UNIT of the design is tested — the part of a unit-test document that
 // nothing can derive from the model. Defined here because both a group and a
 // sheet may carry one; the derivation that reads it is testplan.ts.
+// One functional item, where the bare sentence is not enough.
+//
+// `id` exists because the join was the item's own PROSE, and a judge writing
+// answers programmatically against a sentence someone may reword is a join that
+// breaks silently on a typo. The sentence stays the label; the id is the join.
+//
+// `intrusive` says that ANSWERING this item disturbs the running system —
+// stopping a service to prove it stops. Nothing here runs anything, so this is
+// not a switch: it is a declaration the runner gates on and the record reads,
+// so a reader can tell "nobody ran it" from "it needs a person's say-so and did
+// not get one".
+export type FunctionalItem = {
+  id?: string;
+  text: LangText;
+  intrusive?: boolean;
+};
+
 export type TestDeclaration = {
   // How this unit is tested at all, written once per unit.
   method?: LangText;
@@ -429,8 +446,10 @@ export type TestDeclaration = {
   // location, since the tool renders three.
   taxonomy?: { level: LangText; raised: LangText }[];
   // Items with no row behind them: that a product starts, stops, restarts,
-  // that its console opens. A parameter sheet cannot produce these.
-  functional?: LangText[];
+  // that its console opens. A parameter sheet cannot produce these — but they
+  // are unit-test items like any other, so they enter the plan, the coverage
+  // check and the counts beside the derived ones.
+  functional?: (LangText | FunctionalItem)[];
   // …or the unit is not tested in this phase, and that is a decision, stated
   // where a reader looks for its items. A unit with neither fails the build.
   not_tested?: LangText;

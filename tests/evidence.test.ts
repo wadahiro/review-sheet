@@ -101,9 +101,10 @@ describe("evidence, as documents", () => {
 // actually being carried — a delivery built without `--evidence` keeps the
 // address as plain text, which is exactly what it was before any of this.
 describe("the evidence cell", () => {
+  // The INSTANCE is what the cell needs, not a whole answer: an item with no row
+  // behind it names one and has no `target` to dig it out of.
   const answer = {
-    target: { sheet: "web", key: "Listen", instance: "local" },
-    status: "pass" as const,
+    instance: "local",
     evidence: { host: "web01", file: "/etc/httpd/conf/httpd.conf", line: 12 },
   };
 
@@ -128,6 +129,15 @@ describe("the evidence cell", () => {
 
   // The HOST is part of the match, not decoration: two hosts hold the same file
   // and a verdict was read from one of them.
+  // …and a command's output is reached the same way, which is what an item with
+  // no row behind it always points at.
+  it("links a verdict that names a command rather than a file", () => {
+    const cell = evidenceCell({ instance: "local", evidence: { host: "web01", command: "systemctl restart keycloak" } }, [
+      { instance: "local", host: "web01", at: "x", sheet: "web", command: "systemctl restart keycloak", text: "" },
+    ]);
+    expect(cell).toContain("[web01 systemctl restart keycloak](rs-evidence:");
+  });
+
   it("does not link a verdict to another host's document", () => {
     const cell = evidenceCell(answer, [
       { instance: "local", host: "web02", at: "x", sheet: "web", path: "/etc/httpd/conf/httpd.conf", text: "" },

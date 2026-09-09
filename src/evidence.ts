@@ -64,7 +64,7 @@ export function evidencePreviews(results: TestResults, instances: string[] | und
 // file, a verdict was read from one of them, and a link to the other one's copy
 // would show a reader bytes nobody judged.
 export function evidenceCell(
-  answer: { target: { instance: string }; evidence?: { host?: string; file?: string; line?: number; command?: string } } | undefined,
+  answer: { instance: string; evidence?: { host?: string; file?: string; line?: number; command?: string } } | undefined,
   carried: NonNullable<TestResults["evidence"]>
 ): string {
   const ev = answer?.evidence;
@@ -74,7 +74,7 @@ export function evidenceCell(
     .join(" ");
   const doc = carried.find(
     (d) =>
-      d.instance === answer!.target.instance &&
+      d.instance === answer!.instance &&
       d.host === ev.host &&
       (ev.file !== undefined ? d.path === ev.file : d.command === ev.command)
   );

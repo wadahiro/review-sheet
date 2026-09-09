@@ -27,6 +27,12 @@ const plan = (): TestPlan =>
       { target: { sheet: "os", path: ["httpd.conf"], key: "Timeout", instance: "local" }, unit: "server", component: "httpd.conf", kind: "default-in-force", decider: "product-default", expected: "60" },
       { target: { sheet: "os", path: ["httpd.conf"], key: "Gone", instance: "local" }, unit: "server", component: "httpd.conf", kind: "absent", decider: "vendor-removed" },
     ],
+    functional: [
+      { unit: "server", text: { ja: "起動・停止ができること" }, intrusive: false, instance: "local" },
+      { unit: "server", text: { ja: "起動・停止ができること" }, intrusive: false, instance: "prod" },
+      { unit: "server", id: "restart", text: { ja: "再起動できること" }, intrusive: true, instance: "local" },
+      { unit: "server", id: "restart", text: { ja: "再起動できること" }, intrusive: true, instance: "prod" },
+    ],
   }) as TestPlan;
 
 const results = (): TestResults => ({
@@ -130,19 +136,52 @@ describe("the tables a document is given", () => {
 
   it("computes the summary rather than trusting a written one", () => {
     const b = renderTestDoc(plan(), results(), "server");
-    // 4 items shown (the default-in-force one is counted separately): Listen×2,
-    // pw, Gone. Answered: all but the not_run one.
-    expect(b["test:summary"]).toContain("| テスト項目数 | 4（local 3 / prod 1） |");
-    expect(b["test:summary"]).toContain("| 実施済み | 3 |");
-    expect(b["test:summary"]).toContain("| 未実施 | 1 |");
-    expect(b["test:summary"]).toContain("| 判定 | OK 2 / NG 1 |");
+    // 4 rows shown (the default-in-force one is counted separately): Listen×2,
+    // pw, Gone — plus the 4 functional items, which are items of this unit test
+    // and not a postscript to it. Answered: 3 rows and 1 functional.
+    expect(b["test:summary"]).toContain("| テスト項目数 | 8（local 5 / prod 3） |");
+    expect(b["test:summary"]).toContain("| 実施済み | 4 |");
+    expect(b["test:summary"]).toContain("| 未実施 | 4 |");
+    expect(b["test:summary"]).toContain("| 判定 | OK 3 / NG 1 |");
   });
 
-  it("renders the items that have no row behind them, with their answers", () => {
+  // An item with no row behind it is still an item of THIS environment's unit
+  // test, so it is a sub-heading inside that environment rather than a section
+  // of its own at the end. Splitting them by where they came from made a reader
+  // answer "is prod finished" in two places; the environment is the one axis.
+  it("puts the items that have no row behind them inside their environment", () => {
     const b = renderTestDoc(plan(), results(), "server");
-    expect(b["test:functional"]).toContain("local: 起動・停止ができること");
-    expect(b["test:functional"]).toContain("OK");
-    expect(b["test:functional"]).toContain("prod: 起動・停止ができること");
+    const items = b["test:items"];
+    const at = (s: string): number => items.indexOf(s);
+    expect(at("### SSO サーバ (local)")).toBeLessThan(at("#### 機能確認"));
+    expect(at("#### 機能確認")).toBeLessThan(at("### SSO サーバ (prod)"));
+    // Two of them, one per environment, and neither carries the environment in
+    // its own text any more — the heading above it says which.
+    expect(items.split("#### 機能確認").length - 1).toBe(2);
+    expect(items).not.toContain("local: 起動・停止ができること");
+    // The answered one reads OK; the numbering continues the environment's.
+    expect(items).toMatch(/\| \d+ \| 起動・停止ができること \| OK \|/);
+    // …and there is no separate block to inject any more.
+    expect(b["test:functional"]).toBeUndefined();
+  });
+
+  // A judge answers by the declaration's id where it was given one. The prose
+  // is what a reader sees and what a project may reword; joining on it was a
+  // join that breaks silently the day someone fixes a typo.
+  it("joins a functional answer by its id, not by the sentence", () => {
+    const r = results();
+    r.functional = [{ unit: "server", id: "restart", item: "文言はあとで変わった", instance: "local", status: "fail" }];
+    const b = renderTestDoc(plan(), r, "server");
+    expect(b["test:items"]).toMatch(/\| 再起動できること \| NG \|/);
+  });
+
+  // An intrusive item nobody ran did not fall through a gap: it was never
+  // permitted. A bare 未実施 cannot tell a reader which of the two happened.
+  it("says why an intrusive item was not run", () => {
+    const b = renderTestDoc(plan(), results(), "server");
+    const row = b["test:items"].split("\n").find((l) => l.includes("再起動できること")) ?? "";
+    expect(row).toContain("未実施");
+    expect(row).toContain("実行者が明示的に許可したときだけ実施する項目");
   });
 
   // The levels' names and the rule for raising items are the PROJECT's words —
@@ -160,7 +199,25 @@ describe("the tables a document is given", () => {
     const b = renderTestDoc(p, results(), "server");
     expect(b["test:taxonomy"]).toContain("大項目");
     expect(b["test:taxonomy"]).toContain("サーバ単位");
-    expect(b["test:taxonomy"]).toContain("シートの行から自動導出する");
+    // This unit HAS functional items, so its middle level is not "a sheet of
+    // the detailed design" any more and its rows are not all derived. Saying so
+    // would describe a page the reader is not holding.
+    expect(b["test:taxonomy"]).toContain("および「機能確認」");
+    expect(b["test:taxonomy"]).toContain("機能確認は宣言した項目を並べる");
+  });
+
+  // …and a unit with none of them keeps the plainer sentence, for the same reason.
+  it("says where each level is for the page it actually wrote", () => {
+    const p = plan();
+    p.functional = [];
+    p.units[0].declaration.taxonomy = [
+      { level: { ja: "大項目" }, raised: { ja: "サーバ単位" } },
+      { level: { ja: "中項目" }, raised: { ja: "コンポーネント単位" } },
+      { level: { ja: "小項目" }, raised: { ja: "設定を網羅" } },
+    ];
+    const b = renderTestDoc(p, results(), "server");
+    expect(b["test:taxonomy"]).toContain("詳細設計のシート。その環境の中の見出しで、項目表ごとに1つ");
+    expect(b["test:taxonomy"]).not.toContain("機能確認");
   });
 
   // …and nothing of its own when the project stated nothing. A document that

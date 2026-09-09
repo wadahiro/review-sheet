@@ -18,9 +18,9 @@
 // a collector and a judge outside answer it. See the `test` declaration below
 // for the part a project writes, which is the part nothing can derive.
 
-import type { LangText, OutOfScope, ParameterSheetInput, Parameter, Sheet, SheetGroup, TestDeclaration } from "./types.js";
+import type { FunctionalItem, LangText, OutOfScope, ParameterSheetInput, Parameter, Sheet, SheetGroup, TestDeclaration } from "./types.js";
 
-export type { TestDeclaration };
+export type { TestDeclaration, FunctionalItem };
 
 // One thing to check, once, in one environment.
 export type TestItem = {
@@ -78,6 +78,29 @@ export type TestKind = "value" | "default-in-force" | "absent";
 // two together answer this, and neither answers it alone.
 export type TestDecider = "project" | "vendor-kept" | "vendor-changed" | "product-default" | "vendor-removed";
 
+// A functional item, planned: once per environment, the same way every derived
+// item is planned once per environment.
+//
+// It is IN THE PLAN rather than read straight from the declaration at render
+// time, because the plan is what a run has to answer. Left out of it, "the
+// console opens" was an item no coverage check could see missing — the one
+// failure this whole file exists to refuse.
+export type FunctionalTestItem = {
+  unit: string;
+  unitLabel?: LangText;
+  // What a result names it by, and it is the id where the project gave one:
+  // prose is a label, not a join. See FunctionalItem.
+  id?: string;
+  text: LangText;
+  intrusive: boolean;
+  instance: string;
+};
+
+// The declaration's two accepted shapes, read as one. A bare sentence is still
+// a whole item — the id and the intrusive mark are for the items that need them.
+export const functionalItemOf = (x: LangText | FunctionalItem): FunctionalItem =>
+  typeof x === "string" || !("text" in x) ? { text: x as LangText } : x;
+
 export type TestUnit = {
   name: string;
   label?: LangText;
@@ -89,6 +112,7 @@ export type TestPlan = {
   metadata: ParameterSheetInput["metadata"];
   units: TestUnit[];
   items: TestItem[];
+  functional: FunctionalTestItem[];
 };
 
 // Everything the derivation left out, and why. A plan that quietly held fewer
@@ -229,6 +253,32 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
     }
   }
 
+  // The functional items, once the units are known: they belong to a unit, and
+  // the environments they are checked in are the ones that unit's rows name.
+  // Derived from the items rather than from the sheets, so an environment no
+  // row states anything in does not acquire functional items either.
+  const functional: FunctionalTestItem[] = [];
+  for (const unit of units.values()) {
+    // No guard for a unit that says it is not tested in this phase: such a unit
+    // pushed no items, so it names no environments, so this loop runs zero
+    // times for it. A guard would have been a branch no test could ever see
+    // taken (verifying.md R3).
+    const instances = [...new Set(items.filter((i) => i.unit === unit.name).map((i) => i.target.instance))];
+    for (const instance of instances) {
+      for (const raw of unit.declaration.functional ?? []) {
+        const f = functionalItemOf(raw);
+        functional.push({
+          unit: unit.name,
+          ...(unit.label === undefined ? {} : { unitLabel: unit.label }),
+          ...(f.id === undefined ? {} : { id: f.id }),
+          text: f.text,
+          intrusive: f.intrusive === true,
+          instance,
+        });
+      }
+    }
+  }
+
   if (bare.length > 0) {
     throw new Error(
       `no test declaration for ${bare.length} unit(s): ${bare.join(", ")} — ` +
@@ -238,7 +288,7 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
     );
   }
 
-  return { plan: { metadata: input.metadata, units: [...units.values()], items }, report };
+  return { plan: { metadata: input.metadata, units: [...units.values()], items, functional }, report };
 }
 
 // What the derivation left out, for the CLI to print. Counts first, then the
@@ -247,14 +297,17 @@ export function formatTestPlanReport(plan: TestPlan, report: TestPlanReport): st
   const lines: string[] = [];
   const kinds = plan.items.reduce<Record<string, number>>((n, i) => ({ ...n, [i.kind]: (n[i.kind] ?? 0) + 1 }), {});
   lines.push(
-    `test plan: ${plan.items.length} item(s) across ${plan.units.length} unit(s) — ` +
-      Object.entries(kinds)
-        .map(([k, n]) => `${n} ${k}`)
+    `test plan: ${plan.items.length + plan.functional.length} item(s) across ${plan.units.length} unit(s) — ` +
+      [...Object.entries(kinds).map(([k, n]) => `${n} ${k}`), ...(plan.functional.length > 0 ? [`${plan.functional.length} functional`] : [])]
         .join(", ")
   );
   for (const u of plan.units) {
     const n = plan.items.filter((i) => i.unit === u.name).length;
-    const how = u.declaration.not_tested !== undefined ? "not tested in this phase" : `${n} item(s)`;
+    const fn = plan.functional.filter((i) => i.unit === u.name).length;
+    const how =
+      u.declaration.not_tested !== undefined
+        ? "not tested in this phase"
+        : `${n + fn} item(s)${fn > 0 ? ` (${fn} functional)` : ""}`;
     lines.push(`  ${u.name}: ${how} [${u.sheets.join(", ")}]`);
   }
   if (report.excluded.length > 0) {

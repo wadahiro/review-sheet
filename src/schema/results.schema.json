@@ -170,7 +170,7 @@
     },
     "functional": {
       "type": "array",
-      "description": "Answers to the items with no row behind them (a unit's `test.functional`), keyed by the unit and the item's own text.",
+      "description": "Answers to the items with no row behind them (a unit's `test.functional`), keyed by the unit and the item's `id` where the declaration gave one, by its own text otherwise.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -183,6 +183,10 @@
         "properties": {
           "unit": {
             "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "description": "The declaration's id for this item. Preferred over `item`: prose is a label, not a join."
           },
           "item": {
             "type": "string",

@@ -151,6 +151,48 @@ describe("what becomes a test item", () => {
 
 // 大項目 is the chapter that HOLDS sheets, which is what a reader sees beside
 // the items — not the phase above it, and not the sheet below.
+// The items with no row behind them. They lived in the declaration and were
+// rendered straight from it, which meant no coverage check could see one go
+// unanswered — the exact failure the derivation exists to refuse. So they are
+// planned, per environment, like everything else.
+describe("the items with no row behind them", () => {
+  it("is one item per declared entry per environment", () => {
+    const { plan } = buildTestPlan(withGroup({ ...TESTED, functional: [{ ja: "起動できること" }] }));
+    expect(plan.functional.map((f) => [f.instance, f.text, f.intrusive])).toEqual([
+      ["staging", { ja: "起動できること" }, false],
+      ["production", { ja: "起動できること" }, false],
+    ]);
+  });
+
+  // The declaration takes a bare sentence or an entry that also carries the
+  // join and the warning. Both are whole items; the second says more.
+  it("reads a bare sentence and a full entry alike", () => {
+    const { plan } = buildTestPlan(
+      withGroup({ ...TESTED, functional: [{ ja: "起動できること" }, { id: "restart", text: { ja: "再起動できること" }, intrusive: true }] })
+    );
+    expect(plan.functional.filter((f) => f.instance === "staging").map((f) => [f.id, f.intrusive])).toEqual([
+      [undefined, false],
+      ["restart", true],
+    ]);
+  });
+
+  // A unit that says it is not tested in this phase has no items at all, and
+  // that has to include these — otherwise the statement covers half the unit.
+  it("has none where the unit is not tested in this phase", () => {
+    const { plan } = buildTestPlan(withGroup({ not_tested: { ja: "本フェーズ対象外" }, functional: [{ ja: "起動できること" }] }));
+    expect(plan.functional).toEqual([]);
+  });
+
+  it("counts into the plan's own report", () => {
+    const { plan, report } = buildTestPlan(withGroup({ ...TESTED, functional: [{ ja: "起動できること" }] }));
+    const said = formatTestPlanReport(plan, report);
+    // The whole prefix, not "4 item(s)" — the per-unit line below contains that
+    // string too, so the loose assertion passed with the total left unchanged.
+    expect(said).toContain("test plan: 4 item(s) across 1 unit(s) — 2 value, 2 functional");
+    expect(said).toContain("server: 4 item(s) (2 functional)");
+  });
+});
+
 describe("the unit an item belongs to", () => {
   it("is the group the sheet is in", () => {
     const { plan } = buildTestPlan(

@@ -562,7 +562,7 @@ program
       const before = readFileSync(opts.doc, "utf-8");
       // The item tables are the run; a document that takes none of them has
       // lost it. Everything else here is a restatement the document may decline.
-      const required = ["test:items", ...(blocks["test:functional"] === undefined ? [] : ["test:functional"])];
+      const required = ["test:items"];
       const after = injectBlocks(before, blocks, required);
       writeFileSync(opts.doc, after);
       console.error(`Wrote ${opts.doc}`);

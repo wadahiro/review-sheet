@@ -642,9 +642,21 @@
         "functional": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/langText"
+            "oneOf": [
+              { "$ref": "#/$defs/langText" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["text"],
+                "properties": {
+                  "id": { "type": "string", "description": "What a result joins on. The sentence is a label; an id is a join that survives rewording." },
+                  "text": { "$ref": "#/$defs/langText" },
+                  "intrusive": { "type": "boolean", "description": "Answering this item disturbs the running system (stopping a service to prove it stops). The runner gates on it; the record says so where such an item was not permitted." }
+                }
+              }
+            ]
           },
-          "description": "Items with no row behind them: that a product starts, stops, restarts, that its console opens."
+          "description": "Items with no row behind them: that a product starts, stops, restarts, that its console opens. They are planned, counted and covered beside the derived items."
         },
         "not_tested": {
           "$ref": "#/$defs/langText",
