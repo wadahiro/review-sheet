@@ -536,6 +536,11 @@ function nestPrefixes(
 // the row then fails to bind and the strict gate names it, which is the right
 // failure — filing it under a neighbour's type would publish one mapper's
 // meaning under another's.
+// A key that is nothing but a bracketed segment — `[0]`, `[1]`. `extractTree`
+// renders a list element's own segment in isolation, so this is what a scalar
+// list member arrives as; a named leaf never looks like this.
+const INDEX_SEGMENT = /^\[[^\]]*\]$/;
+
 function withNestPrefix(
   key: string | undefined,
   path: string | undefined,
@@ -610,7 +615,20 @@ export function buildMapFromSources(
         atMatched = atMatched || spec.key!.at !== undefined;
         key = transformer!.apply(selectKeySource(spec.key!.from, e.key, e.source.path, e.value));
       } else {
-        key = e.key;
+        // An index is a POSITION, not a name: `[0]` on its own says nothing
+        // about which list it indexes, and two lists in one file both have a
+        // first element. An entry whose whole key is one of those has no
+        // identity to be keyed by, so it takes its address instead — which is
+        // what every other reader of an entry uses (`source.path ?? key`), and
+        // what this file's own overlay-only path already does.
+        //
+        // ONLY that shape. A leaf that HAS a name keeps it: `outer.inner`'s
+        // row is `inner` here by design, and keying every nested entry by its
+        // full address would rename every row of every layered sheet — and
+        // would make the in-file collision this recipe refuses (two `base_url`
+        // leaves under different tables) impossible to have. That is not a
+        // fix, it is the removal of a check.
+        key = INDEX_SEGMENT.test(e.key) ? (e.source.path ?? e.key) : e.key;
       }
       key = withNestPrefix(key, e.source.path, split, prefixes);
       if (key === undefined) continue;

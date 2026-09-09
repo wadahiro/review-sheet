@@ -1110,3 +1110,47 @@ describe("layered recipe: a transform scoped to part of a file", () => {
     expect(() => load({ from: "value", at: "nosuchlist" })).toThrow(/no entry in the file sits under that address/);
   });
 });
+
+// An array element's `key` is only its own last segment — `extractTree` renders
+// `[0]` in isolation and puts the full address in `source.path`, because
+// categoryPath / key / source.path are three different projections of one
+// entry (parser.ts). Every consumer that wants an ADDRESS therefore reads
+// `source.path ?? key`, and this recipe did so everywhere except the one place
+// that runs when a file declares no `key:` transform — which is the ordinary
+// case for a plain YAML file.
+describe("layered recipe: a list element is keyed by its address, not by its index", () => {
+  const files: Record<string, string> = {
+    "/r/values.yml": "outer:\n  inner_list:\n    - x\n    - y\nsome_list:\n  - a\nscalar: 1\n",
+  };
+  const io: RecipeIO = { readFile: (p) => files[p] ?? null, specDir: "/r", resolve: (p) => `/r/${p.split("/").pop()}`, instances: [] };
+  const load = () => layeredRecipe().load({ name: "s", recipe: "layered", defaults: "values.yml" }, io);
+
+  it("names each element by its whole address", () => {
+    expect([...baseOf(load()).keys()].sort()).toEqual([
+      "outer.inner_list[0]",
+      "outer.inner_list[1]",
+      "scalar",
+      "some_list[0]",
+    ]);
+  });
+
+  // The fix is NARROW on purpose, and this is the half that keeps it so: a leaf
+  // that has a name is keyed by that name, as every layered sheet already is.
+  // Widening it to every entry would rename every nested row in every sheet —
+  // and would leave the in-file collision below with nothing left to catch.
+  it("leaves a named leaf keyed by its name", () => {
+    const nested: Record<string, string> = { "/r/n.yml": "outer:\n  inner: 1\n  deep:\n    leaf: 2\n" };
+    const nio: RecipeIO = { readFile: (p) => nested[p] ?? null, specDir: "/r", resolve: (p) => `/r/${p.split("/").pop()}`, instances: [] };
+    const si = layeredRecipe().load({ name: "s", recipe: "layered", defaults: "n.yml" }, nio);
+    expect([...baseOf(si).keys()].sort()).toEqual(["inner", "leaf"]);
+  });
+
+  // …and the reason it matters beyond the name: two unrelated lists both have a
+  // first element, so keying by the index alone makes them one row.
+  it("does not fold two unrelated lists onto one row", () => {
+    const base = baseOf(load());
+    expect(base.get("outer.inner_list[0]")?.value).toBe("x");
+    expect(base.get("some_list[0]")?.value).toBe("a");
+    expect(base.has("[0]")).toBe(false);
+  });
+});
