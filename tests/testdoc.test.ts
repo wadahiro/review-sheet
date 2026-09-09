@@ -115,6 +115,18 @@ describe("the tables a document is given", () => {
     expect(b["test:items"]).toContain("未実施");
   });
 
+  // A record that says "not run" and keeps the reason to itself is the shape a
+  // silent gap takes: 3,058 answers on a real record carried one and the
+  // delivered document showed none of them.
+  it("says why an item was not run", () => {
+    const b = renderTestDoc(plan(), results(), "server");
+    const row = b["test:items"].split("\n").find((l) => l.includes("`Listen`") && l.includes("未実施")) ?? "";
+    expect(row).toContain("本番は未構築");
+    // …and an item that WAS run says nothing there — the column is for the gap.
+    const ran = b["test:items"].split("\n").find((l) => l.includes("`Listen`") && l.includes("| OK |")) ?? "";
+    expect(ran.endsWith("|  |")).toBe(true);
+  });
+
   // The plan withheld the value; the document prints the verdict without it.
   it("prints a secret's verdict and never its value", () => {
     const b = renderTestDoc(plan(), results(), "server");

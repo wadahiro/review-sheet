@@ -408,7 +408,13 @@ export function renderTestDoc(
             dayOf(r, run),
             cell(r?.detail),
             evidenceOf(r === undefined ? undefined : { instance: i.target.instance, ...(r.evidence === undefined ? {} : { evidence: r.evidence }) }, results.evidence ?? []),
-            "",
+            // WHY it was not run. A record that says "not run" and keeps the
+            // reason to itself is the shape a silent gap takes — and the reason
+            // is what tells "nobody has reached this environment yet" from
+            // "this host does not have that command at all". The results
+            // document already carries one on every not-run answer, because
+            // `checkResults` refuses a record whose not-runs are bare.
+            r?.status === "not_run" ? cell(r.reason) : "",
           ];
         });
       sections.push(
