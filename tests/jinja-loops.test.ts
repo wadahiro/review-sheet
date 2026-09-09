@@ -162,7 +162,7 @@ describe("ansible recipe: a {% for %} over a list of maps", () => {
   // `{{ … }}` with a rendered value in hand.
   it("points a composed line at the first of its parts that has a site", () => {
     const rows = embedded().filter((e) => e.key.startsWith("--out"));
-    expect(rows.map((e) => e.value)).toEqual(["/run/vault/poc_corp", "/run/vault/poc_partner"]);
+    expect(rows.map((e) => e.value)).toEqual(["/run/vault/app_corp", "/run/vault/app_partner"]);
     expect(rows[0].source).toMatchObject({ file: "/vars.yml", path: "secrets[key=corp].realm", substituted: true });
   });
 

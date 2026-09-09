@@ -83,7 +83,7 @@ export type EnrichReport = {
 //
 // A strict failure (assemble.ts's "no category", this module's "no
 // description", or assemble.ts's "unused project param") already names every
-// offending key — that's what made a project clean-room user invent, on their
+// offending key — that's what made a clean-room user invent, on their
 // own, the workaround this type formalizes: run the build once against an
 // empty `params:`, then transcribe the exact key list the error printed
 // straight into sheet.yml. `renderScaffold()` below does that transcription

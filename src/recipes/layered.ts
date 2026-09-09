@@ -6,7 +6,7 @@
 // (see below) recognizes and merges it — the one, opt-in exception. Split out
 // of "ansible" (see that file's module
 // doc for the thin specialization it keeps on top of this) because a real
-// share of project use never touched any Ansible concept at all: a plain
+// share of early use never touched any Ansible concept at all: a plain
 // base+overlay `.env` set (a Keycloak realm's non-Ansible config) and a
 // Terraform root module's `variables.tf` + per-environment `.tfvars`, both
 // pressed into `recipe: ansible` for lack of anything narrower. See CLAUDE.md.

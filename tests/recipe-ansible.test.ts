@@ -295,7 +295,7 @@ describe("ansible recipe: deployed_path", () => {
 // One group_vars file per host group, holding the variables of every role
 // applied to it, is the ordinary Ansible layout — so a sheet built from ONE
 // role's defaults sees the other roles' variables in its overlays and files
-// them as its own parameters. The project hand-wrote 8 `out_of_scope` entries to
+// them as its own parameters. One project hand-wrote 8 `out_of_scope` entries to
 // suppress that, boilerplate growing with the number of sheets.
 describe("ansible recipe: include/exclude key filters", () => {
   const files: Record<string, string> = {
@@ -463,7 +463,7 @@ describe("ansible recipe: a variable used by more than one directive in the temp
 // historical shape (a Pattern B row covering only the instances that set
 // it); rescuing it here too would additionally fabricate a base value for
 // every instance that never set it — a real behavior change, observed in the
-// project's keycloak sheet (kc_bootstrap_admin_username/password, set only on
+// real keycloak sheet (kc_bootstrap_admin_username/password, set only on
 // `local`) before this distinction was added.
 describe("ansible recipe: a defaults variable the template never resolves into a row", () => {
   const files: Record<string, string> = {

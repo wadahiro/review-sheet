@@ -1217,7 +1217,7 @@ program
     } catch (e) {
       // A ScaffoldableBuildError (assemble.ts's "no category" / "unused
       // project param", or enrich.ts's "no description") names the exact
-      // offending keys — the same list a project clean-room user, with nothing
+      // offending keys — the same list a clean-room user, with nothing
       // but the error text, transcribed BY HAND into sheet.yml. Print the
       // transcription for them: a paste-able params: fragment, on stdout
       // (unconditionally — this is the actionable payload of the failure, not

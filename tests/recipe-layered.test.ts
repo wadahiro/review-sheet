@@ -401,7 +401,7 @@ describe("layered recipe: include/exclude apply to the final (post-transform) ke
 // SKILL.md) — a regex that recognizes a value as a reference
 // into the sheet's own base/overlay layers and merges it in, using the SAME
 // keyMap/under_key vocabulary the "ansible" recipe already uses for
-// `{{ var }}`. project-shaped fixture: one whole-value reference (merges), one
+// `{{ var }}`. Realistic fixture: one whole-value reference (merges), one
 // composed reference (stays embedded, gains a ref site on the var's own
 // row), one dangling reference (stays embedded, warns), one plain literal
 // (untouched).
@@ -427,7 +427,7 @@ describe("layered recipe: static_files substitution (T6 — opt-in reference mer
     // SSO_SESSION_IDLE_TIMEOUT lives only in the "local" overlay — a
     // whole-value reference resolves via base OR overlay (see
     // substitution.ts's resolvesInLayers), and this is the shape the design
-    // doc's own project example uses (a per-environment session timeout).
+    // doc's own example uses (a per-environment session timeout).
     instances: ["local"],
   };
 
@@ -600,7 +600,7 @@ sheets:
         substitution:
           pattern: '\\$\\(env:([A-Za-z_][A-Za-z0-9_]*)\\)'
 `;
-  const project_YML = [
+  const APP_YML = [
     "ssoSessionIdleTimeout: $(env:SSO_SESSION_IDLE_TIMEOUT)",
     "sslRequired: external",
     "",
@@ -634,7 +634,7 @@ params:
       "/r/sheet.yml": projectYaml,
       "/r/default.env": "SSO_SESSION_IDLE_TIMEOUT=1800\n",
       "/r/local.env": "SSO_SESSION_IDLE_TIMEOUT=300\n",
-      "/r/app.yml": project_YML,
+      "/r/app.yml": APP_YML,
     };
   }
 
@@ -770,12 +770,12 @@ describe("layered recipe: static_files[].component", () => {
     const si = load();
     const bySource = si.embedded.map((e) => `${e.component}:${e.key}=${e.value}`).sort();
     expect(bySource).toEqual([
-      "master:bruteForceProtected=true",
-      "master:realm=master",
-      "master:sslRequired=external",
       "app:bruteForceProtected=false",
       "app:realm=app",
       "app:sslRequired=external",
+      "master:bruteForceProtected=true",
+      "master:realm=master",
+      "master:sslRequired=external",
     ]);
   });
 

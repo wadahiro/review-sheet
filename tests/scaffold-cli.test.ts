@@ -4,7 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
-// T5: formalizes a workflow a project clean-room user invented on their own —
+// T5: formalizes a workflow a clean-room user invented on their own —
 // run `import --spec` once against an empty `params:`, transcribe the exact
 // key list the "no category" error printed straight into sheet.yml. This is
 // end-to-end coverage through the real CLI (not just assemble.ts/enrich.ts's

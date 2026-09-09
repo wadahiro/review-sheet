@@ -849,7 +849,7 @@
     "file": "tests/fixtures/mixed-axis/roles/sso/files/realm-app.json",
     "parser": "json",
     "count": 5,
-    "sha": "0ab9fd8c03a9fade"
+    "sha": "1199c0bd29b7ce10"
   },
   {
     "file": "tests/fixtures/mixed-axis/roles/sso/templates/keycloak.conf.j2",
@@ -861,7 +861,7 @@
     "file": "tests/fixtures/mixed-axis/rs/build.yml",
     "parser": "yaml",
     "count": 18,
-    "sha": "4f1b9eea85cb885a"
+    "sha": "8d9291e94a3b53cc"
   },
   {
     "file": "tests/fixtures/mixed-axis/rs/metadata/realm@1.yml",

@@ -883,7 +883,7 @@ params:
   });
 });
 
-// T5: formalizing a workflow a project clean-room user invented on their own —
+// T5: formalizing a workflow a clean-room user invented on their own —
 // run the build once against an empty `params:`, transcribe the exact key
 // list the error printed straight into sheet.yml. assembleSheets now throws
 // a ScaffoldableBuildError (instead of a plain Error) for exactly this
@@ -1082,7 +1082,7 @@ params:
 // sheet in the lookup at all — so two sheets sharing a key (typically two
 // Ansible roles reading the same group_vars file) shared whatever category/
 // description that key had, regardless of which sheet actually declared it.
-// The project's own incident: `httpd_server_name` leaked into the "keycloak
+// A real project's own incident: `httpd_server_name` leaked into the "keycloak
 // configuration" sheet's drafts and picked up the httpd sheet's `category:
 // General` — no error, nothing to notice. These tests reproduce that shape
 // directly against assemble.ts and confirm a `sheets:`-namespaced project
