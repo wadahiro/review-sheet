@@ -20,6 +20,12 @@ import type { Category } from "../src/types";
 const SHEET_YML = "sheets:\n  web:\n    params: {}\n";
 const readFile = (p: string): string | null => (p === "/sheet.yml" ? SHEET_YML : null);
 
+// A per-row deployed_file (sheet.yml), rather than the sheet-wide deployedFiles
+// map above — the case where only SOME of a sheet's rows are verifiable on the
+// host (the rest read from an API the sheet has no file for at all).
+const SHEET_YML_PER_PARAM = "sheets:\n  web:\n    params:\n      Timeout:\n        deployed_file: /etc/httpd/conf/httpd.conf\n";
+const readFilePerParam = (p: string): string | null => (p === "/sheet.yml" ? SHEET_YML_PER_PARAM : null);
+
 function sheetWith(deployed: string | undefined): Category[] {
   const si = {
     name: "web",
@@ -60,5 +66,35 @@ describe("a category derived from a file", () => {
     expect(tops).toHaveLength(1);
     expect(tops[0].file_path).toBeUndefined();
     expect(tops[0].source_file).toBeUndefined();
+  });
+
+  // sheet.yml's per-param `deployed_file` is a STATED host path too — the same
+  // kind of fact `deployedFiles` is, just narrower (one row, not the whole
+  // sheet), for the row that does not follow its neighbours (a sheet reviewed
+  // mostly through an API, one setting of which is actually read from a file).
+  // `rawFileOf` already named the category after it; the mark used to stop
+  // there, leaving `file_path` unset on a category whose name WAS the deployed
+  // path.
+  it("says which deployed file it is from a project-declared per-param path", () => {
+    const si = {
+      name: "web",
+      instances: [],
+      layers: [{ kind: "base" as const, entries: new Map() }],
+      embedded: [
+        {
+          key: "Timeout",
+          value: "60",
+          source: { file: "roles/web/templates/httpd.conf.j2", line: 1, path: "Timeout" },
+        },
+      ],
+    };
+    const out = assembleSheets([si] as never, {
+      readFile: readFilePerParam,
+      projectPath: "/sheet.yml",
+      instances: [],
+      strictMetadata: false,
+    } as never);
+    const tops = out.sheets[0].categories as Category[];
+    expect(tops.map((c) => [c.name, c.file_path])).toEqual([["/etc/httpd/conf/httpd.conf", "/etc/httpd/conf/httpd.conf"]]);
   });
 });

@@ -1897,6 +1897,17 @@ function fileDrafts(
   for (const [, f] of componentFiles ?? []) if (f.filePath) deployedPaths.add(f.filePath);
   for (const [, p2] of deployedFiles ?? []) deployedPaths.add(p2);
   if (sheetArtifact) deployedPaths.add(sheetArtifact);
+  // `rawFileOf`'s own narrowest arm — sheet.yml's per-param `deployed_file` — is
+  // a host path by its own doc comment, same as componentFiles/deployedFiles/
+  // sheetArtifact above; only `rawFileOf`'s fallback to `fileCategory` is
+  // ambiguous. Without this a category named after a project-declared
+  // deployed_file got no file_path at all: `rawFileOf` named it correctly but
+  // nothing told `derivedFileMarks` the name it chose was a deployed path
+  // rather than a guess.
+  for (const d of drafts) {
+    const stated = paramForRow(projectMeta, sheetName, d.component, d.key)?.deployed_file;
+    if (stated !== undefined) deployedPaths.add(stated);
+  }
   const sourcePaths = new Set<string>();
   for (const [, f] of componentFiles ?? []) if (f.sourceFile) sourcePaths.add(f.sourceFile);
   if (sheetTemplate) sourcePaths.add(sheetTemplate);
