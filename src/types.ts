@@ -608,9 +608,12 @@ export type ParameterBase = {
   // layout moves no review target, no apply target and no diff key.
   sub_category?: string[];
   // The file this row is a line of, carried only on a sheet whose headings are
-  // NOT files — there the heading already answers it. Display only: it marks a
-  // heading that holds rows from more than one file, so a reader does not take
-  // two files' settings for one file's. Always the DEPLOYED file, never the
+  // NOT files — there the heading already answers it. It marks a heading that
+  // holds rows from more than one file, so a reader does not take two files'
+  // settings for one file's — and testplan.ts's rowsOf reads it too, ahead of
+  // the category/sheet path, for the same reason: a category mixing an
+  // API-only row with a file-backed one has no single path to fall back to,
+  // and this is the row's own stated one. Always the DEPLOYED file, never the
   // row's source: a value defined in a vars file and interpolated into a
   // template is a line of the template.
   deployed_file?: string;

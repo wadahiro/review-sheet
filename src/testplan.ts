@@ -37,7 +37,9 @@ export type TestItem = {
   // answer this item at all: the plan says what to check and where to look, and
   // the thing that looks is outside. Absent where the sheet describes no
   // deployed file (a product's API-side configuration, a cloud resource), which
-  // is itself the reason such an item usually comes back not run.
+  // is itself the reason such an item usually comes back not run. Usually the
+  // sheet/category's own path (rowsOf), but a row's own deployed_file wins
+  // when it has one — the row that does not follow its neighbours.
   file?: string;
   kind: TestKind;
   // WHO decided the expected value — a different question from what it is, and
@@ -176,7 +178,19 @@ const rowsOf = (sheet: Sheet): Row[] => {
       const oos = c.out_of_scope ?? inherited;
       const here = [...path, c.name];
       const where = path.length === 0 ? (c.file_path ?? sheet.file_path) : file;
-      for (const p of c.params ?? []) out.push({ p, path: here, component: here[0], ...(where === undefined ? {} : { file: where }), outOfScope: p.out_of_scope ?? oos });
+      for (const p of c.params ?? []) {
+        // A row's OWN deployed_file (sheet.yml, per-param) wins over the
+        // category/sheet path: it is the stated, narrowest fact — the row
+        // that does not follow its neighbours (a category reviewed mostly
+        // through an API, one setting of which really is read from a file) —
+        // the same "stated beats derived, narrowest first" order assemble.ts's
+        // rawFileOf already applies when it names a category after this same
+        // field. Never source.file: that is a REPO path (see resolveSource in
+        // prompt.ts), while deployed_file is documented (types.ts) as always
+        // the deployed file, the same address space item.file needs.
+        const rowFile = p.deployed_file ?? where;
+        out.push({ p, path: here, component: here[0], ...(rowFile === undefined ? {} : { file: rowFile }), outOfScope: p.out_of_scope ?? oos });
+      }
       walk(c.categories ?? [], here, oos, where);
     }
   };

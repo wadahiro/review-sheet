@@ -328,4 +328,51 @@ describe("the file an item is checked in", () => {
     const { plan } = buildTestPlan(withGroup(TESTED, { instances: ["staging"] }));
     expect(plan.items[0].file).toBeUndefined();
   });
+
+  // A row's OWN deployed_file (sheet.yml, per-param) wins over the category:
+  // the row that does not follow its neighbours — a category reviewed mostly
+  // through an API, one setting of which really is read from a file — has no
+  // single category path to fall back to, and this is the row's own stated
+  // one. Every other row of the SAME category, with no deployed_file of its
+  // own, stays exactly as file-less as before.
+  it("is the row's own deployed_file when the category has none", () => {
+    const { plan } = buildTestPlan(
+      withGroup(TESTED, {
+        instances: ["staging"],
+        categories: [
+          {
+            name: "General",
+            params: [
+              { key: "file_backed", description: "d", origin: "common", value: "1", deployed_file: "/etc/x.conf" },
+              { key: "api_only", description: "d", origin: "common", value: "2" },
+            ],
+          },
+        ],
+      })
+    );
+    expect(plan.items.map((i) => [i.target.key, i.file])).toEqual([
+      ["file_backed", "/etc/x.conf"],
+      ["api_only", undefined],
+    ]);
+  });
+
+  // …and it wins even when the category DOES have a path: the row is more
+  // specific than the heading, the same "stated beats derived, narrowest
+  // first" order assemble.ts's rawFileOf already applies when it names a
+  // category after this same field.
+  it("overrides the category's own path", () => {
+    const { plan } = buildTestPlan(
+      withGroup(TESTED, {
+        instances: ["staging"],
+        file_path: "/etc/httpd/conf/httpd.conf",
+        categories: [
+          {
+            name: "c",
+            params: [{ key: "k", description: "d", origin: "common", value: "1", deployed_file: "/etc/other.conf" }],
+          },
+        ],
+      })
+    );
+    expect(plan.items[0].file).toBe("/etc/other.conf");
+  });
 });
