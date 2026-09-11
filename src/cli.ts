@@ -540,7 +540,7 @@ program
       const model = JSON.parse(readFileSync(opts.input, "utf-8")) as ParameterSheetInput;
       registerModelChannels(model);
       const { plan } = buildTestPlan(model);
-      const out = collectPlan(plan, model.builds);
+      const out = collectPlan(plan, model.builds, model.defaults_checked_by);
       const text = JSON.stringify(out, null, 2);
       if (opts.output === undefined) console.log(text);
       else {
@@ -577,7 +577,7 @@ program
         opts.plan === undefined ? buildTestPlan(model).plan : (JSON.parse(readFileSync(opts.plan, "utf-8")) as TestPlan);
       const observations = opts.observations.map((f) => validateObservation(JSON.parse(readFileSync(f, "utf-8"))));
       const lang = opts.lang === "en" ? "en" : "ja";
-      const outcome = judgeFiles(plan, observations, { lang, documents: model.documents, idFields: model.id_fields, builds: model.builds, rpmCommand: rpmQuery(model.builds) });
+      const outcome = judgeFiles(plan, observations, { lang, documents: model.documents, idFields: model.id_fields, builds: model.builds, rpmCommand: rpmQuery(model.builds), defaultsCheckedBy: model.defaults_checked_by });
       const functional = judgeFunctional(plan, observations, { lang });
       const mine: TestResults = {
         runs: {},

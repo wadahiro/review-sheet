@@ -243,6 +243,7 @@ export function assembleFromSpecWithReport(
         .map((b) => ({ sheet, product: b.product, version: String(b.version) }))
     ),
     channels: spec.channels,
+    defaultsCheckedBy: spec.defaults_checked_by,
     functionalChannels: spec.functional_channels,
     documents: spec.documents,
     idFieldsOut: spec.id_fields,

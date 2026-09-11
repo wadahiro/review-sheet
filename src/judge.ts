@@ -29,6 +29,7 @@ import type { Format } from "./extract.js";
 import type { Collected } from "./channel.js";
 import { registerKeycloakChannels } from "./channels/keycloak.js";
 import { buildMismatch, rpmVersions, packagesToQuery } from "./channels/rpm.js";
+import { compiledInFor, injectedOptions, lineOfCompiledIn } from "./channels/httpd.js";
 import type { TestItem, TestPlan } from "./testplan.js";
 import { listChannels, listFunctionalChannels, registerChannel, commandChannel, type Channel } from "./channel.js";
 import type { TestResult, TestResults } from "./testresults.js";
@@ -145,6 +146,8 @@ export type JudgeWords = {
   channelSilent: (host: string, how: string) => string;
   unreached: string;
   otherBuild: (what: string) => string;
+  injected: (path: string, what: string) => string;
+  builtDiffers: (value: string, how: string) => string;
   docUnreadable: string;
   noAddress: string;
   fromDocument: string;
@@ -168,6 +171,8 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     channelSilent: (host, how) => `${host} の ${how} はこの設定について何も報告していない`,
     unreached: "配備ファイルを持たず、これを答えるチャネルも宣言されていない",
     otherBuild: (what) => `このホストはシートが記述するビルドではない（${what}）ので、既定値のままとは言えない`,
+    injected: (path, what) => `${path} がコマンドラインで設定を渡している（${what}）ため、ファイルだけでは既定値のままとは言えない`,
+    builtDiffers: (value, how) => `このビルドの既定値は ${value}（${how}）で、シートが示す製品既定値と異なる`,
     docUnreadable: "取得した文書を読めない",
     noAddress: "この行は文書内の住所を持たない（シートがどこから来たか記録していない）",
     fromDocument: "取得した文書",
@@ -189,6 +194,8 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     channelSilent: (host, how) => `${how} on ${host} reports nothing about this setting`,
     unreached: "no deployed file, and no channel declared that answers it",
     otherBuild: (what) => `this host is not the build the sheet describes (${what}), so nothing here can say the default still applies`,
+    injected: (path, what) => `${path} passes configuration on the command line (${what}), so the file alone cannot say the default is in force`,
+    builtDiffers: (value, how) => `this build's own default is ${value} (${how}), which is not the product default the sheet states`,
     docUnreadable: "the collected document could not be read",
     noAddress: "this row carries no address inside a document",
     fromDocument: "the collected document",
@@ -209,6 +216,7 @@ export function judgeFiles(
     // one this host has.
     builds?: { sheet: string; product: string; version: string }[];
     rpmCommand?: string;
+    defaultsCheckedBy?: { product: "httpd"; file: string; command?: string; aside?: string }[];
   } = {}
 ): JudgeOutcome {
   const t = JUDGE_WORDS[opts.lang ?? "ja"];
@@ -316,6 +324,29 @@ export function judgeFiles(
         // a fact about one build, and reading another one's file answers the
         // row with a product the sheet never described — indistinguishable from
         // a correct answer.
+        // …and whether anything OTHER than this file decides the value. A
+        // binary whose compiled-in default differs from the manual the
+        // dictionary was written from is a finding; a file beside the
+        // configuration injecting options means the file alone cannot say.
+        const also = (opts.defaultsCheckedBy ?? []).find((d) => d.file === path);
+        if (also !== undefined) {
+          const injected = also.aside === undefined ? undefined : injectedOptions(held.files[also.aside]);
+          if (injected !== undefined) {
+            out.results.push({ target, at, evidence: { host, file: also.aside! }, status: "not_run", reason: t.injected(also.aside!, injected) });
+            continue;
+          }
+          const built = also.command === undefined ? undefined : compiledInFor(held.commands?.[also.command], key);
+          if (built !== undefined && item.expected !== undefined && built !== String(item.expected)) {
+            out.results.push({
+              target, at,
+              evidence: { host, command: also.command!, ...(lineOfCompiledIn(held.commands?.[also.command!], key) === undefined ? {} : { line: lineOfCompiledIn(held.commands?.[also.command!], key)! }) },
+              status: "fail",
+              detail: t.builtDiffers(built, also.command!),
+              ...(item.quiet === true ? {} : { actual: built }),
+            });
+            continue;
+          }
+        }
         const wrongBuild = buildOf(held, item.target.sheet, opts.builds ?? [], opts.rpmCommand);
         if (wrongBuild !== undefined) {
           out.results.push({
@@ -650,7 +681,11 @@ export const rpmQuery = (builds: { sheet: string; product: string; version: stri
     ? undefined
     : `rpm -q --qf '%{NAME} %{VERSION}-%{RELEASE}\n' ${packagesToQuery(builds).join(" ")}`;
 
-export function collectPlan(plan: TestPlan, builds?: { sheet: string; product: string; version: string }[]): CollectPlan {
+export function collectPlan(
+  plan: TestPlan,
+  builds?: { sheet: string; product: string; version: string }[],
+  defaults?: { file: string; command?: string; aside?: string }[]
+): CollectPlan {
   const files: Record<string, Set<string>> = {};
   const commands = new Set<string>();
   const channels = listChannels();
@@ -666,6 +701,12 @@ export function collectPlan(plan: TestPlan, builds?: { sheet: string; product: s
   // …and the one that says which build this host has, where the sheets pin one.
   const rpm = rpmQuery(builds);
   if (rpm !== undefined) commands.add(rpm);
+  // …and whatever else decides a default: the binary's own report, and the file
+  // beside the configuration.
+  for (const d of defaults ?? []) {
+    if (d.command !== undefined) commands.add(d.command);
+    if (d.aside !== undefined) for (const inst of Object.keys(files)) files[inst]!.add(d.aside);
+  }
   return {
     files: Object.fromEntries(Object.entries(files).map(([k, v]) => [k, [...v].sort()])),
     commands: [...commands].sort(),

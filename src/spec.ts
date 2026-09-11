@@ -63,6 +63,10 @@ export type BuildSpec = {
   // The ids are the project's — a product plugin cannot know what a project
   // called its items — so the project binds them.
   functional_channels?: Array<{ channel: "keycloak"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string }>;
+  // What ELSE decides whether a file's "the product's own default applies" row
+  // is true: a binary whose compiled-in default differs from its manual, and a
+  // file beside the configuration that injects options on the command line.
+  defaults_checked_by?: Array<{ product: "httpd"; file: string; command?: string; aside?: string }>;
   channels?: Array<{
     channel: "command";
     sheet: string;
@@ -300,6 +304,20 @@ const specSchema = {
           login_page: { type: "string" },
           login_assets: { type: "string" },
           ldap_connection: { type: "string" },
+        },
+      },
+    },
+    defaults_checked_by: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["product", "file"],
+        additionalProperties: false,
+        properties: {
+          product: { const: "httpd" },
+          file: { type: "string" },
+          command: { type: "string" },
+          aside: { type: "string" },
         },
       },
     },

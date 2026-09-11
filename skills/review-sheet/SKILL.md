@@ -3523,6 +3523,24 @@ back not run, with the version it found beside the one the sheet names. A
 product the tool does not know to be a package — a cloud API, something shipped
 as a tarball — is skipped rather than asked about.
 
+**What else decides whether a default is really in force.** A file says nothing
+was set; that is only the whole answer when nothing else sets it. Two things
+routinely do, and both are the product's knowledge:
+
+```yaml
+defaults_checked_by:
+  - product: httpd
+    file: /etc/httpd/conf/httpd.conf
+    command: httpd -V              # the BINARY's compiled-in defaults
+    aside: /etc/sysconfig/httpd    # a file beside it that injects options
+```
+
+A distribution's build routinely differs from the manual a dictionary was
+written from — `PidFile` is the usual one — and a `-C "Directive value"` in
+`OPTIONS` sets a directive that appears in no configuration file at all. The
+first is a finding; the second means the file alone cannot say, and the row
+comes back not run with what it found. `collect-plan` asks for both.
+
 **A PRODUCT's knowledge belongs to the product, not to one project.** What a
 Keycloak login page's asset URLs say about its theme, what
 `testLDAPConnection`'s reply means — that is the same in every project running
