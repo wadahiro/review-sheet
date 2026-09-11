@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import "../src/parsers/index";
 import { commandChannel, registerChannel, listChannels } from "../src/channel";
-import { judgeFiles, collectPlan, answerTheRest, type Observation } from "../src/judge";
+import { judgeFiles, collectPlan, answerTheRest, judgeFunctional, type Observation } from "../src/judge";
 import type { TestItem, TestPlan } from "../src/testplan";
 
 const item = (key: string, expected?: string, sheet = "os baseline"): TestItem =>
@@ -141,5 +141,55 @@ describe("what no route reached", () => {
       ["stg", "no deployed file, and no channel declared that answers it"],
       ["prod", "this environment has not been collected"],
     ]);
+  });
+});
+
+// An item with no row behind it, where a COMMAND answers it. It gets what the
+// value items get — one verdict per host, the line it was read at, and the
+// three ways a host can fail to answer told apart — so a project writes the
+// rule only for an item a command cannot settle, and never the loop.
+describe("an item with no row behind it, answered by a command", () => {
+  const fplan = (check?: { command: string; read: { pattern: string }; expect: string }): TestPlan =>
+    ({
+      metadata: { title: "t" },
+      units: [{ name: "u", declaration: { method: { ja: "m" } }, sheets: [] }],
+      items: [],
+      functional: [{ unit: "u", id: "time", text: { en: "the clock is in step" }, intrusive: false, instance: "stg", ...(check === undefined ? {} : { check }) }],
+    }) as TestPlan;
+  const CHECK = { command: "chronyc tracking", read: { pattern: "^Leap status\\s*:\\s*(.+?)\\s*$" }, expect: "Normal" };
+  const two = (a: string | null, b: string | null): Observation => ({
+    environment: "stg",
+    hosts: { web01: { files: {}, commands: { "chronyc tracking": a } }, web02: { files: {}, commands: { "chronyc tracking": b } } },
+  });
+
+  it("passes when every host says what was expected", () => {
+    const out = judgeFunctional(fplan(CHECK), [two("Reference ID : x\nLeap status     : Normal\n", "Leap status     : Normal\n")], { at: "X", lang: "en" });
+    expect(out[0].status).toBe("pass");
+    expect(out[0].evidence?.command).toBe("chronyc tracking");
+  });
+
+  // A fleet is only as configured as its least configured node, and one item
+  // holds one answer — so the failing host is the one it names.
+  it("fails on the worst host, and names it", () => {
+    const out = judgeFunctional(fplan(CHECK), [two("Leap status     : Normal\n", "Leap status     : Not synchronised\n")], { at: "X", lang: "en" });
+    expect(out[0].status).toBe("fail");
+    expect(out[0].evidence?.host).toBe("web02");
+    expect(out[0].reason).toContain("Not synchronised");
+  });
+
+  it("says a host without the command does not apply the setting", () => {
+    const out = judgeFunctional(fplan(CHECK), [two(null, null)], { at: "X", lang: "en" });
+    expect(out[0].status).toBe("not_run");
+    expect(out[0].reason).toContain("has no chronyc tracking");
+  });
+
+  // An item a command cannot settle is left alone: a project answers it, and
+  // answering it here too would be a second verdict.
+  it("leaves an item that declares no command to the project", () => {
+    expect(judgeFunctional(fplan(undefined), [two("x", "x")], { at: "X", lang: "en" })).toEqual([]);
+  });
+
+  it("asks the collector for the command it declares", () => {
+    expect(collectPlan(fplan(CHECK)).commands).toEqual(["chronyc tracking"]);
   });
 });

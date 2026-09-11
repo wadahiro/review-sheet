@@ -440,6 +440,18 @@ export type FunctionalItem = {
   id?: string;
   text: LangText;
   intrusive?: boolean;
+  // …and how it is checked, where a command answers it. Declared here beside
+  // the item because that is where the item is: `collect-plan` reads the
+  // command from it, and `judge` reads the output the same way it reads a
+  // row's — the per-host loop, the verdict, the evidence and the three ways a
+  // host can fail to answer are the tool's, not a project's to write again.
+  check?: {
+    command: string;
+    read: { whole: true; lower?: boolean } | { pattern: string; map?: Record<string, string> } | { member: true };
+    // What the output has to say. A functional item has no row behind it, so
+    // it carries its own expectation rather than taking one from a sheet.
+    expect: string;
+  };
 };
 
 // Rows a deployed file cannot settle, and the command that can — carried from

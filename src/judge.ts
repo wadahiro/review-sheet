@@ -600,6 +600,8 @@ export function collectPlan(plan: TestPlan): CollectPlan {
     if (item.file === undefined) continue;
     (files[item.target.instance] ??= new Set()).add(item.file);
   }
+  // …and the commands the items with no row behind them declare.
+  for (const f of plan.functional) if (f.check !== undefined) commands.add(f.check.command);
   return {
     files: Object.fromEntries(Object.entries(files).map(([k, v]) => [k, [...v].sort()])),
     commands: [...commands].sort(),
@@ -647,6 +649,78 @@ export function answerTheRest(
       target: { sheet: item.target.sheet, path: item.target.path, key: item.target.key, instance: item.target.instance },
       status: "not_run",
       reason: collected.has(item.target.instance) ? t.unreached : t.notCollected,
+    });
+  }
+  return out;
+}
+
+// The items with no row behind them, where a command answers them. Everything
+// the value items already get: one verdict per host, the line of the output it
+// was read at, and the three ways a host can fail to answer told apart — a
+// command it does not have, an output that says nothing about this, an
+// environment nobody collected.
+//
+// A project writes the rule for an item a command cannot settle (a date
+// compared with now, a count compared with the fleet's size) and hands it back
+// with `-a`. What it no longer writes is the loop around it.
+export function judgeFunctional(
+  plan: TestPlan,
+  observations: Observation[],
+  opts: { lang?: "ja" | "en"; at?: string } = {}
+): NonNullable<TestResults["functional"]> {
+  const t = JUDGE_WORDS[opts.lang ?? "ja"];
+  const at = opts.at ?? new Date().toISOString();
+  const byEnv = new Map(observations.map((o) => [o.environment, o]));
+  const out: NonNullable<TestResults["functional"]> = [];
+  for (const f of plan.functional) {
+    if (f.check === undefined) continue;
+    const base = {
+      unit: f.unit,
+      ...(f.id === undefined ? {} : { id: f.id }),
+      item: typeof f.text === "string" ? f.text : (f.text.ja ?? f.text.en ?? ""),
+      instance: f.instance,
+    };
+    const obs = byEnv.get(f.instance);
+    if (obs === undefined || Object.keys(obs.hosts).length === 0) {
+      out.push({ ...base, status: "not_run", reason: t.notCollected });
+      continue;
+    }
+    // Every host, and the verdict is the WORST of them: a fleet is only as
+    // configured as its least configured node, and one item can hold only one
+    // answer — so the failing host is the one it names.
+    const seen: { host: string; status: "pass" | "fail" | "not_run"; why?: string; line?: number; value?: string }[] = [];
+    const channel = commandChannel({ sheet: "", command: f.check.command, read: f.check.read }, `functional:${f.id ?? base.item}`);
+    for (const [host, held] of Object.entries(obs.hosts)) {
+      const collected = held.commands ?? {};
+      if (collected[f.check.command] === null) {
+        seen.push({ host, status: "not_run", why: t.noCommand(host, f.check.command) });
+        continue;
+      }
+      // The channel reads by the ROW's key; a functional item has none, so it
+      // is asked with its own id — which is what `{key}` in a pattern means
+      // here, and why an item that needs no key can leave the pattern plain.
+      const got = channel.answer({ target: { sheet: "", path: [], key: f.id ?? "", instance: f.instance } } as never, collected);
+      if (got === undefined) {
+        seen.push({ host, status: "not_run", why: t.channelSilent(host, f.check.command) });
+        continue;
+      }
+      seen.push({ host, status: got.value === f.check.expect ? "pass" : "fail", line: got.line, value: got.value });
+    }
+    const failed = seen.filter((x) => x.status === "fail");
+    const ran = seen.filter((x) => x.status !== "not_run");
+    if (ran.length === 0) {
+      out.push({ ...base, status: "not_run", reason: seen[0]?.why ?? t.notCollected });
+      continue;
+    }
+    const point = failed[0] ?? ran[0]!;
+    out.push({
+      ...base,
+      status: failed.length === 0 ? "pass" : "fail",
+      detail: `${f.check.command}（${ran.length} ホスト）`,
+      ...(failed.length === 0
+        ? {}
+        : { reason: `${failed.map((x) => x.host).join(", ")}: ${failed[0]!.value} — ${f.check.expect} を期待` }),
+      evidence: { host: point.host, command: f.check.command, ...(point.line === undefined ? {} : { line: point.line }) },
     });
   }
   return out;

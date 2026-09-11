@@ -102,6 +102,8 @@ export type TestDecider = "project" | "vendor-kept" | "vendor-changed" | "produc
 export type FunctionalTestItem = {
   unit: string;
   unitLabel?: LangText;
+  // How a command answers it, where one does — see FunctionalItem.check.
+  check?: FunctionalItem["check"];
   // What a result names it by, and it is the id where the project gave one:
   // prose is a label, not a join. See FunctionalItem.
   id?: string;
@@ -310,6 +312,7 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
           ...(f.id === undefined ? {} : { id: f.id }),
           text: f.text,
           intrusive: f.intrusive === true,
+          ...(f.check === undefined ? {} : { check: f.check }),
           instance,
         });
       }

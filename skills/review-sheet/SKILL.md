@@ -3498,6 +3498,26 @@ groups:
       not_tested: { en: Not tested in this phase }
 ```
 
+An item a COMMAND settles declares how, beside itself, and the tool does the
+rest — one verdict per host, the line of the output it was read at, and a
+command the host does not have told apart from an output that says nothing:
+
+```yaml
+      functional:
+        - id: time-synced
+          text: { en: The clock is in step }
+          check:
+            command: chronyc tracking
+            read: { pattern: '^Leap status\s*:\s*(.+?)\s*$' }
+            expect: Normal
+```
+
+Declare it only where one command's output really is the answer. An item whose
+rule compares against something else — a count against the fleet's size, a date
+against today, a value against what a deployed file says — is a rule, and a
+project writes it and hands it back with `-a`. Reaching for a bigger vocabulary
+here would put those rules where no test of this tool can break them.
+
 `functional` items are ITEMS OF THE PLAN: planned once per environment, counted
 in the summary, and covered by `validate --plan` exactly like the derived ones.
 They used to be read straight from the declaration at render time, which meant a

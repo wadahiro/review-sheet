@@ -689,7 +689,24 @@
                 "properties": {
                   "id": { "type": "string", "description": "What a result joins on. The sentence is a label; an id is a join that survives rewording." },
                   "text": { "$ref": "#/$defs/langText" },
-                  "intrusive": { "type": "boolean", "description": "Answering this item disturbs the running system (stopping a service to prove it stops). The runner gates on it; the record says so where such an item was not permitted." }
+                  "intrusive": { "type": "boolean", "description": "Answering this item disturbs the running system (stopping a service to prove it stops). The runner gates on it; the record says so where such an item was not permitted." },
+                  "check": {
+                    "type": "object",
+                    "required": ["command", "read", "expect"],
+                    "additionalProperties": false,
+                    "description": "How a command answers this item. `collect-plan` reads the command from here and `judge` reads its output — the per-host loop, the verdict and the evidence are the tool's.",
+                    "properties": {
+                      "command": { "type": "string" },
+                      "expect": { "type": "string" },
+                      "read": {
+                        "oneOf": [
+                          { "type": "object", "required": ["whole"], "additionalProperties": false, "properties": { "whole": { "const": true }, "lower": { "type": "boolean" } } },
+                          { "type": "object", "required": ["pattern"], "additionalProperties": false, "properties": { "pattern": { "type": "string" }, "map": { "type": "object", "additionalProperties": { "type": "string" } } } },
+                          { "type": "object", "required": ["member"], "additionalProperties": false, "properties": { "member": { "const": true } } }
+                        ]
+                      }
+                    }
+                  }
                 }
               }
             ]
