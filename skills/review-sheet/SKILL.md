@@ -3606,12 +3606,18 @@ logged, the issuer a realm publishes, the date format `openssl s_client` prints
 — is READ the same way everywhere, while what the answer should BE is the
 project's: the size of this fleet, the hostname this design deploys, how much
 warning it wants before a certificate expires. So `src/channels/` also exports
-plain readers (`readyReport`, `clusterMembers`, `issuerOf`/`issuerFor`,
-`certExpiry`/`handshakeFailure`), and a project's own rule calls them instead of
-carrying a second copy of the regex. Telling "could not reach the endpoint" from
-"the certificate expired" is exactly that kind of knowledge: three layers print
-three different sentences, and a project that reads them as a failure reports a
-finding nobody can act on.
+plain readers — the product's (`readyReport`, `clusterMembers`,
+`issuerOf`/`issuerFor`, `certExpiry`/`handshakeFailure`) and the operating
+system's (`unitStates`/`isEnabled`/`isAbsent`/`AFTER`, `maxOpenFiles`,
+`listeningPorts`, `configErrors`) — and a project's own rule calls them instead
+of carrying a second copy of the regex. Telling "could not reach the endpoint"
+from "the certificate expired" is exactly that kind of knowledge: three layers
+print three different sentences, and a project that reads them as a failure
+reports a finding nobody can act on. So is a unit the host does not have saying
+`not-found` rather than `disabled`, and `ss` printing the interface in the same
+column as the port. Each is a format or a vocabulary, never a policy: which
+units are expected, which ports, how many open files, and how much warning
+before a certificate expires all stay with whoever asks.
 
 **One environment, several collectors.** What reaches a fleet of hosts and what
 reaches a cloud API are different programs run at different moments, and both
