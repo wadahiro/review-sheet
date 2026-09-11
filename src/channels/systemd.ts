@@ -1,3 +1,5 @@
+import { registerProbeRule } from "../channel.js";
+
 // What systemctl says about a unit.
 //
 // Two readings every project running systemd needs, and neither is about any
@@ -40,3 +42,20 @@ export const AFTER: Record<string, string> = {
   start: "active",
   restart: "active",
 };
+
+// Every unit the host HAS is enabled. Which units were asked about is the
+// collector's decision and travels in the output itself; that a unit the host
+// does not have is not a finding is systemd's, and is the only judgement here.
+export function registerSystemdRules(binding: { units_enabled?: string; sheet?: string }): void {
+  const id = binding.units_enabled;
+  if (id === undefined) return;
+  registerProbeRule({
+    name: "systemd.units-enabled",
+    covers: (x) => x === id,
+    ...(binding.sheet === undefined ? {} : { sheet: binding.sheet }),
+    verdict: (probe) => {
+      const bad = [...unitStates(probe.text)].filter(([, state]) => !isEnabled(state) && !isAbsent(state));
+      return bad.length === 0 ? { ok: true } : { ok: false, why: bad.map(([u, st]) => `${u} = ${st}`).join(", ") };
+    },
+  });
+}

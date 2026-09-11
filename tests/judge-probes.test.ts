@@ -7,7 +7,8 @@
 // "cannot be asked here" and "ran and failed" apart.
 
 import { describe, it, expect } from "bun:test";
-import { judgeProbes, type ProbeResult, type ObservedHost } from "../src/judge";
+import { judgeProbes, type ProbeResult, type ObservedHost, type Observation } from "../src/judge";
+import type { TestPlan } from "../src/testplan";
 
 const held = (probes: Record<string, ProbeResult>): ObservedHost => ({ files: {}, probes });
 
@@ -86,5 +87,57 @@ describe("one functional item across every host", () => {
   it("points at the line a rule read its answer at", () => {
     const got = judge(two(ran(), ran()), () => ({ ok: false, why: "no", line: 12 }));
     expect(got.answer.evidence?.line).toBe(12);
+  });
+});
+
+// A rule with no project fact in it is the PRODUCT's, and the tool's own fold
+// runs it — so a project supplies no loop, no answers file and no exit code.
+describe("a rule the tool itself holds", () => {
+  const clear = (): void => {
+    for (const k of ["review-sheet.probe-rules.v1", "review-sheet.functional-channels.v1"]) {
+      const arr = (globalThis as Record<symbol, unknown>)[Symbol.for(k)] as unknown[];
+      if (Array.isArray(arr)) arr.length = 0;
+    }
+  };
+
+  it("answers the item it was bound to, across every host, and files its evidence", async () => {
+    clear();
+    const { registerModelChannels, judgeFunctional } = await import("../src/judge");
+    registerModelChannels({ functional_rules: [{ rule: "systemd", units_enabled: "service-enabled", sheet: "os baseline" }] });
+    const plan = {
+      metadata: { title: "t" },
+      units: [{ name: "u", declaration: { method: { ja: "m" } }, sheets: ["s"] }],
+      items: [],
+      functional: [{ unit: "u", id: "service-enabled", text: "every unit is enabled", instance: "stg", intrusive: false }],
+    } as unknown as TestPlan;
+    const obs = [{
+      environment: "stg",
+      collected_at: "X",
+      hosts: {
+        web01: { files: {}, probes: { "service-enabled": { how: "systemctl is-enabled a b", ran: true, text: "a enabled\nb enabled\n" } } },
+        // …and the one that is not: the fleet is as configured as its least
+        // configured node, and the tool's fold is what says so.
+        web02: { files: {}, probes: { "service-enabled": { how: "systemctl is-enabled a b", ran: true, text: "a enabled\nb disabled\n" } } },
+      },
+    }] as unknown as Observation[];
+    const got = judgeFunctional(plan, obs, { lang: "ja" });
+    expect(got.answers[0]!.status).toBe("fail");
+    expect(got.answers[0]!.reason).toContain("web02");
+    expect(got.answers[0]!.reason).toContain("b = disabled");
+    expect(got.evidence.map((d) => [d.host, d.sheet])).toEqual([["web01", "os baseline"], ["web02", "os baseline"]]);
+  });
+
+  // A unit the host does not have is not a finding — that is systemd's, and
+  // the only judgement in the rule.
+  it("does not fail a unit the host does not have", async () => {
+    clear();
+    const { registerModelChannels, judgeFunctional } = await import("../src/judge");
+    registerModelChannels({ functional_rules: [{ rule: "systemd", units_enabled: "service-enabled" }] });
+    const plan = {
+      metadata: { title: "t" }, units: [{ name: "u", declaration: { method: { ja: "m" } }, sheets: ["s"] }], items: [],
+      functional: [{ unit: "u", id: "service-enabled", text: "x", instance: "stg", intrusive: false }],
+    } as unknown as TestPlan;
+    const obs = [{ environment: "stg", hosts: { web01: { files: {}, probes: { "service-enabled": { ran: true, text: "a enabled\nfw Failed to get unit file state for fw.service: No such file or directory\n" } } } } }] as unknown as Observation[];
+    expect(judgeFunctional(plan, obs, { lang: "ja" }).answers[0]!.status).toBe("pass");
   });
 });

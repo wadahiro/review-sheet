@@ -623,6 +623,7 @@ export type AssembleOpts = {
   defaultsCheckedBy?: { product: "httpd" | "keycloak"; file: string; command?: string; aside?: string }[];
   builds?: { sheet: string; product: string; version: string }[];
   functionalChannels?: { channel: "keycloak" | "aws-rds"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string; parameters_authored?: string }[];
+  functionalRules?: { rule: "keycloak" | "logrotate" | "systemd"; sheet?: string; health_ready?: string; config_syntax?: string; units_enabled?: string }[];
   documents?: { sheet: string; document?: string; address?: string; substitute?: string; router?: string }[];
   idFieldsOut?: string[];
   hooks?: AssembleHooks;
@@ -3089,6 +3090,7 @@ export function assembleSheetsWithReport(
     ...(opts.defaultsCheckedBy ? { defaults_checked_by: opts.defaultsCheckedBy } : {}),
     ...(opts.builds !== undefined && opts.builds.length > 0 ? { builds: opts.builds } : {}),
     ...(opts.functionalChannels ? { functional_channels: opts.functionalChannels } : {}),
+    ...(opts.functionalRules ? { functional_rules: opts.functionalRules } : {}),
     ...(opts.documents ? { documents: opts.documents } : {}),
     ...(opts.idFieldsOut ? { id_fields: opts.idFieldsOut } : {}),
     sheets,

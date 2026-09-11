@@ -1,3 +1,5 @@
+import { registerProbeRule } from "../channel.js";
+
 // What `logrotate -d` says about a configuration it was asked to read.
 //
 // A debug run prints what it WOULD do and, among it, its complaints about the
@@ -7,4 +9,22 @@
 
 export function configErrors(text: string | null | undefined): string[] {
   return (text ?? "").split("\n").filter((l) => /error:|unknown option|bad /i.test(l));
+}
+
+// A debug run that complains about nothing is the whole verdict — there is no
+// expectation for a project to supply. "not installed" is the host saying it
+// cannot be asked, which is a third answer and never a failure.
+export function registerLogrotateRules(binding: { config_syntax?: string; sheet?: string }): void {
+  const id = binding.config_syntax;
+  if (id === undefined) return;
+  registerProbeRule({
+    name: "logrotate.config-syntax",
+    covers: (x) => x === id,
+    ...(binding.sheet === undefined ? {} : { sheet: binding.sheet }),
+    verdict: (probe) => {
+      if (/not installed/.test(probe.text ?? "")) return { ok: null, why: "logrotate がこのホストに無い" };
+      const bad = configErrors(probe.text);
+      return bad.length === 0 ? { ok: true } : { ok: false, why: bad.slice(0, 2).join(" / ") };
+    },
+  });
 }

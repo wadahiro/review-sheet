@@ -63,6 +63,9 @@ export type BuildSpec = {
   // The ids are the project's — a product plugin cannot know what a project
   // called its items — so the project binds them.
   functional_channels?: Array<{ channel: "keycloak" | "aws-rds"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string; parameters_authored?: string }>;
+  // …and the rules that contain no project fact at all — what a product's own
+  // answer MEANS — bound to whatever this project calls the item.
+  functional_rules?: Array<{ rule: "keycloak" | "logrotate" | "systemd"; sheet?: string; health_ready?: string; config_syntax?: string; units_enabled?: string }>;
   // What ELSE decides whether a file's "the product's own default applies" row
   // is true: a binary whose compiled-in default differs from its manual, a file
   // beside the configuration that injects options on the command line, and a
@@ -301,6 +304,21 @@ const specSchema = {
         // plugin that does. An entry that does neither answers nothing, and
         // silently — which is the one thing a declaration must never do.
         oneOf: [{ required: ["document", "address"] }, { required: ["router"] }],
+      },
+    },
+    functional_rules: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["rule"],
+        additionalProperties: false,
+        properties: {
+          rule: { enum: ["keycloak", "logrotate", "systemd"] },
+          sheet: { type: "string" },
+          health_ready: { type: "string" },
+          config_syntax: { type: "string" },
+          units_enabled: { type: "string" },
+        },
       },
     },
     functional_channels: {

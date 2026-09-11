@@ -27,14 +27,16 @@
 import { extractFile } from "./extract.js";
 import type { Format } from "./extract.js";
 import type { Collected } from "./channel.js";
-import { registerKeycloakChannels } from "./channels/keycloak.js";
+import { registerKeycloakChannels, registerKeycloakRules } from "./channels/keycloak.js";
 import { registerAwsRdsRouter, registerAwsRdsChannel } from "./channels/aws-rds.js";
+import { registerLogrotateRules } from "./channels/logrotate.js";
+import { registerSystemdRules } from "./channels/systemd.js";
 import { buildMismatch, rpmVersions, packagesToQuery } from "./channels/rpm.js";
 import { compiledInFor, injectedOptions, lineOfCompiledIn } from "./channels/httpd.js";
 import { effectiveConfig, isProductDefault, lineOfEffective } from "./channels/keycloak.js";
 import type { TestItem, TestPlan } from "./testplan.js";
 import type { LangText } from "./types.js";
-import { listChannels, listFunctionalChannels, registerChannel, commandChannel, getDocumentRouter, type Channel } from "./channel.js";
+import { listChannels, listFunctionalChannels, listProbeRules, registerChannel, commandChannel, getDocumentRouter, type Channel } from "./channel.js";
 import type { TestResult, TestResults } from "./testresults.js";
 
 // One environment, as somebody collected it. The shape is a contract rather
@@ -1015,6 +1017,7 @@ export function registerModelChannels(model: {
   channels?: import("./types.js").ChannelSpec[];
   functional_channels?: { channel: string; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string; parameters_authored?: string }[];
   documents?: { router?: string }[];
+  functional_rules?: { rule: string; sheet?: string; health_ready?: string; config_syntax?: string; units_enabled?: string }[];
 }): number {
   for (const c of model.channels ?? []) {
     registerChannel(commandChannel(c, `${c.channel}:${c.sheet}:${c.command}`));
@@ -1030,11 +1033,19 @@ export function registerModelChannels(model: {
   // returned. A router named by no `documents:` entry is never registered: a
   // plugin that claims rows nobody asked it to is the same failure as one that
   // answers none.
+  // …and the rules that contain no project fact at all: what a readiness body,
+  // a logrotate dry run and `systemctl is-enabled` MEAN. The project names its
+  // own items, so it binds them, exactly as it binds a channel.
+  for (const r of model.functional_rules ?? []) {
+    if (r.rule === "keycloak") registerKeycloakRules(r);
+    if (r.rule === "logrotate") registerLogrotateRules(r);
+    if (r.rule === "systemd") registerSystemdRules(r);
+  }
   const routed = (model.documents ?? []).filter((d) => d.router !== undefined);
   for (const d of routed) {
     if (d.router === "aws-rds") registerAwsRdsRouter();
   }
-  return (model.channels ?? []).length + (model.functional_channels ?? []).length + routed.length;
+  return (model.channels ?? []).length + (model.functional_channels ?? []).length + routed.length + (model.functional_rules ?? []).length;
 }
 
 // EVERY plan item ends with an answer. What is left after the files, the
@@ -1131,6 +1142,26 @@ export function judgeFunctional(
         }
         continue;
       }
+    }
+    // …and a RULE, where the project registered one for this item. The fold is
+    // this tool's either way; what a rule adds is the one thing a declaration
+    // cannot carry — what counts as a pass when the answer is not a value at
+    // an address.
+    const rule = f.id === undefined ? undefined : listProbeRules().find((r) => r.covers(f.id!));
+    if (rule !== undefined) {
+      const obs = byEnv.get(f.instance);
+      const { answer, documents } = judgeProbes(
+        f,
+        obs?.hosts ?? {},
+        (probe, ctx) => rule.verdict(probe, ctx),
+        { lang: opts.lang, at, ...(rule.sheet === undefined ? {} : { sheet: rule.sheet }) }
+      );
+      out.push(answer);
+      for (const d of documents) {
+        if (channelDocuments.some((x) => x.instance === d.instance && x.host === d.host && x.command === d.command)) continue;
+        channelDocuments.push(d);
+      }
+      continue;
     }
     if (f.check === undefined) continue;
     const obs = byEnv.get(f.instance);

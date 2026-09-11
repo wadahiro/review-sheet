@@ -80,6 +80,49 @@ export function listDocumentRouters(): DocumentRouter[] {
   return [...routers];
 }
 
+// A RULE FOR ONE HOST'S PROBE.
+//
+// A functional item whose answer is not a value at an address and not a
+// literal comparison needs a rule, and a rule is code. What this registry
+// changes is WHERE that code runs: registered here, the tool's own fold calls
+// it — every host, the worst answer, the failing host named, the bytes carried
+// — so a project supplies the rule and nothing else. Before it, a project ran
+// its own program, wrote an answers file and had it merged, and everything
+// that seam needed (clearing the file, gating on whether it was written,
+// agreeing on exit codes) was code nobody was judging anything with.
+//
+// Two kinds sit in the same registry. A rule with no project fact in it at all
+// — "the readiness endpoint answered 200 and no check reports DOWN" — is the
+// PRODUCT's and ships with the tool, bound to whatever the project calls that
+// item. One that compares against this deployment's own design is the
+// project's and is loaded from `./.review-sheet/rules/`.
+export type ProbeRule = {
+  name: string;
+  covers: (id: string) => boolean;
+  // Where the bytes it read are filed in the record.
+  sheet?: string;
+  // `probe` is what the collector recorded for this item on this host; `ctx`
+  // carries the host, everything else that host holds, and how many hosts
+  // answered — the fleet's own size, which is an expectation no literal can
+  // state.
+  verdict: (
+    probe: { how?: string; ran?: boolean; why?: string; ok?: boolean | null; text?: string },
+    ctx: { host: string; held: unknown; hosts: number }
+  ) => { ok: boolean | null; why?: string; line?: number };
+};
+
+const rules = sharedRegistry<ProbeRule>("review-sheet.probe-rules.v1");
+
+export function registerProbeRule(r: ProbeRule): void {
+  const i = rules.findIndex((x) => x.name === r.name);
+  if (i >= 0) rules[i] = r;
+  else rules.push(r);
+}
+
+export function listProbeRules(): ProbeRule[] {
+  return [...rules];
+}
+
 const registry = sharedRegistry<Channel>("review-sheet.channels.v1");
 
 export function registerChannel(c: Channel): void {

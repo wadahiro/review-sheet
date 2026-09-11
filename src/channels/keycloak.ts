@@ -18,7 +18,7 @@
 // `functional_channels:`), which is also what keeps this from claiming an item
 // that happens to share a name.
 
-import { registerFunctionalChannel, type FunctionalAnswer } from "../channel.js";
+import { registerFunctionalChannel, registerProbeRule, type FunctionalAnswer } from "../channel.js";
 
 // ---------------------------------------------------------------------------
 // What the product says it is USING, and where each value came from.
@@ -285,6 +285,25 @@ export function registerKeycloakChannels(binding: {
       if (kind === undefined) return undefined;
       if (kind === "ldap") return ldapAnswer(hosts, sheet);
       return loginAnswer(kind === "assets" ? "assets" : "page", hosts, sheet);
+    },
+  });
+}
+
+// "The readiness endpoint answered, and nothing under it is DOWN" contains no
+// project fact at all — no expectation to compare against, nothing this
+// deployment decided. It is what `/health/ready` MEANS, so it is the product's
+// verdict and not a rule anyone should have to write again.
+export function registerKeycloakRules(binding: { health_ready?: string; sheet?: string }): void {
+  const id = binding.health_ready;
+  if (id === undefined) return;
+  registerProbeRule({
+    name: "keycloak.health-ready",
+    covers: (x) => x === id,
+    ...(binding.sheet === undefined ? {} : { sheet: binding.sheet }),
+    verdict: (probe) => {
+      const said = readyReport(probe.text);
+      if (said.http !== 200) return { ok: false, why: `HTTP ${said.http ?? "—"}` };
+      return said.down ? { ok: false, why: "ready but a check reports DOWN" } : { ok: true };
     },
   });
 }

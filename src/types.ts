@@ -69,6 +69,7 @@ export type ParameterSheetInput = {
   builds?: { sheet: string; product: string; version: string }[];
   // Which product plugin answers which functional item — see channels/.
   functional_channels?: { channel: "keycloak" | "aws-rds"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string; parameters_authored?: string }[];
+  functional_rules?: { rule: "keycloak" | "logrotate" | "systemd"; sheet?: string; health_ready?: string; config_syntax?: string; units_enabled?: string }[];
   // Which document answers a sheet's rows, and where in it each row sits.
   documents?: { sheet: string; document?: string; address?: string; substitute?: string; router?: string }[];
   // The identity fields a list of maps is addressed by. Carried because a

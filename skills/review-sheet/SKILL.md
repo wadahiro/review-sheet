@@ -3658,6 +3658,19 @@ against today, a value against what a deployed file says — is a rule, and a
 project writes it and hands it back with `-a`. Reaching for a bigger vocabulary
 here would put those rules where no test of this tool can break them.
 
+**A rule with no project fact in it is the PRODUCT's, and ships here.** "The
+readiness endpoint answered 200 and nothing under it is DOWN", "a logrotate dry
+run complained about nothing", "every unit the host HAS is enabled" contain no
+expectation a project supplies — they are what those answers MEAN. So they are
+rules the tool holds, bound to whatever a project calls the item:
+
+```yaml
+functional_rules:
+  - { rule: keycloak,  health_ready: health-ready,     sheet: keycloak configuration }
+  - { rule: logrotate, config_syntax: logrotate-syntax, sheet: os baseline }
+  - { rule: systemd,   units_enabled: service-enabled,  sheet: os baseline }
+```
+
 **The loop around that rule is still this tool's.** Ask every host rather than
 the first; keep "did not run", "cannot be asked here" and "ran and failed"
 apart; take the worst answer, because a fleet is only as configured as its least

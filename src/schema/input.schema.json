@@ -86,6 +86,22 @@
       "items": { "type": "string" },
       "description": "The identity fields a list of maps is addressed by. Carried so a document fetched later is read with the SAME list the sheet was built with."
     },
+    "functional_rules": {
+      "type": "array",
+      "description": "Which product rule answers which functional item. A rule with no project fact in it — what a readiness body or `systemctl is-enabled` MEANS — ships with the tool and is bound to this project's own item id.",
+      "items": {
+        "type": "object",
+        "required": ["rule"],
+        "additionalProperties": false,
+        "properties": {
+          "rule": { "enum": ["keycloak", "logrotate", "systemd"] },
+          "sheet": { "type": "string" },
+          "health_ready": { "type": "string" },
+          "config_syntax": { "type": "string" },
+          "units_enabled": { "type": "string" }
+        }
+      }
+    },
     "functional_channels": {
       "type": "array",
       "description": "Which product plugin answers which functional item. The ids are the project's, so the project binds them.",
