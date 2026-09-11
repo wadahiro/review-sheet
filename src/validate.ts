@@ -2,14 +2,17 @@ import Ajv, { type ErrorObject } from "ajv";
 import inputSchema from "./schema/input.schema.json";
 import reviewSchema from "./schema/review.schema.json";
 import resultsSchema from "./schema/results.schema.json";
+import observationsSchema from "./schema/observations.schema.json";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, Category, SourceLocation } from "./types.js";
 import type { TestResults } from "./testresults.js";
+import type { Observation } from "./judge.js";
 
 const ajv = new Ajv({ allErrors: true });
 
 const validateInputSchema = ajv.compile(inputSchema);
 const validateReviewSchema = ajv.compile(reviewSchema);
 const validateResultsSchema = ajv.compile(resultsSchema);
+const validateObservationsSchema = ajv.compile(observationsSchema);
 
 // `out_of_scope` used to be a plain boolean plus a separate sibling reason
 // field; both are gone now — it must be the object form below. Surface a
@@ -213,4 +216,14 @@ export function validateResults(data: unknown): TestResults {
     throw new Error(`Test results validation error:\n${errors.map((e) => `${e.instancePath || "/"}: ${e.message}`).join("\n")}`);
   }
   return data as TestResults;
+}
+
+// What one environment's hosts hold, as somebody collected it. SHAPE only —
+// whether it answers anything is judge.ts's question, against the plan.
+export function validateObservation(data: unknown): Observation {
+  if (!validateObservationsSchema(data)) {
+    const errors = validateObservationsSchema.errors ?? [];
+    throw new Error(`Observation validation error:\n${errors.map((e) => `${e.instancePath || "/"}: ${e.message}`).join("\n")}`);
+  }
+  return data as Observation;
 }

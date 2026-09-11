@@ -3458,6 +3458,7 @@ judging what it holds — is deliberately outside it.
 
 ```sh
 review-sheet test-plan -i input.json -o plan.json      # what has to be checked, derived from the sheets
+review-sheet judge     -i input.json --observations obs-*.json -a mine.json -o results.json
 review-sheet validate  -i results.json --plan plan.json # do these answers answer that plan
 review-sheet test-doc  -i input.json -r results.json          # every unit's record
 review-sheet generate  -i input.json --evidence results.json -o sheet.html
@@ -3535,11 +3536,41 @@ WORDS are the project's — an organisation's test standard states them, and a
 tool quoting one organisation's sentences would publish them to every other
 project it builds.
 
-### The judge — the part you write
+### The judge — the part the tool does, and the part you write
 
-Nothing above touches a live system. A collector and a judge outside answer the
-plan, in the shape `validate --plan` reads back. Writing one is a day's work and
-the rules below are the ones that cost the most to learn:
+Nothing above touches a live system, and reaching one stays outside. What does
+NOT stay outside is comparing bytes a project has already handed over with the
+sheet that describes them: the parsers, the structural addresses and the meaning
+of a row's `kind` are this tool's, and a project re-implementing them
+re-implements them differently.
+
+So a collector writes **one observation file per environment** (schema:
+`observations`, `validate -s observations`) —
+
+```json
+{ "environment": "staging", "collected_at": "…",
+  "hosts": { "web01": { "files": { "/etc/httpd/conf/httpd.conf": "…", "/etc/x.conf": null },
+                        "included_by": { "/etc/httpd/conf/httpd.conf": ["/etc/httpd/conf.d/ssl.conf"] },
+                        "included":    { "/etc/httpd/conf.d/ssl.conf": "…" } } } }
+```
+
+— keys the tool does not read are allowed and ignored, so a project's own
+channels travel in the same file. Then `review-sheet judge` answers every item a
+file can settle: a value at its address, a removed setting by its absence, a
+block by its presence, and "we set nothing, so the default applies" — against
+the file AND every file it names. It points each verdict at the file and line it
+was read from, carries those files as evidence, and runs the coverage check.
+
+**What it hands back rather than guessing** is every item with no deployed file,
+and every row whose verdict needs a second channel to be sure: a product that
+reports its own effective configuration and where each value came from, a binary
+whose compiled-in default differs from its manual, a file beside the
+configuration that injects options on the command line. Those are per-product.
+Answer them yourself and pass them with `-a`: they WIN over a file-only verdict,
+per target and on every host, and how many they overrode is reported — a silent
+override is how a verdict nobody chose ends up in a record.
+
+The rules below are for the part you still write:
 
 **Answer by the row's PATH, not by its key.** Two components of one sheet share
 a key space by design — a federation sheet has `config.usernameLDAPAttribute[0]`

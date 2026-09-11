@@ -53,6 +53,12 @@ export type TestItem = {
   // A value that must not be written into a record. The item is still tested;
   // the document prints the verdict without the value.
   quiet?: boolean;
+  // This row is a BLOCK, not a setting: `<Directory "/var/www">` holds other
+  // rows and has no value of its own. What "checked" means for it is that the
+  // block is there — every row under it is dead if it is not — and without this
+  // a judge sees `expected: undefined` and cannot tell it from a row the sheet
+  // states nothing about in this environment. Two different answers.
+  container?: true;
 };
 
 // What kind of claim this item checks.
@@ -261,6 +267,7 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
           ...(row.file === undefined ? {} : { file: row.file }),
           kind,
           decider: deciderOf(row.p, kind, expected),
+          ...(row.p.container === undefined ? {} : { container: true as const }),
           ...(row.p.secret === true ? { quiet: true as const } : expected === undefined ? {} : { expected }),
         });
       }

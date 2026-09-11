@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "observations",
+  "description": "What one environment's hosts hold, as somebody collected it. A contract rather than a convention: it is what makes collecting and judging separable, so a closed network that has only Ansible produces this one file and carries it out to wherever review-sheet lives. Keys this tool does not read are allowed and ignored — a project's own channels (a product's API, a cloud API, the output of a command) live beside these.",
+  "type": "object",
+  "required": ["environment", "hosts"],
+  "properties": {
+    "environment": { "type": "string", "description": "The environment column this stands for — the same name the sheets use." },
+    "collected_at": { "type": "string", "description": "When, ISO 8601. Carried onto every evidence document, because two hosts' bytes were taken at two moments." },
+    "hosts": {
+      "type": "object",
+      "description": "One entry per host that was reached. A host nobody reached is absent, which is an answer.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["files"],
+        "properties": {
+          "files": {
+            "type": "object",
+            "description": "Deployed path -> the bytes, or null for a file the host does not have. Null is an ANSWER, not a gap: every row of that file is reported not run, with that reason.",
+            "additionalProperties": { "type": ["string", "null"] }
+          },
+          "included_by": {
+            "type": "object",
+            "description": "Which further files each deployed file NAMES. A row saying 'we set nothing, so the default applies' is a claim about those too.",
+            "additionalProperties": { "type": "array", "items": { "type": "string" } }
+          },
+          "included": {
+            "type": "object",
+            "description": "…and what each of them holds.",
+            "additionalProperties": { "type": ["string", "null"] }
+          },
+          "formats": {
+            "type": "object",
+            "description": "A format a path's own name cannot state (`space` is nobody's extension). Only where detection cannot serve.",
+            "additionalProperties": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

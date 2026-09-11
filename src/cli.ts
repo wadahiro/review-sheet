@@ -5,9 +5,10 @@ import { readFileSync, writeFileSync, readdirSync } from "fs";
 import { resolve, relative, join } from "path";
 import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
-import { validateInput, validateReview, validateResults, validateVersionedInput, isVersionedInput } from "./validate.js";
+import { validateInput, validateReview, validateResults, validateObservation, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
 import { renderTestDoc, renderExcluded, injectBlocks, unitDocuments } from "./testdoc.js";
+import { judgeFiles, evidenceFrom } from "./judge.js";
 import { findBakedSecrets, formatBakedSecrets, findSecretsInEvidence, formatEvidenceLeaks } from "./secrets.js";
 import { toFullEditInput } from "./full-edit.js";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, ArtifactPreview } from "./types.js";
@@ -33,7 +34,7 @@ import { suggestNearest } from "./schema-errors.js";
 // Every document this CLI can check, which is every document the pipeline
 // reads. A typo'd name is an error naming the set rather than a silent
 // fall-through to the model schema.
-const VALIDATE_SCHEMAS = ["input", "review", "dictionary", "overlay", "results"];
+const VALIDATE_SCHEMAS = ["input", "review", "dictionary", "overlay", "results", "observations"];
 import "./recipes/index.js"; // self-registers built-in recipes
 import { loadBuildSpec, specDirOf } from "./spec.js";
 import { inspectTs, lintTs } from "./parsers/ts.js";
@@ -530,6 +531,90 @@ program
   });
 
 program
+  .command("judge")
+  .description("Answer a plan from what was collected: every item a deployed file can settle, with the evidence it was read from")
+  .requiredOption("-i, --input <file>", "Model (input.json)")
+  .requiredOption("--observations <files...>", "What the hosts hold, one file per environment")
+  .option("--plan <file>", "The plan to answer (default: derived from the model, which is the only one that cannot be a run behind)")
+  .option(
+    "-a, --answers <file>",
+    "A results document holding what only this project could answer — its product's API, a cloud API, the output of a command. These WIN over a file-only verdict, and how many they overrode is reported"
+  )
+  .requiredOption("-o, --output <file>", "Where to write the answers")
+  .option("--lang <lang>", "ja | en (default: ja)", "ja")
+  .action((opts: { input: string; observations: string[]; plan?: string; answers?: string; output: string; lang: string }) => {
+    try {
+      const model = JSON.parse(readFileSync(opts.input, "utf-8")) as ParameterSheetInput;
+      const plan: TestPlan =
+        opts.plan === undefined ? buildTestPlan(model).plan : (JSON.parse(readFileSync(opts.plan, "utf-8")) as TestPlan);
+      const observations = opts.observations.map((f) => validateObservation(JSON.parse(readFileSync(f, "utf-8"))));
+      const lang = opts.lang === "en" ? "en" : "ja";
+      const outcome = judgeFiles(plan, observations, { lang });
+      const mine: TestResults = { runs: {}, results: outcome.results, evidence: evidenceFrom(observations, plan) };
+
+      // The project's own channels win. A row whose product reports its own
+      // effective configuration is answered better by the product than by the
+      // file, and overriding is the normal shape of that — but a silent
+      // override is how a verdict nobody chose ends up in a record, so the
+      // count comes back with its first few members (verifying.md R4).
+      let overrode: string[] = [];
+      if (opts.answers !== undefined) {
+        const theirs = validateResults(JSON.parse(readFileSync(opts.answers, "utf-8")));
+        const key = (t: { sheet: string; path?: string[]; key: string; instance: string }): string =>
+          `${t.sheet}\u0000${(t.path ?? []).join("\u0000")}\u0000${t.key}\u0000${t.instance}`;
+        // Per TARGET, not per answer: this judge emits one verdict per host,
+        // and a project channel that owns a row owns it on every host. Keyed by
+        // the answer alone, two hosts' verdicts collapsed into one and the run
+        // lost a third of its answers.
+        const claimed = new Set(theirs.results.map((r) => key(r.target)));
+        const taken = new Set<string>();
+        for (const r of mine.results) {
+          if (!claimed.has(key(r.target)) || taken.has(key(r.target))) continue;
+          taken.add(key(r.target));
+          overrode.push(`${r.target.sheet} > ${r.target.key} [${r.target.instance}]`);
+        }
+        mine.results = [...mine.results.filter((r) => !claimed.has(key(r.target))), ...theirs.results];
+        mine.evidence = [...(mine.evidence ?? []), ...(theirs.evidence ?? [])];
+        if (theirs.functional !== undefined) mine.functional = theirs.functional;
+        if (theirs.runs !== undefined) mine.runs = { ...mine.runs, ...theirs.runs };
+        if (theirs.unclaimed !== undefined) mine.unclaimed = theirs.unclaimed;
+      }
+
+      writeFileSync(opts.output, JSON.stringify(mine, null, 2));
+      const missing = [...new Set(outcome.missing)];
+      console.error(
+        [
+          `judged ${outcome.results.length} item(s) from ${observations.length} observation(s)`,
+          outcome.unanswered.length > 0
+            ? `  no deployed file on ${outcome.unanswered.length} item(s), left for a project channel: ` +
+              outcome.unanswered.slice(0, 3).map((i) => `${i.target.sheet} > ${i.target.key}`).join(", ") +
+              (outcome.unanswered.length > 3 ? ", …" : "")
+            : "",
+          missing.length > 0 ? `  a host does not have ${missing.length} file(s): ${missing.slice(0, 3).join(", ")}${missing.length > 3 ? ", …" : ""}` : "",
+          overrode.length > 0
+            ? `  ${overrode.length} answered better by this project's own channel: ${overrode.slice(0, 3).join(", ")}${overrode.length > 3 ? ", …" : ""}`
+            : "",
+        ]
+          .filter((x) => x !== "")
+          .join("\n")
+      );
+      // The coverage gate is this tool's, not a project's: a record that looks
+      // complete because what is missing from it is missing is the failure the
+      // whole area refuses.
+      const check = checkResults(plan, mine);
+      console.error(formatResultsCheck(check));
+      console.error(`Wrote ${opts.output}`);
+      if (resultsCheckFails(check)) {
+        console.error(`Error: these answers do not answer that plan.`);
+        process.exit(1);
+      }
+    } catch (e) {
+      console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      process.exit(1);
+    }
+  });
+
+program
   .command("test-doc")
   .description("Put the unit test's tables into the documents a project wrote for them — every unit's, unless one is named")
   .requiredOption("-i, --input <file>", "Model (input.json)")
@@ -628,6 +713,21 @@ program
               ? "overlay"
               : "dictionary"
             : "input");
+
+      if (schema === "observations") {
+        const obs = validateObservation(data);
+        const hosts = Object.keys(obs.hosts);
+        const files = new Set(hosts.flatMap((h) => Object.keys(obs.hosts[h]!.files)));
+        const absent = hosts.flatMap((h) => Object.entries(obs.hosts[h]!.files).filter(([, v]) => v === null).map(([p]) => `${h} ${p}`));
+        console.log(`Observation: OK (${obs.environment}, ${hosts.length} host(s), ${files.size} file(s))`);
+        // A file collected as null is an ANSWER — every row of it comes back
+        // not run with that reason — so it is said here rather than left to be
+        // discovered as a page of not-runs (verifying.md R4).
+        if (absent.length > 0) {
+          console.log(`  a host does not have ${absent.length}: ${absent.slice(0, 3).join(", ")}${absent.length > 3 ? ", …" : ""}`);
+        }
+        return;
+      }
 
       if (schema === "results") {
         const results = validateResults(data);
