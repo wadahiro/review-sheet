@@ -328,3 +328,22 @@ describe("markdown: the line each block came from", () => {
     expect(linesOf(html, "h2")).toEqual([3]);
   });
 });
+
+// A document's table has to reach the same machinery the sheet's tables use, or
+// its column header simply scrolls away — a hundred-row test record read with
+// no column names. The wrapper is what the viewer measures and marks; without
+// it the sticky rule matches nothing at all.
+describe("a table is handed to the viewer's table machinery", () => {
+  it("comes wrapped, and is a table rather than its own scroll container", () => {
+    const html = renderMarkdown("| a | b |\n| --- | --- |\n| 1 | 2 |\n", noImages).html;
+    expect(html).toContain('<div class="rs-table-wrapper rs-doc-table">');
+    expect(html).toContain("<table>");
+    // …and the wrapper closes around it: a table left outside is a table the
+    // measurement never sees.
+    const open = html.indexOf('<div class="rs-table-wrapper rs-doc-table">');
+    const table = html.indexOf("<table>");
+    const close = html.indexOf("</div>", table);
+    expect(open).toBeLessThan(table);
+    expect(html.indexOf("</table>")).toBeLessThan(close);
+  });
+});

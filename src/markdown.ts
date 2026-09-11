@@ -337,7 +337,17 @@ export function renderMarkdown(source: string, resolveImage: ImageResolver, opts
             .join("");
         const head = `<tr${where(0)}>${cells(token.header, "th")}</tr>`;
         const body = token.rows.map((row, n) => `<tr${where(n + 2)}>${cells(row, "td")}</tr>`).join("\n");
-        return `<table>\n<thead>\n${head}\n</thead>\n<tbody>${body === "" ? "" : `\n${body}\n`}</tbody></table>\n`;
+        // Wrapped, so a document's tables reach the same machinery the sheet's
+        // do: a table that FITS stays in normal document flow and its column
+        // header sticks to the page; one that does not becomes its own
+        // horizontal scroller (`.rs-overflowing`, toggled by the viewer, which
+        // is the only thing that can measure it). Left bare, the header simply
+        // scrolled away — a hundred-row test table read with no column names.
+        return (
+          `<div class="rs-table-wrapper rs-doc-table">\n` +
+          `<table>\n<thead>\n${head}\n</thead>\n<tbody>${body === "" ? "" : `\n${body}\n`}</tbody></table>\n` +
+          `</div>\n`
+        );
       },
       image(token: Tokens.Image): string {
         const src = inlineImage(token.href, resolveImage);

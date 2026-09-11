@@ -1246,6 +1246,97 @@ function DocumentBody({ sheet, reviews, editEnabled, onEditAt, onEvidence, t }: 
     runMermaid(body.current);
   }, [html_]);
 
+  // A wide table's header, lifted out of the scroller so it can stick to the page.
+//
+// Sticky inside a horizontal scroller pins to the SCROLLER, not the page: the
+// header parks partway down the table instead of at the top of the viewport.
+// The sheet solved this by splitting the table — header in its own element
+// above the body, horizontal offset synced — and a document's tables get the
+// same treatment, built here because markdown has no way to emit it.
+//
+// The two halves must agree on column widths or the header lies about which
+// column is which. The sheet gets that from `table-layout: fixed` over declared
+// widths; a markdown table has none, so the widths are MEASURED off the real
+// one and written onto both as a colgroup. Re-measured on resize, since that is
+// when they change.
+function splitHead(wrapper: HTMLElement): void {
+  const table = wrapper.querySelector("table");
+  const thead = table?.querySelector("thead");
+  if (table === null || thead === null || thead === undefined) return;
+  const widths = [...thead.querySelectorAll("th")].map((th) => Math.round(th.getBoundingClientRect().width));
+  if (widths.length === 0 || widths.some((w) => w === 0)) return;
+  const colgroup = (): HTMLElement => {
+    const g = document.createElement("colgroup");
+    for (const w of widths) {
+      const c = document.createElement("col");
+      c.style.width = `${w}px`;
+      g.appendChild(c);
+    }
+    return g;
+  };
+  const apply = (t: HTMLElement): void => {
+    t.querySelector("colgroup")?.remove();
+    t.insertBefore(colgroup(), t.firstChild);
+    t.style.tableLayout = "fixed";
+    t.style.width = `${widths.reduce((a, b) => a + b, 0)}px`;
+  };
+
+  let split = wrapper.parentElement;
+  let head: HTMLElement | null = null;
+  if (split?.classList.contains("rs-table-split") === true) {
+    head = split.querySelector<HTMLElement>(".rs-sticky-head");
+  } else {
+    // First time: build the split around the wrapper the markdown gave us.
+    split = document.createElement("div");
+    split.className = "rs-table-split rs-doc-split";
+    wrapper.parentElement?.insertBefore(split, wrapper);
+    split.appendChild(wrapper);
+    wrapper.classList.add("rs-split-body");
+    head = document.createElement("div");
+    head.className = "rs-sticky-head rs-doc-sticky-head";
+    const clone = document.createElement("table");
+    clone.appendChild(thead.cloneNode(true));
+    head.appendChild(clone);
+    split.insertBefore(head, wrapper);
+    // The header now lives above; leaving it in the body too would show it
+    // twice while the top of the table is on screen.
+    (thead as HTMLElement).style.visibility = "hidden";
+    wrapper.addEventListener("scroll", () => { if (head !== null) head.scrollLeft = wrapper.scrollLeft; }, { passive: true });
+  }
+  apply(table as HTMLElement);
+  const clone = head?.querySelector("table");
+  if (clone !== null && clone !== undefined) apply(clone as HTMLElement);
+}
+
+// A table's column header sticks while its rows are read — the same rule the
+  // sheet's tables follow, and for the same reason a hundred-row test table
+  // needs it. Two things only the running page can know, so both are measured
+  // here rather than written into the stylesheet:
+  //
+  //   * WHERE it sticks. Under the tab bar and under the section heading that
+  //     sticks below it; that heading is styled prose, and its rendered height
+  //     is not a number any rule here could carry.
+  //   * WHETHER it sticks at all. A wrapper wide enough to scroll horizontally
+  //     is a scroll container, and a header inside one pins to the container
+  //     instead of the page — parked partway down the table. Measured, marked,
+  //     and the stylesheet gives the header up exactly there.
+  useLayoutEffect(() => {
+    const root = body.current;
+    if (root === null) return;
+    const measure = (): void => {
+      const head = root.querySelector("h2");
+      root.style.setProperty("--rs-doc-head-h", head === null ? "0px" : `${Math.round(head.getBoundingClientRect().height)}px`);
+      for (const w of root.querySelectorAll<HTMLElement>(".rs-doc-table")) {
+        const over = w.scrollWidth - w.clientWidth > 1;
+        w.classList.toggle("rs-overflowing", over);
+        if (over) splitHead(w);
+      }
+    };
+    measure();
+    window.addEventListener("resize", measure, { passive: true });
+    return () => window.removeEventListener("resize", measure);
+  }, [html_]);
+
   // The document is cut into sections so its sticky headings are released by
   // the end of what they head (doc-sections.ts). Before paint, or the pile the
   // sections exist to prevent is on screen for a frame.

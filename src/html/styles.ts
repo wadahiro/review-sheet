@@ -4646,13 +4646,23 @@ tr.rs-jump-flash th {
    them: a table here and a table one tab over should not be two designs. */
 /* Wide by nature: as wide as its content needs, up to the column, and its own
    scroller past that — never the page's. */
+/* The table is a TABLE again, and the scrolling belongs to the wrapper around
+   it (markdown.ts emits one). A display:block table with its own
+   overflow-x is a scroll container, and a scroll container breaks page-level
+   sticky for everything inside it — which is why this header never stuck. */
+.rs-doc .rs-table-wrapper {
+  /* The sheet's wrapper draws a bordered card; a document's table is set in
+     prose and drew none, so the box that arrived with the class is taken off
+     again. What is inherited is the behaviour, not the frame. */
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0.8rem 0;
+}
 .rs-doc table {
-  display: block;
   width: max-content;
   max-width: 100%;
-  overflow-x: auto;
   border-collapse: collapse;
-  margin: 0.8rem 0;
   font-size: 0.85rem;
 }
 .rs-doc th, .rs-doc td {
@@ -4676,6 +4686,38 @@ tr.rs-jump-flash th {
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--rs-text-secondary);
+}
+/* …and it stays put while its rows are read, below whatever the page already
+   holds there: the tab bar, and the section heading (h2) that sticks under it.
+   That height is measured by the viewer into --rs-doc-head-h, because the band
+   is styled prose and nothing here can know how tall it renders.
+
+   Only while the table FITS. Once the wrapper scrolls horizontally it is a
+   scroll container, sticky inside it would pin to the container rather than to
+   the page, and the header would park partway down the table — the same reason
+   the sheet gives its own header up at exactly this point. */
+.rs-doc .rs-table-wrapper:not(.rs-overflowing) thead th {
+  position: sticky;
+  top: calc(var(--rs-tabbar-h, 41px) + var(--rs-doc-head-h, 0px));
+  z-index: 3;
+}
+/* …and a table too wide to fit gets its header lifted out of the scroller
+   instead (app.ts's splitHead), because sticky inside a scroller pins to the
+   scroller. Same offset, same prose framing as the table it heads. */
+.rs-doc .rs-doc-split {
+  margin: 0.8rem 0;
+}
+.rs-doc .rs-doc-sticky-head {
+  top: calc(var(--rs-tabbar-h, 41px) + var(--rs-doc-head-h, 0px));
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.rs-doc .rs-doc-sticky-head table {
+  margin: 0;
+}
+.rs-doc .rs-table-wrapper.rs-split-body {
+  margin: 0;
 }
 /* Embedded at build time, so this only has to keep one from overflowing. */
 .rs-doc img { max-width: 100%; height: auto; }
