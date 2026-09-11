@@ -620,7 +620,7 @@ export type AssembleOpts = {
   capabilities?: Capabilities;
   // Carried straight through to the model — see assemble-spec.ts.
   channels?: ChannelSpec[];
-  defaultsCheckedBy?: { product: "httpd"; file: string; command?: string; aside?: string }[];
+  defaultsCheckedBy?: { product: "httpd" | "keycloak"; file: string; command?: string; aside?: string }[];
   builds?: { sheet: string; product: string; version: string }[];
   functionalChannels?: { channel: "keycloak"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string }[];
   documents?: { sheet: string; document: string; address: string; substitute?: string }[];

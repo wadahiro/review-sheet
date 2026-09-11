@@ -64,9 +64,10 @@ export type BuildSpec = {
   // called its items — so the project binds them.
   functional_channels?: Array<{ channel: "keycloak"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string }>;
   // What ELSE decides whether a file's "the product's own default applies" row
-  // is true: a binary whose compiled-in default differs from its manual, and a
-  // file beside the configuration that injects options on the command line.
-  defaults_checked_by?: Array<{ product: "httpd"; file: string; command?: string; aside?: string }>;
+  // is true: a binary whose compiled-in default differs from its manual, a file
+  // beside the configuration that injects options on the command line, and a
+  // product that reports what it is USING and where each value came from.
+  defaults_checked_by?: Array<{ product: "httpd" | "keycloak"; file: string; command?: string; aside?: string }>;
   channels?: Array<{
     channel: "command";
     sheet: string;
@@ -314,7 +315,7 @@ const specSchema = {
         required: ["product", "file"],
         additionalProperties: false,
         properties: {
-          product: { const: "httpd" },
+          product: { enum: ["httpd", "keycloak"] },
           file: { type: "string" },
           command: { type: "string" },
           aside: { type: "string" },

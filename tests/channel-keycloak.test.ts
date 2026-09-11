@@ -6,7 +6,7 @@
 // beginning. What a PROJECT supplies is which of its items the plugin answers.
 
 import { describe, it, expect, beforeEach } from "bun:test";
-import { registerKeycloakChannels } from "../src/channels/keycloak";
+import { registerKeycloakChannels, effectiveConfig, isProductDefault, lineOfEffective } from "../src/channels/keycloak";
 import { listFunctionalChannels } from "../src/channel";
 
 const clear = (): void => {
@@ -107,5 +107,42 @@ describe("what the plugin claims", () => {
   it("is only what the project bound to it", () => {
     expect(channel().covers("login-page")).toBe(true);
     expect(channel().covers("time-synced")).toBe(false);
+  });
+});
+
+// What the product says it is USING, and who decided each value.
+describe("the effective configuration the product reports", () => {
+  const OUT = [
+    "Current Mode: production",
+    "Current Configuration:",
+    "\tkc.db =  postgres (classpath application.properties)",
+    "\tkc.hostname =  https://sso.example (SysPropConfigSource)",
+    "\tkc.health-enabled =  true (Persisted)",
+    "",
+  ].join("\n");
+
+  it("reads each key with its value and the source that decided it", () => {
+    expect([...effectiveConfig(OUT)]).toEqual([
+      ["db", { value: "postgres", source: "classpath application.properties" }],
+      ["hostname", { value: "https://sso.example", source: "SysPropConfigSource" }],
+      ["health-enabled", { value: "true", source: "Persisted" }],
+    ]);
+  });
+
+  // Only the product's own bundled properties are the product's default. Every
+  // other source names somebody who SET the value — a build option baked in by
+  // `kc.sh build` is still a decision, not a default.
+  it("counts only the product's own properties as its default", () => {
+    expect(isProductDefault("classpath application.properties")).toBe(true);
+    // The deployment's OWN file is a source like any other: the product reports
+    // it by basename, and a value from there was set by this project.
+    expect(isProductDefault("keycloak.conf")).toBe(false);
+    expect(isProductDefault("Persisted")).toBe(false);
+    expect(isProductDefault("system property")).toBe(false);
+  });
+
+  it("points at the line a key was reported at, and nowhere for one it does not report", () => {
+    expect(lineOfEffective(OUT, "hostname")).toBe(4);
+    expect(lineOfEffective(OUT, "http-port")).toBeUndefined();
   });
 });

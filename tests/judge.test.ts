@@ -179,6 +179,24 @@ describe("the material the verdicts were read from", () => {
   it("carries nothing for a file the host does not have", () => {
     expect(evidenceFrom([obs({ [CONF]: null })], planOf([item({ key: "a", expected: "1" })]))).toEqual([]);
   });
+
+  // A command's output is filed under the sheet that ASKED for it — the chapter
+  // a reader of the verdict citing it is standing in. Nothing declares that a
+  // second time: the default check names the file, and the file's rows name
+  // their sheet.
+  it("files a command under the sheet whose rows it answers", () => {
+    const SHOW = "kc.sh show-config";
+    const docs = evidenceFrom(
+      [obs({ [CONF]: "other=1\nlisten=80\n" }, { commands: { [SHOW]: "kc.db =  x (env)\n", "uname -a": "Linux\n" } })],
+      planOf([item({ key: "db", expected: "x" })]),
+      [],
+      [{ file: CONF, command: SHOW }]
+    );
+    expect(docs.filter((d) => d.command === SHOW).map((d) => d.sheet)).toEqual(["s"]);
+    // …and a command nobody can be traced back to a sheet is still carried,
+    // unfiled: dropping it would lose the bytes a verdict was read from.
+    expect(docs.filter((d) => d.command === "uname -a").map((d) => d.sheet)).toEqual([""]);
+  });
 });
 
 // A DOCUMENT the project fetched — a realm as a product's API describes it, a
@@ -302,5 +320,69 @@ describe("a sheet that declares which document answers it", () => {
   it("reads a quoted identity and an unquoted one as the same address", () => {
     const quoted = run([{ ...row({ key: "protocol", expected: "saml" }), address: 'clients[clientId="https://$(env:HOST)/saml"].protocol' } as TestItem]);
     expect(quoted.results[0].status).toBe("pass");
+  });
+});
+
+// A product that reports its own effective configuration answers the one
+// question a file cannot: "we set nothing" is a claim about OUR files, and the
+// launcher, a build option or a system property sets values that appear in
+// none of them.
+describe("what the product says about who decided a value", () => {
+  const SHOW = "/opt/keycloak/bin/kc.sh show-config";
+  const checked = [{ product: "keycloak" as const, file: CONF, command: SHOW }];
+  const held = (text: string, over: Partial<Observation["hosts"][string]> = {}): Observation[] => [
+    obs({ [CONF]: text }, { commands: { [SHOW]: SEEN }, ...over }),
+  ];
+  const SEEN = [
+    "Current Configuration:",
+    "\tkc.db =  postgres (classpath application.properties)",
+    "\tkc.http-port =  9090 (SysPropConfigSource)",
+    "",
+  ].join("\n");
+  const run = (key: string, o: Observation[]) =>
+    judgeFiles(planOf([item({ key, kind: "default-in-force", decider: "product-default", expected: "8080" })]), o, {
+      at: "X",
+      lang: "en",
+      defaultsCheckedBy: checked,
+    });
+
+  it("fails an unset row the product says something else set, naming the source", () => {
+    const got = run("http-port", held("other=1\nlisten=80\n"));
+    expect(got.results[0].status).toBe("fail");
+    expect(got.results[0].actual).toBe("9090");
+    expect(got.results[0].detail).toContain("SysPropConfigSource");
+    // The verdict points at the words, not at the whole of the output.
+    expect(got.results[0].evidence).toEqual({ host: "web01", command: SHOW, line: 3 });
+  });
+
+  // The product's own bundled properties ARE the default, so a value reported
+  // from there confirms the row rather than refuting it.
+  it("leaves the row to the files when the product reports its own default", () => {
+    expect(run("db", held("other=1\nlisten=80\n")).results[0].status).toBe("pass");
+  });
+
+  // A key the product does not report is not evidence of anything, and a run
+  // that never asked is not either.
+  it("says nothing about a key the product does not report, or a command nobody ran", () => {
+    expect(run("timeout", held("other=1\nlisten=80\n")).results[0].status).toBe("pass");
+    expect(run("http-port", [obs({ [CONF]: "other=1\nlisten=80\n" })]).results[0].status).toBe("pass");
+  });
+
+  // LAST, though: a file that sets the key answers the row itself, and points
+  // at the line. A report naming the file is the same finding with a worse
+  // address — the reader would be sent to a command instead of to the words.
+  it("lets the file answer first when the file sets it after all", () => {
+    const got = run("http-port", held("other=1\nhttp-port=9090\n"));
+    expect(got.results[0].status).toBe("fail");
+    expect(got.results[0].evidence).toEqual({ host: "web01", file: CONF, line: 2 });
+  });
+
+  // …and the converse is a finding in its own right: the product is running a
+  // value it says came from that file, and the file no longer has it.
+  it("fails a row the file does not set that the product still attributes to it", () => {
+    const stale = "Current Configuration:\n\tkc.http-port =  9090 (app.conf)\n";
+    const got = run("http-port", [obs({ [CONF]: "other=1\nlisten=80\n" }, { commands: { [SHOW]: stale } })]);
+    expect(got.results[0].status).toBe("fail");
+    expect(got.results[0].detail).toContain("app.conf");
   });
 });

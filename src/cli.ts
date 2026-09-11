@@ -583,7 +583,7 @@ program
         runs: {},
         results: outcome.results,
         functional: functional.answers,
-        evidence: [...evidenceFrom(observations, plan, model.documents), ...functional.evidence],
+        evidence: [...evidenceFrom(observations, plan, model.documents, model.defaults_checked_by ?? []), ...functional.evidence],
       };
 
       // The project's own channels win. A row whose product reports its own

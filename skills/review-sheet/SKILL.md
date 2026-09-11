@@ -3533,6 +3533,9 @@ defaults_checked_by:
     file: /etc/httpd/conf/httpd.conf
     command: httpd -V              # the BINARY's compiled-in defaults
     aside: /etc/sysconfig/httpd    # a file beside it that injects options
+  - product: keycloak
+    file: /opt/keycloak/conf/keycloak.conf
+    command: /opt/keycloak/bin/kc.sh show-config   # what it is USING, and from where
 ```
 
 A distribution's build routinely differs from the manual a dictionary was
@@ -3540,6 +3543,15 @@ written from — `PidFile` is the usual one — and a `-C "Directive value"` in
 `OPTIONS` sets a directive that appears in no configuration file at all. The
 first is a finding; the second means the file alone cannot say, and the row
 comes back not run with what it found. `collect-plan` asks for both.
+
+A product that reports its own effective configuration answers the other half:
+it names the SOURCE of every value it is using, so "we set nothing, so the
+product's default applies" stops being an inference from one file's silence. Only
+a value reported from the product's own bundled properties IS the default — every
+other source names somebody who set it (a build option baked in at build time, a
+system property, an environment variable), and a row claiming the default is
+then simply wrong. Asked LAST: a file that sets the key answers the row itself
+and points at the line, which is a better address than a report.
 
 **A PRODUCT's knowledge belongs to the product, not to one project.** What a
 Keycloak login page's asset URLs say about its theme, what

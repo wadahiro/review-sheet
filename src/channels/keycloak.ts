@@ -20,6 +20,39 @@
 
 import { registerFunctionalChannel, type FunctionalAnswer } from "../channel.js";
 
+// ---------------------------------------------------------------------------
+// What the product says it is USING, and where each value came from.
+//
+// `kc.sh show-config` prints `kc.<key> = <value> (<source>)`. That second half
+// is the strong part and the reason to ask at all: a file can only say what was
+// written, while this names WHO decided each value — so "we set nothing, so the
+// product's default applies" stops being an inference and becomes a question
+// the product answers.
+//
+// Only a value the product reports from its own bundled properties IS the
+// default. Every other source names somebody who set it: `Persisted` is a build
+// option baked in by `kc.sh build`, a system property or an environment
+// variable is the launcher. A row claiming the default is in force is then
+// simply wrong — and that is the case no reading of our own files can find.
+export function effectiveConfig(text: string | null | undefined): Map<string, { value: string; source: string }> {
+  const out = new Map<string, { value: string; source: string }>();
+  for (const line of (text ?? "").split("\n")) {
+    const m = /^\s*kc\.([A-Za-z0-9._-]+)\s*=\s*(.*?)\s*\(([^()]*)\)\s*$/.exec(line);
+    if (m !== null) out.set(m[1]!, { value: m[2]!, source: m[3]! });
+  }
+  return out;
+}
+
+export const isProductDefault = (source: string): boolean => /^classpath /.test(source);
+
+// Which line a key was reported at, so a verdict points at the words.
+export function lineOfEffective(text: string | null | undefined, key: string): number | undefined {
+  if (typeof text !== "string") return undefined;
+  const at = text.split("\n").findIndex((l) => new RegExp(`^\\s*kc\\.${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*=`).test(l));
+  return at < 0 ? undefined : at + 1;
+}
+
+
 // One realm's login page, as a collector fetched it. The shape is the
 // collector's to produce; what each field MEANS is this file's.
 type LoginPage = {

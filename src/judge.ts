@@ -30,6 +30,7 @@ import type { Collected } from "./channel.js";
 import { registerKeycloakChannels } from "./channels/keycloak.js";
 import { buildMismatch, rpmVersions, packagesToQuery } from "./channels/rpm.js";
 import { compiledInFor, injectedOptions, lineOfCompiledIn } from "./channels/httpd.js";
+import { effectiveConfig, isProductDefault, lineOfEffective } from "./channels/keycloak.js";
 import type { TestItem, TestPlan } from "./testplan.js";
 import { listChannels, listFunctionalChannels, registerChannel, commandChannel, type Channel } from "./channel.js";
 import type { TestResult, TestResults } from "./testresults.js";
@@ -148,6 +149,7 @@ export type JudgeWords = {
   otherBuild: (what: string) => string;
   injected: (path: string, what: string) => string;
   builtDiffers: (value: string, how: string) => string;
+  setBySource: (source: string, how: string) => string;
   docUnreadable: string;
   noAddress: string;
   fromDocument: string;
@@ -173,6 +175,7 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     otherBuild: (what) => `このホストはシートが記述するビルドではない（${what}）ので、既定値のままとは言えない`,
     injected: (path, what) => `${path} がコマンドラインで設定を渡している（${what}）ため、ファイルだけでは既定値のままとは言えない`,
     builtDiffers: (value, how) => `このビルドの既定値は ${value}（${how}）で、シートが示す製品既定値と異なる`,
+    setBySource: (source, how) => `${source} が設定している（${how} が報告）ので、製品の既定値のままではない`,
     docUnreadable: "取得した文書を読めない",
     noAddress: "この行は文書内の住所を持たない（シートがどこから来たか記録していない）",
     fromDocument: "取得した文書",
@@ -196,6 +199,7 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     otherBuild: (what) => `this host is not the build the sheet describes (${what}), so nothing here can say the default still applies`,
     injected: (path, what) => `${path} passes configuration on the command line (${what}), so the file alone cannot say the default is in force`,
     builtDiffers: (value, how) => `this build's own default is ${value} (${how}), which is not the product default the sheet states`,
+    setBySource: (source, how) => `${source} sets it (${how} reports), so the product's default is not what applies`,
     docUnreadable: "the collected document could not be read",
     noAddress: "this row carries no address inside a document",
     fromDocument: "the collected document",
@@ -216,7 +220,7 @@ export function judgeFiles(
     // one this host has.
     builds?: { sheet: string; product: string; version: string }[];
     rpmCommand?: string;
-    defaultsCheckedBy?: { product: "httpd"; file: string; command?: string; aside?: string }[];
+    defaultsCheckedBy?: { product: "httpd" | "keycloak"; file: string; command?: string; aside?: string }[];
   } = {}
 ): JudgeOutcome {
   const t = JUDGE_WORDS[opts.lang ?? "ja"];
@@ -329,7 +333,7 @@ export function judgeFiles(
         // dictionary was written from is a finding; a file beside the
         // configuration injecting options means the file alone cannot say.
         const also = (opts.defaultsCheckedBy ?? []).find((d) => d.file === path);
-        if (also !== undefined) {
+        if (also?.product === "httpd") {
           const injected = also.aside === undefined ? undefined : injectedOptions(held.files[also.aside]);
           if (injected !== undefined) {
             out.results.push({ target, at, evidence: { host, file: also.aside! }, status: "not_run", reason: t.injected(also.aside!, injected) });
@@ -356,6 +360,27 @@ export function judgeFiles(
             reason: t.otherBuild(wrongBuild),
           });
           continue;
+        }
+        // …and, LAST, what the product says about itself — only where our own
+        // files have already come up empty. That is the whole case this channel
+        // exists for: a launcher, a build option or an environment variable
+        // sets values no file we read holds, and the product names the source
+        // of every value it is using. A file that DOES set it is answered by
+        // the line below, which points at the words rather than at a report.
+        if (also?.product === "keycloak" && also.command !== undefined && here === undefined && elsewhere === undefined) {
+          const reported = held.commands?.[also.command];
+          const seen = effectiveConfig(reported).get(key);
+          if (seen !== undefined && !isProductDefault(seen.source)) {
+            const line = lineOfEffective(reported, key);
+            out.results.push({
+              target, at,
+              evidence: { host, command: also.command, ...(line === undefined ? {} : { line }) },
+              status: "fail",
+              detail: t.setBySource(seen.source, also.command),
+              ...(item.quiet === true ? {} : { actual: seen.value }),
+            });
+            continue;
+          }
         }
         const setBy =
           here !== undefined ? { why: t.setHere(path), where: evidence, value: here.value, line: here.line } :
@@ -600,10 +625,25 @@ function answerByChannel(
 export function evidenceFrom(
   observations: Observation[],
   plan: TestPlan,
-  templates: DocumentTemplate[] = []
+  templates: DocumentTemplate[] = [],
+  defaults: { file: string; command?: string }[] = []
 ): NonNullable<TestResults["evidence"]> {
   const sheetOf = new Map<string, string>();
   for (const i of plan.items) if (i.file !== undefined && !sheetOf.has(i.file)) sheetOf.set(i.file, i.target.sheet);
+  // A command is asked FOR some rows, and those rows are in a sheet — which is
+  // the chapter a reader of the verdict citing it is standing in. Derived from
+  // what actually asked (a channel, for its own items; a default check, for the
+  // file it stands beside) rather than declared a second time.
+  const sheetOfCommand = new Map<string, string>();
+  const channels = listChannels();
+  for (const i of plan.items) {
+    const asked = channels.find((c) => c.covers(i))?.needs(i);
+    if (asked !== undefined && !sheetOfCommand.has(asked)) sheetOfCommand.set(asked, i.target.sheet);
+  }
+  for (const d of defaults) {
+    const sheet = sheetOf.get(d.file);
+    if (d.command !== undefined && sheet !== undefined && !sheetOfCommand.has(d.command)) sheetOfCommand.set(d.command, sheet);
+  }
   const out: NonNullable<TestResults["evidence"]> = [];
   const seen = new Set<string>();
   for (const obs of observations) {
@@ -629,7 +669,7 @@ export function evidenceFrom(
         const k = `${obs.environment} ${host} ${command}`;
         if (seen.has(k)) continue;
         seen.add(k);
-        out.push({ instance: obs.environment, host, at, sheet: "", command, text });
+        out.push({ instance: obs.environment, host, at, sheet: sheetOfCommand.get(command) ?? "", command, text });
       }
       for (const d of held.documents ?? []) {
         if (d.absent !== undefined || d.text === "") continue;

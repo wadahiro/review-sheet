@@ -118,7 +118,7 @@
         "type": "object",
         "required": ["product", "file"],
         "additionalProperties": false,
-        "properties": { "product": { "const": "httpd" }, "file": { "type": "string" }, "command": { "type": "string" }, "aside": { "type": "string" } }
+        "properties": { "product": { "enum": ["httpd", "keycloak"] }, "file": { "type": "string" }, "command": { "type": "string" }, "aside": { "type": "string" } }
       }
     },
     "channels": {

@@ -62,7 +62,7 @@ export type ParameterSheetInput = {
   // Rows a deployed file cannot settle, carried from the build spec: everything
   // downstream of the build reads the model, not the spec.
   channels?: ChannelSpec[];
-  defaults_checked_by?: { product: "httpd"; file: string; command?: string; aside?: string }[];
+  defaults_checked_by?: { product: "httpd" | "keycloak"; file: string; command?: string; aside?: string }[];
   // Which product build each sheet describes — a dictionary's product and the
   // version it was extracted from. A "the product's default applies" row is a
   // claim about that build and no other.
