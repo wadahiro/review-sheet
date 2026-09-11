@@ -638,6 +638,12 @@ program
             : "",
           missing.length > 0 ? `  a host does not have ${missing.length} file(s): ${missing.slice(0, 3).join(", ")}${missing.length > 3 ? ", …" : ""}` : "",
           rest.length > 0 ? `  ${rest.length} item(s) no route reached` : "",
+          // Two collectors claiming one host of one environment: the second
+          // one's copy is not used, and a run must never discover that by the
+          // rows it answers coming back empty.
+          outcome.conflicts.length > 0
+            ? `  WARNING: ${outcome.conflicts.length} host(s) claimed by more than one observation, the first kept: ${outcome.conflicts.slice(0, 3).join(", ")}${outcome.conflicts.length > 3 ? ", …" : ""}`
+            : "",
           overrode.length > 0
             ? `  ${overrode.length} answered better by this project's own channel: ${overrode.slice(0, 3).join(", ")}${overrode.length > 3 ? ", …" : ""}`
             : "",

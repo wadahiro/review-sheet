@@ -386,3 +386,51 @@ describe("what the product says about who decided a value", () => {
     expect(got.results[0].detail).toContain("app.conf");
   });
 });
+
+// One environment, several collectors: what reaches a fleet of hosts and what
+// reaches a cloud API are different programs, and both answer for the same
+// environment.
+describe("several observations of one environment", () => {
+  const nodes: Observation = {
+    environment: "stg",
+    collected_at: "2026-09-11T00:00:00Z",
+    hosts: { web01: { files: { [CONF]: "Other 1\nListen 80\n" } } },
+  };
+  const cloud: Observation = {
+    environment: "stg",
+    collected_at: "2026-09-11T00:00:00Z",
+    hosts: { "acct / region": { files: {}, commands: { "aws sts get-caller-identity": "{}\n" } } },
+  };
+
+  it("merges their hosts instead of keeping whichever came last", () => {
+    // Either order: keying a map on the environment kept whichever came LAST,
+    // so one of these two arrangements silently threw the node's files away.
+    for (const order of [[cloud, nodes], [nodes, cloud]]) {
+      const got = judgeFiles(planOf([item({ key: "Listen", expected: "80" })]), order, { at: "X", lang: "en" });
+      expect(got.results.map((r) => [r.evidence?.host, r.status])).toEqual([["web01", "pass"]]);
+      expect(got.conflicts).toEqual([]);
+    }
+    // …and both collectors' material is carried.
+    const docs = evidenceFrom([cloud, nodes], planOf([item({ key: "Listen", expected: "80" })]));
+    expect(docs.length).toBe(2);
+  });
+
+  // An environment only a file-less collector reached has not been looked at
+  // for files at all — which is what an uncollected environment is. Judged per
+  // host instead, it said an ACCOUNT does not have a unit file.
+  it("does not ask an account for a deployed file", () => {
+    const got = judgeFiles(planOf([item({ key: "Listen", expected: "80" })]), [cloud], { at: "X", lang: "en" });
+    expect(got.results.map((r) => [r.status, r.reason])).toEqual([["not_run", got.results[0].reason]]);
+    expect(got.results[0].reason).toContain("has not been collected");
+    expect(got.missing).toEqual([]);
+  });
+
+  // Two collectors claiming one host is not something this can resolve, so the
+  // first is kept and the conflict is named rather than silently folded.
+  it("names a host two observations both claim", () => {
+    const other: Observation = { ...nodes, hosts: { web01: { files: { [CONF]: "Other 1\nListen 9\n" } } } };
+    const got = judgeFiles(planOf([item({ key: "Listen", expected: "80" })]), [nodes, other], { at: "X", lang: "en" });
+    expect(got.conflicts).toEqual(["stg/web01"]);
+    expect(got.results[0].status).toBe("pass");
+  });
+});

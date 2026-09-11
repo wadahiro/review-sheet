@@ -28,11 +28,12 @@ import { extractFile } from "./extract.js";
 import type { Format } from "./extract.js";
 import type { Collected } from "./channel.js";
 import { registerKeycloakChannels } from "./channels/keycloak.js";
+import { registerAwsRdsRouter } from "./channels/aws-rds.js";
 import { buildMismatch, rpmVersions, packagesToQuery } from "./channels/rpm.js";
 import { compiledInFor, injectedOptions, lineOfCompiledIn } from "./channels/httpd.js";
 import { effectiveConfig, isProductDefault, lineOfEffective } from "./channels/keycloak.js";
 import type { TestItem, TestPlan } from "./testplan.js";
-import { listChannels, listFunctionalChannels, registerChannel, commandChannel, type Channel } from "./channel.js";
+import { listChannels, listFunctionalChannels, registerChannel, commandChannel, getDocumentRouter, type Channel } from "./channel.js";
 import type { TestResult, TestResults } from "./testresults.js";
 
 // One environment, as somebody collected it. The shape is a contract rather
@@ -119,6 +120,43 @@ const parse = (text: string | null | undefined, path: string, format: Format | u
 const holds = (file: Parsed, key: string): boolean =>
   file.get(key) !== undefined || [...file.keys()].some((k) => k.startsWith(`${key}.`));
 
+// ONE ENVIRONMENT, SEVERAL COLLECTORS. What reaches a fleet of hosts and what
+// reaches a cloud API are different programs run at different moments, and both
+// answer for the same environment — so a run is handed several observation
+// files that share an `environment`.
+//
+// They are MERGED by host. Keying a map on the environment instead (which is
+// what this did) kept whichever came last and dropped the other entirely, in
+// silence: every row the lost collector answered came back "not run", which
+// reads exactly like a channel that cannot ask rather than a file that was
+// thrown away.
+//
+// A host claimed by two of them is NOT merged field-wise — two collectors
+// disagreeing about one host's files is not something this can resolve — so the
+// first is kept and the conflict is reported by name.
+export function mergeByEnvironment(observations: Observation[]): { merged: Observation[]; conflicts: string[] } {
+  const byEnv = new Map<string, Observation>();
+  const conflicts: string[] = [];
+  for (const obs of observations) {
+    const held = byEnv.get(obs.environment);
+    if (held === undefined) {
+      byEnv.set(obs.environment, { ...obs, hosts: { ...obs.hosts } });
+      continue;
+    }
+    for (const [host, one] of Object.entries(obs.hosts)) {
+      if (held.hosts[host] !== undefined) {
+        conflicts.push(`${obs.environment}/${host}`);
+        continue;
+      }
+      held.hosts[host] = one;
+    }
+    // What the importer's placeholders resolved to is a fact about the
+    // ENVIRONMENT, not about one collector's hosts, so both files may carry it.
+    if (obs.substitutions !== undefined) held.substitutions = { ...obs.substitutions, ...(held.substitutions ?? {}) };
+  }
+  return { merged: [...byEnv.values()], conflicts };
+}
+
 export type JudgeOutcome = {
   results: TestResult[];
   evidence: NonNullable<TestResults["evidence"]>;
@@ -130,6 +168,9 @@ export type JudgeOutcome = {
   // (environment, host, file) — every row of that file says the same thing, so
   // the rows say it once each and this says it once.
   missing: string[];
+  // One host claimed by two observations of the same environment. See
+  // `mergeByEnvironment`.
+  conflicts: string[];
 };
 
 export type JudgeWords = {
@@ -225,17 +266,31 @@ export function judgeFiles(
 ): JudgeOutcome {
   const t = JUDGE_WORDS[opts.lang ?? "ja"];
   const at = opts.at ?? new Date().toISOString();
-  const byEnv = new Map(observations.map((o) => [o.environment, o]));
-  const out: JudgeOutcome = { results: [], evidence: [], unanswered: [], missing: [] };
+  const { merged, conflicts } = mergeByEnvironment(observations);
+  const byEnv = new Map(merged.map((o) => [o.environment, o]));
+  const out: JudgeOutcome = { results: [], evidence: [], unanswered: [], missing: [], conflicts };
   // Parsed once per (environment, host, path): a file holds hundreds of rows,
   // and parsing it per row is the same work several hundred times over.
   const cache = new Map<string, Parsed | null>();
   // One parse per document, not per row: a realm is a few thousand entries and
   // several hundred rows address into it.
-  const docCache = new Map<ObservedDocument, Parsed | null>();
-  const parsedDoc = (d: ObservedDocument): Parsed | null => {
-    if (!docCache.has(d)) docCache.set(d, d.absent !== undefined ? null : parse(d.text, `document.${d.format}`, d.format, opts.idFields));
-    return docCache.get(d) ?? null;
+  const docCache = new Map<ObservedDocument, Map<string, Parsed | null>>();
+  // Per document AND per identity field set: a router states the field the API
+  // identifies a list by (`ParameterName`), which is the product's knowledge and
+  // not every document's, so a second reading of the same bytes is a different
+  // parse and must not answer from the first one's cache.
+  const parsedDoc = (d: ObservedDocument, extraIds: string[] = []): Parsed | null => {
+    const k = extraIds.join("\u0000");
+    let per = docCache.get(d);
+    if (per === undefined) {
+      per = new Map<string, Parsed | null>();
+      docCache.set(d, per);
+    }
+    if (!per.has(k)) {
+      const ids = extraIds.length === 0 ? opts.idFields : [...(opts.idFields ?? []), ...extraIds];
+      per.set(k, d.absent !== undefined ? null : parse(d.text, `document.${d.format}`, d.format, ids));
+    }
+    return per.get(k) ?? null;
   };
   const parsedOf = (env: string, host: string, path: string, text: string | null | undefined, fmt: Format | undefined): Parsed | null => {
     const k = `${env}\u0000${host}\u0000${path}`;
@@ -275,7 +330,7 @@ export function judgeFiles(
     const obs0 = byEnv.get(item.target.instance);
     const doc = obs0 === undefined ? undefined : documentFor(obs0, item, opts.documents ?? [], obs0.substitutions ?? {});
     if (doc !== undefined) {
-      out.results.push(...answerByDocument(item, doc.doc, doc.host, doc.address, doc.expected, at, t, parsedDoc));
+      out.results.push(...answerByDocument(item, doc.doc, doc.host, doc.address, doc.expected, at, t, parsedDoc, doc.idFields));
       continue;
     }
     const path = item.file;
@@ -295,7 +350,27 @@ export function judgeFiles(
     // EVERY host that holds the file, not the first: a fleet is only as
     // configured as its least configured node, and a verdict read off one node
     // says nothing about the others.
-    for (const [host, held] of Object.entries(obs.hosts)) {
+    //
+    // …but only the hosts a FILE COLLECTOR reached. One environment is answered
+    // by several collectors (see `mergeByEnvironment`), and the one that reaches
+    // a cloud API records a "host" that is an account and a region: it reads no
+    // files and never will, so asking it for one produces "this host does not
+    // have it" for every row of every file — a fleet-wide finding invented by
+    // the shape of the run. A host that collected files and found none of them
+    // there records each path as `null` and is judged exactly as before; only a
+    // collector that read no files at all is skipped.
+    //
+    // Where NO host of the environment read any, the answer is the same one an
+    // environment nobody collected gets: nothing has been here to look at a
+    // file yet. Reporting it per host instead said that an ACCOUNT does not
+    // have /etc/systemd/system/keycloak.service — a fleet-wide finding, and a
+    // line in `missing`, invented by which collector happened to run.
+    const readFiles = Object.entries(obs.hosts).filter(([, h]) => Object.keys(h.files).length > 0);
+    if (readFiles.length === 0) {
+      out.results.push({ target, status: "not_run", reason: t.notCollected });
+      continue;
+    }
+    for (const [host, held] of readFiles) {
       const file = parsedOf(item.target.instance, host, path, held.files[path], held.formats?.[path]);
       const evidence = { host, file: path };
       if (file === null) {
@@ -454,12 +529,26 @@ function documentFor(
   item: TestItem,
   templates: DocumentTemplate[],
   subs: Record<string, string>
-): { doc: ObservedDocument; host: string; address: string | undefined; expected: string | undefined } | undefined {
+): { doc: ObservedDocument; host: string; address: string | undefined; expected: string | undefined; idFields?: string[] } | undefined {
   // A TEMPLATE, where the sheet declares one: it says which document answers
   // the row and where the value sits in it, and both can depend on the row's
   // component. That is the whole of "which realm does this sheet describe, and
   // how is a client of it addressed" — a table, not a program.
   const tpl = templates.find((t) => t.sheet === item.target.sheet);
+  // A ROUTER answers both halves at once, for a sheet whose rows the API does
+  // not address the way their source does. A row it does not name is left
+  // unanswered — never filed at a guessed address.
+  if (tpl?.router !== undefined) {
+    const to = getDocumentRouter(tpl.router)?.route(item);
+    if (to === undefined) return undefined;
+    for (const [host, held] of Object.entries(obs.hosts)) {
+      for (const d of held.documents ?? []) {
+        if (d.name !== to.document) continue;
+        return { doc: d, host, address: to.address, expected: item.expected, ...(to.idFields === undefined ? {} : { idFields: to.idFields }) };
+      }
+    }
+    return undefined;
+  }
   const fill = (s: string): string => {
     let out = s
       .replace(/\{component\}/g, item.component ?? "")
@@ -473,6 +562,7 @@ function documentFor(
   for (const [host, held] of Object.entries(obs.hosts)) {
     for (const d of held.documents ?? []) {
       if (tpl !== undefined) {
+        if (tpl.document === undefined || tpl.address === undefined) continue;
         if (d.name !== fill(tpl.document)) continue;
         // The EXPECTED value carries the same placeholder the address does —
         // a row whose value is a URL built from the environment — and the
@@ -496,8 +586,12 @@ function documentFor(
 // Which document answers a sheet's rows, and where in it each row sits.
 export type DocumentTemplate = {
   sheet: string;
-  document: string;
-  address: string;
+  // …or a PRODUCT plugin that says both, for a sheet whose rows are addressed
+  // the way their source addresses them and not the way the API answering them
+  // does. See `channel.ts`'s `DocumentRouter`.
+  router?: string;
+  document?: string;
+  address?: string;
   // A placeholder an importer resolves at apply time, which a row's address
   // therefore still carries: the SAML client is identified by a URL that
   // differs per environment, so the placeholder is the one identity the row can
@@ -519,14 +613,15 @@ function answerByDocument(
   expected: string | undefined,
   at: string,
   t: JudgeWords,
-  parsedDoc: (d: ObservedDocument) => Parsed | null
+  parsedDoc: (d: ObservedDocument, extraIds?: string[]) => Parsed | null,
+  idFields: string[] = []
 ): TestResult[] {
   const target = { sheet: item.target.sheet, path: item.target.path, key: item.target.key, instance: item.target.instance };
   const evidence = { host, ...(doc.how === undefined ? {} : { command: doc.how }) };
   if (doc.absent !== undefined) {
     return [{ target, at, evidence, status: "not_run", reason: doc.absent }];
   }
-  const parsed = parsedDoc(doc);
+  const parsed = parsedDoc(doc, idFields);
   if (parsed === null) return [{ target, at, evidence, status: "not_run", reason: t.docUnreadable }];
   // A row the sheet MATERIALIZED from a dictionary carries no source — nothing
   // wrote it anywhere — and its key IS the address the dictionary names it by
@@ -646,7 +741,7 @@ export function evidenceFrom(
   }
   const out: NonNullable<TestResults["evidence"]> = [];
   const seen = new Set<string>();
-  for (const obs of observations) {
+  for (const obs of mergeByEnvironment(observations).merged) {
     for (const [host, held] of Object.entries(obs.hosts)) {
       const at = obs.collected_at ?? new Date().toISOString();
       const add = (path: string, text: string | null | undefined, sheet: string): void => {
@@ -759,6 +854,7 @@ export function collectPlan(
 export function registerModelChannels(model: {
   channels?: import("./types.js").ChannelSpec[];
   functional_channels?: { channel: string; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string }[];
+  documents?: { router?: string }[];
 }): number {
   for (const c of model.channels ?? []) {
     registerChannel(commandChannel(c, `${c.channel}:${c.sheet}:${c.command}`));
@@ -769,7 +865,15 @@ export function registerModelChannels(model: {
   for (const f of model.functional_channels ?? []) {
     if (f.channel === "keycloak") registerKeycloakChannels(f);
   }
-  return (model.channels ?? []).length + (model.functional_channels ?? []).length;
+  // …and the plugins that only say WHERE a row sits in what a product's API
+  // returned. A router named by no `documents:` entry is never registered: a
+  // plugin that claims rows nobody asked it to is the same failure as one that
+  // answers none.
+  const routed = (model.documents ?? []).filter((d) => d.router !== undefined);
+  for (const d of routed) {
+    if (d.router === "aws-rds") registerAwsRdsRouter();
+  }
+  return (model.channels ?? []).length + (model.functional_channels ?? []).length + routed.length;
 }
 
 // EVERY plan item ends with an answer. What is left after the files, the
@@ -791,7 +895,9 @@ export function answerTheRest(
   // WHY it was not reached, and the two are different fixes: an environment
   // nobody collected is waiting for a run, while one that WAS collected and
   // still has no answer is waiting for a channel that can ask.
-  const collected = new Set(observations.filter((o) => Object.keys(o.hosts).length > 0).map((o) => o.environment));
+  const collected = new Set(
+    mergeByEnvironment(observations).merged.filter((o) => Object.keys(o.hosts).length > 0).map((o) => o.environment)
+  );
   const key = (x: { sheet: string; path?: string[]; key: string; instance: string }): string =>
     [x.sheet, (x.path ?? []).join("\u0001"), x.key, x.instance].join("\u0000");
   const seen = new Set(results.map((r) => key(r.target)));
@@ -824,7 +930,7 @@ export function judgeFunctional(
 ): { answers: NonNullable<TestResults["functional"]>; evidence: NonNullable<TestResults["evidence"]> } {
   const t = JUDGE_WORDS[opts.lang ?? "ja"];
   const at = opts.at ?? new Date().toISOString();
-  const byEnv = new Map(observations.map((o) => [o.environment, o]));
+  const byEnv = new Map(mergeByEnvironment(observations).merged.map((o) => [o.environment, o]));
   const out: NonNullable<TestResults["functional"]> = [];
   // The bytes a product channel read its answer from, for the record to carry.
   const channelDocuments: NonNullable<TestResults["evidence"]> = [];

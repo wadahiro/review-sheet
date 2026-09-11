@@ -70,7 +70,7 @@ export type ParameterSheetInput = {
   // Which product plugin answers which functional item — see channels/.
   functional_channels?: { channel: "keycloak"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string }[];
   // Which document answers a sheet's rows, and where in it each row sits.
-  documents?: { sheet: string; document: string; address: string; substitute?: string }[];
+  documents?: { sheet: string; document?: string; address?: string; substitute?: string; router?: string }[];
   // The identity fields a list of maps is addressed by. Carried because a
   // document fetched later must be read with the SAME list the sheet was built
   // with, or the sheet spells a client one way and the document another.

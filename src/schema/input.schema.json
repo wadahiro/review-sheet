@@ -75,9 +75,10 @@
       "description": "Which document answers a sheet's rows, and where in it each row sits. `{component}` and `{key}` are the row's own.",
       "items": {
         "type": "object",
-        "required": ["sheet", "document", "address"],
+        "required": ["sheet"],
         "additionalProperties": false,
-        "properties": { "sheet": { "type": "string" }, "document": { "type": "string" }, "address": { "type": "string" }, "substitute": { "type": "string" } }
+        "properties": { "sheet": { "type": "string" }, "document": { "type": "string" }, "address": { "type": "string" }, "substitute": { "type": "string" }, "router": { "type": "string" } },
+        "oneOf": [{ "required": ["document", "address"] }, { "required": ["router"] }]
       }
     },
     "id_fields": {

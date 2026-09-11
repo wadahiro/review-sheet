@@ -3576,6 +3576,37 @@ A plugin JUDGES and does not reach: a collector has already asked the product
 and handed the bytes over. Saying what to fetch is `collect-plan`'s, and it
 names commands, not requests — so the asking half stays with whoever reaches.
 
+The other half a plugin can hold is WHERE a row sits in what an API returned.
+A document is read by the same machinery a file is — the row's own structural
+address, looked up in the parsed reply — which works whenever the sheet and the
+API address a value the same way. They often do not: a row of an infrastructure
+sheet is addressed the way its SOURCE addresses it, and the API names the same
+field something else.
+
+```yaml
+documents:
+  - { sheet: keycloak realm,     document: "{component}", address: "{key}" }   # a template
+  - { sheet: aws infrastructure, router: aws-rds }                             # …or a plugin
+```
+
+`aurora.aws_rds_cluster_parameter_group.this.parameter[name=max_connections].value`
+is `Parameters[ParameterName=max_connections].ParameterValue`, and that relation
+cannot be inferred: `backup_retention_period` -> `BackupRetentionPeriod` looks
+like a rule until `db_cluster_parameter_group_name` ->
+`DBClusterParameterGroup`, and a rule that is right most of the time answers the
+wrong field in silence. So it is a table, and a row it does not name is handed
+BACK rather than filed at a guessed address — what to say about a row a step did
+not check is the project's statement, not this tool's guess. A router also names
+the field the API identifies a list by (`ParameterName`), which is the product's
+knowledge and not every document's.
+
+**One environment, several collectors.** What reaches a fleet of hosts and what
+reaches a cloud API are different programs run at different moments, and both
+answer for one environment — so pass both files and they are MERGED by host. A
+collector that reads no files (an account and a region is not a host that holds
+`/etc/httpd/conf/httpd.conf`) is skipped when a deployed file is being judged,
+and a host two observations both claim is reported by name rather than folded.
+
 Declare a `check:` only where one command's output really is the answer. An item whose
 rule compares against something else — a count against the fleet's size, a date
 against today, a value against what a deployed file says — is a rule, and a

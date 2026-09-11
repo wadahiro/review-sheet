@@ -45,6 +45,41 @@ export type Channel = {
   answer: (item: TestItem, collected: Collected) => ChannelAnswer | undefined;
 };
 
+// WHERE a row sits in a document a product's API returned.
+//
+// A document is read by the same machinery a file is — the row's own structural
+// address, looked up in the parsed reply — which works whenever the sheet and
+// the API agree on how a value is addressed. They often do not: a row of an
+// infrastructure sheet is addressed the way its SOURCE addresses it, and the
+// API that can be asked names the same field something else. That relation is
+// the PRODUCT's, the same kind of fact a parser holds, and it cannot be
+// inferred from the spelling.
+//
+// A router says which document answers a row and where the value sits in it.
+// Bound by the project (a `documents:` entry naming it), because only the
+// project knows which of its sheets holds those rows. A row the router does not
+// name is left unanswered rather than guessed at.
+export type DocumentRouter = {
+  name: string;
+  route: (item: TestItem) => { document: string; address: string; idFields?: string[] } | undefined;
+};
+
+const routers = sharedRegistry<DocumentRouter>("review-sheet.document-routers.v1");
+
+export function registerDocumentRouter(r: DocumentRouter): void {
+  const i = routers.findIndex((x) => x.name === r.name);
+  if (i >= 0) routers[i] = r;
+  else routers.push(r);
+}
+
+export function getDocumentRouter(name: string): DocumentRouter | undefined {
+  return routers.find((r) => r.name === name);
+}
+
+export function listDocumentRouters(): DocumentRouter[] {
+  return [...routers];
+}
+
 const registry = sharedRegistry<Channel>("review-sheet.channels.v1");
 
 export function registerChannel(c: Channel): void {

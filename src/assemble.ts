@@ -623,7 +623,7 @@ export type AssembleOpts = {
   defaultsCheckedBy?: { product: "httpd" | "keycloak"; file: string; command?: string; aside?: string }[];
   builds?: { sheet: string; product: string; version: string }[];
   functionalChannels?: { channel: "keycloak"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string }[];
-  documents?: { sheet: string; document: string; address: string; substitute?: string }[];
+  documents?: { sheet: string; document?: string; address?: string; substitute?: string; router?: string }[];
   idFieldsOut?: string[];
   hooks?: AssembleHooks;
   // Per-sheet dictionary bindings, keyed by SheetInputs.name — see

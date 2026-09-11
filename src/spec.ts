@@ -58,7 +58,7 @@ export type BuildSpec = {
   // Which document answers a sheet's rows, and where in it each row sits.
   // `{component}` and `{key}` are the row's own — that is the whole of "which
   // realm does this sheet describe, and how is a client of it addressed".
-  documents?: Array<{ sheet: string; document: string; address: string; substitute?: string }>;
+  documents?: Array<{ sheet: string; document?: string; address?: string; substitute?: string; router?: string }>;
   // Which product plugin answers which of this project's functional items.
   // The ids are the project's — a product plugin cannot know what a project
   // called its items — so the project binds them.
@@ -288,9 +288,19 @@ const specSchema = {
       type: "array",
       items: {
         type: "object",
-        required: ["sheet", "document", "address"],
+        required: ["sheet"],
         additionalProperties: false,
-        properties: { sheet: { type: "string" }, document: { type: "string" }, address: { type: "string" }, substitute: { type: "string" } },
+        properties: {
+          sheet: { type: "string" },
+          document: { type: "string" },
+          address: { type: "string" },
+          substitute: { type: "string" },
+          router: { type: "string" },
+        },
+        // Either the entry SAYS where the value sits, or it names the product
+        // plugin that does. An entry that does neither answers nothing, and
+        // silently — which is the one thing a declaration must never do.
+        oneOf: [{ required: ["document", "address"] }, { required: ["router"] }],
       },
     },
     functional_channels: {
