@@ -53,6 +53,48 @@ export function lineOfEffective(text: string | null | undefined, key: string): n
 }
 
 
+// ---------------------------------------------------------------------------
+// What the product says about ITSELF while it runs.
+//
+// Three answers a project asks of every Keycloak deployment, and in each one
+// the reading is the product's and the EXPECTATION is the project's — so what
+// lives here is only the reading. How many members a cluster should have is the
+// fleet's size; which hostname the issuer should carry is the deployed
+// configuration's: neither is knowable from the product's reply alone.
+
+// `/health/ready`. The endpoint answers 200 with a body naming each check, so
+// the status line alone is not the answer: one check reporting DOWN under an
+// overall 200 is not a shape the product is meant to produce, and reading it is
+// cheaper than assuming it cannot happen.
+export function readyReport(text: string | null | undefined): { http?: number; down: boolean } {
+  const code = /HTTP (\d+)/.exec(text ?? "")?.[1];
+  return {
+    ...(code === undefined ? {} : { http: Number(code) }),
+    down: /"status"\s*:\s*"DOWN"/.test(text ?? ""),
+  };
+}
+
+// The size of the cluster view the embedded cache last logged (Infinispan's
+// `ISPN000094`, whose view line ends `(N) [member, member]`). How many there
+// SHOULD be is the fleet's, not the product's.
+export function clusterMembers(text: string | null | undefined): number | undefined {
+  const m = /\((\d+)\)\s*\[/.exec(text ?? "");
+  return m === null ? undefined : Number(m[1]);
+}
+
+// What the realm publishes as its issuer, from its discovery document.
+export function issuerOf(text: string | null | undefined): string | undefined {
+  return /"issuer"\s*:\s*"([^"]+)"/.exec(text ?? "")?.[1];
+}
+
+// …and what it WOULD be for a base URL and a realm. The product's own rule
+// (`<base>/realms/<realm>`), applied to two facts only the project has: the
+// hostname its configuration deploys, and the realm the question was put about.
+export function issuerFor(base: string | null | undefined, realm: string | null | undefined): string {
+  return `${(base ?? "").replace(/\/$/, "")}/realms/${realm ?? ""}`;
+}
+
+
 // One realm's login page, as a collector fetched it. The shape is the
 // collector's to produce; what each field MEANS is this file's.
 type LoginPage = {

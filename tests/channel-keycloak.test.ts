@@ -6,7 +6,10 @@
 // beginning. What a PROJECT supplies is which of its items the plugin answers.
 
 import { describe, it, expect, beforeEach } from "bun:test";
-import { registerKeycloakChannels, effectiveConfig, isProductDefault, lineOfEffective } from "../src/channels/keycloak";
+import {
+  registerKeycloakChannels, effectiveConfig, isProductDefault, lineOfEffective,
+  readyReport, clusterMembers, issuerOf, issuerFor,
+} from "../src/channels/keycloak";
 import { listFunctionalChannels } from "../src/channel";
 
 const clear = (): void => {
@@ -144,5 +147,37 @@ describe("the effective configuration the product reports", () => {
   it("points at the line a key was reported at, and nowhere for one it does not report", () => {
     expect(lineOfEffective(OUT, "hostname")).toBe(4);
     expect(lineOfEffective(OUT, "http-port")).toBeUndefined();
+  });
+});
+
+// What the product says about itself while it runs. The READING is the
+// product's; what the answer should BE is the project's, so only the reading is
+// here.
+describe("what the running product reports about itself", () => {
+  it("reads the readiness endpoint's status and the checks under it", () => {
+    const up = 'HTTP 200 OK\n{\n  "status": "UP",\n  "checks": [{ "name": "Database", "status": "UP" }]\n}';
+    expect(readyReport(up)).toEqual({ http: 200, down: false });
+    // A 200 with one check DOWN is not a shape the product is meant to produce,
+    // which is exactly why it is read rather than assumed away.
+    expect(readyReport(up.replace('"status": "UP",', '"status": "DOWN",'))).toEqual({ http: 200, down: true });
+    expect(readyReport("HTTP 503 Service Unavailable")).toEqual({ http: 503, down: false });
+    expect(readyReport(null)).toEqual({ down: false });
+  });
+
+  it("reads how many members the cluster last logged, and nothing where it logged none", () => {
+    const view = "Sep 09 00:17:21 node kc.sh[1]: ISPN000094: Received new cluster view for channel ISPN: [node1|1] (2) [node1, node2]";
+    expect(clusterMembers(view)).toBe(2);
+    expect(clusterMembers("no such line in the journal")).toBeUndefined();
+  });
+
+  it("reads the issuer a realm publishes, and says what it would be", () => {
+    expect(issuerOf('{"issuer":"https://sso.example.com/realms/app","authorization_endpoint":"…"}')).toBe(
+      "https://sso.example.com/realms/app"
+    );
+    expect(issuerOf("<html>404</html>")).toBeUndefined();
+    // The product's own rule, applied to two facts only the project has.
+    expect(issuerFor("https://sso.example.com", "app")).toBe("https://sso.example.com/realms/app");
+    // …and a trailing slash on the configured hostname is not a difference.
+    expect(issuerFor("https://sso.example.com/", "app")).toBe("https://sso.example.com/realms/app");
   });
 });

@@ -3600,6 +3600,19 @@ not check is the project's statement, not this tool's guess. A router also names
 the field the API identifies a list by (`ParameterName`), which is the product's
 knowledge and not every document's.
 
+A plugin need not answer a whole item either. What a product says about itself
+while it runs — its readiness body, the size of the cluster view its cache last
+logged, the issuer a realm publishes, the date format `openssl s_client` prints
+— is READ the same way everywhere, while what the answer should BE is the
+project's: the size of this fleet, the hostname this design deploys, how much
+warning it wants before a certificate expires. So `src/channels/` also exports
+plain readers (`readyReport`, `clusterMembers`, `issuerOf`/`issuerFor`,
+`certExpiry`/`handshakeFailure`), and a project's own rule calls them instead of
+carrying a second copy of the regex. Telling "could not reach the endpoint" from
+"the certificate expired" is exactly that kind of knowledge: three layers print
+three different sentences, and a project that reads them as a failure reports a
+finding nobody can act on.
+
 **One environment, several collectors.** What reaches a fleet of hosts and what
 reaches a cloud API are different programs run at different moments, and both
 answer for one environment — so pass both files and they are MERGED by host. A
