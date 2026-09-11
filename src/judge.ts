@@ -151,7 +151,10 @@ export function judgeFiles(
     const obs = byEnv.get(item.target.instance);
     const target = { sheet: item.target.sheet, path: item.target.path, key: item.target.key, instance: item.target.instance };
     if (obs === undefined || Object.keys(obs.hosts).length === 0) {
-      out.results.push({ target, at, status: "not_run", reason: t.notCollected });
+      // No `at`: nothing was run against this environment, and the record's
+      // "run on" column would otherwise carry today's date for a row nobody
+      // touched — a date is a claim, and this run has no standing to make it.
+      out.results.push({ target, status: "not_run", reason: t.notCollected });
       continue;
     }
     // EVERY host that holds the file, not the first: a fleet is only as

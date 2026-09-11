@@ -108,10 +108,13 @@ describe("what it refuses to settle", () => {
     expect(got.unanswered.map((i) => i.target.key)).toEqual(["realmName"]);
   });
 
-  it("says an environment nobody collected was not run", () => {
+  it("says an environment nobody collected was not run, and dates nothing", () => {
     const got = judgeFiles(planOf([item({ key: "Listen", expected: "80" })]), [], { at: "X", lang: "en" });
     expect(got.results[0].status).toBe("not_run");
     expect(got.results[0].reason).toContain("has not been collected");
+    // A date is a claim. Nothing was run against this environment, and a record
+    // showing today beside the row says something this run cannot support.
+    expect(got.results[0].at).toBeUndefined();
   });
 
   // A file the sheet says is deployed that the host does not have. Every row of
