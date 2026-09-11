@@ -449,6 +449,11 @@ export type FunctionalItem = {
   id?: string;
   text: LangText;
   intrusive?: boolean;
+  // Which sheet the bytes this item was answered from are filed under — the
+  // chapter a reader of the verdict is standing in. Declared beside the item
+  // because that is the one place that knows: an item is not a row, so nothing
+  // else can say which part of the design it speaks for.
+  sheet?: string;
   // …and how it is checked, where a command answers it. Declared here beside
   // the item because that is where the item is: `collect-plan` reads the
   // command from it, and `judge` reads the output the same way it reads a

@@ -758,6 +758,7 @@
                 "properties": {
                   "id": { "type": "string", "description": "What a result joins on. The sentence is a label; an id is a join that survives rewording." },
                   "text": { "$ref": "#/$defs/langText" },
+                  "sheet": { "type": "string", "description": "Which sheet the bytes this item was answered from are filed under — the chapter a reader of the verdict is standing in." },
                   "intrusive": { "type": "boolean", "description": "Answering this item disturbs the running system (stopping a service to prove it stops). The runner gates on it; the record says so where such an item was not permitted." },
                   "check": {
                     "type": "object",

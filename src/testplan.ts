@@ -101,6 +101,8 @@ export type TestDecider = "project" | "vendor-kept" | "vendor-changed" | "produc
 // failure this whole file exists to refuse.
 export type FunctionalTestItem = {
   unit: string;
+  // Where its evidence is filed — see FunctionalItem.sheet.
+  sheet?: string;
   unitLabel?: LangText;
   // How a command answers it, where one does — see FunctionalItem.check.
   check?: FunctionalItem["check"];
@@ -310,6 +312,7 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
           unit: unit.name,
           ...(unit.label === undefined ? {} : { unitLabel: unit.label }),
           ...(f.id === undefined ? {} : { id: f.id }),
+          ...(f.sheet === undefined ? {} : { sheet: f.sheet }),
           text: f.text,
           intrusive: f.intrusive === true,
           ...(f.check === undefined ? {} : { check: f.check }),

@@ -1198,7 +1198,7 @@ export function judgeFunctional(
         f,
         obs?.hosts ?? {},
         (probe, ctx) => rule.verdict(probe, ctx),
-        { lang: opts.lang, at, ...(rule.sheet === undefined ? {} : { sheet: rule.sheet }) }
+        { lang: opts.lang, at, ...((rule.sheet ?? f.sheet) === undefined ? {} : { sheet: (rule.sheet ?? f.sheet)! }) }
       );
       out.push(answer);
       for (const d of documents) {
@@ -1207,7 +1207,26 @@ export function judgeFunctional(
       }
       continue;
     }
-    if (f.check === undefined) continue;
+    if (f.check === undefined) {
+      // NO RULE, NO CHANNEL, NO `check:` — and still an item of the plan. A
+      // collector that could decide for itself put its verdict in the probe (an
+      // HTTP status code is not a rule, it is the answer), and where it could
+      // not, the fold says which of the three ways this host failed to answer.
+      // Leaving it out instead made the plan's own coverage check fail on an
+      // item nobody had declined to answer.
+      const obs = byEnv.get(f.instance);
+      const { answer, documents } = judgeProbes(f, obs?.hosts ?? {}, (probe) => ({ ok: probe.ok === true }), {
+        lang: opts.lang,
+        at,
+        ...(f.sheet === undefined ? {} : { sheet: f.sheet }),
+      });
+      out.push(answer);
+      for (const d of documents) {
+        if (channelDocuments.some((x) => x.instance === d.instance && x.host === d.host && x.command === d.command)) continue;
+        channelDocuments.push(d);
+      }
+      continue;
+    }
     const obs = byEnv.get(f.instance);
     if (obs === undefined || Object.keys(obs.hosts).length === 0) {
       out.push({

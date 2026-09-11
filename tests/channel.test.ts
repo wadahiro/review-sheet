@@ -183,10 +183,17 @@ describe("an item with no row behind it, answered by a command", () => {
     expect(out[0].reason).toContain("has no chronyc tracking");
   });
 
-  // An item a command cannot settle is left alone: a project answers it, and
-  // answering it here too would be a second verdict.
-  it("leaves an item that declares no command to the project", () => {
-    expect(judgeFunctional(fplan(undefined), [two("x", "x")], { at: "X", lang: "en" }).answers).toEqual([]);
+  // An item that declares no command is still an item of the plan, so it gets
+  // an answer — "this run did not check it" — rather than being left out.
+  // Leaving it out made the plan's own coverage check fail on an item nobody
+  // had declined to answer, which is the opposite of what that check is for;
+  // rows have worked this way (`answerTheRest`) from the beginning. A project
+  // that answers it itself still wins: `-a` is merged over this.
+  it("answers an item that declares no command rather than leaving it out", () => {
+    const out = judgeFunctional(fplan(undefined), [two("x", "x")], { at: "X", lang: "en" }).answers;
+    expect(out.length).toBe(1);
+    expect(out[0]!.status).toBe("not_run");
+    expect(out[0]!.reason).toBe("this run did not check it");
   });
 
   it("asks the collector for the command it declares", () => {
