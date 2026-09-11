@@ -55,6 +55,8 @@ describe("what a login page means", () => {
     const got = channel().answer("login-page", hosts({ login: [page({ form: ["kc-form-login"], declared_theme: "corp" })] }), "stg")!;
     expect(got.status).toBe("fail");
     expect(got.reason).toContain("ログインフォームが無い");
+    // …and says WHICH mark is missing, which a count never could.
+    expect(got.reason).toContain('name="username"');
   });
 
   // A theme can be SELECTED and still broken: the resource version is re-minted
@@ -179,5 +181,38 @@ describe("what the running product reports about itself", () => {
     expect(issuerFor("https://sso.example.com", "app")).toBe("https://sso.example.com/realms/app");
     // …and a trailing slash on the configured hostname is not a difference.
     expect(issuerFor("https://sso.example.com/", "app")).toBe("https://sso.example.com/realms/app");
+  });
+});
+
+// A login page is fetched through the node's OWN front end, so a proxy broken
+// on the second node serves a page that never renders — and an answer read off
+// the first node has not looked at it.
+describe("a login page on more than one node", () => {
+  const ok = { realm: "app", url: "https://a/realms/app/…", status: 200, form: ["kc-form-login", 'name="username"', 'name="password"'], theme: "corp", declared_theme: "corp", assets: [] };
+  it("fails when one node's page is broken, and names that node", () => {
+    const got = channel().answer(
+      "login-page",
+      { web01: { login: [ok] }, web02: { login: [{ ...ok, url: "https://b/realms/app/…", status: 502, form: [] }] } },
+      "stg"
+    )!;
+    expect(got.status).toBe("fail");
+    expect(got.reason).toContain("web02");
+    expect(got.evidence?.host).toBe("web02");
+    // …and the node is named only because more than one answered: on a single
+    // node the realm alone is what a reader is looking at.
+    const one = channel().answer("login-page", { web01: { login: [{ ...ok, status: 502, form: [] }] } }, "stg")!;
+    expect(one.reason).toStartWith("app:");
+  });
+
+  it("carries every node's page, not the first node's", () => {
+    const got = channel().answer(
+      "login-page",
+      { web01: { login: [{ ...ok, html: "a" }] }, web02: { login: [{ ...ok, html: "b" }] } },
+      "stg"
+    )!;
+    expect(got.documents?.map((d) => [d.host, d.text])).toEqual([
+      ["web01", "a"],
+      ["web02", "b"],
+    ]);
   });
 });

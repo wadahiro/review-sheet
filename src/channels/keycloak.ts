@@ -120,40 +120,64 @@ type LdapProvider = {
 
 type Held = { login?: LoginPage[]; ldap?: LdapProvider[]; collected_at?: string };
 
-// The three things that make a page the LOGIN page rather than an error page
-// wearing the same theme.
-const FORM = 3;
+// What makes a page the LOGIN page rather than an error page wearing the same
+// theme: the product's own form id, and the two fields it asks for. A collector
+// reports which of them it found; this says which are meant to be there, so a
+// page missing one is named by the mark it is missing.
+const LOGIN_MARKS = ["kc-form-login", 'name="username"', 'name="password"'];
 
-const firstWith = (hosts: Record<string, unknown>, has: (h: Held) => boolean): [string, Held] | undefined => {
-  for (const [host, held] of Object.entries(hosts)) if (has(held as Held)) return [host, held as Held];
-  return undefined;
-};
+const missingMarks = (found: string[] | undefined): string[] =>
+  LOGIN_MARKS.filter((m) => !(found ?? []).includes(m));
+
+// EVERY host that has an answer, not the first.
+//
+// A realm is the same realm from every node, which is why this used to read one
+// — but a login page is fetched through the node's OWN front end, so a proxy
+// broken on the second node is a page that never renders and an answer that
+// never mentions it. Same rule as every other verdict here: a fleet is only as
+// configured as its least configured node.
+//
+// A host the collector did not ask is not an answer and is skipped; where none
+// was asked, the caller says so.
+const allWith = (hosts: Record<string, unknown>, has: (h: Held) => boolean): [string, Held][] =>
+  Object.entries(hosts).filter(([, held]) => has(held as Held)) as [string, Held][];
+
+const firstWith = (hosts: Record<string, unknown>, has: (h: Held) => boolean): [string, Held] | undefined =>
+  allWith(hosts, has)[0];
 
 function loginAnswer(id: string, hosts: Record<string, unknown>, sheet: string): FunctionalAnswer | undefined {
-  const from = firstWith(hosts, (h) => (h.login ?? []).length > 0);
-  if (from === undefined) return { status: "not_run", reason: "ログイン画面を取得できていない" };
-  const [host, held] = from;
-  const pages = (held.login ?? []).filter((p) => p.reason === undefined && p.error === undefined);
+  // EVERY node that was asked: a login page is fetched through the node's own
+  // front end, so one whose proxy is broken serves a page that never renders —
+  // and reading only the first node answers for a fleet it never looked at.
+  const from = allWith(hosts, (h) => (h.login ?? []).length > 0);
+  if (from.length === 0) return { status: "not_run", reason: "ログイン画面を取得できていない" };
+  const all = from.flatMap(([host, held]) => (held.login ?? []).map((p) => ({ host, p })));
+  const pages = all.filter(({ p }) => p.reason === undefined && p.error === undefined);
   const documents = pages
-    .filter((p) => typeof p.html === "string" && p.html !== "")
-    .map((p) => ({ host, command: `GET ${p.url}`, text: p.html!, sheet, component: p.realm }));
+    .filter(({ p }) => typeof p.html === "string" && p.html !== "")
+    .map(({ host, p }) => ({ host, command: `GET ${p.url}`, text: p.html!, sheet, component: p.realm }));
   if (pages.length === 0) {
     return {
       status: "not_run",
-      reason: (held.login ?? []).map((p) => `${p.realm}: ${p.reason ?? p.error}`).join(" / "),
+      reason: all.map(({ p }) => `${p.realm}: ${p.reason ?? p.error}`).join(" / "),
       documents,
     };
   }
-  const cite = { host, command: `GET ${pages[0]!.url}` };
+  const cite = { host: pages[0]!.host, command: `GET ${pages[0]!.p.url}` };
+  // A page is named by the node it was fetched from once more than one node
+  // answered, and by its realm alone where only one did — the fleet's shape
+  // decides, not this file.
+  const many = from.length > 1;
+  const name = ({ host, p }: { host: string; p: LoginPage }): string => (many ? `${host} ${p.realm}` : p.realm);
 
   if (id.endsWith("assets")) {
     // A theme can be SELECTED and still broken: the resource version in every
     // asset URL is re-minted when the themes are rebuilt, so a jar that was not
     // redeployed leaves the page pointing at CSS that 404s and renders bare.
-    const bad = pages.flatMap((p) =>
-      (p.assets ?? []).filter((a) => a.status !== 200).map((a) => `${p.realm} ${a.path} → ${a.status}`)
+    const bad = pages.flatMap((x) =>
+      (x.p.assets ?? []).filter((a) => a.status !== 200).map((a) => `${name(x)} ${a.path} → ${a.status}`)
     );
-    const total = pages.reduce((n, p) => n + (p.assets ?? []).length, 0);
+    const total = pages.reduce((n, x) => n + (x.p.assets ?? []).length, 0);
     return {
       status: bad.length === 0 ? "pass" : "fail",
       detail: `ログイン画面が参照する ${total} 件（${pages.length} レルム）`,
@@ -164,16 +188,19 @@ function loginAnswer(id: string, hosts: Record<string, unknown>, sheet: string):
   }
 
   // …and the page itself has to BE the login page before its theme means
-  // anything.
-  const broken = pages.filter((p) => p.status !== 200 || (p.form ?? []).length < FORM);
+  // anything. WHICH marks make it one is the product's knowledge — a bare count
+  // was this file asserting how many a collector it does not own decides to
+  // look for, and it could only ever say "not enough of something" — so the
+  // marks are named here and the verdict says which one is missing.
+  const broken = pages.filter((x) => x.p.status !== 200 || missingMarks(x.p.form).length > 0);
   if (broken.length > 0) {
     return {
       status: "fail",
-      detail: `GET ${pages[0]!.url}`,
+      detail: `GET ${pages[0]!.p.url}`,
       reason: broken
-        .map((p) => `${p.realm}: HTTP ${p.status}${(p.form ?? []).length < FORM ? "、ログインフォームが無い" : ""}`)
+        .map((x) => `${name(x)}: HTTP ${x.p.status}${missingMarks(x.p.form).length === 0 ? "" : `、ログインフォームが無い（${missingMarks(x.p.form).join(", ")}）`}`)
         .join(" / "),
-      evidence: cite,
+      evidence: { host: broken[0]!.host, command: `GET ${broken[0]!.p.url}` },
       documents,
     };
   }
@@ -181,22 +208,22 @@ function loginAnswer(id: string, hosts: Record<string, unknown>, sheet: string):
   // the product's own default applies and there is nothing to be "as designed":
   // the served theme is REPORTED and the item says so rather than inventing an
   // expectation.
-  const declared = pages.filter((p) => p.declared_theme != null);
+  const declared = pages.filter((x) => x.p.declared_theme != null);
   if (declared.length === 0) {
     return {
       status: "not_run",
-      reason: `どのレルムも loginTheme を指定していない（製品既定 ${[...new Set(pages.map((p) => String(p.theme)))].join(", ")} が配信されている）`,
+      reason: `どのレルムも loginTheme を指定していない（製品既定 ${[...new Set(pages.map((x) => String(x.p.theme)))].join(", ")} が配信されている）`,
       documents,
     };
   }
-  const wrong = declared.filter((p) => p.theme !== p.declared_theme);
+  const wrong = declared.filter((x) => x.p.theme !== x.p.declared_theme);
   return {
     status: wrong.length === 0 ? "pass" : "fail",
-    detail: `GET ${pages[0]!.url}（${declared.length} レルム）`,
+    detail: `GET ${pages[0]!.p.url}（${declared.length} レルム）`,
     ...(wrong.length === 0
       ? {}
-      : { reason: wrong.map((p) => `${p.realm}: ${JSON.stringify(p.theme)} が配信されている、指定は ${p.declared_theme}`).join(" / ") }),
-    evidence: cite,
+      : { reason: wrong.map((x) => `${name(x)}: ${JSON.stringify(x.p.theme)} が配信されている、指定は ${x.p.declared_theme}`).join(" / ") }),
+    evidence: wrong.length === 0 ? cite : { host: wrong[0]!.host, command: `GET ${wrong[0]!.p.url}` },
     documents,
   };
 }
