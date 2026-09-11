@@ -70,6 +70,29 @@
     "numbering": {
       "type": "boolean"
     },
+    "channels": {
+      "type": "array",
+      "description": "Rows a deployed file cannot settle, and the command that can. Carried from the build spec; `collect-plan` says what to gather from these and `judge` answers from them.",
+      "items": {
+        "type": "object",
+        "required": ["channel", "sheet", "command", "read"],
+        "additionalProperties": false,
+        "properties": {
+          "channel": { "const": "command" },
+          "sheet": { "type": "string" },
+          "keys": { "type": "array", "items": { "type": "string" } },
+          "key_prefix": { "type": "string" },
+          "command": { "type": "string" },
+          "read": {
+            "oneOf": [
+              { "type": "object", "required": ["whole"], "additionalProperties": false, "properties": { "whole": { "const": true }, "lower": { "type": "boolean" } } },
+              { "type": "object", "required": ["pattern"], "additionalProperties": false, "properties": { "pattern": { "type": "string" }, "map": { "type": "object", "additionalProperties": { "type": "string" } } } },
+              { "type": "object", "required": ["member"], "additionalProperties": false, "properties": { "member": { "const": true } } }
+            ]
+          }
+        }
+      }
+    },
     "columns": {
       "type": "array",
       "items": {

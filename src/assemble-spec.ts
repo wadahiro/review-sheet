@@ -225,6 +225,10 @@ export function assembleFromSpecWithReport(
     strictMetadata: opts.strictMetadata ?? spec.enrich?.strict,
     metadata: spec.metadata,
     capabilities: spec.capabilities,
+    // The channels travel WITH the model: everything downstream of the build
+    // reads the model and not the spec — `collect-plan` says what to gather
+    // from them, `judge` answers from them — and neither has the spec in hand.
+    channels: spec.channels,
     hooks: opts.hooks,
     dictionaries,
   });

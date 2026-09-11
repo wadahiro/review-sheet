@@ -8,7 +8,7 @@ import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { validateInput, validateReview, validateResults, validateObservation, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
 import { renderTestDoc, renderExcluded, injectBlocks, unitDocuments } from "./testdoc.js";
-import { judgeFiles, evidenceFrom } from "./judge.js";
+import { judgeFiles, evidenceFrom, collectPlan, registerModelChannels, answerTheRest } from "./judge.js";
 import { findBakedSecrets, formatBakedSecrets, findSecretsInEvidence, formatEvidenceLeaks } from "./secrets.js";
 import { toFullEditInput } from "./full-edit.js";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, ArtifactPreview } from "./types.js";
@@ -531,6 +531,33 @@ program
   });
 
 program
+  .command("collect-plan")
+  .description("What a collector has to gather: every deployed file the sheets describe, and every command a channel asks for")
+  .requiredOption("-i, --input <file>", "Model (input.json)")
+  .option("-o, --output <file>", "Where to write it (default: stdout)")
+  .action((opts: { input: string; output?: string }) => {
+    try {
+      const model = JSON.parse(readFileSync(opts.input, "utf-8")) as ParameterSheetInput;
+      registerModelChannels(model);
+      const { plan } = buildTestPlan(model);
+      const out = collectPlan(plan);
+      const text = JSON.stringify(out, null, 2);
+      if (opts.output === undefined) console.log(text);
+      else {
+        writeFileSync(opts.output, text);
+        console.error(`Wrote ${opts.output}`);
+      }
+      console.error(
+        `collect: ${Object.entries(out.files).map(([k, v]) => `${k} ${v.length} file(s)`).join(", ")}` +
+          (out.commands.length > 0 ? `, ${out.commands.length} command(s): ${out.commands.join(", ")}` : ", no command")
+      );
+    } catch (e) {
+      console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      process.exit(1);
+    }
+  });
+
+program
   .command("judge")
   .description("Answer a plan from what was collected: every item a deployed file can settle, with the evidence it was read from")
   .requiredOption("-i, --input <file>", "Model (input.json)")
@@ -545,6 +572,7 @@ program
   .action((opts: { input: string; observations: string[]; plan?: string; answers?: string; output: string; lang: string }) => {
     try {
       const model = JSON.parse(readFileSync(opts.input, "utf-8")) as ParameterSheetInput;
+      registerModelChannels(model);
       const plan: TestPlan =
         opts.plan === undefined ? buildTestPlan(model).plan : (JSON.parse(readFileSync(opts.plan, "utf-8")) as TestPlan);
       const observations = opts.observations.map((f) => validateObservation(JSON.parse(readFileSync(f, "utf-8"))));
@@ -580,6 +608,10 @@ program
         if (theirs.unclaimed !== undefined) mine.unclaimed = theirs.unclaimed;
       }
 
+      // …and whatever no route reached at all. Stated by the tool, because only
+      // the tool sees every route's answers at once.
+      const rest = answerTheRest(plan, mine.results, observations, { lang });
+      mine.results = [...mine.results, ...rest];
       writeFileSync(opts.output, JSON.stringify(mine, null, 2));
       const missing = [...new Set(outcome.missing)];
       console.error(
@@ -591,6 +623,7 @@ program
               (outcome.unanswered.length > 3 ? ", …" : "")
             : "",
           missing.length > 0 ? `  a host does not have ${missing.length} file(s): ${missing.slice(0, 3).join(", ")}${missing.length > 3 ? ", …" : ""}` : "",
+          rest.length > 0 ? `  ${rest.length} item(s) no route reached` : "",
           overrode.length > 0
             ? `  ${overrode.length} answered better by this project's own channel: ${overrode.slice(0, 3).join(", ")}${overrode.length > 3 ? ", …" : ""}`
             : "",

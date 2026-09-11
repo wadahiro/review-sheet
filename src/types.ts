@@ -59,6 +59,9 @@ export function pickLang(t: LangText | undefined, lang: "en" | "ja"): string | u
 export type ParameterSheetInput = {
   metadata?: SheetMetadata;
   columns?: ColumnDefinition[];
+  // Rows a deployed file cannot settle, carried from the build spec: everything
+  // downstream of the build reads the model, not the spec.
+  channels?: ChannelSpec[];
   // The sheet groups this document uses, in the order they should be read.
   // Declared rather than derived from the order sheets happen to appear in:
   // the reading order of a system's layers is a decision, and one that must not
@@ -431,6 +434,18 @@ export type FunctionalItem = {
   id?: string;
   text: LangText;
   intrusive?: boolean;
+};
+
+// Rows a deployed file cannot settle, and the command that can — carried from
+// the build spec so everything downstream of the build can read them. See
+// channel.ts for why the axis is the channel and not whoever collects it.
+export type ChannelSpec = {
+  channel: "command";
+  sheet: string;
+  keys?: string[];
+  key_prefix?: string;
+  command: string;
+  read: { whole: true; lower?: boolean } | { pattern: string; map?: Record<string, string> } | { member: true };
 };
 
 export type TestDeclaration = {

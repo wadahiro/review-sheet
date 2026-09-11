@@ -64,7 +64,7 @@ import type {
   Instance,
   ColumnDefinition,
   SheetMetadata,
-  Capabilities,
+  Capabilities, ChannelSpec,
   LangText,
   ArtifactPreview,
   SheetDocument,
@@ -618,6 +618,8 @@ export type AssembleOpts = {
   strictMetadata?: boolean; // default true
   metadata?: { title?: string; project?: string; version?: string };
   capabilities?: Capabilities;
+  // Carried straight through to the model — see assemble-spec.ts.
+  channels?: ChannelSpec[];
   hooks?: AssembleHooks;
   // Per-sheet dictionary bindings, keyed by SheetInputs.name — see
   // SheetDictionaryBinding. A sheet's drafted keys are matched ONLY against
@@ -3078,6 +3080,7 @@ export function assembleSheetsWithReport(
     ...(projectMeta.numbering === undefined ? {} : { numbering: projectMeta.numbering }),
     ...(underKeyColumns.size > 0 ? { columns: [...underKeyColumns.values()] } : {}),
     ...(opts.capabilities ? { capabilities: opts.capabilities } : {}),
+    ...(opts.channels ? { channels: opts.channels } : {}),
     sheets,
     ...(artifacts.length > 0 ? { artifacts } : {}),
   };

@@ -49,6 +49,23 @@ export type BuildSpec = {
   // every command line that builds from it.
   id_fields?: string[];
   data_maps?: string[];
+  // Rows a deployed file cannot settle, and the command that can. Data rather
+  // than a script: what varies between products is the command and how to read
+  // its output, and both fit in three named shapes. `collect-plan` reads these
+  // to say what a collector must gather, so the commands exist once — written
+  // twice, in the judge and in the playbook that runs them, nothing checked the
+  // two agreed and a corrected command made its rows quietly uncollected.
+  channels?: Array<{
+    channel: "command";
+    sheet: string;
+    keys?: string[];
+    key_prefix?: string;
+    command: string;
+    read:
+      | { whole: true; lower?: boolean }
+      | { pattern: string; map?: Record<string, string> }
+      | { member: true };
+  }>;
   sheets: Array<
     {
       name: string;
@@ -254,6 +271,28 @@ const specSchema = {
       additionalProperties: false,
     },
     instances: { type: "array", items: { type: "string" }, minItems: 1 },
+    channels: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["channel", "sheet", "command", "read"],
+        additionalProperties: false,
+        properties: {
+          channel: { const: "command" },
+          sheet: { type: "string" },
+          keys: { type: "array", items: { type: "string" } },
+          key_prefix: { type: "string" },
+          command: { type: "string" },
+          read: {
+            oneOf: [
+              { type: "object", required: ["whole"], additionalProperties: false, properties: { whole: { const: true }, lower: { type: "boolean" } } },
+              { type: "object", required: ["pattern"], additionalProperties: false, properties: { pattern: { type: "string" }, map: { type: "object", additionalProperties: { type: "string" } } } },
+              { type: "object", required: ["member"], additionalProperties: false, properties: { member: { const: true } } },
+            ],
+          },
+        },
+      },
+    },
     enrich: {
       type: "object",
       properties: {

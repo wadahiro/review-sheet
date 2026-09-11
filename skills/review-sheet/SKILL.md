@@ -3458,6 +3458,7 @@ judging what it holds — is deliberately outside it.
 
 ```sh
 review-sheet test-plan -i input.json -o plan.json      # what has to be checked, derived from the sheets
+review-sheet collect-plan -i input.json                # what a collector has to gather
 review-sheet judge     -i input.json --observations obs-*.json -a mine.json -o results.json
 review-sheet validate  -i results.json --plan plan.json # do these answers answer that plan
 review-sheet test-doc  -i input.json -r results.json          # every unit's record
@@ -3561,7 +3562,47 @@ block by its presence, and "we set nothing, so the default applies" — against
 the file AND every file it names. It points each verdict at the file and line it
 was read from, carries those files as evidence, and runs the coverage check.
 
-**What it hands back rather than guessing** is every item with no deployed file,
+**A CHANNEL is how a row no file backs gets answered.** What SELinux is
+enforcing, which services the firewall permits, what a product says its
+effective configuration is — every project doing infrastructure tests writes
+that table, and before this there was no shape for it, so every project invented
+one too. Declared as DATA in the build spec:
+
+```yaml
+channels:
+  - channel: command
+    sheet: os baseline
+    keys: [selinux_state]
+    command: getenforce
+    read: { whole: true, lower: true }        # the output IS the value
+  - channel: command
+    sheet: os baseline
+    key_prefix: "sebool."                     # one entry, every boolean
+    command: getsebool -a
+    read: { pattern: '^{key}\s*-->\s*(\S+)', map: { "on": "true", "off": "false" } }
+  - channel: command
+    sheet: os baseline
+    key_prefix: "firewalld."
+    command: firewall-cmd --list-services
+    read: { member: true }                    # is the row among the words listed
+```
+
+Three ways to read an output and no more, each a shape a real command has
+rather than a step in a language — a general evaluator here would put a
+project's rules where no test of this tool can reach them.
+
+**The axis is the channel, not whoever collects.** Ansible is what reaches a
+host; `getenforce` reads the same whether Ansible, Salt or a person ran it, and
+this tool runs none of them. Which is why a channel declares what it NEEDS:
+`collect-plan` reads that and says what to gather, so each command exists once
+instead of once in the judge and once in the playbook that runs it, with nothing
+checking the two agree.
+
+A command the host does not have is recorded as `null` and answered "this
+environment does not apply that setting" — never a pass.
+
+**What it hands back rather than guessing** is every item with no deployed file
+that no channel covers,
 and every row whose verdict needs a second channel to be sure: a product that
 reports its own effective configuration and where each value came from, a binary
 whose compiled-in default differs from its manual, a file beside the

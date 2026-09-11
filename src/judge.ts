@@ -26,7 +26,9 @@
 
 import { extractFile } from "./extract.js";
 import type { Format } from "./extract.js";
+import type { Collected } from "./channel.js";
 import type { TestItem, TestPlan } from "./testplan.js";
+import { listChannels, registerChannel, commandChannel, type Channel } from "./channel.js";
 import type { TestResult, TestResults } from "./testresults.js";
 
 // One environment, as somebody collected it. The shape is a contract rather
@@ -50,6 +52,10 @@ export type ObservedHost = {
   included?: Record<string, string | null>;
   // A format a path's own name cannot state (`space` is nobody's extension).
   formats?: Record<string, Format>;
+  // What the host was asked, and what it said. One entry per command — the
+  // commands a CHANNEL asked for (`collect-plan` lists them), so the collector
+  // does not carry a second copy of the same strings.
+  commands?: Collected;
 };
 
 // Where a row's value sits in one collected file, keyed by the structural
@@ -95,6 +101,9 @@ export type JudgeWords = {
   setHere: (path: string) => string;
   setElsewhere: (path: string, by: string) => string;
   fromFile: string;
+  noCommand: (host: string, command: string) => string;
+  channelSilent: (host: string, how: string) => string;
+  unreached: string;
 };
 
 export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
@@ -109,6 +118,9 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     setHere: (path) => `${path} で設定している`,
     setElsewhere: (path, by) => `${path} が読み込む ${by} で設定している`,
     fromFile: "デプロイ済みファイル",
+    noCommand: (host, command) => `${host} に ${command} が無い（この設定を適用しない環境）`,
+    channelSilent: (host, how) => `${host} の ${how} はこの設定について何も報告していない`,
+    unreached: "配備ファイルを持たず、これを答えるチャネルも宣言されていない",
   },
   en: {
     notCollected: "this environment has not been collected",
@@ -121,6 +133,9 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     setHere: (path) => `set in ${path}`,
     setElsewhere: (path, by) => `set in ${by}, which ${path} reads`,
     fromFile: "deployed file",
+    noCommand: (host, command) => `${host} has no ${command} (an environment this setting does not apply to)`,
+    channelSilent: (host, how) => `${how} on ${host} reports nothing about this setting`,
+    unreached: "no deployed file, and no channel declared that answers it",
   },
 };
 
@@ -142,7 +157,32 @@ export function judgeFiles(
     return cache.get(k) ?? null;
   };
 
+  const channels = listChannels();
   for (const item of plan.items) {
+    // A CHANNEL first, where one claims the row: it is the stronger witness by
+    // construction — a file says what was written, a channel says what the host
+    // or the product is doing — and it is the only one that can answer a row no
+    // file backs at all.
+    const channel = channels.find((c) => c.covers(item));
+    if (channel !== undefined) {
+      const obs = byEnv.get(item.target.instance);
+      // A channel covers it and the environment was never collected: that is
+      // "nobody has been here yet", not "nothing can answer this". Falling
+      // through said the second, which is a different fix for a reader.
+      if (obs === undefined || Object.keys(obs.hosts).length === 0) {
+        out.results.push({
+          target: { sheet: item.target.sheet, path: item.target.path, key: item.target.key, instance: item.target.instance },
+          status: "not_run",
+          reason: t.notCollected,
+        });
+        continue;
+      }
+      const answered = answerByChannel(item, channel, obs, at, t);
+      if (answered.length > 0) {
+        out.results.push(...answered);
+        continue;
+      }
+    }
     const path = item.file;
     if (path === undefined) {
       out.unanswered.push(item);
@@ -237,6 +277,52 @@ export function judgeFiles(
   return out;
 }
 
+// One item, asked of a channel on every host that was collected. Empty when
+// nothing can be said — no observation, or no host that could answer — and the
+// caller falls through to the file, or hands the item back.
+function answerByChannel(
+  item: TestItem,
+  channel: Channel,
+  obs: Observation | undefined,
+  at: string,
+  t: JudgeWords
+): TestResult[] {
+  if (obs === undefined || Object.keys(obs.hosts).length === 0) return [];
+  const target = { sheet: item.target.sheet, path: item.target.path, key: item.target.key, instance: item.target.instance };
+  const command = channel.needs(item);
+  const out: TestResult[] = [];
+  for (const [host, held] of Object.entries(obs.hosts)) {
+    const collected = held.commands ?? {};
+    const evidence = { host, ...(command === undefined ? {} : { command }) };
+    // A command this host does not have is an ANSWER about the host, not a gap
+    // in the run: a container with no `getenforce` does not apply SELinux, and
+    // saying "not run, because the host has no such command" is the honest form
+    // — never a pass.
+    if (command !== undefined && collected[command] === null) {
+      out.push({ target, at, evidence, status: "not_run", reason: t.noCommand(host, command) });
+      continue;
+    }
+    const got = channel.answer(item, collected);
+    if (got === undefined) {
+      out.push({ target, at, evidence, status: "not_run", reason: t.channelSilent(host, command ?? channel.name) });
+      continue;
+    }
+    const where = { ...evidence, ...(got.line === undefined ? {} : { line: got.line }) };
+    if (item.expected === undefined) {
+      out.push({ target, at, evidence: where, status: "not_run", reason: t.noValueHere });
+      continue;
+    }
+    const ok = got.value === String(item.expected);
+    out.push({
+      target, at, evidence: where,
+      status: ok ? "pass" : "fail",
+      detail: command ?? channel.name,
+      ...(ok || item.quiet === true ? {} : { actual: got.value }),
+    });
+  }
+  return out;
+}
+
 // The raw material every verdict above was read from. One document per
 // (environment, host, file): the moment they were taken differs between hosts,
 // so a merged one can no longer say which host a verdict was read from.
@@ -263,6 +349,83 @@ export function evidenceFrom(
         for (const p of paths) add(p, held.included?.[p], sheetOf.get(owner) ?? "");
       }
     }
+  }
+  return out;
+}
+
+// WHAT TO COLLECT, derived from the plan.
+//
+// The point of a channel declaring `needs`: the commands exist once, here, and
+// the collector loops over this list. Written twice — in the judge and in the
+// playbook that reaches the hosts — nothing checked the two agreed, and a
+// command corrected in one of them made its rows quietly "not collected".
+export type CollectPlan = {
+  // Every deployed file the sheets describe, per environment.
+  files: Record<string, string[]>;
+  // …and every command a channel asked for. Not per environment: a channel
+  // covers a row, and a row's environments are the sheet's.
+  commands: string[];
+};
+
+export function collectPlan(plan: TestPlan): CollectPlan {
+  const files: Record<string, Set<string>> = {};
+  const commands = new Set<string>();
+  const channels = listChannels();
+  for (const item of plan.items) {
+    const channel = channels.find((c) => c.covers(item));
+    const needs = channel?.needs(item);
+    if (needs !== undefined) commands.add(needs);
+    if (item.file === undefined) continue;
+    (files[item.target.instance] ??= new Set()).add(item.file);
+  }
+  return {
+    files: Object.fromEntries(Object.entries(files).map(([k, v]) => [k, [...v].sort()])),
+    commands: [...commands].sort(),
+  };
+}
+
+// The channels a MODEL declares, registered so the judge and the collect plan
+// both see them. Called by the commands that read a model, because the spec
+// that declared them is not in their hands.
+export function registerModelChannels(model: { channels?: import("./types.js").ChannelSpec[] }): number {
+  for (const c of model.channels ?? []) {
+    registerChannel(commandChannel(c, `${c.channel}:${c.sheet}:${c.command}`));
+  }
+  return (model.channels ?? []).length;
+}
+
+// EVERY plan item ends with an answer. What is left after the files, the
+// channels and whatever a project handed back is what no route reaches at all,
+// and saying so is not a formality: an item with no answer leaves no trace in a
+// document that prints the answers it has, so a record looks complete because
+// what is missing from it is missing.
+//
+// It belongs here rather than in each project's judge, where it used to sit:
+// there it could not tell an item nobody reaches from one the TOOL had just
+// answered, and it filed "not attempted" over verdicts that had been attempted.
+export function answerTheRest(
+  plan: TestPlan,
+  results: TestResult[],
+  observations: Observation[] = [],
+  opts: { lang?: "ja" | "en" } = {}
+): TestResult[] {
+  const t = JUDGE_WORDS[opts.lang ?? "ja"];
+  // WHY it was not reached, and the two are different fixes: an environment
+  // nobody collected is waiting for a run, while one that WAS collected and
+  // still has no answer is waiting for a channel that can ask.
+  const collected = new Set(observations.filter((o) => Object.keys(o.hosts).length > 0).map((o) => o.environment));
+  const key = (x: { sheet: string; path?: string[]; key: string; instance: string }): string =>
+    [x.sheet, (x.path ?? []).join("\u0001"), x.key, x.instance].join("\u0000");
+  const seen = new Set(results.map((r) => key(r.target)));
+  const out: TestResult[] = [];
+  for (const item of plan.items) {
+    if (seen.has(key(item.target))) continue;
+    seen.add(key(item.target));
+    out.push({
+      target: { sheet: item.target.sheet, path: item.target.path, key: item.target.key, instance: item.target.instance },
+      status: "not_run",
+      reason: collected.has(item.target.instance) ? t.unreached : t.notCollected,
+    });
   }
   return out;
 }
