@@ -56,6 +56,31 @@ export type ObservedHost = {
   // commands a CHANNEL asked for (`collect-plan` lists them), so the collector
   // does not carry a second copy of the same strings.
   commands?: Collected;
+  // A DOCUMENT the project fetched: a realm as a product's API describes it, a
+  // resource as a cloud API returns it. Not a file on this host and not a
+  // command's output — bytes that answer a whole sheet or component, addressed
+  // by each row's own structural address exactly as a file is.
+  //
+  // The same machinery reads both, because the difference between them is where
+  // the bytes came from and nothing else. A project that judged these itself
+  // re-implemented the address resolution the tool already owns.
+  documents?: ObservedDocument[];
+};
+
+export type ObservedDocument = {
+  // Which rows it answers. A sheet, and a component within it when the sheet
+  // has them — the same two names a row is filed under.
+  sheet: string;
+  component?: string;
+  // How to read it. A realm comes back as JSON; nothing says another product's
+  // will.
+  format: Format;
+  text: string;
+  // What was asked, for the record's evidence — `GET /admin/realms/poc`.
+  how?: string;
+  // …or it could not be read at all, which is an answer about the product and
+  // not a gap in the run.
+  absent?: string;
 };
 
 // Where a row's value sits in one collected file, keyed by the structural
@@ -104,6 +129,11 @@ export type JudgeWords = {
   noCommand: (host: string, command: string) => string;
   channelSilent: (host: string, how: string) => string;
   unreached: string;
+  docUnreadable: string;
+  noAddress: string;
+  fromDocument: string;
+  notInDocument: (how: string) => string;
+  emptyAndAbsent: string;
 };
 
 export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
@@ -121,6 +151,11 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     noCommand: (host, command) => `${host} に ${command} が無い（この設定を適用しない環境）`,
     channelSilent: (host, how) => `${host} の ${how} はこの設定について何も報告していない`,
     unreached: "配備ファイルを持たず、これを答えるチャネルも宣言されていない",
+    docUnreadable: "取得した文書を読めない",
+    noAddress: "この行は文書内の住所を持たない（シートがどこから来たか記録していない）",
+    fromDocument: "取得した文書",
+    notInDocument: (how) => `${how} が返す文書にこの設定が無い`,
+    emptyAndAbsent: "シートが空を述べ、文書もこの設定を保持していない",
   },
   en: {
     notCollected: "this environment has not been collected",
@@ -136,6 +171,11 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     noCommand: (host, command) => `${host} has no ${command} (an environment this setting does not apply to)`,
     channelSilent: (host, how) => `${how} on ${host} reports nothing about this setting`,
     unreached: "no deployed file, and no channel declared that answers it",
+    docUnreadable: "the collected document could not be read",
+    noAddress: "this row carries no address inside a document",
+    fromDocument: "the collected document",
+    notInDocument: (how) => `${how} returns a document without this setting`,
+    emptyAndAbsent: "the sheet states emptiness and the document holds nothing here",
   },
 };
 
@@ -151,6 +191,13 @@ export function judgeFiles(
   // Parsed once per (environment, host, path): a file holds hundreds of rows,
   // and parsing it per row is the same work several hundred times over.
   const cache = new Map<string, Parsed | null>();
+  // One parse per document, not per row: a realm is a few thousand entries and
+  // several hundred rows address into it.
+  const docCache = new Map<ObservedDocument, Parsed | null>();
+  const parsedDoc = (d: ObservedDocument): Parsed | null => {
+    if (!docCache.has(d)) docCache.set(d, d.absent !== undefined ? null : parse(d.text, `document.${d.format}`, d.format));
+    return docCache.get(d) ?? null;
+  };
   const parsedOf = (env: string, host: string, path: string, text: string | null | undefined, fmt: Format | undefined): Parsed | null => {
     const k = `${env}\u0000${host}\u0000${path}`;
     if (!cache.has(k)) cache.set(k, parse(text, path, fmt));
@@ -182,6 +229,15 @@ export function judgeFiles(
         out.results.push(...answered);
         continue;
       }
+    }
+    // A DOCUMENT the project fetched, where one covers this row. Read with the
+    // same machinery a file is, because the difference between them is where
+    // the bytes came from and nothing else.
+    const obs0 = byEnv.get(item.target.instance);
+    const doc = obs0 === undefined ? undefined : documentFor(obs0, item);
+    if (doc !== undefined) {
+      out.results.push(...answerByDocument(item, doc.doc, doc.host, obs0!, at, t, parsedDoc));
+      continue;
     }
     const path = item.file;
     if (path === undefined) {
@@ -275,6 +331,84 @@ export function judgeFiles(
     }
   }
   return out;
+}
+
+// Which document answers this row, if any: the one filed under the same sheet
+// and, where the sheet has components, the same component. A document naming no
+// component answers the whole sheet.
+function documentFor(obs: Observation, item: TestItem): { doc: ObservedDocument; host: string } | undefined {
+  for (const [host, held] of Object.entries(obs.hosts)) {
+    for (const d of held.documents ?? []) {
+      if (d.sheet !== item.target.sheet) continue;
+      if (d.component !== undefined && d.component !== item.component) continue;
+      return { doc: d, host };
+    }
+  }
+  return undefined;
+}
+
+// A row, resolved against the document that holds it. The row's OWN structural
+// address, never its key: two components of one sheet share a key space by
+// design, and the address is what the sheet was built from.
+function answerByDocument(
+  item: TestItem,
+  doc: ObservedDocument,
+  host: string,
+  _obs: Observation,
+  at: string,
+  t: JudgeWords,
+  parsedDoc: (d: ObservedDocument) => Parsed | null
+): TestResult[] {
+  const target = { sheet: item.target.sheet, path: item.target.path, key: item.target.key, instance: item.target.instance };
+  const evidence = { host, ...(doc.how === undefined ? {} : { command: doc.how }) };
+  if (doc.absent !== undefined) {
+    return [{ target, at, evidence, status: "not_run", reason: doc.absent }];
+  }
+  const parsed = parsedDoc(doc);
+  if (parsed === null) return [{ target, at, evidence, status: "not_run", reason: t.docUnreadable }];
+  // A row the sheet MATERIALIZED from a dictionary carries no source — nothing
+  // wrote it anywhere — and its key IS the address the dictionary names it by
+  // (`smtpServer.host`). So the key is the fallback, and it is a fallback
+  // rather than the rule: an authored row's own source is the stronger fact.
+  const address = item.address ?? item.target.key;
+  if (address === undefined) return [{ target, at, evidence, status: "not_run", reason: t.noAddress }];
+  const seen = parsed.get(address);
+
+  if (item.kind === "default-in-force") {
+    // The product OMITS what nobody set: a key absent from the map it returns
+    // is the confirmation, not a gap. Where it always reports the field, the
+    // value it reports is compared with the default instead.
+    if (seen === undefined) return [{ target, at, evidence, status: "pass", detail: doc.how ?? t.fromDocument }];
+    if (item.expected === undefined) return [{ target, at, evidence, status: "not_run", reason: t.noValueHere }];
+    const same = seen.value === String(item.expected);
+    return [{
+      target, at, evidence: { ...evidence, ...(seen.line === undefined ? {} : { line: seen.line }) },
+      status: same ? "pass" : "fail",
+      detail: doc.how ?? t.fromDocument,
+      ...(same || item.quiet === true ? {} : { actual: seen.value }),
+    }];
+  }
+  if (item.kind === "absent" || item.container === true) {
+    const there = seen !== undefined || [...parsed.keys()].some((k) => k.startsWith(`${address}.`));
+    const want = item.container === true;
+    return [{ target, at, evidence, status: there === want ? "pass" : "fail", detail: doc.how ?? t.fromDocument }];
+  }
+  if (item.expected === undefined) return [{ target, at, evidence, status: "not_run", reason: t.noValueHere }];
+  if (seen === undefined) {
+    // A row that expects EMPTINESS is satisfied by the key being absent: a
+    // producer that omits what is unset spells "no value" by leaving it out,
+    // and the two are the same fact told two ways. Anything else missing is a
+    // finding.
+    if (String(item.expected) === "") return [{ target, at, evidence, status: "pass", detail: t.emptyAndAbsent }];
+    return [{ target, at, evidence, status: "fail", detail: t.notInDocument(doc.how ?? t.fromDocument) }];
+  }
+  const ok = seen.value === String(item.expected);
+  return [{
+    target, at, evidence: { ...evidence, ...(seen.line === undefined ? {} : { line: seen.line }) },
+    status: ok ? "pass" : "fail",
+    detail: doc.how ?? t.fromDocument,
+    ...(ok || item.quiet === true ? {} : { actual: seen.value }),
+  }];
 }
 
 // One item, asked of a channel on every host that was collected. Empty when

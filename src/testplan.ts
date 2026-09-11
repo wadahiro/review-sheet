@@ -59,6 +59,12 @@ export type TestItem = {
   // a judge sees `expected: undefined` and cannot tell it from a row the sheet
   // states nothing about in this environment. Two different answers.
   container?: true;
+  // WHERE this row's value sits in the document that holds it — the row's own
+  // structural address (`clients[clientId=x].protocol`), which is what a
+  // reader of a document resolves against and is not derivable from the key.
+  // The category path above is where a READER finds the row; this is where the
+  // VALUE is, and they are different projections (parser.ts's Entry).
+  address?: string;
 };
 
 // What kind of claim this item checks.
@@ -150,6 +156,15 @@ const walkGroups = (groups: SheetGroup[] | undefined, visit: (g: SheetGroup) => 
 const unitOf = (sheet: Sheet, byName: Map<string, SheetGroup>): { name: string; label?: LangText; group?: SheetGroup } => {
   const g = sheet.group === undefined ? undefined : byName.get(sheet.group);
   return g === undefined ? { name: sheet.name, label: sheet.label } : { name: g.name, label: g.label, group: g };
+};
+
+// A row's own structural address, from whichever source it carries: a simple
+// parameter has one, a per-environment one has it per instance, and they are
+// the same address — the environment changes the value, not where it lives.
+const addressOf = (p: Parameter): string | undefined => {
+  const src = "source" in p ? p.source : undefined;
+  const per = "instances" in p ? p.instances?.find((i) => i.source?.path !== undefined)?.source : undefined;
+  return src?.path ?? per?.path;
 };
 
 const kindOf = (p: Parameter): TestKind =>
@@ -268,6 +283,7 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
           kind,
           decider: deciderOf(row.p, kind, expected),
           ...(row.p.container === undefined ? {} : { container: true as const }),
+          ...(addressOf(row.p) === undefined ? {} : { address: addressOf(row.p)! }),
           ...(row.p.secret === true ? { quiet: true as const } : expected === undefined ? {} : { expected }),
         });
       }

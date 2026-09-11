@@ -180,3 +180,81 @@ describe("the material the verdicts were read from", () => {
     expect(evidenceFrom([obs({ [CONF]: null })], planOf([item({ key: "a", expected: "1" })]))).toEqual([]);
   });
 });
+
+// A DOCUMENT the project fetched — a realm as a product's API describes it, a
+// resource as a cloud API returns it. Not a file on a host and not a command's
+// output, and read by the same machinery: the difference between them is where
+// the bytes came from and nothing else. A project judging these itself
+// re-implements the address resolution this tool already owns.
+describe("a document the project fetched", () => {
+  const doc = (over: Record<string, unknown> = {}) => ({
+    sheet: "s",
+    component: "poc",
+    format: "json" as const,
+    how: "GET /admin/realms/poc",
+    text: JSON.stringify({ realm: "poc", enabled: true, smtpServer: { host: "mail" } }, null, 2),
+    ...over,
+  });
+  const withDoc = (d: ReturnType<typeof doc>): Observation => ({ environment: "stg", hosts: { web01: { files: {}, documents: [d] } } });
+  const row = (over: Partial<TestItem> & { key: string; address?: string }): TestItem =>
+    ({ ...item({ ...over, file: undefined }), component: "poc", address: over.address ?? over.key }) as TestItem;
+
+  it("answers a row by its own address inside the document", () => {
+    const got = only(planOf([row({ key: "realm", expected: "poc" })]), [withDoc(doc())]);
+    expect(got.results[0].status).toBe("pass");
+    expect(got.results[0].evidence).toEqual({ host: "web01", command: "GET /admin/realms/poc", line: 2 });
+  });
+
+  // The address, never the key: two components of one sheet share a key space
+  // by design, and `smtpServer.host` is not `host`.
+  it("uses the address and not the key", () => {
+    const got = only(planOf([row({ key: "host", address: "smtpServer.host", expected: "mail" })]), [withDoc(doc())]);
+    expect(got.results[0].status).toBe("pass");
+  });
+
+  // A product OMITS what nobody set, so a key absent from the map it returns
+  // IS the confirmation that the default applies — not a gap.
+  it("reads an absent key as the product's default still applying", () => {
+    const p = planOf([row({ key: "loginTheme", kind: "default-in-force", decider: "product-default", expected: "keycloak" })]);
+    expect(only(p, [withDoc(doc())]).results[0].status).toBe("pass");
+  });
+
+  it("…and compares the value where the product does report the field", () => {
+    const p = planOf([row({ key: "enabled", kind: "default-in-force", decider: "product-default", expected: "false" })]);
+    const got = only(p, [withDoc(doc())]);
+    expect(got.results[0].status).toBe("fail");
+    expect(got.results[0].actual).toBe("true");
+  });
+
+  // A row the sheet MATERIALIZED from a dictionary carries no source, and its
+  // key IS the address the dictionary names it by. Without this fallback 185 of
+  // 216 rows on a real sheet had no address at all.
+  it("falls back to the key for a row nothing wrote", () => {
+    const p = planOf([{ ...row({ key: "smtpServer.host", expected: "mail" }), address: undefined } as TestItem]);
+    expect(only(p, [withDoc(doc())]).results[0].status).toBe("pass");
+  });
+
+  // A producer that omits what is unset spells "no value" by leaving the key
+  // out, so a row expecting emptiness is satisfied by its absence — the same
+  // fact told two ways. Anything ELSE missing is still a finding.
+  it("reads an absent key as emptiness where emptiness is what the sheet states", () => {
+    const empty = planOf([row({ key: "smtpServer.user", address: "smtpServer.user", expected: "" })]);
+    expect(only(empty, [withDoc(doc())]).results[0].status).toBe("pass");
+    const other = planOf([row({ key: "smtpServer.from", address: "smtpServer.from", expected: "a@b" })]);
+    expect(only(other, [withDoc(doc())]).results[0].status).toBe("fail");
+  });
+
+  it("says a realm the server does not have was not run, with the product's reason", () => {
+    const got = only(planOf([row({ key: "realm", expected: "poc" })]), [withDoc(doc({ absent: "the server has no such realm" }))]);
+    expect(got.results[0].status).toBe("not_run");
+    expect(got.results[0].reason).toBe("the server has no such realm");
+  });
+
+  // A document filed under another component answers none of this one's rows:
+  // one sheet holds several realms, and each answers only its own.
+  it("answers only the component it is filed under", () => {
+    const got = only(planOf([row({ key: "realm", expected: "poc" })]), [withDoc(doc({ component: "master" }))]);
+    expect(got.results).toEqual([]);
+    expect(got.unanswered.length).toBe(1);
+  });
+});
