@@ -3568,7 +3568,18 @@ functional_channels:
     login_page: login-page    # …and which of OUR items it answers
     login_assets: login-assets
     ldap_connection: ldap-connection
+  - channel: aws-rds
+    sheet: aws infrastructure
+    parameters_authored: aws-parameters-authored
 ```
+
+A channel sees the PLAN's items for that environment as well as the hosts, for
+an answer that is about the sheet as a whole rather than about one row: "nobody
+changed anything we did not decide" is a question about the SET of rows, and a
+parameter group holds several hundred while a sheet names three, so a change
+made from a console appears in no row at all. Which parameters the design
+authored is read through the same table the router uses — a project keeping its
+own copy of that pattern is the hazard these plugins exist to remove.
 
 The ids are the project's — a plugin cannot know what a project called its
 items — which is also what stops it claiming one that happens to share a name.

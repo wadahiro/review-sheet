@@ -21,7 +21,7 @@
 // not something a key can produce), so the asking stays with whoever collects.
 // What arrives is the API's reply, verbatim, as a document.
 
-import { registerDocumentRouter, type DocumentRouter } from "../channel.js";
+import { registerDocumentRouter, registerFunctionalChannel, type DocumentRouter, type FunctionalAnswer } from "../channel.js";
 import type { TestItem } from "../testplan.js";
 
 // A resource's own attributes, by the type that holds them. The KEY is the
@@ -86,4 +86,72 @@ export const awsRdsRouter: DocumentRouter = {
 
 export function registerAwsRdsRouter(): void {
   registerDocumentRouter(awsRdsRouter);
+}
+
+// ---------------------------------------------------------------------------
+// WHAT A ROW COMPARISON CANNOT SAY, even in principle: a sheet names the
+// parameters a design decided, the group holds several hundred, and somebody
+// changing a different one from the console appears in none of the rows. The
+// API reports each parameter's SOURCE, so the question has an answer — and
+// `user` meaning "somebody set this" is RDS's, not one project's.
+//
+// The set the design authored is the PLAN's, read through the same table the
+// router uses. A project keeping its own copy of that pattern is the hazard
+// this whole file exists to remove.
+function authoredAnswer(hosts: Record<string, unknown>, items: TestItem[], sheet: string): FunctionalAnswer {
+  for (const [host, held] of Object.entries(hosts)) {
+    const doc = ((held as { documents?: { name?: string; how?: string; text?: string; absent?: string }[] }).documents ?? []).find(
+      (d) => d.name === "describe-db-cluster-parameters"
+    );
+    if (doc === undefined) continue;
+    if (doc.absent !== undefined) return { status: "not_run", reason: doc.absent };
+    let body: { Parameters?: { ParameterName?: string; Source?: string }[] };
+    try {
+      body = JSON.parse(doc.text ?? "{}") as typeof body;
+    } catch {
+      return { status: "not_run", reason: "パラメータの一覧を読めなかった" };
+    }
+    // The VALUE rows, not every row that names a parameter: `apply_method` says
+    // HOW a change takes effect, which is not a statement that the value was
+    // changed at all — and a group holds the apply_method of parameters nobody
+    // touched.
+    const authored = new Set(
+      items
+        .filter((i) => i.target.sheet === sheet)
+        .map((i) => GROUP_PARAM.exec(i.target.key))
+        .filter((m): m is RegExpExecArray => m !== null && m[2] === "value")
+        .map((m) => m[1]!)
+    );
+    const changed = (body.Parameters ?? []).filter((p) => p.Source === "user").map((p) => p.ParameterName!);
+    const extra = changed.filter((n) => !authored.has(n));
+    const missing = [...authored].filter((n) => !changed.includes(n));
+    const ok = extra.length === 0 && missing.length === 0;
+    return {
+      status: ok ? "pass" : "fail",
+      detail: `${(body.Parameters ?? []).length} 項目のうち変更されているのは ${changed.length} 件`,
+      ...(ok
+        ? {}
+        : {
+            reason: [
+              extra.length > 0 ? `設計にない変更: ${extra.join(", ")}` : "",
+              missing.length > 0 ? `設計にあるが変更されていない: ${missing.join(", ")}` : "",
+            ]
+              .filter((x) => x !== "")
+              .join(" / "),
+          }),
+      evidence: { host, ...(doc.how === undefined ? {} : { command: doc.how }) },
+    };
+  }
+  return { status: "not_run", reason: "この環境の AWS は収集していない" };
+}
+
+// Bound by a project, because the id is a project's own.
+export function registerAwsRdsChannel(binding: { sheet?: string; parameters_authored?: string }): void {
+  const id = binding.parameters_authored;
+  if (id === undefined) return;
+  registerFunctionalChannel({
+    name: "aws-rds",
+    covers: (x) => x === id,
+    answer: (_x, hosts, _instance, ctx) => authoredAnswer(hosts, ctx?.items ?? [], binding.sheet ?? ""),
+  });
 }

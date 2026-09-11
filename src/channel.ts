@@ -205,7 +205,16 @@ export type FunctionalChannel = {
   // One answer for the whole item, from every host that was collected: a
   // product asked once answers once, and which host was asked is the channel's
   // to decide (a realm is the same from every node; a file is not).
-  answer: (id: string, hosts: Record<string, unknown>, instance: string) => FunctionalAnswer | undefined;
+  // `ctx.items` is what the PLAN says about the sheet this channel is bound to,
+  // for the answers that are about the sheet as a whole rather than about one
+  // row — "nobody changed anything we did not decide" is a question about the
+  // set of rows, and the set is the plan's.
+  answer: (
+    id: string,
+    hosts: Record<string, unknown>,
+    instance: string,
+    ctx?: { items?: TestItem[] }
+  ) => FunctionalAnswer | undefined;
 };
 
 const functionalRegistry = sharedRegistry<FunctionalChannel>("review-sheet.functional-channels.v1");

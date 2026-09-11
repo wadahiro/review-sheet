@@ -62,7 +62,7 @@ export type BuildSpec = {
   // Which product plugin answers which of this project's functional items.
   // The ids are the project's — a product plugin cannot know what a project
   // called its items — so the project binds them.
-  functional_channels?: Array<{ channel: "keycloak"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string }>;
+  functional_channels?: Array<{ channel: "keycloak" | "aws-rds"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string; parameters_authored?: string }>;
   // What ELSE decides whether a file's "the product's own default applies" row
   // is true: a binary whose compiled-in default differs from its manual, a file
   // beside the configuration that injects options on the command line, and a
@@ -310,11 +310,12 @@ const specSchema = {
         required: ["channel"],
         additionalProperties: false,
         properties: {
-          channel: { const: "keycloak" },
+          channel: { enum: ["keycloak", "aws-rds"] },
           sheet: { type: "string" },
           login_page: { type: "string" },
           login_assets: { type: "string" },
           ldap_connection: { type: "string" },
+          parameters_authored: { type: "string" },
         },
       },
     },

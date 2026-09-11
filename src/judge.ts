@@ -28,7 +28,7 @@ import { extractFile } from "./extract.js";
 import type { Format } from "./extract.js";
 import type { Collected } from "./channel.js";
 import { registerKeycloakChannels } from "./channels/keycloak.js";
-import { registerAwsRdsRouter } from "./channels/aws-rds.js";
+import { registerAwsRdsRouter, registerAwsRdsChannel } from "./channels/aws-rds.js";
 import { buildMismatch, rpmVersions, packagesToQuery } from "./channels/rpm.js";
 import { compiledInFor, injectedOptions, lineOfCompiledIn } from "./channels/httpd.js";
 import { effectiveConfig, isProductDefault, lineOfEffective } from "./channels/keycloak.js";
@@ -994,7 +994,7 @@ export function collectPlan(
 // that declared them is not in their hands.
 export function registerModelChannels(model: {
   channels?: import("./types.js").ChannelSpec[];
-  functional_channels?: { channel: string; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string }[];
+  functional_channels?: { channel: string; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string; parameters_authored?: string }[];
   documents?: { router?: string }[];
 }): number {
   for (const c of model.channels ?? []) {
@@ -1005,6 +1005,7 @@ export function registerModelChannels(model: {
   // project's, and lives here.
   for (const f of model.functional_channels ?? []) {
     if (f.channel === "keycloak") registerKeycloakChannels(f);
+    if (f.channel === "aws-rds") registerAwsRdsChannel(f);
   }
   // …and the plugins that only say WHERE a row sits in what a product's API
   // returned. A router named by no `documents:` entry is never registered: a
@@ -1092,7 +1093,7 @@ export function judgeFunctional(
         out.push({ ...base, status: "not_run", reason: t.notCollected });
         continue;
       }
-      const got = fc.answer(f.id!, obs.hosts, f.instance);
+      const got = fc.answer(f.id!, obs.hosts, f.instance, { items: plan.items.filter((i) => i.target.instance === f.instance) });
       if (got !== undefined) {
         out.push({
           ...base,

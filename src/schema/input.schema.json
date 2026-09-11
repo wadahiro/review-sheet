@@ -94,11 +94,12 @@
         "required": ["channel"],
         "additionalProperties": false,
         "properties": {
-          "channel": { "const": "keycloak" },
+          "channel": { "enum": ["keycloak", "aws-rds"] },
           "sheet": { "type": "string" },
           "login_page": { "type": "string" },
           "login_assets": { "type": "string" },
-          "ldap_connection": { "type": "string" }
+          "ldap_connection": { "type": "string" },
+          "parameters_authored": { "type": "string" }
         }
       }
     },

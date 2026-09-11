@@ -7,14 +7,16 @@
 
 import { describe, it, expect, beforeEach } from "bun:test";
 import "../src/parsers/index";
-import { awsRdsRouter, registerAwsRdsRouter } from "../src/channels/aws-rds";
-import { listDocumentRouters } from "../src/channel";
+import { awsRdsRouter, registerAwsRdsRouter, registerAwsRdsChannel } from "../src/channels/aws-rds";
+import { listDocumentRouters, listFunctionalChannels } from "../src/channel";
 import { judgeFiles, type Observation } from "../src/judge";
 import type { TestPlan, TestItem } from "../src/testplan";
 
 const clear = (): void => {
-  const arr = (globalThis as Record<symbol, unknown>)[Symbol.for("review-sheet.document-routers.v1")] as unknown[];
-  if (Array.isArray(arr)) arr.length = 0;
+  for (const key of ["review-sheet.document-routers.v1", "review-sheet.functional-channels.v1"]) {
+    const arr = (globalThis as Record<symbol, unknown>)[Symbol.for(key)] as unknown[];
+    if (Array.isArray(arr)) arr.length = 0;
+  }
 };
 beforeEach(clear);
 
@@ -129,5 +131,66 @@ describe("a row answered through a router", () => {
     expect(listDocumentRouters()).toEqual([]);
     const got = judge([item("aurora.aws_rds_cluster_parameter_group.this.parameter[name=max_connections].value", "500")]);
     expect(got.results).toEqual([]);
+  });
+});
+
+// What a row comparison cannot say, even in principle: the sheet names the
+// parameters a design decided, the group holds several hundred, and somebody
+// changing a different one from the console appears in none of the rows.
+describe("nobody changed anything the design did not decide", () => {
+  const reply = (params: { ParameterName: string; Source: string }[]) =>
+    JSON.stringify({ Parameters: params }, null, 2);
+  const hostsWith = (text: string) => ({
+    "acct / region": { documents: [{ name: "describe-db-cluster-parameters", how: "aws rds describe-db-cluster-parameters", text }] },
+  });
+  const plan = [
+    item("aurora.aws_rds_cluster_parameter_group.this.parameter[name=max_connections].value", "500"),
+    item("aurora.aws_rds_cluster_parameter_group.this.parameter[name=max_connections].apply_method", "immediate"),
+    item("aurora.aws_rds_cluster.this.db_cluster_parameter_group_name", "g"),
+  ];
+  const ask = (text: string) => {
+    clear();
+    registerAwsRdsChannel({ sheet: "aws infrastructure", parameters_authored: "aws-parameters-authored" });
+    return listFunctionalChannels()[0]!.answer("aws-parameters-authored", hostsWith(text), "staging", { items: plan })!;
+  };
+
+  it("passes when the set the API says a user authored is the set the sheet authors", () => {
+    const got = ask(reply([
+      { ParameterName: "max_connections", Source: "user" },
+      { ParameterName: "work_mem", Source: "engine-default" },
+    ]));
+    expect(got.status).toBe("pass");
+    expect(got.detail).toContain("2 項目のうち変更されているのは 1 件");
+  });
+
+  // `user` is the API saying somebody set it — which is the whole reason to ask.
+  it("fails a change the design does not name, and a design the group does not have", () => {
+    expect(ask(reply([
+      { ParameterName: "max_connections", Source: "user" },
+      { ParameterName: "work_mem", Source: "user" },
+    ])).reason).toContain("設計にない変更: work_mem");
+    expect(ask(reply([{ ParameterName: "max_connections", Source: "engine-default" }])).reason).toContain(
+      "設計にあるが変更されていない: max_connections"
+    );
+  });
+
+  // `apply_method` says HOW a change takes effect, not that the value was
+  // changed — so a sheet naming only that has not authored the parameter.
+  it("reads the set from the value rows, not from every row naming a parameter", () => {
+    clear();
+    registerAwsRdsChannel({ sheet: "aws infrastructure", parameters_authored: "aws-parameters-authored" });
+    const got = listFunctionalChannels()[0]!.answer(
+      "aws-parameters-authored",
+      hostsWith(reply([{ ParameterName: "work_mem", Source: "engine-default" }])),
+      "staging",
+      { items: [item("aurora.aws_rds_cluster_parameter_group.this.parameter[name=work_mem].apply_method", "immediate")] }
+    )!;
+    expect(got.status).toBe("pass");
+  });
+
+  it("says nothing rather than guessing when AWS was not collected", () => {
+    clear();
+    registerAwsRdsChannel({ sheet: "aws infrastructure", parameters_authored: "aws-parameters-authored" });
+    expect(listFunctionalChannels()[0]!.answer("aws-parameters-authored", {}, "staging", { items: plan })!.status).toBe("not_run");
   });
 });
