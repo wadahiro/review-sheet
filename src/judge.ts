@@ -524,7 +524,8 @@ function answerByChannel(
 // so a merged one can no longer say which host a verdict was read from.
 export function evidenceFrom(
   observations: Observation[],
-  plan: TestPlan
+  plan: TestPlan,
+  templates: DocumentTemplate[] = []
 ): NonNullable<TestResults["evidence"]> {
   const sheetOf = new Map<string, string>();
   for (const i of plan.items) if (i.file !== undefined && !sheetOf.has(i.file)) sheetOf.set(i.file, i.target.sheet);
@@ -541,6 +542,31 @@ export function evidenceFrom(
         out.push({ instance: obs.environment, host, at, sheet, path, text });
       };
       for (const [path, text] of Object.entries(held.files)) add(path, text, sheetOf.get(path) ?? "");
+      // …and the documents, which are evidence for exactly the same reason a
+      // file is: a verdict names an address, and the record has to carry what
+      // that address names. Keyed by what was ASKED, since a document has no
+      // path on any host.
+      for (const d of held.documents ?? []) {
+        if (d.absent !== undefined || d.text === "") continue;
+        // One copy per ENVIRONMENT, not per host: a document is asked of a
+        // PRODUCT, every node answers the same API, and only the node a verdict
+        // names can be cited. The others are weight in a delivered file,
+        // carried for a reader with no way to open them. (A file is different —
+        // it is a fact about the host that holds it, and every host's copy is
+        // cited by that host's own verdicts.)
+        const k = `${obs.environment} ${d.how ?? d.name ?? d.sheet ?? ""}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push({
+          instance: obs.environment, host, at,
+          // Filed under the first sheet a template sends to this document —
+          // where a reader of the rows it answers is standing.
+          sheet: d.sheet ?? templates.find((t) => t.document === d.name)?.sheet ?? "",
+          ...(d.name === undefined ? {} : { component: d.name }),
+          command: d.how ?? d.name ?? "",
+          text: d.text,
+        });
+      }
       for (const [owner, paths] of Object.entries(held.included_by ?? {})) {
         for (const p of paths) add(p, held.included?.[p], sheetOf.get(owner) ?? "");
       }

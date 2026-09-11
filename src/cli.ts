@@ -578,7 +578,7 @@ program
       const observations = opts.observations.map((f) => validateObservation(JSON.parse(readFileSync(f, "utf-8"))));
       const lang = opts.lang === "en" ? "en" : "ja";
       const outcome = judgeFiles(plan, observations, { lang, documents: model.documents, idFields: model.id_fields });
-      const mine: TestResults = { runs: {}, results: outcome.results, evidence: evidenceFrom(observations, plan) };
+      const mine: TestResults = { runs: {}, results: outcome.results, evidence: evidenceFrom(observations, plan, model.documents) };
 
       // The project's own channels win. A row whose product reports its own
       // effective configuration is answered better by the product than by the
