@@ -292,6 +292,25 @@ export function judgeProbes(
   };
 }
 
+// WHEN each environment was last looked at, and by which hosts — derived from
+// the observations that were judged rather than restated by whoever ran them.
+//
+// A record whose "run on" column is written by the caller is a record that can
+// disagree with the answers beside it, and it did: a project computing this
+// from its own host map left out an environment that only a cloud collector
+// had reached, so a record carrying 444 answers for it said it had been tested
+// by nobody. What a project still knows and this does not — which program
+// collected, against which model — it supplies, and that is merged on top.
+export function runsFrom(observations: Observation[]): Record<string, { at?: string; hosts?: string[] }> {
+  const out: Record<string, { at?: string; hosts?: string[] }> = {};
+  for (const obs of mergeByEnvironment(observations).merged) {
+    const hosts = Object.keys(obs.hosts);
+    if (hosts.length === 0) continue;
+    out[obs.environment] = { ...(obs.collected_at === undefined ? {} : { at: obs.collected_at }), hosts };
+  }
+  return out;
+}
+
 export type JudgeOutcome = {
   results: TestResult[];
   evidence: NonNullable<TestResults["evidence"]>;

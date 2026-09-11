@@ -3630,6 +3630,21 @@ column as the port. Each is a format or a vocabulary, never a policy: which
 units are expected, which ports, how many open files, and how much warning
 before a certificate expires all stay with whoever asks.
 
+`terraform`'s own vocabulary is held the same way (`planOutcome`,
+`complaint`, `changedResources`): `-detailed-exitcode` answers in the EXIT CODE
+and not in the text, so a project reading the output for "No changes" gets it
+from a run that failed before printing anything else; and the last line of a
+failed run is the bottom of a box, while the line that says Error is the
+reason. WHERE the module is and which var-file to use stay the project's.
+
+**The run record is the tool's too.** Which environments were looked at, when,
+and by which hosts is derived from the observations that were judged
+(`runsFrom`) rather than restated by whoever ran them — a project computing it
+from its own host map left out an environment only a cloud collector had
+reached, so a record carrying 444 answers for it said nobody had tested it.
+What a project still knows and the tool does not — which program collected,
+against which model — is merged on top, per environment and per field.
+
 **One environment, several collectors.** What reaches a fleet of hosts and what
 reaches a cloud API are different programs run at different moments, and both
 answer for one environment — so pass both files and they are MERGED by host. A

@@ -8,7 +8,7 @@ import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { validateInput, validateReview, validateResults, validateObservation, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
 import { renderTestDoc, renderExcluded, injectBlocks, unitDocuments } from "./testdoc.js";
-import { judgeFiles, evidenceFrom, collectPlan, registerModelChannels, answerTheRest, judgeFunctional, rpmQuery } from "./judge.js";
+import { judgeFiles, evidenceFrom, collectPlan, registerModelChannels, answerTheRest, judgeFunctional, rpmQuery, runsFrom } from "./judge.js";
 import { findBakedSecrets, formatBakedSecrets, findSecretsInEvidence, formatEvidenceLeaks } from "./secrets.js";
 import { toFullEditInput } from "./full-edit.js";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, ArtifactPreview } from "./types.js";
@@ -580,7 +580,7 @@ program
       const outcome = judgeFiles(plan, observations, { lang, documents: model.documents, idFields: model.id_fields, builds: model.builds, rpmCommand: rpmQuery(model.builds), defaultsCheckedBy: model.defaults_checked_by });
       const functional = judgeFunctional(plan, observations, { lang });
       const mine: TestResults = {
-        runs: {},
+        runs: runsFrom(observations),
         results: outcome.results,
         functional: functional.answers,
         evidence: [...evidenceFrom(observations, plan, model.documents, model.defaults_checked_by ?? []), ...functional.evidence],
@@ -618,7 +618,13 @@ program
           const claimedF = new Set(theirs.functional.map(fkey));
           mine.functional = [...(mine.functional ?? []).filter((x) => !claimedF.has(fkey(x))), ...theirs.functional];
         }
-        if (theirs.runs !== undefined) mine.runs = { ...mine.runs, ...theirs.runs };
+        // Per ENVIRONMENT and per field: what the project knows (which
+        // program collected, against which model) sits on top of what the
+        // observations say (when, and which hosts answered) rather than
+        // replacing it.
+        for (const [env, run] of Object.entries(theirs.runs ?? {})) {
+          mine.runs = { ...mine.runs, [env]: { ...(mine.runs?.[env] ?? {}), ...run } };
+        }
         if (theirs.unclaimed !== undefined) mine.unclaimed = theirs.unclaimed;
       }
 

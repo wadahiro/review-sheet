@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "bun:test";
 import "../src/parsers/index";
-import { judgeFiles, evidenceFrom, type Observation } from "../src/judge";
+import { judgeFiles, evidenceFrom, runsFrom, type Observation } from "../src/judge";
 import type { TestPlan, TestItem } from "../src/testplan";
 
 const CONF = "/etc/app/app.conf";
@@ -432,5 +432,18 @@ describe("several observations of one environment", () => {
     const got = judgeFiles(planOf([item({ key: "Listen", expected: "80" })]), [nodes, other], { at: "X", lang: "en" });
     expect(got.conflicts).toEqual(["stg/web01"]);
     expect(got.results[0].status).toBe("pass");
+  });
+});
+
+// WHEN each environment was last looked at, derived from what was judged
+// rather than restated by whoever ran it.
+describe("the run record", () => {
+  it("names every environment that was collected, and the hosts that answered", () => {
+    const a: Observation = { environment: "stg", collected_at: "2026-09-11T00:00:00Z", hosts: { web01: { files: {} } } };
+    const cloud: Observation = { environment: "stg", collected_at: "2026-09-11T00:00:00Z", hosts: { "acct / region": { files: {} } } };
+    // …including an environment only a cloud collector reached, which a project
+    // deriving this from its own host map left out entirely.
+    expect(runsFrom([a, cloud])).toEqual({ stg: { at: "2026-09-11T00:00:00Z", hosts: ["web01", "acct / region"] } });
+    expect(runsFrom([{ environment: "prd", hosts: {} }])).toEqual({});
   });
 });
