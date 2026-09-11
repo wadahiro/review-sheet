@@ -85,6 +85,22 @@
       "items": { "type": "string" },
       "description": "The identity fields a list of maps is addressed by. Carried so a document fetched later is read with the SAME list the sheet was built with."
     },
+    "functional_channels": {
+      "type": "array",
+      "description": "Which product plugin answers which functional item. The ids are the project's, so the project binds them.",
+      "items": {
+        "type": "object",
+        "required": ["channel"],
+        "additionalProperties": false,
+        "properties": {
+          "channel": { "const": "keycloak" },
+          "sheet": { "type": "string" },
+          "login_page": { "type": "string" },
+          "login_assets": { "type": "string" },
+          "ldap_connection": { "type": "string" }
+        }
+      }
+    },
     "channels": {
       "type": "array",
       "description": "Rows a deployed file cannot settle, and the command that can. Carried from the build spec; `collect-plan` says what to gather from these and `judge` answers from them.",

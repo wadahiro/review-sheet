@@ -3512,7 +3512,30 @@ command the host does not have told apart from an output that says nothing:
             expect: Normal
 ```
 
-Declare it only where one command's output really is the answer. An item whose
+**A PRODUCT's knowledge belongs to the product, not to one project.** What a
+Keycloak login page's asset URLs say about its theme, what
+`testLDAPConnection`'s reply means — that is the same in every project running
+that product, the same kind of fact `src/parsers/httpd.ts` has held since the
+beginning, one layer up. Written into each project's judging script it is
+copied per project and tested in none. So it lives in `src/channels/`, and a
+project binds it to its own items:
+
+```yaml
+functional_channels:
+  - channel: keycloak
+    sheet: keycloak realm     # where its evidence is filed
+    login_page: login-page    # …and which of OUR items it answers
+    login_assets: login-assets
+    ldap_connection: ldap-connection
+```
+
+The ids are the project's — a plugin cannot know what a project called its
+items — which is also what stops it claiming one that happens to share a name.
+A plugin JUDGES and does not reach: a collector has already asked the product
+and handed the bytes over. Saying what to fetch is `collect-plan`'s, and it
+names commands, not requests — so the asking half stays with whoever reaches.
+
+Declare a `check:` only where one command's output really is the answer. An item whose
 rule compares against something else — a count against the fleet's size, a date
 against today, a value against what a deployed file says — is a rule, and a
 project writes it and hands it back with `-a`. Reaching for a bigger vocabulary

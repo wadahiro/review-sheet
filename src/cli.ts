@@ -578,11 +578,12 @@ program
       const observations = opts.observations.map((f) => validateObservation(JSON.parse(readFileSync(f, "utf-8"))));
       const lang = opts.lang === "en" ? "en" : "ja";
       const outcome = judgeFiles(plan, observations, { lang, documents: model.documents, idFields: model.id_fields });
+      const functional = judgeFunctional(plan, observations, { lang });
       const mine: TestResults = {
         runs: {},
         results: outcome.results,
-        functional: judgeFunctional(plan, observations, { lang }),
-        evidence: evidenceFrom(observations, plan, model.documents),
+        functional: functional.answers,
+        evidence: [...evidenceFrom(observations, plan, model.documents), ...functional.evidence],
       };
 
       // The project's own channels win. A row whose product reports its own

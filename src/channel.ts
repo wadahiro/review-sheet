@@ -138,3 +138,49 @@ export function commandChannel(spec: CommandChannelSpec, name?: string): Channel
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// A FUNCTIONAL channel: an item with no row behind it, answered from what a
+// collector already gathered.
+//
+// The axis here is the PRODUCT, and that is the point. "What a Keycloak login
+// page means", "what its testLDAPConnection answers", "what `httpd -V` prints"
+// is the same in every project that runs those products — the same kind of
+// knowledge `src/parsers/httpd.ts` has held since the beginning. Written into
+// each project's judging script it is copied per project and tested in none.
+//
+// It JUDGES, it does not reach. By the time this runs, a collector has already
+// stood on the host and handed bytes over; a channel reads them. What a plugin
+// cannot yet do is say what to fetch — `collect-plan` names commands, not
+// requests — so the asking half stays with whoever reaches.
+export type FunctionalAnswer = {
+  status: "pass" | "fail" | "not_run";
+  detail?: string;
+  reason?: string;
+  evidence?: { host?: string; command?: string; file?: string; line?: number };
+  // Bytes this answer was read from, for the record to carry.
+  documents?: { host: string; command: string; text: string; sheet: string; component?: string }[];
+};
+
+export type FunctionalChannel = {
+  name: string;
+  // Which items, by the id the project's own declaration gives them. A product
+  // plugin cannot know a project's ids, so the project binds them.
+  covers: (id: string) => boolean;
+  // One answer for the whole item, from every host that was collected: a
+  // product asked once answers once, and which host was asked is the channel's
+  // to decide (a realm is the same from every node; a file is not).
+  answer: (id: string, hosts: Record<string, unknown>, instance: string) => FunctionalAnswer | undefined;
+};
+
+const functionalRegistry = sharedRegistry<FunctionalChannel>("review-sheet.functional-channels.v1");
+
+export function registerFunctionalChannel(c: FunctionalChannel): void {
+  const i = functionalRegistry.findIndex((x) => x.name === c.name);
+  if (i >= 0) functionalRegistry[i] = c;
+  else functionalRegistry.push(c);
+}
+
+export function listFunctionalChannels(): FunctionalChannel[] {
+  return [...functionalRegistry];
+}

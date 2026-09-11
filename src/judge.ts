@@ -27,8 +27,9 @@
 import { extractFile } from "./extract.js";
 import type { Format } from "./extract.js";
 import type { Collected } from "./channel.js";
+import { registerKeycloakChannels } from "./channels/keycloak.js";
 import type { TestItem, TestPlan } from "./testplan.js";
-import { listChannels, registerChannel, commandChannel, type Channel } from "./channel.js";
+import { listChannels, listFunctionalChannels, registerChannel, commandChannel, type Channel } from "./channel.js";
 import type { TestResult, TestResults } from "./testresults.js";
 
 // One environment, as somebody collected it. The shape is a contract rather
@@ -611,11 +612,20 @@ export function collectPlan(plan: TestPlan): CollectPlan {
 // The channels a MODEL declares, registered so the judge and the collect plan
 // both see them. Called by the commands that read a model, because the spec
 // that declared them is not in their hands.
-export function registerModelChannels(model: { channels?: import("./types.js").ChannelSpec[] }): number {
+export function registerModelChannels(model: {
+  channels?: import("./types.js").ChannelSpec[];
+  functional_channels?: { channel: string; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string }[];
+}): number {
   for (const c of model.channels ?? []) {
     registerChannel(commandChannel(c, `${c.channel}:${c.sheet}:${c.command}`));
   }
-  return (model.channels ?? []).length;
+  // …and the product plugins a project binds. Their knowledge is the product's
+  // and lives in channels/; which of this project's items they answer is the
+  // project's, and lives here.
+  for (const f of model.functional_channels ?? []) {
+    if (f.channel === "keycloak") registerKeycloakChannels(f);
+  }
+  return (model.channels ?? []).length + (model.functional_channels ?? []).length;
 }
 
 // EVERY plan item ends with an answer. What is left after the files, the
@@ -667,12 +677,50 @@ export function judgeFunctional(
   plan: TestPlan,
   observations: Observation[],
   opts: { lang?: "ja" | "en"; at?: string } = {}
-): NonNullable<TestResults["functional"]> {
+): { answers: NonNullable<TestResults["functional"]>; evidence: NonNullable<TestResults["evidence"]> } {
   const t = JUDGE_WORDS[opts.lang ?? "ja"];
   const at = opts.at ?? new Date().toISOString();
   const byEnv = new Map(observations.map((o) => [o.environment, o]));
   const out: NonNullable<TestResults["functional"]> = [];
+  // The bytes a product channel read its answer from, for the record to carry.
+  const channelDocuments: NonNullable<TestResults["evidence"]> = [];
+  const fchannels = listFunctionalChannels();
   for (const f of plan.functional) {
+    // A PRODUCT channel first, where one claims the item: it knows what the
+    // product's own answer means, which no declaration could carry.
+    const fc = f.id === undefined ? undefined : fchannels.find((c) => c.covers(f.id!));
+    if (fc !== undefined) {
+      const base = {
+        unit: f.unit,
+        ...(f.id === undefined ? {} : { id: f.id }),
+        item: typeof f.text === "string" ? f.text : (f.text.ja ?? f.text.en ?? ""),
+        instance: f.instance,
+      };
+      const obs = byEnv.get(f.instance);
+      if (obs === undefined || Object.keys(obs.hosts).length === 0) {
+        out.push({ ...base, status: "not_run", reason: t.notCollected });
+        continue;
+      }
+      const got = fc.answer(f.id!, obs.hosts, f.instance);
+      if (got !== undefined) {
+        out.push({
+          ...base,
+          status: got.status,
+          ...(got.detail === undefined ? {} : { detail: got.detail }),
+          ...(got.reason === undefined ? {} : { reason: got.reason }),
+          ...(got.evidence === undefined ? {} : { evidence: got.evidence }),
+        });
+        for (const d of got.documents ?? []) {
+          // One document per address. Two items can be read from the same bytes
+          // — a login page answers both its theme and its assets — and pushing
+          // it twice puts two documents where a verdict's link resolves to
+          // whichever came first.
+          if (channelDocuments.some((x) => x.instance === f.instance && x.host === d.host && x.command === d.command)) continue;
+          channelDocuments.push({ instance: f.instance, host: d.host, at, sheet: d.sheet, ...(d.component === undefined ? {} : { component: d.component }), command: d.command, text: d.text });
+        }
+        continue;
+      }
+    }
     if (f.check === undefined) continue;
     const base = {
       unit: f.unit,
@@ -723,5 +771,5 @@ export function judgeFunctional(
       evidence: { host: point.host, command: f.check.command, ...(point.line === undefined ? {} : { line: point.line }) },
     });
   }
-  return out;
+  return { answers: out, evidence: channelDocuments };
 }

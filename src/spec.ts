@@ -59,6 +59,10 @@ export type BuildSpec = {
   // `{component}` and `{key}` are the row's own — that is the whole of "which
   // realm does this sheet describe, and how is a client of it addressed".
   documents?: Array<{ sheet: string; document: string; address: string; substitute?: string }>;
+  // Which product plugin answers which of this project's functional items.
+  // The ids are the project's — a product plugin cannot know what a project
+  // called its items — so the project binds them.
+  functional_channels?: Array<{ channel: "keycloak"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string }>;
   channels?: Array<{
     channel: "command";
     sheet: string;
@@ -282,6 +286,21 @@ const specSchema = {
         required: ["sheet", "document", "address"],
         additionalProperties: false,
         properties: { sheet: { type: "string" }, document: { type: "string" }, address: { type: "string" }, substitute: { type: "string" } },
+      },
+    },
+    functional_channels: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["channel"],
+        additionalProperties: false,
+        properties: {
+          channel: { const: "keycloak" },
+          sheet: { type: "string" },
+          login_page: { type: "string" },
+          login_assets: { type: "string" },
+          ldap_connection: { type: "string" },
+        },
       },
     },
     channels: {

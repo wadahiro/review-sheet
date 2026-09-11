@@ -229,6 +229,7 @@ export function assembleFromSpecWithReport(
     // reads the model and not the spec — `collect-plan` says what to gather
     // from them, `judge` answers from them — and neither has the spec in hand.
     channels: spec.channels,
+    functionalChannels: spec.functional_channels,
     documents: spec.documents,
     idFieldsOut: spec.id_fields,
     hooks: opts.hooks,

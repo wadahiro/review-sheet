@@ -62,6 +62,8 @@ export type ParameterSheetInput = {
   // Rows a deployed file cannot settle, carried from the build spec: everything
   // downstream of the build reads the model, not the spec.
   channels?: ChannelSpec[];
+  // Which product plugin answers which functional item — see channels/.
+  functional_channels?: { channel: "keycloak"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string }[];
   // Which document answers a sheet's rows, and where in it each row sits.
   documents?: { sheet: string; document: string; address: string; substitute?: string }[];
   // The identity fields a list of maps is addressed by. Carried because a
