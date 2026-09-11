@@ -101,6 +101,16 @@
         }
       }
     },
+    "builds": {
+      "type": "array",
+      "description": "Which product build each sheet describes. A row saying the product's own default applies is a claim about that build and no other.",
+      "items": {
+        "type": "object",
+        "required": ["sheet", "product", "version"],
+        "additionalProperties": false,
+        "properties": { "sheet": { "type": "string" }, "product": { "type": "string" }, "version": { "type": "string" } }
+      }
+    },
     "channels": {
       "type": "array",
       "description": "Rows a deployed file cannot settle, and the command that can. Carried from the build spec; `collect-plan` says what to gather from these and `judge` answers from them.",

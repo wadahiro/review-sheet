@@ -620,6 +620,7 @@ export type AssembleOpts = {
   capabilities?: Capabilities;
   // Carried straight through to the model — see assemble-spec.ts.
   channels?: ChannelSpec[];
+  builds?: { sheet: string; product: string; version: string }[];
   functionalChannels?: { channel: "keycloak"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string }[];
   documents?: { sheet: string; document: string; address: string; substitute?: string }[];
   idFieldsOut?: string[];
@@ -3084,6 +3085,7 @@ export function assembleSheetsWithReport(
     ...(underKeyColumns.size > 0 ? { columns: [...underKeyColumns.values()] } : {}),
     ...(opts.capabilities ? { capabilities: opts.capabilities } : {}),
     ...(opts.channels ? { channels: opts.channels } : {}),
+    ...(opts.builds !== undefined && opts.builds.length > 0 ? { builds: opts.builds } : {}),
     ...(opts.functionalChannels ? { functional_channels: opts.functionalChannels } : {}),
     ...(opts.documents ? { documents: opts.documents } : {}),
     ...(opts.idFieldsOut ? { id_fields: opts.idFieldsOut } : {}),

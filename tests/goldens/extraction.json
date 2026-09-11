@@ -26,8 +26,8 @@
   {
     "file": "examples/ansible-basic/input.json",
     "parser": "json",
-    "count": 3424,
-    "sha": "03b68e865472ce0f"
+    "count": 3430,
+    "sha": "e4029fb79b63ddef"
   },
   {
     "file": "examples/ansible-basic/inventories/production/group_vars/db.yml",
@@ -236,8 +236,8 @@
   {
     "file": "examples/ansible-httpd/input.json",
     "parser": "json",
-    "count": 470,
-    "sha": "b0c655d047c04d35"
+    "count": 473,
+    "sha": "de20e4cec4b3988b"
   },
   {
     "file": "examples/ansible-httpd/inventories/production/group_vars/web.yml",
@@ -338,8 +338,8 @@
   {
     "file": "examples/ansible-keycloak/input.json",
     "parser": "json",
-    "count": 3300,
-    "sha": "f7238b609600c317"
+    "count": 3309,
+    "sha": "d71e642b1594929d"
   },
   {
     "file": "examples/ansible-keycloak/inventories/production/group_vars/keycloak.yml",

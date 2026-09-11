@@ -228,6 +228,20 @@ export function assembleFromSpecWithReport(
     // The channels travel WITH the model: everything downstream of the build
     // reads the model and not the spec — `collect-plan` says what to gather
     // from them, `judge` answers from them — and neither has the spec in hand.
+    // WHICH BUILD each sheet describes. A row saying "the product's own default
+    // applies" is a claim about one build — its compiled-in defaults and the
+    // files its package ships — and judged against another one the row is
+    // answered by a product the sheet does not describe, with an answer that
+    // looks exactly like a correct one. Nothing downstream could check that
+    // before, because the model did not say.
+    builds: Object.entries(dictionaries).flatMap(([sheet, binds]) =>
+      // A per-component binding names no version of its own: it reads one per
+      // component from the files on disk, and which one is the FILE's fact
+      // rather than the spec's. Only the pinned ones are a claim about a build.
+      binds
+        .filter((b): b is Extract<typeof b, { version?: unknown }> => "version" in b && b.version !== undefined)
+        .map((b) => ({ sheet, product: b.product, version: String(b.version) }))
+    ),
     channels: spec.channels,
     functionalChannels: spec.functional_channels,
     documents: spec.documents,

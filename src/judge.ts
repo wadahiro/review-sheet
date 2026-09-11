@@ -28,6 +28,7 @@ import { extractFile } from "./extract.js";
 import type { Format } from "./extract.js";
 import type { Collected } from "./channel.js";
 import { registerKeycloakChannels } from "./channels/keycloak.js";
+import { buildMismatch, rpmVersions, packagesToQuery } from "./channels/rpm.js";
 import type { TestItem, TestPlan } from "./testplan.js";
 import { listChannels, listFunctionalChannels, registerChannel, commandChannel, type Channel } from "./channel.js";
 import type { TestResult, TestResults } from "./testresults.js";
@@ -143,6 +144,7 @@ export type JudgeWords = {
   noCommand: (host: string, command: string) => string;
   channelSilent: (host: string, how: string) => string;
   unreached: string;
+  otherBuild: (what: string) => string;
   docUnreadable: string;
   noAddress: string;
   fromDocument: string;
@@ -165,6 +167,7 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     noCommand: (host, command) => `${host} に ${command} が無い（この設定を適用しない環境）`,
     channelSilent: (host, how) => `${host} の ${how} はこの設定について何も報告していない`,
     unreached: "配備ファイルを持たず、これを答えるチャネルも宣言されていない",
+    otherBuild: (what) => `このホストはシートが記述するビルドではない（${what}）ので、既定値のままとは言えない`,
     docUnreadable: "取得した文書を読めない",
     noAddress: "この行は文書内の住所を持たない（シートがどこから来たか記録していない）",
     fromDocument: "取得した文書",
@@ -185,6 +188,7 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     noCommand: (host, command) => `${host} has no ${command} (an environment this setting does not apply to)`,
     channelSilent: (host, how) => `${how} on ${host} reports nothing about this setting`,
     unreached: "no deployed file, and no channel declared that answers it",
+    otherBuild: (what) => `this host is not the build the sheet describes (${what}), so nothing here can say the default still applies`,
     docUnreadable: "the collected document could not be read",
     noAddress: "this row carries no address inside a document",
     fromDocument: "the collected document",
@@ -196,7 +200,16 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
 export function judgeFiles(
   plan: TestPlan,
   observations: Observation[],
-  opts: { lang?: "ja" | "en"; at?: string; documents?: DocumentTemplate[]; idFields?: string[] } = {}
+  opts: {
+    lang?: "ja" | "en";
+    at?: string;
+    documents?: DocumentTemplate[];
+    idFields?: string[];
+    // Which build each sheet describes, and the command whose output says which
+    // one this host has.
+    builds?: { sheet: string; product: string; version: string }[];
+    rpmCommand?: string;
+  } = {}
 ): JudgeOutcome {
   const t = JUDGE_WORDS[opts.lang ?? "ja"];
   const at = opts.at ?? new Date().toISOString();
@@ -299,6 +312,20 @@ export function judgeFiles(
       const elsewhere = named.find((x) => x.entries.get(key) !== undefined);
 
       if (item.kind === "default-in-force") {
+        // …but only if this host IS the build the sheet describes. A default is
+        // a fact about one build, and reading another one's file answers the
+        // row with a product the sheet never described — indistinguishable from
+        // a correct answer.
+        const wrongBuild = buildOf(held, item.target.sheet, opts.builds ?? [], opts.rpmCommand);
+        if (wrongBuild !== undefined) {
+          out.results.push({
+            target, at,
+            evidence: opts.rpmCommand === undefined ? evidence : { host, command: opts.rpmCommand },
+            status: "not_run",
+            reason: t.otherBuild(wrongBuild),
+          });
+          continue;
+        }
         const setBy =
           here !== undefined ? { why: t.setHere(path), where: evidence, value: here.value, line: here.line } :
           elsewhere !== undefined
@@ -345,6 +372,22 @@ export function judgeFiles(
     }
   }
   return out;
+}
+
+// Whether this host is running something OTHER than the build the sheet
+// describes, said in one line. Undefined when it is the right build, when the
+// sheet pins nothing, or when nobody asked — silence is not a claim.
+function buildOf(
+  held: ObservedHost,
+  sheet: string,
+  builds: { sheet: string; product: string; version: string }[],
+  command: string | undefined
+): string | undefined {
+  if (builds.length === 0 || command === undefined) return undefined;
+  const out = held.commands?.[command];
+  if (typeof out !== "string") return undefined;
+  const bad = buildMismatch(builds, sheet, rpmVersions(out));
+  return bad.length === 0 ? undefined : bad.join(", ");
 }
 
 // Which document answers this row, if any: the one filed under the same sheet
@@ -547,6 +590,16 @@ export function evidenceFrom(
       // file is: a verdict names an address, and the record has to carry what
       // that address names. Keyed by what was ASKED, since a document has no
       // path on any host.
+      // The commands, each one document. A channel asked for it, a verdict
+      // cites it, and the record has to carry what that citation names — the
+      // same contract a file's verdict has.
+      for (const [command, text] of Object.entries(held.commands ?? {})) {
+        if (typeof text !== "string" || text === "") continue;
+        const k = `${obs.environment} ${host} ${command}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push({ instance: obs.environment, host, at, sheet: "", command, text });
+      }
       for (const d of held.documents ?? []) {
         if (d.absent !== undefined || d.text === "") continue;
         // One copy per ENVIRONMENT, not per host: a document is asked of a
@@ -590,7 +643,14 @@ export type CollectPlan = {
   commands: string[];
 };
 
-export function collectPlan(plan: TestPlan): CollectPlan {
+// The one command that says which build a host has. Named in one place, so the
+// plan that asks for it and the judge that reads it cannot drift apart.
+export const rpmQuery = (builds: { sheet: string; product: string; version: string }[] | undefined): string | undefined =>
+  builds === undefined || packagesToQuery(builds).length === 0
+    ? undefined
+    : `rpm -q --qf '%{NAME} %{VERSION}-%{RELEASE}\n' ${packagesToQuery(builds).join(" ")}`;
+
+export function collectPlan(plan: TestPlan, builds?: { sheet: string; product: string; version: string }[]): CollectPlan {
   const files: Record<string, Set<string>> = {};
   const commands = new Set<string>();
   const channels = listChannels();
@@ -603,6 +663,9 @@ export function collectPlan(plan: TestPlan): CollectPlan {
   }
   // …and the commands the items with no row behind them declare.
   for (const f of plan.functional) if (f.check !== undefined) commands.add(f.check.command);
+  // …and the one that says which build this host has, where the sheets pin one.
+  const rpm = rpmQuery(builds);
+  if (rpm !== undefined) commands.add(rpm);
   return {
     files: Object.fromEntries(Object.entries(files).map(([k, v]) => [k, [...v].sort()])),
     commands: [...commands].sort(),

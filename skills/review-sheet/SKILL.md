@@ -3512,6 +3512,17 @@ command the host does not have told apart from an output that says nothing:
             expect: Normal
 ```
 
+**Is the host the BUILD the sheet describes?** A row saying "the product's own
+default applies" is a claim about one build — its compiled-in defaults, the
+files its package ships — and judged against another one the row is answered by
+a product the sheet never described, with an answer that looks exactly like a
+correct one. The model carries which build each sheet describes (from the
+dictionaries it bound), `collect-plan` asks `rpm -q` about the packages that
+ship them, and a `default-in-force` row on a host running something else comes
+back not run, with the version it found beside the one the sheet names. A
+product the tool does not know to be a package — a cloud API, something shipped
+as a tarball — is skipped rather than asked about.
+
 **A PRODUCT's knowledge belongs to the product, not to one project.** What a
 Keycloak login page's asset URLs say about its theme, what
 `testLDAPConnection`'s reply means — that is the same in every project running
