@@ -453,6 +453,15 @@ export type TestDeclaration = {
   // …or the unit is not tested in this phase, and that is a decision, stated
   // where a reader looks for its items. A unit with neither fails the build.
   not_tested?: LangText;
+  // WHICH document holds this unit's record — the NAME of a document sheet in
+  // the same model, not a path: the sheet already states where its markdown
+  // lives, and a second copy of that path is a second thing to keep in step.
+  //
+  // It exists so that writing the records is one command over every unit
+  // rather than one invocation per unit that somebody has to remember. A unit
+  // with items and no document is a chapter of the test that nobody will ever
+  // read, and it used to be reported by nothing at all.
+  document?: string;
 };
 
 export type OutOfScope = {

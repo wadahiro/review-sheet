@@ -7,7 +7,7 @@ import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { validateInput, validateReview, validateResults, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
-import { renderTestDoc, renderExcluded, injectBlocks } from "./testdoc.js";
+import { renderTestDoc, renderExcluded, injectBlocks, unitDocuments } from "./testdoc.js";
 import { findBakedSecrets, formatBakedSecrets, findSecretsInEvidence, formatEvidenceLeaks } from "./secrets.js";
 import { toFullEditInput } from "./full-edit.js";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, ArtifactPreview } from "./types.js";
@@ -531,15 +531,18 @@ program
 
 program
   .command("test-doc")
-  .description("Put the unit test's tables into the document a project wrote for them")
+  .description("Put the unit test's tables into the documents a project wrote for them — every unit's, unless one is named")
   .requiredOption("-i, --input <file>", "Model (input.json)")
-  .requiredOption("-u, --unit <name>", "Which unit's document this is")
-  .requiredOption("-d, --doc <file>", "The markdown document, edited IN PLACE between its <!-- test:*:start --> markers")
+  .option("-u, --unit <name>", "One unit only (default: every unit, each written to the document its `test: { document: }` names)")
+  .option("-d, --doc <file>", "That unit's markdown document, edited IN PLACE between its <!-- test:*:start --> markers. Only with --unit")
   .option("-r, --results <file>", "The answers (omit for the specification before any run: every item reads as not yet run)")
   .option("--lang <lang>", "ja | en (default: ja)", "ja")
   .option("--include-defaults", "Print the unset-parameter items as rows too, instead of one line counting them")
-  .action((opts: { input: string; unit: string; doc: string; results?: string; lang: string; includeDefaults?: boolean }) => {
+  .action((opts: { input: string; unit?: string; doc?: string; results?: string; lang: string; includeDefaults?: boolean }) => {
     try {
+      if ((opts.unit === undefined) !== (opts.doc === undefined)) {
+        throw new Error(`--unit and --doc name one unit's document together; pass both, or neither to write every unit's`);
+      }
       const model = JSON.parse(readFileSync(opts.input, "utf-8")) as ParameterSheetInput;
       const { plan, report } = buildTestPlan(model);
       const results: TestResults =
@@ -557,15 +560,25 @@ program
         }
       }
       const lang = opts.lang === "en" ? "en" : "ja";
-      const blocks = renderTestDoc(plan, results, opts.unit, { lang, includeDefaults: opts.includeDefaults === true });
-      blocks["test:excluded"] = renderExcluded(report.excluded, opts.unit, lang);
-      const before = readFileSync(opts.doc, "utf-8");
-      // The item tables are the run; a document that takes none of them has
-      // lost it. Everything else here is a restatement the document may decline.
-      const required = ["test:items"];
-      const after = injectBlocks(before, blocks, required);
-      writeFileSync(opts.doc, after);
-      console.error(`Wrote ${opts.doc}`);
+      // Every unit's document, from what each unit declares — or the one pair a
+      // caller named. The default is every one because the failure this closes
+      // is a unit nobody wrote an invocation for: its items are planned,
+      // answered and counted, and the page is simply absent.
+      const targets =
+        opts.unit !== undefined && opts.doc !== undefined
+          ? [{ unit: opts.unit, path: opts.doc }]
+          : unitDocuments(plan, model.sheets);
+      for (const t of targets) {
+        const blocks = renderTestDoc(plan, results, t.unit, { lang, includeDefaults: opts.includeDefaults === true });
+        blocks["test:excluded"] = renderExcluded(report.excluded, t.unit, lang);
+        const before = readFileSync(t.path, "utf-8");
+        // The item tables are the run; a document that takes none of them has
+        // lost it. Everything else here is a restatement the document may decline.
+        const required = ["test:items"];
+        const after = injectBlocks(before, blocks, required);
+        writeFileSync(t.path, after);
+        console.error(`Wrote ${t.path} (${t.unit})`);
+      }
     } catch (e) {
       console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
       process.exit(1);

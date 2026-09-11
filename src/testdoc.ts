@@ -456,6 +456,58 @@ export function renderTestDoc(
   return blocks;
 }
 
+// WHERE each unit's record lives, resolved from the declaration to the file the
+// document sheet already names.
+//
+// A unit that has items and declares no document is an ERROR, not a unit
+// skipped: its items are planned, answered and counted, and the only thing
+// missing is the page a reader would read them on. Nothing reported that
+// before — one invocation per unit was written by hand, and a forgotten one
+// looked exactly like a unit that had been written.
+export type UnitDocument = { unit: string; path: string };
+
+export function unitDocuments(plan: TestPlan, sheets: { name: string; source_file?: string; document?: unknown }[]): UnitDocument[] {
+  const out: UnitDocument[] = [];
+  const missing: string[] = [];
+  const problems: string[] = [];
+  for (const unit of plan.units) {
+    const n = plan.items.filter((i) => i.unit === unit.name).length + plan.functional.filter((f) => f.unit === unit.name).length;
+    // A unit not tested in this phase has no items, and its statement stands in
+    // for them wherever the project chose to put it. Nothing to write.
+    if (n === 0) continue;
+    const named = unit.declaration.document;
+    if (named === undefined) {
+      missing.push(unit.name);
+      continue;
+    }
+    const sheet = sheets.find((s) => s.name === named);
+    if (sheet === undefined) {
+      problems.push(`${unit.name}: no sheet named "${named}"`);
+    } else if (sheet.document === undefined) {
+      problems.push(`${unit.name}: sheet "${named}" is not a document sheet`);
+    } else if (sheet.source_file === undefined) {
+      problems.push(`${unit.name}: sheet "${named}" does not say which file it was read from`);
+    } else {
+      out.push({ unit: unit.name, path: sheet.source_file });
+    }
+  }
+  if (missing.length > 0 || problems.length > 0) {
+    throw new Error(
+      [
+        missing.length > 0
+          ? `no document for ${missing.length} unit(s) with items: ${missing.join(", ")} — ` +
+            `each one needs \`test: { document: <the name of its document sheet> }\`, or its items are planned, ` +
+            `answered and counted with no page anybody can read them on`
+          : "",
+        ...problems,
+      ]
+        .filter((x) => x !== "")
+        .join("; ")
+    );
+  }
+  return out;
+}
+
 // …and the excluded rows, which need the plan's report rather than the plan.
 export function renderExcluded(
   excluded: { unit: string; sheet: string; component?: string; key: string; reason: LangText; owner?: string }[],

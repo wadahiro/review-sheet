@@ -661,6 +661,10 @@
         "not_tested": {
           "$ref": "#/$defs/langText",
           "description": "…or the unit is not tested in this phase, and why. A unit with neither this nor method fails the build."
+        },
+        "document": {
+          "type": "string",
+          "description": "The NAME of the document sheet holding this unit's record. Not a path: that sheet already states where its markdown lives. `test-doc` writes every unit's document from these, and refuses a unit that has items and names none."
         }
       }
     }

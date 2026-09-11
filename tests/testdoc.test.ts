@@ -5,7 +5,7 @@
 // rather than an empty section nobody notices.
 
 import { describe, it, expect } from "bun:test";
-import { renderTestDoc, renderExcluded, injectBlocks } from "../src/testdoc";
+import { renderTestDoc, renderExcluded, injectBlocks, unitDocuments } from "../src/testdoc";
 import type { TestPlan } from "../src/testplan";
 import type { TestResults } from "../src/testresults";
 
@@ -353,5 +353,68 @@ describe("the method a project declared", () => {
   it("is rendered from the declaration", () => {
     const b = renderTestDoc(plan(), results(), "server");
     expect(b["test:method"]).toBe("実機のファイルを読む");
+  });
+});
+
+// Which document holds which unit's record. It was a line in a shell script per
+// unit, so a unit somebody forgot to add produced no record at all: its items
+// were planned, answered and counted, the build exited 0, and the chapter
+// simply did not exist. That is the one failure this whole area refuses.
+describe("where each unit's record is written", () => {
+  const twoUnits = (): TestPlan =>
+    ({
+      metadata: { title: "t" },
+      units: [
+        { name: "a", declaration: { method: { ja: "m" }, document: "record A" }, sheets: ["sa"] },
+        { name: "b", declaration: { method: { ja: "m" }, document: "record B" }, sheets: ["sb"] },
+      ],
+      items: [
+        { target: { sheet: "sa", path: ["c"], key: "k1", instance: "stg" }, unit: "a", kind: "value", decider: "project", expected: "1" },
+        { target: { sheet: "sb", path: ["c"], key: "k2", instance: "stg" }, unit: "b", kind: "value", decider: "project", expected: "2" },
+      ],
+      functional: [],
+    }) as TestPlan;
+  const sheets = [
+    { name: "record A", source_file: "docs/a.md", document: { text: "" } },
+    { name: "record B", source_file: "docs/b.md", document: { text: "" } },
+  ];
+
+  it("is the file the document sheet it names already says it came from", () => {
+    expect(unitDocuments(twoUnits(), sheets)).toEqual([
+      { unit: "a", path: "docs/a.md" },
+      { unit: "b", path: "docs/b.md" },
+    ]);
+  });
+
+  // The whole point: a unit with items and no document named is an error, not a
+  // unit quietly skipped.
+  it("refuses a unit that has items and names no document", () => {
+    const p = twoUnits();
+    delete p.units[1].declaration.document;
+    expect(() => unitDocuments(p, sheets)).toThrow(/no document for 1 unit\(s\) with items: b/);
+  });
+
+  // …while a unit not tested in this phase has no items, and its statement
+  // stands in for them wherever the project put it.
+  it("asks for nothing from a unit with no items", () => {
+    const p = twoUnits();
+    p.units[1] = { name: "b", declaration: { not_tested: { ja: "対象外" } }, sheets: ["sb"] };
+    p.items = p.items.filter((i) => i.unit === "a");
+    expect(unitDocuments(p, sheets).map((d) => d.unit)).toEqual(["a"]);
+  });
+
+  // A name that resolves to nothing is a typo, and it must not read as "no
+  // document declared" — the two need different fixes.
+  it("names what is wrong with a document it cannot resolve", () => {
+    const p = twoUnits();
+    p.units[1].declaration.document = "record Z";
+    expect(() => unitDocuments(p, sheets)).toThrow(/b: no sheet named "record Z"/);
+    p.units[1].declaration.document = "record B";
+    expect(() => unitDocuments(p, [{ name: "record A", source_file: "docs/a.md", document: { text: "" } }, { name: "record B", document: { text: "" } }])).toThrow(
+      /does not say which file it was read from/
+    );
+    expect(() => unitDocuments(p, [{ name: "record A", source_file: "docs/a.md", document: { text: "" } }, { name: "record B", source_file: "x.md" }])).toThrow(
+      /is not a document sheet/
+    );
   });
 });

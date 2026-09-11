@@ -3459,7 +3459,7 @@ judging what it holds — is deliberately outside it.
 ```sh
 review-sheet test-plan -i input.json -o plan.json      # what has to be checked, derived from the sheets
 review-sheet validate  -i results.json --plan plan.json # do these answers answer that plan
-review-sheet test-doc  -i input.json -r results.json --unit <name> -d record.md
+review-sheet test-doc  -i input.json -r results.json          # every unit's record
 review-sheet generate  -i input.json --evidence results.json -o sheet.html
 ```
 
@@ -3486,6 +3486,7 @@ groups:
         - id: restart      # …or the fuller shape, where the item needs it
           text: { en: It restarts under load }
           intrusive: true
+      document: app-server tests   # the document SHEET holding this unit's record
       taxonomy:            # how THIS organisation raises its items, per level
         - { level: { en: Unit },      raised: { en: One per server } }
         - { level: { en: Component }, raised: { en: One per software component } }
@@ -3517,6 +3518,15 @@ of a document a tool derived and which a person wrote is not a reader's
 question; "is staging finished" is, and it is answered in one place. The columns
 differ (no subject, no decider, and the sentence is the expectation), which is
 where the provenance boundary stays visible.
+
+`document:` names a **sheet**, not a path: that sheet already states the
+markdown it was read from, and a second copy of the path is a second thing to
+keep in step. `test-doc` writes every unit's record in one invocation from it,
+and REFUSES a unit that has items and names none — one invocation per unit was
+written by hand, so a unit nobody added a line for had its items planned,
+answered and counted with no page anyone could read them on, and the build
+exited 0. (`--unit X -d file.md` still writes one, for a project that declares
+nothing.)
 
 A unit holding testable rows that declares neither `method` nor `not_tested`
 FAILS the build: untested by accident and untested on purpose look identical in
