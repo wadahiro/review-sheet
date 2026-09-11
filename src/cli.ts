@@ -11,6 +11,7 @@ import { renderTestDoc, renderExcluded, injectBlocks, unitDocuments } from "./te
 import { judgeFiles, evidenceFrom, collectPlan, registerModelChannels, answerTheRest, judgeFunctional, rpmQuery, runsFrom } from "./judge.js";
 import { findBakedSecrets, formatBakedSecrets, findSecretsInEvidence, formatEvidenceLeaks } from "./secrets.js";
 import { toFullEditInput } from "./full-edit.js";
+import { listProbeRules } from "./channel.js";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, ArtifactPreview } from "./types.js";
 import { evidencePreviews } from "./evidence.js";
 import { extractReviewsFromHtml, DOCUMENT_FIELD } from "./edits.js";
@@ -91,6 +92,7 @@ async function loadPluginModules(
 
   const before = countRegistered();
   let loaded = 0;
+  const skipped: string[] = [];
   for (const d of dirs) {
     let files: string[];
     try {
@@ -99,10 +101,15 @@ async function loadPluginModules(
       continue;
     }
     for (const f of files) {
-      if (f.endsWith(".ts") || f.endsWith(".js")) {
+      // `.mjs` too: it is the extension a project reaches for when the rest of
+      // its scripts are ESM, and a plugin directory whose files are all skipped
+      // looked exactly like one that registered nothing.
+      if (f.endsWith(".ts") || f.endsWith(".js") || f.endsWith(".mjs")) {
         await import(join(d, f));
         loaded++;
+        continue;
       }
+      if (!f.startsWith(".") && !f.endsWith(".md")) skipped.push(f);
     }
   }
   if (loaded > 0 && countRegistered() === before) {
@@ -117,6 +124,15 @@ async function loadPluginModules(
         `not that one.`
     );
   }
+  // A file this cannot load is named rather than passed over: a directory whose
+  // every file was skipped is indistinguishable from one that registered
+  // nothing, and both read as "my plugin did not take effect".
+  if (skipped.length > 0) {
+    console.warn(
+      `Warning: ignored ${skipped.length} file(s) in the ${kind} plugin director${dirs.length > 1 ? "ies" : "y"} ` +
+        `(${dirs.join(", ")}): ${skipped.join(", ")}. Only .ts, .js and .mjs are imported.`
+    );
+  }
   return loaded;
 }
 
@@ -126,6 +142,15 @@ async function loadCustomParsers(dir?: string): Promise<number> {
 
 async function loadCustomProviders(dir?: string): Promise<number> {
   return loadPluginModules(dir, resolve("./.review-sheet/providers"), "metadata provider", () => listMetadataProviders().length);
+}
+
+// The rules a PROJECT judges its own functional items with. Loaded the same
+// way a parser or a recipe is, and for the same reason: what counts as a pass
+// when the answer is not a value at an address is code, and code that runs
+// inside this tool's own fold is code that does not need a second program, an
+// answers file, an exit-code protocol or a gate on whether it wrote anything.
+async function loadCustomRules(dir?: string): Promise<number> {
+  return loadPluginModules(dir, join(process.cwd(), ".review-sheet", "rules"), "probe rule", () => listProbeRules().length);
 }
 
 async function loadCustomRecipes(dir?: string): Promise<number> {
@@ -569,10 +594,13 @@ program
   )
   .requiredOption("-o, --output <file>", "Where to write the answers")
   .option("--lang <lang>", "ja | en (default: ja)", "ja")
-  .action((opts: { input: string; observations: string[]; plan?: string; answers?: string; output: string; lang: string }) => {
+  .option("--rules-dir <dir>", "Directory of this project's own probe-rule plugins (default: ./.review-sheet/rules)")
+  .action(async (opts: { input: string; observations: string[]; plan?: string; answers?: string; output: string; lang: string; rulesDir?: string }) => {
     try {
       const model = JSON.parse(readFileSync(opts.input, "utf-8")) as ParameterSheetInput;
       registerModelChannels(model);
+      // …and this project's own rules, before anything is judged.
+      await loadCustomRules(opts.rulesDir);
       const plan: TestPlan =
         opts.plan === undefined ? buildTestPlan(model).plan : (JSON.parse(readFileSync(opts.plan, "utf-8")) as TestPlan);
       const observations = opts.observations.map((f) => validateObservation(JSON.parse(readFileSync(f, "utf-8"))));
@@ -630,7 +658,13 @@ program
 
       // …and whatever no route reached at all. Stated by the tool, because only
       // the tool sees every route's answers at once.
-      const rest = answerTheRest(plan, mine.results, observations, { lang });
+      const rest = answerTheRest(plan, mine.results, observations, {
+        lang,
+        notChecked: model.not_checked,
+        // The placeholder this project's importer resolves, as its own
+        // `documents:` already declares it.
+        substitute: (model.documents ?? []).find((d) => d.substitute !== undefined)?.substitute,
+      });
       mine.results = [...mine.results, ...rest];
       writeFileSync(opts.output, JSON.stringify(mine, null, 2));
       const missing = [...new Set(outcome.missing)];

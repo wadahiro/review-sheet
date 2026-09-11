@@ -86,6 +86,21 @@
       "items": { "type": "string" },
       "description": "The identity fields a list of maps is addressed by. Carried so a document fetched later is read with the SAME list the sheet was built with."
     },
+    "not_checked": {
+      "type": "array",
+      "description": "What to say about a row nothing in this process reaches, and what this process undertakes instead. `carried: true` names the rows whose value is judged inside the rows built from it.",
+      "items": {
+        "type": "object",
+        "required": ["reason"],
+        "additionalProperties": false,
+        "properties": {
+          "sheet": { "type": "string" },
+          "keys": { "type": "array", "items": { "type": "string" } },
+          "carried": { "type": "boolean" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
     "functional_rules": {
       "type": "array",
       "description": "Which product rule answers which functional item. A rule with no project fact in it — what a readiness body or `systemctl is-enabled` MEANS — ships with the tool and is bound to this project's own item id.",

@@ -625,6 +625,7 @@ export type AssembleOpts = {
   functionalChannels?: { channel: "keycloak" | "aws-rds"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string; parameters_authored?: string }[];
   functionalRules?: { rule: "keycloak" | "logrotate" | "systemd"; sheet?: string; health_ready?: string; config_syntax?: string; units_enabled?: string }[];
   documents?: { sheet: string; document?: string; address?: string; substitute?: string; router?: string }[];
+  notChecked?: { sheet?: string; keys?: string[]; carried?: boolean; reason: string }[];
   idFieldsOut?: string[];
   hooks?: AssembleHooks;
   // Per-sheet dictionary bindings, keyed by SheetInputs.name — see
@@ -3091,6 +3092,7 @@ export function assembleSheetsWithReport(
     ...(opts.builds !== undefined && opts.builds.length > 0 ? { builds: opts.builds } : {}),
     ...(opts.functionalChannels ? { functional_channels: opts.functionalChannels } : {}),
     ...(opts.functionalRules ? { functional_rules: opts.functionalRules } : {}),
+    ...(opts.notChecked ? { not_checked: opts.notChecked } : {}),
     ...(opts.documents ? { documents: opts.documents } : {}),
     ...(opts.idFieldsOut ? { id_fields: opts.idFieldsOut } : {}),
     sheets,

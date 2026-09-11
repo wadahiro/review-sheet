@@ -3645,6 +3645,20 @@ reached, so a record carrying 444 answers for it said nobody had tested it.
 What a project still knows and the tool does not — which program collected,
 against which model — is merged on top, per environment and per field.
 
+**What to say about a row nothing reached is the project's.** "Nobody has been
+here yet" is true and useless where the process undertakes something else:
+
+```yaml
+not_checked:
+  - { sheet: aws infrastructure, reason: "…checked by the build's own empty plan" }
+  - { carried: true,             reason: "…an input of this project, not a product field" }
+```
+
+`carried: true` names the rows whose value is judged INSIDE the rows built from
+it — counted through the placeholder the sheet already declares
+(`documents[].substitute`), so it is a reading of the model and not a guess
+about strings, and the count travels in the answer.
+
 **One environment, several collectors.** What reaches a fleet of hosts and what
 reaches a cloud API are different programs run at different moments, and both
 answer for one environment — so pass both files and they are MERGED by host. A

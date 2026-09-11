@@ -72,6 +72,7 @@ export type ParameterSheetInput = {
   functional_rules?: { rule: "keycloak" | "logrotate" | "systemd"; sheet?: string; health_ready?: string; config_syntax?: string; units_enabled?: string }[];
   // Which document answers a sheet's rows, and where in it each row sits.
   documents?: { sheet: string; document?: string; address?: string; substitute?: string; router?: string }[];
+  not_checked?: { sheet?: string; keys?: string[]; carried?: boolean; reason: string }[];
   // The identity fields a list of maps is addressed by. Carried because a
   // document fetched later must be read with the SAME list the sheet was built
   // with, or the sheet spells a client one way and the document another.

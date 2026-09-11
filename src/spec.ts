@@ -59,6 +59,10 @@ export type BuildSpec = {
   // `{component}` and `{key}` are the row's own — that is the whole of "which
   // realm does this sheet describe, and how is a client of it addressed".
   documents?: Array<{ sheet: string; document?: string; address?: string; substitute?: string; router?: string }>;
+  // What to say about a row nothing in this process reaches — and what this
+  // process undertakes instead. A statement about the PROCESS, which is why it
+  // is the project's and not the tool's.
+  not_checked?: Array<{ sheet?: string; keys?: string[]; carried?: boolean; reason: string }>;
   // Which product plugin answers which of this project's functional items.
   // The ids are the project's — a product plugin cannot know what a project
   // called its items — so the project binds them.
@@ -304,6 +308,20 @@ const specSchema = {
         // plugin that does. An entry that does neither answers nothing, and
         // silently — which is the one thing a declaration must never do.
         oneOf: [{ required: ["document", "address"] }, { required: ["router"] }],
+      },
+    },
+    not_checked: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["reason"],
+        additionalProperties: false,
+        properties: {
+          sheet: { type: "string" },
+          keys: { type: "array", items: { type: "string" } },
+          carried: { type: "boolean" },
+          reason: { type: "string" },
+        },
       },
     },
     functional_rules: {

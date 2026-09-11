@@ -332,6 +332,7 @@ export type JudgeOutcome = {
 export type JudgeWords = {
   notCollected: string;
   notProbed: string;
+  carriedBy: (n: number) => string;
   consentNeeded: string;
   noFile: (host: string, path: string) => string;
   noValueHere: string;
@@ -360,6 +361,7 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
   ja: {
     notCollected: "この環境はまだ収集していない",
     notProbed: "この実行では確認していない",
+    carriedBy: (n) => `。この値そのものは、これを含む ${n} 項目の判定に、環境ごとに解決した形で含まれている`,
     consentNeeded: "実行者が明示的に許可したときだけ実施する",
     noFile: (host, path) => `${host} に ${path} がない`,
     noValueHere: "この環境について、シートは値を述べていない",
@@ -386,6 +388,7 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
   en: {
     notCollected: "this environment has not been collected",
     notProbed: "this run did not check it",
+    carriedBy: (n) => `. Its value is judged inside the ${n} item(s) built from it, as each environment resolved it`,
     consentNeeded: "run only when the operator explicitly allows it",
     noFile: (host, path) => `${host} does not have ${path}`,
     noValueHere: "the sheet states no value for this environment",
@@ -1061,7 +1064,19 @@ export function answerTheRest(
   plan: TestPlan,
   results: TestResult[],
   observations: Observation[] = [],
-  opts: { lang?: "ja" | "en" } = {}
+  opts: {
+    lang?: "ja" | "en";
+    // WHAT TO SAY about a row nothing reached — declared by the project,
+    // because "this process does not check that, and here is what does" is a
+    // statement about the process, not about the product or the row. Without
+    // it every unreached row gets the tool's own "nobody has been here yet",
+    // which is true and useless where the project has a better answer.
+    notChecked?: { sheet?: string; keys?: string[]; carried?: boolean; reason: string }[];
+    // The importer's placeholder, as the sheet already declares it: it is what
+    // makes "this row's value is judged inside the rows that carry it"
+    // answerable rather than a claim.
+    substitute?: string;
+  } = {}
 ): TestResult[] {
   const t = JUDGE_WORDS[opts.lang ?? "ja"];
   // WHY it was not reached, and the two are different fixes: an environment
@@ -1073,14 +1088,43 @@ export function answerTheRest(
   const key = (x: { sheet: string; path?: string[]; key: string; instance: string }): string =>
     [x.sheet, (x.path ?? []).join("\u0001"), x.key, x.instance].join("\u0000");
   const seen = new Set(results.map((r) => key(r.target)));
+  // How many OTHER items carry this one's value — the row is an input of the
+  // project's, and what it is worth is judged inside every item built from it.
+  // Counted through the placeholder the sheet declares, so this is a reading of
+  // the model rather than a guess about the strings.
+  const carriedBy = (item: TestItem): number => {
+    if (opts.substitute === undefined || item.file !== undefined || item.address !== undefined) return 0;
+    const wrapped = opts.substitute.replace(/\(\[[^\]]*\][^)]*\)/, item.target.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const re = new RegExp(wrapped);
+    return plan.items.filter(
+      (x) =>
+        x.target.instance === item.target.instance &&
+        x.target.sheet === item.target.sheet &&
+        typeof x.expected === "string" &&
+        re.test(x.expected)
+    ).length;
+  };
   const out: TestResult[] = [];
   for (const item of plan.items) {
     if (seen.has(key(item.target))) continue;
     seen.add(key(item.target));
+    let reason = collected.has(item.target.instance) ? t.unreached : t.notCollected;
+    for (const rule of opts.notChecked ?? []) {
+      if (rule.sheet !== undefined && rule.sheet !== item.target.sheet) continue;
+      if (rule.keys !== undefined && !rule.keys.includes(item.target.key)) continue;
+      if (rule.carried === true) {
+        const n = carriedBy(item);
+        if (n === 0) continue;
+        reason = `${rule.reason}${t.carriedBy(n)}`;
+      } else {
+        reason = rule.reason;
+      }
+      break;
+    }
     out.push({
       target: { sheet: item.target.sheet, path: item.target.path, key: item.target.key, instance: item.target.instance },
       status: "not_run",
-      reason: collected.has(item.target.instance) ? t.unreached : t.notCollected,
+      reason,
     });
   }
   return out;

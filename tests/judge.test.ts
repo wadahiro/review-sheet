@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "bun:test";
 import "../src/parsers/index";
-import { judgeFiles, evidenceFrom, runsFrom, type Observation } from "../src/judge";
+import { judgeFiles, evidenceFrom, runsFrom, answerTheRest, type Observation } from "../src/judge";
 import type { TestPlan, TestItem } from "../src/testplan";
 
 const CONF = "/etc/app/app.conf";
@@ -445,5 +445,46 @@ describe("the run record", () => {
     // deriving this from its own host map left out entirely.
     expect(runsFrom([a, cloud])).toEqual({ stg: { at: "2026-09-11T00:00:00Z", hosts: ["web01", "acct / region"] } });
     expect(runsFrom([{ environment: "prd", hosts: {} }])).toEqual({});
+  });
+});
+
+// WHAT TO SAY about a row nothing reached. "Nobody has been here yet" is true
+// and useless where the project undertakes something else instead.
+describe("a row this process does not check", () => {
+  const plan = (items: TestItem[]): TestPlan => planOf(items);
+  const say = (items: TestItem[], opts: Parameters<typeof answerTheRest>[3]) =>
+    answerTheRest(plan(items), [], [{ environment: "stg", hosts: { web01: { files: {} } } }], opts);
+
+  it("carries the project's own sentence for a sheet it names", () => {
+    const got = say([item({ key: "x", expected: "1", file: undefined })], {
+      lang: "ja",
+      notChecked: [{ sheet: "s", reason: "この工程では実機照合していない" }],
+    });
+    expect(got[0]!.reason).toBe("この工程では実機照合していない");
+  });
+
+  // A row whose value is an input this project builds other values FROM is
+  // judged inside them — counted through the placeholder the sheet declares,
+  // so it is a reading of the model rather than a guess about strings.
+  it("says how many items carry an input's value, and only where some do", () => {
+    const rows = [
+      item({ key: "HOSTNAME", expected: undefined, file: undefined }),
+      item({ key: "url", expected: "https://$(env:HOSTNAME)/x", file: undefined }),
+      item({ key: "url2", expected: "https://$(env:HOSTNAME)/y", file: undefined }),
+    ];
+    const got = say(rows, {
+      lang: "ja",
+      notChecked: [{ carried: true, reason: "この案件の入力であって製品のフィールドではない" }],
+      substitute: "\\$\\(env:([A-Za-z_][A-Za-z0-9_]*)\\)",
+    });
+    expect(got[0]!.reason).toContain("この案件の入力であって");
+    expect(got[0]!.reason).toContain("2 項目");
+    // …and a row nothing carries falls through to the tool's own words.
+    expect(got[1]!.reason).not.toContain("この案件の入力");
+  });
+
+  it("falls back to the tool's own words when no rule matches", () => {
+    const got = say([item({ key: "x", expected: "1", file: undefined })], { lang: "ja", notChecked: [{ sheet: "other", reason: "…" }] });
+    expect(got[0]!.reason).toContain("チャネルも宣言されていない");
   });
 });

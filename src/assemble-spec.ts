@@ -246,6 +246,7 @@ export function assembleFromSpecWithReport(
     defaultsCheckedBy: spec.defaults_checked_by,
     functionalChannels: spec.functional_channels,
     functionalRules: spec.functional_rules,
+    notChecked: spec.not_checked,
     documents: spec.documents,
     idFieldsOut: spec.id_fields,
     hooks: opts.hooks,
