@@ -483,7 +483,7 @@ declared per sheet:
 | bare literal (no `{{ var }}`) | the directive's own key (`origin: "embedded"`, as always) |
 | `{{ var }}` backing **exactly one** directive | the directive's key (the product's own name for it); the variable is still recorded, surfaced via the sheet's `under_key` column |
 | `{{ var }}` backing **more than one** directive | the variable's own name — no single directive can legitimately claim the row (e.g. httpd's `ProxyPass`/`ProxyPassReverse` pair sharing one backend variable). Reported, never decided silently. |
-| a directive built from **more than one** `{{ var }}` (`db-url=jdbc:…{{ db_host }}:5432/{{ db_name }}`) | each variable's own name — the mirror of the row above, and refused for the same reason: naming either one after the directive gives a row that reads `db-url = db.internal`. Reported too. Every one of them still counts as a line of the artifact, so `group_by: file` files them under the rendered file rather than under the file they are DEFINED in. |
+| a directive built from **more than one** `{{ var }}` (`db-url=jdbc:…{{ db_host }}:5432/{{ db_name }}`) | each variable's own name — the mirror of the row above, and refused for the same reason: naming either one after the directive gives a row that reads `db-url = db.internal`. Reported too. Every one of them still counts as a line of the artifact, so the file layout files them under the rendered file rather than under the file they are DEFINED in. |
 | a `defaults` variable the template never references at all (including one used only inside a Jinja `{% if %}` test, never interpolated), AND no overlay sets it either | the variable's own name — nothing else names it (this project's "never lose a row" rule: it would otherwise be completely invisible) |
 | a `defaults` variable the template never references, but SOME overlay does set | the variable's own name, as a Pattern B row covering only the instances that set it — the ordinary "key seen only in overlays" case, unaffected by the template at all |
 | no `template` at all | every row keeps its extracted identity — the same as every non-templated sheet |
@@ -852,7 +852,6 @@ So it is stated, on the dictionary binding:
 ```yaml
 "OS basics":
   recipe: layered
-  group_by: file
   dictionaries:
     - product: sysctl
       version: "8.5"
@@ -872,14 +871,14 @@ Narrowest wins: the row's own, then its component's binding, then a binding
 with no component (the whole sheet), then the derivation in the table above.
 
 Note what the reader sees: rows the project does not set are hidden behind "show
-unset rows", so the default view of a `group_by: file` sheet IS the file — in
+unset rows", so the default view of a file-layout sheet IS the file — in
 the reference project, 22 rows of keycloak.conf's own settings rather than the
 149-row ledger behind them.
 
 **On a sheet whose COMPONENTS are already files, most of this has nothing left
 to do.** `templates:` naming each component after the artifact it deploys is
 the ordinary shape, so every artifact row already carries the file as its
-component and `group_by: file` only re-derives it. That level is folded away
+component and the file layout only re-derives it. That level is folded away
 rather than opening a child of its own name (`httpd.conf > httpd.conf >
 ServerTokens`), for the same reason the component level itself disappears on a
 single-component sheet: a level that names what its parent already named is not
@@ -891,8 +890,8 @@ hand-written `category:` is never folded — the project said what it meant.
 
 What the option still does there is the last row of the table above: a variable
 that is a line of NO artifact keeps its own file's name, instead of being filed
-under whichever component it happens to sit beside. If a sheet has no such rows,
-`group_by: file` changes nothing on it and can be dropped.
+under whichever component it happens to sit beside. A sheet with no such rows
+sees nothing of this — the file layout is the default and costs it nothing.
 
 #### `data_maps:` — a path whose children are data
 
@@ -943,7 +942,7 @@ recipe; the results become one sheet.
           component: /etc/logrotate.d/app
 ```
 
-With `group_by: file` on the sheet (sheet.yml), that reads as one tab with a
+On the file layout — the default — that reads as one tab with a
 section per file — which is the layout being reproduced.
 
 **`defaults:` is a file the part is answerable for, not a lookup table.** Each
@@ -2281,7 +2280,7 @@ fails when one of them is missing from this section):
 | sheet | `params:` | the rows themselves |
 | param | `category:` | this row's category — a string, a LIST (a path), or `null` for none |
 | param | `dict_key:` | bind this row to a differently-named dictionary entry (rare — see the next section) |
-| param | `deployed_file:` | where THIS row's value is written on the host, overriding its dictionary binding's own `deployed_file:` — read only by `group_by: file` |
+| param | `deployed_file:` | where THIS row's value is written on the host, overriding its dictionary binding's own `deployed_file:`. Names the row's category on the file layout, and is what the test plan gives an item as its `file:` — ahead of the category's or the sheet's own path |
 | param | `description:` | the row's description, when no dictionary supplies one |
 | param | `remarks:` | a project note shown beside the row — not the description |
 | param | `out_of_scope:` | excluded from THIS review, with a reason and an owner |
@@ -2372,7 +2371,7 @@ finding.
 name keys every review target, diff and CLI message, so a tab can be renamed
 in either language without orphaning a finding filed against it. Nothing sets
 the in-sheet heading levels (`h3`/`h4`/`h5`) — those follow the category tree's
-depth, so shaping the tree with `category:` / `group_by:` / a dictionary's own
+depth, so shaping the tree with `category:` / `layout:` / a dictionary's own
 `group:` is how you shape the headings.
 
 **Ghost tabs.** Once a sheet declares `categories:`, any category actually
