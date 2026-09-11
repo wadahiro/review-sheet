@@ -188,6 +188,23 @@ describe("nobody changed anything the design did not decide", () => {
     expect(got.status).toBe("pass");
   });
 
+  // A page is not the list: the API paginates, a group holds several hundred
+  // parameters, and "is there anything here we did not decide" cannot be
+  // answered from the first hundred.
+  it("refuses a reply the API says is truncated", () => {
+    clear();
+    registerAwsRdsChannel({ sheet: "aws infrastructure", parameters_authored: "aws-parameters-authored" });
+    const truncated = JSON.stringify({ Parameters: [{ ParameterName: "max_connections", Source: "user" }], Marker: "abc" });
+    const got = listFunctionalChannels()[0]!.answer("aws-parameters-authored", hostsWith(truncated), "staging", { items: plan })!;
+    expect(got.status).toBe("not_run");
+    expect(got.reason).toContain("ページング");
+    // …and an empty marker is not truncation.
+    const whole = JSON.stringify({ Parameters: [{ ParameterName: "max_connections", Source: "user" }], Marker: "" });
+    clear();
+    registerAwsRdsChannel({ sheet: "aws infrastructure", parameters_authored: "aws-parameters-authored" });
+    expect(listFunctionalChannels()[0]!.answer("aws-parameters-authored", hostsWith(whole), "staging", { items: plan })!.status).toBe("pass");
+  });
+
   it("says nothing rather than guessing when AWS was not collected", () => {
     clear();
     registerAwsRdsChannel({ sheet: "aws infrastructure", parameters_authored: "aws-parameters-authored" });

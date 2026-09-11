@@ -105,11 +105,20 @@ function authoredAnswer(hosts: Record<string, unknown>, items: TestItem[], sheet
     );
     if (doc === undefined) continue;
     if (doc.absent !== undefined) return { status: "not_run", reason: doc.absent };
-    let body: { Parameters?: { ParameterName?: string; Source?: string }[] };
+    let body: { Parameters?: { ParameterName?: string; Source?: string }[]; Marker?: string };
     try {
       body = JSON.parse(doc.text ?? "{}") as typeof body;
     } catch {
       return { status: "not_run", reason: "パラメータの一覧を読めなかった" };
+    }
+    // A PAGE IS NOT THE LIST. `describe-db-cluster-parameters` is paginated and
+    // a group holds several hundred parameters, so a reply that carries a
+    // `Marker` is the API saying there is more — and this item is precisely
+    // "is there anything here we did not decide", which a first page cannot
+    // answer. Refused rather than answered from part of the data: the pass it
+    // would otherwise produce is the failure mode this item exists to catch.
+    if (typeof body.Marker === "string" && body.Marker !== "") {
+      return { status: "not_run", reason: "パラメータの一覧が途中までしか返っていない（ページングされている）" };
     }
     // The VALUE rows, not every row that names a parameter: `apply_method` says
     // HOW a change takes effect, which is not a statement that the value was
