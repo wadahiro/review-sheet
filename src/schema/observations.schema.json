@@ -34,6 +34,20 @@
             "type": "object",
             "description": "A format a path's own name cannot state (`space` is nobody's extension). Only where detection cannot serve.",
             "additionalProperties": { "type": "string" }
+          },
+          "probes": {
+            "type": "object",
+            "description": "What a PROBE found, keyed by the functional item's id. A functional item has no row behind it, so what answers it is not a value at an address but whatever a probe produced — per host, because a fleet is only as configured as its least configured node.",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "how": { "type": "string", "description": "What was asked, for the record's evidence." },
+                "ran": { "type": "boolean", "description": "Whether it ran at all. A probe that did not is a THIRD answer, never a failure." },
+                "why": { "type": "string", "description": "…and why not, in the collector's own words." },
+                "ok": { "type": ["boolean", "null"], "description": "A verdict the collector itself could reach (an HTTP status is not a rule, it is the answer). Null where judging it needs one." },
+                "text": { "type": "string", "description": "What came back, carried into the record as the material the verdict was read from." }
+              }
+            }
           }
         }
       }

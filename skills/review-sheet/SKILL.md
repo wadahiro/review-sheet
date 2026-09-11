@@ -3626,6 +3626,26 @@ against today, a value against what a deployed file says — is a rule, and a
 project writes it and hands it back with `-a`. Reaching for a bigger vocabulary
 here would put those rules where no test of this tool can break them.
 
+**The loop around that rule is still this tool's.** Ask every host rather than
+the first; keep "did not run", "cannot be asked here" and "ran and failed"
+apart; take the worst answer, because a fleet is only as configured as its least
+configured node, and name the host that produced it; carry the bytes it was read
+from. None of that is about what is being checked, so `judgeProbes` does it and
+the project supplies only the rule for ONE host:
+
+```js
+const { answer, documents } = judgeProbes(item, hosts, (probe, ctx) => myRule(probe, ctx.held, ctx.hosts), { sheet, lang });
+```
+
+What it reads is `probes:` in the observation — `{ how, ran, why, ok, text }`
+keyed by the item's id, declared in the observations schema exactly as
+`commands:` is. `ran: false` is a THIRD answer and never a failure: a host with
+no `chronyc` did not fail the time check, it could not be asked, and `why` says
+so in the collector's own words. An `intrusive` item nobody ran says it was not
+consented to rather than "not collected". The tool's own `check:` items go
+through the same fold with a rule that compares the reading against the declared
+value — one implementation, so the two can never drift.
+
 `functional` items are ITEMS OF THE PLAN: planned once per environment, counted
 in the summary, and covered by `validate --plan` exactly like the derived ones.
 They used to be read straight from the declaration at render time, which meant a

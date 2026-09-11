@@ -33,6 +33,7 @@ import { buildMismatch, rpmVersions, packagesToQuery } from "./channels/rpm.js";
 import { compiledInFor, injectedOptions, lineOfCompiledIn } from "./channels/httpd.js";
 import { effectiveConfig, isProductDefault, lineOfEffective } from "./channels/keycloak.js";
 import type { TestItem, TestPlan } from "./testplan.js";
+import type { LangText } from "./types.js";
 import { listChannels, listFunctionalChannels, registerChannel, commandChannel, getDocumentRouter, type Channel } from "./channel.js";
 import type { TestResult, TestResults } from "./testresults.js";
 
@@ -64,6 +65,14 @@ export type ObservedHost = {
   // commands a CHANNEL asked for (`collect-plan` lists them), so the collector
   // does not carry a second copy of the same strings.
   commands?: Collected;
+  // What a PROBE found. A functional item has no row behind it — "the service
+  // comes back up", "the certificate is not about to expire" — so what answers
+  // it is not a value at an address but whatever a probe produced, per host.
+  //
+  // Keyed by the item's id, which is the join a project already declares. The
+  // shape is the COLLECTOR's to fill and its meaning is the judge's, exactly as
+  // `commands` is: what ran, whether it ran at all, and what came back.
+  probes?: Record<string, ProbeResult>;
   // A DOCUMENT the project fetched: a realm as a product's API describes it, a
   // resource as a cloud API returns it. Not a file on this host and not a
   // command's output — bytes that answer a whole sheet or component, addressed
@@ -157,6 +166,132 @@ export function mergeByEnvironment(observations: Observation[]): { merged: Obser
   return { merged: [...byEnv.values()], conflicts };
 }
 
+// ONE PROBE ON ONE HOST, as a collector recorded it.
+export type ProbeResult = {
+  // What was asked, for the record's evidence — `ss -lntp`, `GET /health/ready`.
+  how?: string;
+  // Whether it ran at all. A probe that did not is a THIRD answer, never a
+  // failure: a host with no `chronyc` did not fail the time check, it could not
+  // be asked. `why` says which, in the collector's own words.
+  ran?: boolean;
+  why?: string;
+  // A verdict the collector itself could reach (an HTTP status is not a rule,
+  // it is the answer). Where the judging needs a rule, the caller supplies one
+  // and this is ignored.
+  ok?: boolean | null;
+  // What came back, carried into the record as the material the verdict was
+  // read from.
+  text?: string;
+};
+
+// What a rule makes of one host's probe. `null` is "this host cannot be asked",
+// which is not a failure — see ProbeResult.ran.
+export type HostVerdict = {
+  ok: boolean | null;
+  why?: string;
+  // Which line of the probe's output it was read at, so a verdict points at the
+  // words rather than at the whole of an output.
+  line?: number;
+};
+
+// ONE FUNCTIONAL ITEM, ACROSS EVERY HOST — the loop, and nothing about any
+// product or any project.
+//
+// Whoever judges a functional item has to: ask every host rather than the
+// first, tell "did not run" from "ran and failed" from "cannot be asked here",
+// take the WORST answer (a fleet is only as configured as its least configured
+// node) and name the host that produced it, and carry the bytes it was read
+// from. None of that is about what is being checked, and every project doing
+// infrastructure tests writes it — so it is here, and only the RULE is
+// supplied by the caller.
+//
+// The tool's own `check:` items go through this too, with a rule that compares
+// the read value against the declared one. One implementation, so the two can
+// never drift.
+export function judgeProbes(
+  item: { unit: string; id?: string; text: LangText | string; instance: string; intrusive?: boolean },
+  hosts: Record<string, ObservedHost>,
+  verdict: (probe: ProbeResult, ctx: { host: string; held: ObservedHost; hosts: number }) => HostVerdict,
+  opts: {
+    lang?: "ja" | "en";
+    sheet?: string;
+    at?: string;
+    // Where the probe for this item lives on a host. The default is the
+    // declared `probes` map; the `check:` path reads a command's output instead.
+    read?: (held: ObservedHost, id: string, host: string) => ProbeResult | undefined;
+  } = {}
+): {
+  answer: NonNullable<TestResults["functional"]>[number];
+  documents: NonNullable<TestResults["evidence"]>;
+} {
+  const t = JUDGE_WORDS[opts.lang ?? "ja"];
+  const at = opts.at ?? new Date().toISOString();
+  const id = item.id ?? "";
+  const base = {
+    unit: item.unit,
+    ...(item.id === undefined ? {} : { id: item.id }),
+    item: typeof item.text === "string" ? item.text : (item.text.ja ?? item.text.en ?? ""),
+    instance: item.instance,
+  };
+  const read = opts.read ?? ((held: ObservedHost) => held.probes?.[id]);
+  const documents: NonNullable<TestResults["evidence"]> = [];
+  const entries = Object.entries(hosts);
+  const seen: { host: string; ran: boolean; ok?: boolean; why?: string; how?: string; line?: number }[] = [];
+  for (const [host, held] of entries) {
+    const probe = read(held, id, host);
+    if (probe === undefined) {
+      seen.push({ host, ran: false, why: t.notProbed });
+      continue;
+    }
+    if (probe.ran !== true) {
+      // An INTRUSIVE item nobody ran did not fall through a gap — answering it
+      // disturbs the running system, and the runner is the one that decides.
+      // The collector's own words win where it gave any.
+      // An EMPTY `why` is not a reason. A collector that always writes the
+      // field (which is what a templating language makes easy) would otherwise
+      // put a blank where the record has to say which of the two happened.
+      seen.push({ host, ran: false, why: probe.why || (item.intrusive === true ? t.consentNeeded : t.notProbed) });
+      continue;
+    }
+    const got = verdict(probe, { host, held, hosts: entries.length });
+    if (got.ok === null) {
+      seen.push({ host, ran: false, why: got.why || t.notProbed });
+      continue;
+    }
+    seen.push({ host, ran: true, ok: got.ok, why: got.why, how: probe.how, line: got.line });
+    if (typeof probe.text === "string" && probe.text !== "") {
+      documents.push({
+        instance: item.instance,
+        host,
+        at,
+        sheet: opts.sheet ?? "",
+        ...(probe.how === undefined ? {} : { command: probe.how }),
+        text: probe.text,
+      });
+    }
+  }
+  const ran = seen.filter((x) => x.ran);
+  if (ran.length === 0) {
+    return { answer: { ...base, status: "not_run", reason: seen[0]?.why ?? t.notCollected }, documents };
+  }
+  const failed = ran.filter((x) => x.ok !== true);
+  const point = failed[0] ?? ran[0]!;
+  return {
+    answer: {
+      ...base,
+      status: failed.length === 0 ? "pass" : "fail",
+      detail: `${point.how ?? id}（${ran.length} ホスト）`,
+      ...(failed.length === 0 ? {} : { reason: `${failed.map((x) => x.host).join(", ")}: ${failed[0]!.why ?? ""}` }),
+      evidence: {
+        host: point.host,
+        ...(point.how === undefined ? {} : { command: point.how }),
+        ...(point.line === undefined ? {} : { line: point.line }),
+      },
+    },
+    documents,
+  };
+}
+
 export type JudgeOutcome = {
   results: TestResult[];
   evidence: NonNullable<TestResults["evidence"]>;
@@ -175,6 +310,8 @@ export type JudgeOutcome = {
 
 export type JudgeWords = {
   notCollected: string;
+  notProbed: string;
+  consentNeeded: string;
   noFile: (host: string, path: string) => string;
   noValueHere: string;
   absentPass: string;
@@ -201,6 +338,8 @@ export type JudgeWords = {
 export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
   ja: {
     notCollected: "この環境はまだ収集していない",
+    notProbed: "この実行では確認していない",
+    consentNeeded: "実行者が明示的に許可したときだけ実施する",
     noFile: (host, path) => `${host} に ${path} がない`,
     noValueHere: "この環境について、シートは値を述べていない",
     absentPass: "削除されていることを確認（配布物にあり、この案件では設定しない）",
@@ -225,6 +364,8 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
   },
   en: {
     notCollected: "this environment has not been collected",
+    notProbed: "this run did not check it",
+    consentNeeded: "run only when the operator explicitly allows it",
     noFile: (host, path) => `${host} does not have ${path}`,
     noValueHere: "the sheet states no value for this environment",
     absentPass: "confirmed gone (shipped by the distribution, not set by this project)",
@@ -972,54 +1113,52 @@ export function judgeFunctional(
       }
     }
     if (f.check === undefined) continue;
-    const base = {
-      unit: f.unit,
-      ...(f.id === undefined ? {} : { id: f.id }),
-      item: typeof f.text === "string" ? f.text : (f.text.ja ?? f.text.en ?? ""),
-      instance: f.instance,
-    };
     const obs = byEnv.get(f.instance);
     if (obs === undefined || Object.keys(obs.hosts).length === 0) {
-      out.push({ ...base, status: "not_run", reason: t.notCollected });
+      out.push({
+        unit: f.unit,
+        ...(f.id === undefined ? {} : { id: f.id }),
+        item: typeof f.text === "string" ? f.text : (f.text.ja ?? f.text.en ?? ""),
+        instance: f.instance,
+        status: "not_run",
+        reason: t.notCollected,
+      });
       continue;
     }
-    // Every host, and the verdict is the WORST of them: a fleet is only as
-    // configured as its least configured node, and one item can hold only one
-    // answer — so the failing host is the one it names.
-    const seen: { host: string; status: "pass" | "fail" | "not_run"; why?: string; line?: number; value?: string }[] = [];
-    const channel = commandChannel({ sheet: "", command: f.check.command, read: f.check.read }, `functional:${f.id ?? base.item}`);
-    for (const [host, held] of Object.entries(obs.hosts)) {
-      const collected = held.commands ?? {};
-      if (collected[f.check.command] === null) {
-        seen.push({ host, status: "not_run", why: t.noCommand(host, f.check.command) });
-        continue;
+    // The SAME fold every other functional item goes through — every host, the
+    // worst answer, the failing host named — with a rule that compares the
+    // channel's reading against the declared value. The loop used to be written
+    // out here, and a project whose item needs a rule instead of a literal
+    // wrote it out again.
+    const command = f.check.command;
+    const channel = commandChannel({ sheet: "", command, read: f.check.read }, `functional:${f.id ?? ""}`);
+    const { answer } = judgeProbes(
+      f,
+      obs.hosts,
+      (_probe, ctx) => {
+        // The channel reads by the ROW's key; a functional item has none, so it
+        // is asked with its own id — which is what `{key}` in a pattern means
+        // here, and why an item that needs no key can leave the pattern plain.
+        const got = channel.answer(
+          { target: { sheet: "", path: [], key: f.id ?? "", instance: f.instance } } as never,
+          ctx.held.commands ?? {}
+        );
+        if (got === undefined) return { ok: null, why: t.channelSilent(ctx.host, command) };
+        return { ok: got.value === f.check!.expect, why: `${got.value} — ${f.check!.expect} を期待`, line: got.line };
+      },
+      {
+        lang: opts.lang,
+        at,
+        // A command's output is already carried as evidence by `evidenceFrom`;
+        // emitting it again would put two documents at one address.
+        read: (held, _id, host) => {
+          const held0 = held.commands ?? {};
+          if (held0[command] === null) return { how: command, ran: false, why: t.noCommand(host, command) };
+          return { how: command, ran: true };
+        },
       }
-      // The channel reads by the ROW's key; a functional item has none, so it
-      // is asked with its own id — which is what `{key}` in a pattern means
-      // here, and why an item that needs no key can leave the pattern plain.
-      const got = channel.answer({ target: { sheet: "", path: [], key: f.id ?? "", instance: f.instance } } as never, collected);
-      if (got === undefined) {
-        seen.push({ host, status: "not_run", why: t.channelSilent(host, f.check.command) });
-        continue;
-      }
-      seen.push({ host, status: got.value === f.check.expect ? "pass" : "fail", line: got.line, value: got.value });
-    }
-    const failed = seen.filter((x) => x.status === "fail");
-    const ran = seen.filter((x) => x.status !== "not_run");
-    if (ran.length === 0) {
-      out.push({ ...base, status: "not_run", reason: seen[0]?.why ?? t.notCollected });
-      continue;
-    }
-    const point = failed[0] ?? ran[0]!;
-    out.push({
-      ...base,
-      status: failed.length === 0 ? "pass" : "fail",
-      detail: `${f.check.command}（${ran.length} ホスト）`,
-      ...(failed.length === 0
-        ? {}
-        : { reason: `${failed.map((x) => x.host).join(", ")}: ${failed[0]!.value} — ${f.check.expect} を期待` }),
-      evidence: { host: point.host, command: f.check.command, ...(point.line === undefined ? {} : { line: point.line }) },
-    });
+    );
+    out.push(answer);
   }
   return { answers: out, evidence: channelDocuments };
 }
