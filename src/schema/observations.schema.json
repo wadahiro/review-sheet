@@ -7,6 +7,7 @@
   "properties": {
     "environment": { "type": "string", "description": "The environment column this stands for — the same name the sheets use." },
     "collected_at": { "type": "string", "description": "When, ISO 8601. Carried onto every evidence document, because two hosts' bytes were taken at two moments." },
+    "substitutions": { "type": "object", "additionalProperties": { "type": "string" }, "description": "What an importer's placeholders resolved to in this environment. Only the project read the files the importer read." },
     "hosts": {
       "type": "object",
       "description": "One entry per host that was reached. A host nobody reached is absent, which is an answer.",

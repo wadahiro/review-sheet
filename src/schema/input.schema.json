@@ -70,6 +70,21 @@
     "numbering": {
       "type": "boolean"
     },
+    "documents": {
+      "type": "array",
+      "description": "Which document answers a sheet's rows, and where in it each row sits. `{component}` and `{key}` are the row's own.",
+      "items": {
+        "type": "object",
+        "required": ["sheet", "document", "address"],
+        "additionalProperties": false,
+        "properties": { "sheet": { "type": "string" }, "document": { "type": "string" }, "address": { "type": "string" }, "substitute": { "type": "string" } }
+      }
+    },
+    "id_fields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The identity fields a list of maps is addressed by. Carried so a document fetched later is read with the SAME list the sheet was built with."
+    },
     "channels": {
       "type": "array",
       "description": "Rows a deployed file cannot settle, and the command that can. Carried from the build spec; `collect-plan` says what to gather from these and `judge` answers from them.",

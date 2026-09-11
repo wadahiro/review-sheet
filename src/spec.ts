@@ -55,6 +55,10 @@ export type BuildSpec = {
   // to say what a collector must gather, so the commands exist once — written
   // twice, in the judge and in the playbook that runs them, nothing checked the
   // two agreed and a corrected command made its rows quietly uncollected.
+  // Which document answers a sheet's rows, and where in it each row sits.
+  // `{component}` and `{key}` are the row's own — that is the whole of "which
+  // realm does this sheet describe, and how is a client of it addressed".
+  documents?: Array<{ sheet: string; document: string; address: string; substitute?: string }>;
   channels?: Array<{
     channel: "command";
     sheet: string;
@@ -271,6 +275,15 @@ const specSchema = {
       additionalProperties: false,
     },
     instances: { type: "array", items: { type: "string" }, minItems: 1 },
+    documents: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["sheet", "document", "address"],
+        additionalProperties: false,
+        properties: { sheet: { type: "string" }, document: { type: "string" }, address: { type: "string" }, substitute: { type: "string" } },
+      },
+    },
     channels: {
       type: "array",
       items: {

@@ -62,6 +62,12 @@ export type ParameterSheetInput = {
   // Rows a deployed file cannot settle, carried from the build spec: everything
   // downstream of the build reads the model, not the spec.
   channels?: ChannelSpec[];
+  // Which document answers a sheet's rows, and where in it each row sits.
+  documents?: { sheet: string; document: string; address: string; substitute?: string }[];
+  // The identity fields a list of maps is addressed by. Carried because a
+  // document fetched later must be read with the SAME list the sheet was built
+  // with, or the sheet spells a client one way and the document another.
+  id_fields?: string[];
   // The sheet groups this document uses, in the order they should be read.
   // Declared rather than derived from the order sheets happen to appear in:
   // the reading order of a system's layers is a decision, and one that must not

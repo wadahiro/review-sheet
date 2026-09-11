@@ -258,3 +258,49 @@ describe("a document the project fetched", () => {
     expect(got.unanswered.length).toBe(1);
   });
 });
+
+// Which document answers a sheet's rows, and where in it each row sits — the
+// whole of "which realm does this sheet describe, and how is a client of it
+// addressed", as a table rather than a program.
+describe("a sheet that declares which document answers it", () => {
+  const realm = JSON.stringify(
+    { realm: "poc", clients: [{ clientId: "https://app.example.com/saml", protocol: "saml", rootUrl: "https://app.example.com", attributes: { sso: "x" } }] },
+    null,
+    2
+  );
+  const obs2 = (): Observation => ({
+    environment: "stg",
+    substitutions: { HOST: "app.example.com" },
+    hosts: { web01: { files: {}, documents: [{ name: "poc", format: "json", how: "GET /realms/poc", text: realm }] } },
+  });
+  const tpl = [{ sheet: "s", document: "poc", address: "clients[clientId={component}].{key}", substitute: "\\$\\(env:([A-Za-z_][A-Za-z0-9_]*)\\)" }];
+  const run = (items: TestItem[]) => judgeFiles(planOf(items), [obs2()], { at: "X", lang: "en", documents: tpl, idFields: ["clientId"] });
+  const row = (over: Partial<TestItem> & { key: string }): TestItem =>
+    ({ ...item({ ...over, file: undefined }), component: "https://$(env:HOST)/saml" }) as TestItem;
+
+  it("builds the address from the component and the key", () => {
+    expect(run([row({ key: "protocol", expected: "saml" })]).results[0].status).toBe("pass");
+  });
+
+  // The placeholder is the one identity a row can hold across environments, so
+  // it is resolved on BOTH sides: the address AND the value, which is a URL
+  // built from the same environment.
+  it("resolves the importer's placeholder in the address and in the value", () => {
+    const got = run([row({ key: "rootUrl", expected: "https://$(env:HOST)" })]);
+    expect(got.results[0].status).toBe("pass");
+  });
+
+  // A row that HAS its own address uses it: the template exists for the rows
+  // that have none, which a sheet materialized from a dictionary.
+  it("prefers the row's own address over the template", () => {
+    const got = run([{ ...row({ key: "sso", expected: "x" }), address: 'clients[clientId="https://$(env:HOST)/saml"].attributes.sso' } as TestItem]);
+    expect(got.results[0].status).toBe("pass");
+  });
+
+  // …and the same address spelled two ways is one address. A file quotes an
+  // identity when it has to; a product that has no placeholder in it never does.
+  it("reads a quoted identity and an unquoted one as the same address", () => {
+    const quoted = run([{ ...row({ key: "protocol", expected: "saml" }), address: 'clients[clientId="https://$(env:HOST)/saml"].protocol' } as TestItem]);
+    expect(quoted.results[0].status).toBe("pass");
+  });
+});

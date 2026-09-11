@@ -39,6 +39,9 @@ export type Observation = {
   environment: string;
   collected_at?: string;
   hosts: Record<string, ObservedHost>;
+  // What an importer's placeholders resolved to in THIS environment. Only the
+  // project read the files the importer read, so only it can say.
+  substitutions?: Record<string, string>;
 };
 
 export type ObservedHost = {
@@ -68,9 +71,14 @@ export type ObservedHost = {
 };
 
 export type ObservedDocument = {
-  // Which rows it answers. A sheet, and a component within it when the sheet
-  // has them — the same two names a row is filed under.
-  sheet: string;
+  // What to call it, so a sheet can say which document answers its rows
+  // (`documents:` in the build spec). A product that returns one document per
+  // realm names them by realm; one that returns a single document needs no
+  // name at all.
+  name?: string;
+  // …or which rows it answers directly, for a sheet whose rows carry their own
+  // address and need no template.
+  sheet?: string;
   component?: string;
   // How to read it. A realm comes back as JSON; nothing says another product's
   // will.
@@ -88,11 +96,16 @@ export type ObservedDocument = {
 // an entry uses, so a row's own address resolves against it unchanged.
 type Parsed = Map<string, { value: string; line?: number }>;
 
-const parse = (text: string | null | undefined, path: string, format: Format | undefined): Parsed | null => {
+// The same address, two spellings. A file quotes an identity when it has to —
+// a URL as a client id — and a product that has no placeholder in it never
+// does. Normalised on BOTH sides rather than one being taught the other's rule.
+const unquoteIds = (path: string): string => path.replace(/\[([A-Za-z_][A-Za-z0-9_]*)="([^"]*)"\]/g, "[$1=$2]");
+
+const parse = (text: string | null | undefined, path: string, format: Format | undefined, idFields?: string[]): Parsed | null => {
   if (text === undefined || text === null) return null;
   const out: Parsed = new Map();
-  for (const e of extractFile(text, path, format)) {
-    out.set(e.source?.path ?? e.key, { value: String(e.value), line: e.source?.line });
+  for (const e of extractFile(text, path, format, idFields === undefined ? undefined : { idFields })) {
+    out.set(unquoteIds(e.source?.path ?? e.key), { value: String(e.value), line: e.source?.line });
   }
   return out;
 };
@@ -182,7 +195,7 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
 export function judgeFiles(
   plan: TestPlan,
   observations: Observation[],
-  opts: { lang?: "ja" | "en"; at?: string } = {}
+  opts: { lang?: "ja" | "en"; at?: string; documents?: DocumentTemplate[]; idFields?: string[] } = {}
 ): JudgeOutcome {
   const t = JUDGE_WORDS[opts.lang ?? "ja"];
   const at = opts.at ?? new Date().toISOString();
@@ -195,7 +208,7 @@ export function judgeFiles(
   // several hundred rows address into it.
   const docCache = new Map<ObservedDocument, Parsed | null>();
   const parsedDoc = (d: ObservedDocument): Parsed | null => {
-    if (!docCache.has(d)) docCache.set(d, d.absent !== undefined ? null : parse(d.text, `document.${d.format}`, d.format));
+    if (!docCache.has(d)) docCache.set(d, d.absent !== undefined ? null : parse(d.text, `document.${d.format}`, d.format, opts.idFields));
     return docCache.get(d) ?? null;
   };
   const parsedOf = (env: string, host: string, path: string, text: string | null | undefined, fmt: Format | undefined): Parsed | null => {
@@ -234,9 +247,9 @@ export function judgeFiles(
     // same machinery a file is, because the difference between them is where
     // the bytes came from and nothing else.
     const obs0 = byEnv.get(item.target.instance);
-    const doc = obs0 === undefined ? undefined : documentFor(obs0, item);
+    const doc = obs0 === undefined ? undefined : documentFor(obs0, item, opts.documents ?? [], obs0.substitutions ?? {});
     if (doc !== undefined) {
-      out.results.push(...answerByDocument(item, doc.doc, doc.host, obs0!, at, t, parsedDoc));
+      out.results.push(...answerByDocument(item, doc.doc, doc.host, doc.address, doc.expected, at, t, parsedDoc));
       continue;
     }
     const path = item.file;
@@ -336,16 +349,64 @@ export function judgeFiles(
 // Which document answers this row, if any: the one filed under the same sheet
 // and, where the sheet has components, the same component. A document naming no
 // component answers the whole sheet.
-function documentFor(obs: Observation, item: TestItem): { doc: ObservedDocument; host: string } | undefined {
+function documentFor(
+  obs: Observation,
+  item: TestItem,
+  templates: DocumentTemplate[],
+  subs: Record<string, string>
+): { doc: ObservedDocument; host: string; address: string | undefined; expected: string | undefined } | undefined {
+  // A TEMPLATE, where the sheet declares one: it says which document answers
+  // the row and where the value sits in it, and both can depend on the row's
+  // component. That is the whole of "which realm does this sheet describe, and
+  // how is a client of it addressed" — a table, not a program.
+  const tpl = templates.find((t) => t.sheet === item.target.sheet);
+  const fill = (s: string): string => {
+    let out = s
+      .replace(/\{component\}/g, item.component ?? "")
+      .replace(/\{key\}/g, item.target.key)
+      .replace(/\{address\}/g, item.address ?? item.target.key);
+    if (tpl?.substitute !== undefined) {
+      out = out.replace(new RegExp(tpl.substitute, "g"), (whole, name: string) => subs[name] ?? whole);
+    }
+    return out;
+  };
   for (const [host, held] of Object.entries(obs.hosts)) {
     for (const d of held.documents ?? []) {
+      if (tpl !== undefined) {
+        if (d.name !== fill(tpl.document)) continue;
+        // The EXPECTED value carries the same placeholder the address does —
+        // a row whose value is a URL built from the environment — and the
+        // document holds what the importer resolved. Both sides, or the
+        // comparison is between two spellings of one value.
+        // The ROW'S OWN address wins where it has one: the template exists for
+        // the rows that have none (a sheet materialized them from a
+        // dictionary, so nothing wrote them anywhere). Stated beats derived,
+        // the same order every other resolution here follows.
+        const where = item.address === undefined ? fill(tpl.address) : fill(item.address);
+        return { doc: d, host, address: where, expected: item.expected === undefined ? undefined : fill(item.expected) };
+      }
       if (d.sheet !== item.target.sheet) continue;
       if (d.component !== undefined && d.component !== item.component) continue;
-      return { doc: d, host };
+      return { doc: d, host, address: item.address ?? item.target.key, expected: item.expected };
     }
   }
   return undefined;
 }
+
+// Which document answers a sheet's rows, and where in it each row sits.
+export type DocumentTemplate = {
+  sheet: string;
+  document: string;
+  address: string;
+  // A placeholder an importer resolves at apply time, which a row's address
+  // therefore still carries: the SAML client is identified by a URL that
+  // differs per environment, so the placeholder is the one identity the row can
+  // hold across all of them. The regex captures the NAME; the observation
+  // supplies what it resolved to, per environment, because only the project
+  // read the files the importer read. Same shape as `static_files`'
+  // `substitution.pattern`, which is the same problem one stage earlier.
+  substitute?: string;
+};
 
 // A row, resolved against the document that holds it. The row's OWN structural
 // address, never its key: two components of one sheet share a key space by
@@ -354,7 +415,8 @@ function answerByDocument(
   item: TestItem,
   doc: ObservedDocument,
   host: string,
-  _obs: Observation,
+  address: string | undefined,
+  expected: string | undefined,
   at: string,
   t: JudgeWords,
   parsedDoc: (d: ObservedDocument) => Parsed | null
@@ -370,17 +432,17 @@ function answerByDocument(
   // wrote it anywhere — and its key IS the address the dictionary names it by
   // (`smtpServer.host`). So the key is the fallback, and it is a fallback
   // rather than the rule: an authored row's own source is the stronger fact.
-  const address = item.address ?? item.target.key;
+  // (the address the caller resolved: a template's, or the row's own)
   if (address === undefined) return [{ target, at, evidence, status: "not_run", reason: t.noAddress }];
-  const seen = parsed.get(address);
+  const seen = address === undefined ? undefined : parsed.get(unquoteIds(address));
 
   if (item.kind === "default-in-force") {
     // The product OMITS what nobody set: a key absent from the map it returns
     // is the confirmation, not a gap. Where it always reports the field, the
     // value it reports is compared with the default instead.
     if (seen === undefined) return [{ target, at, evidence, status: "pass", detail: doc.how ?? t.fromDocument }];
-    if (item.expected === undefined) return [{ target, at, evidence, status: "not_run", reason: t.noValueHere }];
-    const same = seen.value === String(item.expected);
+    if (expected === undefined) return [{ target, at, evidence, status: "not_run", reason: t.noValueHere }];
+    const same = seen.value === String(expected);
     return [{
       target, at, evidence: { ...evidence, ...(seen.line === undefined ? {} : { line: seen.line }) },
       status: same ? "pass" : "fail",
@@ -389,20 +451,20 @@ function answerByDocument(
     }];
   }
   if (item.kind === "absent" || item.container === true) {
-    const there = seen !== undefined || [...parsed.keys()].some((k) => k.startsWith(`${address}.`));
+    const there = seen !== undefined || [...parsed.keys()].some((k) => k.startsWith(`${unquoteIds(address ?? "")}.`));
     const want = item.container === true;
     return [{ target, at, evidence, status: there === want ? "pass" : "fail", detail: doc.how ?? t.fromDocument }];
   }
-  if (item.expected === undefined) return [{ target, at, evidence, status: "not_run", reason: t.noValueHere }];
+  if (expected === undefined) return [{ target, at, evidence, status: "not_run", reason: t.noValueHere }];
   if (seen === undefined) {
     // A row that expects EMPTINESS is satisfied by the key being absent: a
     // producer that omits what is unset spells "no value" by leaving it out,
     // and the two are the same fact told two ways. Anything else missing is a
     // finding.
-    if (String(item.expected) === "") return [{ target, at, evidence, status: "pass", detail: t.emptyAndAbsent }];
+    if (String(expected) === "") return [{ target, at, evidence, status: "pass", detail: t.emptyAndAbsent }];
     return [{ target, at, evidence, status: "fail", detail: t.notInDocument(doc.how ?? t.fromDocument) }];
   }
-  const ok = seen.value === String(item.expected);
+  const ok = seen.value === String(expected);
   return [{
     target, at, evidence: { ...evidence, ...(seen.line === undefined ? {} : { line: seen.line }) },
     status: ok ? "pass" : "fail",
