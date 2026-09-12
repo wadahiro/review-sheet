@@ -1223,6 +1223,12 @@ A project's own `key: { steps: [...] }` composes after the plan's, and
 optional string inside a block with `""`, so one route's `gateway_id` holds a
 value while its mutually exclusive siblings come back empty.
 
+It is declared per sheet rather than assumed, because whether `""` means absence
+belongs to whatever RENDERED the file: a Keycloak realm's
+`contentSecurityPolicyReportOnly: ""` is a real value its sheet must keep. A
+`null` scalar needs no declaration either way — extraction emits no row for one
+at all.
+
 The recipe never runs Terraform. A plan is an ordinary committed artifact, which
 is what keeps `import --spec` hermetic — a stale plan is a stale sheet, and
 re-rendering is part of changing the HCL.
