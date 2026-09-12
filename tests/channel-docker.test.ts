@@ -60,3 +60,17 @@ describe("what docker inspect says", () => {
     expect(s.has("cmd")).toBe(false);
   });
 });
+
+// Two spellings of one list. The file keeps its own spacing (a row's value has
+// to be a substring of its line); the runtime reports its own.
+describe("an exec form written one way and reported another", () => {
+  it("is one value", async () => {
+    const { sameExec } = await import("../src/channels/docker");
+    expect(sameExec('["start", "--optimized"]', '["start","--optimized"]')).toBe(true);
+    expect(sameExec('[ "a" , "b" ]', '["a","b"]')).toBe(true);
+    expect(sameExec('["a"]', '["b"]')).toBe(false);
+    // …and the shell form is a string: two different strings are two values.
+    expect(sameExec("run --server", "run  --server")).toBe(false);
+    expect(sameExec(undefined, '["a"]')).toBe(false);
+  });
+});

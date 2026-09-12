@@ -824,8 +824,8 @@
   {
     "file": "tests/fixtures/dockerfile/Dockerfile",
     "parser": "dockerfile",
-    "count": 16,
-    "sha": "689c8c1fb98f55c3"
+    "count": 17,
+    "sha": "55e25bb4bcbc354c"
   },
   {
     "file": "tests/fixtures/hierarchical.json",

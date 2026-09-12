@@ -24,24 +24,31 @@ const PAIRS = /([A-Za-z_][A-Za-z0-9_.-]*)=("[^"]*"|'[^']*'|\S*)/g;
 
 const unquote = (v: string): string => v.replace(/^(["'])(.*)\1$/s, "$2");
 
-// The EXEC form is JSON, so it is stored as JSON rather than as the spacing
-// somebody typed: `["start", "--optimized"]` and `["start","--optimized"]` are
-// one value, and the runtime reports the second. Comparing the text made a row
-// differ from the image built from it. Anything that does not parse is kept
-// verbatim — the shell form is a string, not a list.
-const canonical = (v: string): string => {
-  if (!/^\s*\[/.test(v)) return v;
-  try {
-    const parsed: unknown = JSON.parse(v);
-    return Array.isArray(parsed) ? JSON.stringify(parsed) : v;
-  } catch {
-    return v;
-  }
-};
+// THE EXEC FORM IS STORED AS THE FILE WROTE IT, spacing and all — a row's
+// value is a substring of its own line, which is what `verify` checks and what
+// `apply` writes back. Canonicalising it here made the sheet show
+// `["start","--optimized"]` for a file that says `["start", "--optimized"]`,
+// and verify said so immediately: the value is not in the file.
+//
+// That two spellings of one JSON array are one VALUE is a judging question,
+// answered where the comparison happens (`channels/docker.ts`'s `sameExec`),
+// not by rewriting what the file says.
 
 // Which instructions carry a setting, and whether they name it themselves.
 const NAMED = new Set(["ENV", "ARG", "LABEL"]);
-const PLAIN = new Set(["FROM", "USER", "WORKDIR", "ENTRYPOINT", "CMD", "EXPOSE", "STOPSIGNAL", "HEALTHCHECK", "SHELL", "VOLUME"]);
+const PLAIN = new Set(["FROM", "USER", "WORKDIR", "ENTRYPOINT", "CMD", "EXPOSE", "STOPSIGNAL", "HEALTHCHECK", "SHELL", "VOLUME", "COPY", "ADD"]);
+
+// …and the one shape inside a RUN that IS a setting. `RUN` is a build step, but
+// a build step that takes LONG OPTIONS is where a product's build-time options
+// live — an optimized image's `--db=postgres` is exactly as reviewable as the
+// runtime option it replaces, and it appears in no other file. Read with the
+// same rule `src/shell.ts` already applies to a wrapper script: a long option
+// with a value, and nothing else. A bare flag is not read (it is
+// indistinguishable from a bundle), nor is a positional argument.
+//
+// KEYED WITH ITS DASHES, as shell.ts keys one, because a row space shared with
+// ENV names must not let `--db` and `db` be the same row.
+const LONG_OPTION = /(?:^|\s)(--[a-zA-Z][a-zA-Z0-9-]*)(?:=(\S+)|\s+([^-\s]\S*))/g;
 
 export function dockerfileEntries(content: string, file: string): Entry[] {
   const out: Entry[] = [];
@@ -68,6 +75,22 @@ export function dockerfileEntries(content: string, file: string): Entry[] {
       const as = /\s+AS\s+(\S+)\s*$/i.exec(rest);
       stage = as === null ? "" : as[1]!;
     }
+    if (kw === "RUN") {
+      for (const o of rest.matchAll(LONG_OPTION)) {
+        const value = (o[2] ?? o[3] ?? "").replace(/\\$/, "");
+        if (value === "") continue;
+        const n = (seen.get((stage === "" ? "" : `${stage}.`) + o[1]!) ?? 0) + 1;
+        seen.set((stage === "" ? "" : `${stage}.`) + o[1]!, n);
+        const k = `${stage === "" ? "" : `${stage}.`}${o[1]!}${n === 1 ? "" : `[${n - 1}]`}`;
+        out.push({
+          key: k,
+          categoryPath: stage === "" ? [] : [stage],
+          value,
+          source: { file, line: at, anchor: `${o[1]!}=`, path: k },
+        });
+      }
+      continue;
+    }
     if (!NAMED.has(kw) && !PLAIN.has(kw)) continue;
     const prefix = stage === "" ? "" : `${stage}.`;
     const add = (key: string, value: string): void => {
@@ -87,7 +110,7 @@ export function dockerfileEntries(content: string, file: string): Entry[] {
       if (one !== null) add(one[1]!, unquote(one[2]!.trim()));
       continue;
     }
-    add(kw.toLowerCase(), kw === "FROM" ? rest.replace(/\s+AS\s+\S+\s*$/i, "") : canonical(rest));
+    add(kw.toLowerCase(), kw === "FROM" ? rest.replace(/\s+AS\s+\S+\s*$/i, "") : rest);
   }
   return out;
 }

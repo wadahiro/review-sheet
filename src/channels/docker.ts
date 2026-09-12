@@ -76,3 +76,26 @@ export function settings(one: Inspected | undefined): Map<string, string> {
   for (const [k, v] of Object.entries(c.Labels ?? {})) out.set(k, v);
   return out;
 }
+
+// TWO SPELLINGS OF ONE LIST. A Dockerfile's exec form is JSON and is stored as
+// the file wrote it — a row's value has to be a substring of its own line, or
+// nothing can verify or rewrite it — while the runtime reports the same list
+// with its own spacing. Comparing them as text made a row differ from the image
+// built from that very line.
+//
+// Only a JSON array is normalised: the shell form is a string, and two
+// different strings are two different values.
+export function sameExec(a: string | undefined, b: string | undefined): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined) return false;
+  const one = (v: string): string => {
+    if (!/^\s*\[/.test(v)) return v;
+    try {
+      const parsed: unknown = JSON.parse(v);
+      return Array.isArray(parsed) ? JSON.stringify(parsed) : v;
+    } catch {
+      return v;
+    }
+  };
+  return one(a) === one(b);
+}
