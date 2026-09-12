@@ -550,92 +550,20 @@ code {
    positions they have in a flat document — the concern that decided this shape.
    The wrap is scoped to grouped documents: turning it on unconditionally would
    let the toolbar wrap at narrow widths in a flat one, which it never did. */
-.rs-sheet-tabs-grouped {
-  flex-wrap: wrap;
-  padding-bottom: 0;
-}
 
 /* Second row. Its height must not change with the selected group — every sticky
    offset in the document is measured off this bar (--rs-tabbar-h), so a row that
    grows, shrinks or disappears drags every heading in the body with it. Hence
    one line always (nowrap), overflow scrolled rather than wrapped, and rendered
    even on the overview tab. */
-.rs-subtabs {
-  /* Full width, hence its own line. It is LAST in the DOM as well as visually
-     (see SheetSubTabs) — placed before the toolbar it wrapped the toolbar onto
-     a third line, and a CSS order property would have fixed the picture while
-     leaving keyboard focus travelling through the sheets before the toolbar
-     drawn above them. */
-  /* Full-bleed, and the arithmetic has to be exact: with box-sizing: border-box
-     a flex-basis of 100% is the BORDER box, so the negative margins that pull
-     the row out over the bar's own padding also shorten it — the background and
-     the top rule stopped two gutters short of the right edge. The basis has to
-     carry both gutters for the outer box to come back to exactly the bar's
-     width. */
-  flex-basis: calc(100% + var(--rs-tabbar-x) * 2);
-  display: flex;
-  gap: 2px;
-  align-items: center;
-  flex-wrap: nowrap;
-  /* auto, never scroll: a group whose sheets fit — most of them — gets no
-     trough at all. On Windows that is the difference between a clean strip and
-     a grey band across the header, since its scrollbar takes real space rather
-     than overlaying. */
-  overflow-x: auto;
-  margin: 0 calc(-1 * var(--rs-tabbar-x));
-  padding: 0.3rem var(--rs-tabbar-x);
-  background: var(--rs-bg);
-  border-top: 1px solid var(--rs-border);
-}
 
-.rs-subtab {
-  padding: 0.25rem 0.75rem;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--rs-text-secondary);
-  cursor: pointer;
-  font-family: var(--rs-font);
-  font-size: 0.78rem;
-  white-space: nowrap;
-  transition: all 0.15s ease;
-}
 
-.rs-subtab:hover {
-  color: var(--rs-primary);
-}
 
-.rs-subtab-active {
-  background: var(--rs-surface);
-  border-color: var(--rs-border);
-  color: var(--rs-primary);
-  font-weight: 600;
-}
 
 /* Outline: one heading per sheet group, matching the header's first row so the
    two navigations name the same things in the same order. */
-.rs-outline-group {
-  margin-bottom: 0.5rem;
-}
 
-.rs-outline-groupname {
-  padding: 0.6rem 0.75rem 0.25rem;
-  /* The group contains the sheets under it, so it is the largest thing in this
-     panel — it was the smallest, an 0.7rem uppercase eyebrow, which put the
-     ranking exactly upside down. No uppercase either: it does nothing to
-     Japanese and shouts in English, which is not what a heading here is for. */
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--rs-text);
-}
 
-.rs-tabs-left {
-  display: flex;
-  gap: 2px;
-  overflow: hidden;
-  flex: 1;
-  min-width: 0;
-}
 
 /* Tabs that don't fit are kept in layout (so widths stay measurable) but hidden;
    they live in the overflow menu instead. */
@@ -828,25 +756,7 @@ code {
   margin: 0 2px;
 }
 
-.rs-tab {
-  padding: 0.625rem 1.25rem;
-  border: none;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--rs-text-secondary);
-  cursor: pointer;
-  font-family: var(--rs-font);
-  font-size: 0.8rem;
-  font-weight: 500;
-  white-space: nowrap;
-  transition: all 0.2s ease;
-  margin: 0;
-}
 
-.rs-tab:hover {
-  color: var(--rs-primary);
-  background: var(--rs-primary-light);
-}
 
 .rs-tab-active {
   color: var(--rs-primary);
@@ -3521,92 +3431,23 @@ tr.rs-jump-flash th {
   top: 0.05em;
 }
 
-.rs-outline {
-  position: fixed;
-  top: var(--rs-tabbar-h, 41px);
-  left: 0;
-  width: var(--rs-outline-w);
-  height: calc(100vh - var(--rs-tabbar-h, 41px));
-  background: var(--rs-surface);
-  border-right: 1px solid var(--rs-border);
-  box-shadow: var(--rs-shadow-lg);
-  z-index: 90;
-  display: flex;
-  flex-direction: column;
-  font-size: 0.8rem;
-}
 
-.rs-outline-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.5rem 0.75rem;
-  font-weight: 600;
-  background: var(--rs-subtle);
-  border-bottom: 1px solid var(--rs-border);
-}
 
-.rs-outline-close {
-  border: none;
-  background: transparent;
-  font-size: 1.15rem;
-  line-height: 1;
-  cursor: pointer;
-  color: var(--rs-text-secondary);
-}
 
-.rs-outline-body {
-  flex: 1;
-  overflow: auto;
-  padding: 0.4rem 0;
-}
 
-.rs-outline-sheet {
-  margin-bottom: 0.5rem;
-}
 
 /* The sheet the header is on. Without it the panel scrolls somewhere and the
    reader has to work out why that place. */
-.rs-outline-sheet-current {
-  color: var(--rs-primary);
-  background: var(--rs-subtle);
-  box-shadow: inset 2px 0 0 var(--rs-primary);
-}
 
 
-.rs-outline-sheetname {
-  display: block;
-  width: 100%;
-  text-align: left;
-  border: none;
-  background: transparent;
-  font-weight: 700;
-  color: var(--rs-text);
-  padding: 0.3rem 0.75rem;
-  cursor: pointer;
-  /* A sheet is the outline's largest unit and inherited the panel's 0.8rem, so
-     it came out the same size as a category three levels below it — told apart
-     by weight alone. Weight is what separates it from the categories under it
-     here; the group above it (0.9rem) is the one that carries size. */
-  font-size: 0.8rem;
-}
 
 /* The caret and the label are siblings, not nested: the caret toggles, the
    label navigates. The ROW carries the indentation, the hover and the
    current-item accent, so the highlight spans the full width including the
    caret gutter — putting them on the label instead left the accent floating
    past the caret and the hover stopping short of the row's left edge. */
-.rs-outline-row {
-  display: flex;
-  align-items: center;
-  border-left: 2px solid transparent;
-}
 
-.rs-outline-row:hover {
-  background: var(--rs-primary-light);
-}
 
-.rs-outline-row:hover .rs-outline-item,
 .rs-palette-inputrow {
   display: flex;
   align-items: center;
@@ -3642,30 +3483,8 @@ tr.rs-jump-flash th {
 
 
 
-.rs-outline-item {
-  display: block;
-  flex: 1 1 auto;
-  min-width: 0;
-  text-align: left;
-  border: none;
-  background: transparent;
-  color: var(--rs-text-secondary);
-  padding: 0.25rem 0.5rem 0.25rem 0.15rem;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
-.rs-outline-current {
-  background: var(--rs-primary-light);
-  border-left-color: var(--rs-primary);
-}
 
-.rs-outline-current .rs-outline-item {
-  color: var(--rs-primary);
-  font-weight: 600;
-}
 
 .rs-palette-overlay {
   position: fixed;
@@ -3780,7 +3599,6 @@ tr.rs-jump-flash th {
   .rs-header-actions,
   .rs-cell-toolbar,
   .rs-overlay,
-  .rs-outline,
   .rs-navtree,
   .rs-palette-overlay {
     display: none !important;
@@ -3978,10 +3796,6 @@ tr.rs-jump-flash th {
 
 
 
-.rs-outline-count {
-  font-size: 0.68rem;
-  color: var(--rs-text-muted);
-}
 
 /* Printing must produce the complete ledger regardless of what is collapsed
    on screen (see App's beforeprint/afterprint handling in app.ts, which

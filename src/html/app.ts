@@ -1435,8 +1435,12 @@ function saveTablePrefs(tableId: string, prefs: TableViewPrefs): void {
   }
 }
 
+// Open unless the reader closed it. The tree is the document's only navigation
+// now, so a document that opened with it hidden would open with none — and it
+// carries the CURRENT SHEET's headings as well as the sheet list, so it is not
+// empty even in a document of one sheet.
 function loadOutlineOpen(): boolean {
-  try { return localStorage.getItem("rs-outline-open") === "1"; } catch { return false; }
+  try { return localStorage.getItem("rs-outline-open") !== "0"; } catch { return true; }
 }
 
 function saveOutlineOpen(open: boolean): void {
@@ -2714,88 +2718,6 @@ function collectParams(data: SheetData, showDefaults: boolean): NavEntry[] {
   return out;
 }
 
-function NavOutline({ entries, sheets, groups, activeSheet, pivoted, currentId, onJump, onClose, diff, t }: {
-  // Already filtered to hide the descendants of a collapsed materialize
-  // category — consistent with the body,
-  // which renders nothing under a collapsed heading either.
-  entries: NavEntry[];
-  sheets: SheetData["sheets"];
-  groups?: SheetData["groups"];
-  activeSheet: number;
-  // Sheets being read side by side: their component headings are gone from the
-  // body, so the outline says what is being compared instead of leaving the
-  // reader to look back at the table to find out.
-  pivoted: Set<string>;
-  currentId: string | null;
-  onJump: (sheetIndex: number, id: string, fallbackId?: string, sheetName?: string, categoryPath?: string) => void;
-  onClose: () => void;
-  diff?: DiffStatusMap;
-  t: Messages;
-}) {
-  const bodyRef = useRef<HTMLElement | null>(null);
-  // Follow the header: switching sheets there must bring that sheet's block
-  // into view here, or the outline keeps showing a part of the document the
-  // reader has left — on a grouped document the active sheet can be far below
-  // the fold. Scrolled WITHIN the panel rather than with scrollIntoView, which
-  // would also scroll the page behind it and move the row the reader was on.
-  useEffect(() => {
-    const body = bodyRef.current;
-    const block = body?.querySelector<HTMLElement>(`[data-sheet-nav="${activeSheet}"]`);
-    if (!body || !block) return;
-    const top = block.offsetTop - body.offsetTop;
-    const bottom = top + block.offsetHeight;
-    // Only when it is actually out of view: an active sheet already on screen
-    // must not jump the panel while the reader is reading it.
-    if (top < body.scrollTop || bottom > body.scrollTop + body.clientHeight) {
-      body.scrollTo({ top: Math.max(0, top - 8), behavior: "smooth" });
-    }
-  }, [activeSheet, sheets]);
-
-  return html`
-    <aside class="rs-outline" aria-label=${t.navOutline}>
-      <div class="rs-outline-head">
-        <span>${t.navOutline}</span>
-        <button class="rs-outline-close" onClick=${onClose} aria-label="close">×</button>
-      </div>
-      <nav class="rs-outline-body rs-scroll-thin" ref=${bodyRef}>
-        ${(groups?.length ?? 0) > 0 && html`
-          ${(groups ?? []).map((g) => html`
-            <div class="rs-outline-group" key=${g.name}>
-              <div class="rs-outline-groupname">${g.display ?? g.name}</div>
-              ${sheets.map((sheet, si) => sheet.group !== g.name ? null : sheetOutline(sheet, si))}
-            </div>
-          `)}
-        `}
-        ${(groups?.length ?? 0) === 0 && sheets.map((sheet, si) => sheetOutline(sheet, si))}
-      </nav>
-    </aside>
-  `;
-
-  // One sheet's block, shared by the grouped and flat renderings above so the
-  // two can never drift into showing different things.
-  function sheetOutline(sheet: SheetData["sheets"][number], si: number): VNode {
-          const ss = diff?.get(sheetKey(sheet.name));
-          return html`
-          <div class="rs-outline-sheet" key=${si} data-sheet-nav=${si}>
-            <button class=${`rs-outline-sheetname ${si === activeSheet ? "rs-outline-sheet-current" : ""} ${ss === "removed" ? "rs-diff-strike" : ""}`}
-                    onClick=${() => onJump(si, `sheet-${si}`)}>${sheet.display ?? sheet.name} ${diff && diffBadge(ss)}</button>
-            ${entries.filter((e) => e.sheetIndex === si).map((e) => {
-              const es = e.kind === "category" ? diff?.get(catKey(e.sheetName, e.path)) : undefined;
-              return html`
-              <div class=${`rs-outline-row ${currentId === e.id ? "rs-outline-current" : ""}`} key=${e.id}
-                   style=${`padding-left:${0.75 + (e.depth - 1) * 0.85}rem`}>
-                <button class=${`rs-outline-item ${es === "removed" ? "rs-diff-strike" : ""}`}
-                        onClick=${() => onJump(e.sheetIndex, e.id, undefined, e.sheetName, e.categoryPath)}>
-                  ${e.name} ${diff && diffBadge(es)}
-                </button>
-              </div>
-            `;
-            })}
-          </div>
-        ` as VNode;
-  }
-}
-
 function NavPalette({ entries, onJump, onClose, showDefaults, onToggleDefaults, t }: {
   entries: NavEntry[];
   onJump: (sheetIndex: number, id: string, fallbackId?: string, sheetName?: string, categoryPath?: string) => void;
@@ -2867,135 +2789,6 @@ function NavPalette({ entries, onJump, onClose, showDefaults, onToggleDefaults, 
               })}
         </div>
       </div>
-    </div>
-  `;
-}
-
-// Sheet tabs that fit are shown; the rest collapse into a "▾" overflow menu.
-// When the active sheet is in the overflow set, the button shows its name so the
-// current sheet is always visible.
-function SheetTabs({ sheets, groups, activeSheet, hasMetadata, onSelect, t }: {
-  sheets: SheetData["sheets"];
-  groups?: SheetData["groups"];
-  activeSheet: number;
-  hasMetadata: boolean;
-  onSelect: (idx: number) => void;
-  t: Messages;
-}) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [cutoff, setCutoff] = useState(sheets.length);
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const compute = () => {
-      const right = el.getBoundingClientRect().right;
-      const tabEls = Array.from(el.querySelectorAll<HTMLElement>("[data-sheet-idx]"));
-      let c = 0;
-      for (const tab of tabEls) {
-        if (tab.getBoundingClientRect().right <= right + 0.5) c++;
-        else break;
-      }
-      setCutoff(c);
-    };
-    compute();
-    const ro = new ResizeObserver(compute);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [sheets, hasMetadata]);
-
-  // Row 1 holds groups when the document has them and sheets when it does not,
-  // so the overflow measurement, the "▾" menu and the clipping all work on one
-  // list either way rather than growing a second copy for the grouped case.
-  const grouped = (groups?.length ?? 0) > 0;
-  const firstSheetOf = (group: string): number => sheets.findIndex((sh) => sh.group === group);
-  const top: { label: string; target: number; active: boolean }[] = grouped
-    ? (groups ?? []).map((g) => ({
-        label: g.display ?? g.name,
-        target: firstSheetOf(g.name),
-        active: activeSheet >= 0 && sheets[activeSheet]?.group === g.name,
-      }))
-    : sheets.map((sheet, idx) => ({
-        label: sheet.display ?? sheet.name,
-        target: idx,
-        active: idx === activeSheet,
-      }));
-  const hasOverflow = cutoff < top.length;
-  const activeHidden = top.some((x, i) => x.active && i >= cutoff);
-
-  return html`
-    <div class="rs-tabs-left" ref=${ref}>
-      ${hasMetadata && html`
-        <button role="tab" aria-selected=${activeSheet === -1}
-                class=${`rs-tab ${activeSheet === -1 ? "rs-tab-active" : ""}`}
-                onClick=${() => onSelect(-1)}>${t.overview}</button>
-      `}
-      ${top.map((item, i) => html`
-        <button key=${i} data-sheet-idx=${i} role="tab" aria-selected=${item.active}
-                class=${`rs-tab ${item.active ? "rs-tab-active" : ""} ${i >= cutoff ? "rs-tab-clipped" : ""}`}
-                onClick=${() => onSelect(item.target)}>${item.label}</button>
-      `)}
-    </div>
-    ${hasOverflow && html`
-      <div class="rs-tabs-of">
-        <button class=${`rs-tab-overflow ${activeHidden ? "rs-tab-active" : ""}`}
-                aria-haspopup="true" aria-expanded=${menuOpen} title=${t.moreSheets}
-                onClick=${() => setMenuOpen((v) => !v)}>
-          ${activeHidden ? html`<span class="rs-of-active">${top.find((x) => x.active)?.label ?? ""}</span>` : ""}
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        ${menuOpen && html`
-          <div class="rs-of-backdrop" onClick=${() => setMenuOpen(false)}></div>
-          <div class="rs-of-menu rs-scroll-thin" role="menu">
-            ${top.map((item, i) => i < cutoff ? null : html`
-              <button key=${i} role="menuitem"
-                      class=${`rs-of-item ${item.active ? "rs-of-current" : ""}`}
-                      onClick=${() => { onSelect(item.target); setMenuOpen(false); }}>${item.label}</button>
-            `)}
-          </div>
-        `}
-      </div>
-    `}
-  `;
-}
-
-// The grouped header's second row: the sheets of the group being read.
-//
-// A SEPARATE component rendered after the toolbar, rather than part of SheetTabs
-// with a CSS `order` to move it. The bar is a wrapping flex row, so a full-width
-// item placed before the toolbar in the DOM pushes the toolbar onto a third line
-// — which is exactly what it did. `order` would have put it back visually and
-// left keyboard focus travelling through the sheets before the toolbar that is
-// drawn above them.
-function SheetSubTabs({ sheets, groups, activeSheet, onSelect, t }: {
-  sheets: SheetData["sheets"];
-  groups?: SheetData["groups"];
-  activeSheet: number;
-  onSelect: (idx: number) => void;
-  t: Messages;
-}) {
-  if ((groups?.length ?? 0) === 0) return null;
-  // The overview belongs to no group, so there is no row to show: filling it
-  // with some group's sheets says "you are in that group" when the reader is
-  // not in any of them, and nothing in the row is even marked current.
-  //
-  // Which leaves the bar's height changing between the overview and a sheet.
-  // That is safe because the height is OBSERVED rather than assumed — every
-  // sticky offset is recomputed from the bar's real size the moment it changes
-  // (see the --rs-tabbar-h effect) — and the overview page has no sticky
-  // heading of its own to be moved in the meantime. Keeping the row while
-  // switching groups is a different matter: there the body IS full of sticky
-  // headings, which is why that row stays one line and scrolls.
-  if (activeSheet < 0) return null;
-  const shownGroup = sheets[activeSheet]?.group;
-  return html`
-    <div class="rs-subtabs rs-scroll-thin" role="tablist" aria-label=${t.sheetList}>
-      ${sheets.map((sheet, idx) => sheet.group !== shownGroup ? null : html`
-        <button key=${idx} data-sheet-idx=${idx} role="tab" aria-selected=${idx === activeSheet}
-                class=${`rs-subtab ${idx === activeSheet ? "rs-subtab-active" : ""}`}
-                onClick=${() => onSelect(idx)}>${sheet.display ?? sheet.name}</button>
-      `)}
     </div>
   `;
 }
@@ -3863,7 +3656,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // there, not an aid to it, and a document set whose navigation starts hidden
   // opens as a page with no way out of itself. A tabbed document keeps the
   // drawer it has always had, closed until asked for.
-  const [outlineOpen, setOutlineOpen] = useState<boolean>(() => (baseData.nav === "book" ? true : loadOutlineOpen()));
+  const [outlineOpen, setOutlineOpen] = useState<boolean>(loadOutlineOpen);
   // Held here rather than inside the tree: hiding the tree unmounts it, and a
   // filter the reader had to type again every time they reclaimed the space is
   // a filter that charges them for using the panel. Not persisted — reopening
@@ -3872,7 +3665,6 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // A document SET states that it is one (`nav: book`, types.ts). The tree
   // replaces the tab strip and stands beside the text; every other document
   // keeps the strip it has always had.
-  const bookNav = baseData.nav === "book";
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [currentNavId, setCurrentNavId] = useState<string | null>(null);
   // After an outline/palette click we pin the highlight to the clicked target and
@@ -4283,7 +4075,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   const OVERVIEW_TAB = -1;
 
   return html`
-    <div class=${`rs-app ${outlineOpen ? "rs-outline-open" : ""} ${bookNav ? "rs-book" : ""} ${artifactTarget ? (dockNow === "below" ? "rs-with-evidence" : "rs-with-artifact") : ""}`}>
+    <div class=${`rs-app ${outlineOpen ? "rs-outline-open" : ""} rs-book ${artifactTarget ? (dockNow === "below" ? "rs-with-evidence" : "rs-with-artifact") : ""}`}>
       <nav class=${`rs-sheet-tabs ${(data.groups?.length ?? 0) > 0 ? "rs-sheet-tabs-grouped" : ""}`} role="tablist">
         <div class="rs-tabs-nav">
           <button class=${`rs-toolbar-btn ${outlineOpen ? "rs-toolbar-btn-active" : ""}`} onClick=${() => setOutlineOpen(!outlineOpen)}
@@ -4291,12 +4083,12 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
           </button>
         </div>
-        ${/* A document SET is read as chapters, from the tree beside the text
-              (nav-tree.ts) — a strip of a hundred tabs is a menu nobody can
-              see. Everything else about the page is the same, and `tabs` stays
-              the default, so no document that predates this moves. */ ""}
-        ${bookNav
-          ? html`<nav class="rs-tabs-book" aria-label=${t.navOutline}>
+        ${/* The document is read as chapters, from the tree beside the text
+              (nav-tree.ts). A strip of tabs above it was the older reading and
+              is gone: it could not show a hierarchy, and a hundred of them is a
+              menu nobody can see. The bar keeps the PATH to where the reader
+              is, which a tree scrolled out of view cannot say. */ ""}
+        ${html`<nav class="rs-tabs-book" aria-label=${t.navOutline}>
               ${/* The document itself is the root of the path and a LINK to its
                     front matter — the convention every reader of a docs site
                     already has, and the one place the front matter is reachable
@@ -4318,9 +4110,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                                          aria-current=${i === path.length - 1 ? "page" : undefined}>${seg}</span>`
                 );
               })()}
-            </nav>`
-          : html`<${SheetTabs} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet}
-                      hasMetadata=${hasMetadata} onSelect=${setActiveSheet} t=${t} />`}
+            </nav>`}
         <div class="rs-tabs-right">
           ${
             // Filters stay while comparing. They were gated on review being on,
@@ -4451,15 +4241,6 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                 leave every description, heading and column header as it was.
                 A control that half works is worse than one that is not there. */ ""}
         </div>
-        ${/* Not in a book document: this row is the current chapter's sheets,
-              flat, with no numbers, no hierarchy and no filter — a subset of
-              what the tree shows a few centimetres to its left, answering no
-              question the tree does not. A reader who hides the tree traded
-              navigation for width on purpose; one click brings it back. */ ""}
-        ${!bookNav && html`
-          <${SheetSubTabs} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet}
-                           onSelect=${setActiveSheet} t=${t} />
-        `}
       </nav>
 
       <main class="rs-main">
@@ -4648,7 +4429,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
             otherwise be two lists of the same thing, both fixed to the left
             edge, with no way to say which is for what — so the tree carries the
             current sheet's own headings and the drawer is not offered here. */ ""}
-      ${bookNav && outlineOpen && html`
+      ${outlineOpen && html`
         <${NavTree} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet}
                     numbering=${baseData.numbering !== false} lang=${lang}
                     filter=${navFilter} onFilter=${setNavFilter} docKey=${navStateKey(data)}
@@ -4664,10 +4445,6 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                       const e = categoryEntries.find((x) => x.id === id);
                       if (e !== undefined) jumpToNav(e.sheetIndex, e.id, undefined, e.sheetName, e.categoryPath);
                     }} t=${t} />
-      `}
-      ${!bookNav && outlineOpen && html`
-        <${NavOutline} entries=${categoryEntries} sheets=${data.sheets} groups=${data.groups} activeSheet=${activeSheet} pivoted=${pivoted} currentId=${currentNavId}
-                       onJump=${jumpToNav} onClose=${() => setOutlineOpen(false)} diff=${diff} t=${t} />
       `}
 
       ${paletteOpen && html`

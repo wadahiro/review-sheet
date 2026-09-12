@@ -47,13 +47,11 @@ type Messages = {
   navSearchTip: string;
   navSearchPlaceholder: string;
   navNoResults: string;
-  moreSheets: string;
   // Versions & diff
   versionLabel: string;
   compareVersions: string;
   exitCompare: string;
   diffChangedOnly: string;
-  diffNoChanges: string;
   // `unchanged` is the sentence an upgrade sign-off is actually made of ("3
   // moved, 1013 did not"), and `docOnly` is the share of `changed` that is
   // nothing but reworded prose — across two product versions that is most of
@@ -98,7 +96,6 @@ type Messages = {
   artifactCollectedFrom: string;
   artifactDockRight: string;
   artifactDockBelow: string;
-  artifactInstance: string;
   artifactKindAbsent: string;
   artifactKindUnrendered: string;
   artifactKindDeployTime: string;
@@ -120,9 +117,7 @@ type Messages = {
   showComments: string;
   showCommentedOnly: string;
   exportReview: string;
-  importReview: string;
   aiPromptCopy: string;
-  clearAll: string;
   // Alerts
   unsupportedSchema: string;
   noNewReviews: string;
@@ -263,12 +258,10 @@ const ja: Messages = {
   navSearchTip: "検索 — 見出し・設定項目・コメント (Cmd/Ctrl+K)",
   navSearchPlaceholder: "見出し・設定項目・コメントを検索…",
   navNoResults: "該当する見出しがありません",
-  moreSheets: "他のシート",
   versionLabel: "バージョン",
   compareVersions: "差分を比較",
   exitCompare: "比較を終了",
   diffChangedOnly: "変更のみ",
-  diffNoChanges: "差分はありません",
   diffSummary: (changed, docOnly, added, removed, unchanged) =>
     `${changed} 変更${docOnly > 0 ? `（うち ${docOnly} は説明文のみ）` : ""} · ${added} 追加 · ${removed} 削除 · ${unchanged} 変更なし`,
   diffFrom: "比較元",
@@ -294,7 +287,6 @@ const ja: Messages = {
   artifactCollectedFrom: "{host} から {at} に取得",
   artifactDockRight: "右に表示",
   artifactDockBelow: "下に表示",
-  artifactInstance: "環境",
   artifactKindAbsent: "この環境では出力されない（条件: {reason}）",
   artifactKindUnrendered: "この箇所は評価されていません（{reason}）— テンプレートの記述をそのまま表示",
   artifactKindDeployTime: "Ansible が配置時に埋める値（{reason}）— どの変数ファイルにも無く、欠落ではない",
@@ -314,9 +306,7 @@ const ja: Messages = {
   showComments: "コメント表示",
   showCommentedOnly: "コメント有りのみ",
   exportReview: "エクスポート",
-  importReview: "インポート",
   aiPromptCopy: "AIプロンプトコピー",
-  clearAll: "全クリア",
   unsupportedSchema: "サポートされていないスキーマバージョンです",
   noNewReviews: "新しいレビューはありませんでした",
   importedReviews: (count) => `${count}件のレビューをインポートしました`,
@@ -428,12 +418,10 @@ const en: Messages = {
   navSearchTip: "Search — headings, parameters, comments (Cmd/Ctrl+K)",
   navSearchPlaceholder: "Search headings, parameters, comments…",
   navNoResults: "No matching headings",
-  moreSheets: "More sheets",
   versionLabel: "Version",
   compareVersions: "Compare",
   exitCompare: "Exit compare",
   diffChangedOnly: "Changed only",
-  diffNoChanges: "No differences",
   diffSummary: (changed, docOnly, added, removed, unchanged) =>
     `${changed} changed${docOnly > 0 ? ` (${docOnly} description only)` : ""} · ${added} added · ${removed} removed · ${unchanged} unchanged`,
   diffFrom: "From",
@@ -459,7 +447,6 @@ const en: Messages = {
   artifactCollectedFrom: "Collected from {host} at {at}",
   artifactDockRight: "Dock to the right",
   artifactDockBelow: "Dock to the bottom",
-  artifactInstance: "Instance",
   artifactKindAbsent: "not rendered for this instance (condition: {reason})",
   artifactKindUnrendered: "not evaluated here ({reason}) — the template text is shown as written",
   artifactKindDeployTime: "filled in by Ansible when it writes the file ({reason}) — in no vars file, and not a gap",
@@ -479,9 +466,7 @@ const en: Messages = {
   showComments: "Show comments",
   showCommentedOnly: "Commented only",
   exportReview: "Export",
-  importReview: "Import",
   aiPromptCopy: "Copy AI prompt",
-  clearAll: "Clear all",
   unsupportedSchema: "Unsupported schema version",
   noNewReviews: "No new reviews found",
   importedReviews: (count) => `Imported ${count} review(s)`,

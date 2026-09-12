@@ -411,40 +411,31 @@ describe("viewer: category label vs identity", () => {
 // deleted its opening <button> tag, htm threw, and the whole app came up empty
 // with every other test still green. A smoke test that mounts it and clicks a
 // row is cheap and would have caught it outright.
-describe("viewer: outline", () => {
-  async function openOutlinePanel(host: HTMLElement): Promise<HTMLElement> {
-    // Icon-only button: identified by its aria-label, like a reader using a
-    // screen reader would.
-    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
-    if (!btn) throw new Error("outline button not found");
-    (btn as HTMLElement).click();
-    await Promise.resolve();
-    const el = host.querySelector(".rs-outline") as HTMLElement | null;
-    if (!el) throw new Error("outline did not open");
+describe("viewer: the tree's headings", () => {
+  const tree = (host: HTMLElement): HTMLElement => {
+    const el = host.querySelector(".rs-navtree") as HTMLElement | null;
+    if (!el) throw new Error("the navigation tree is not on the page");
     return el;
-  }
+  };
+  const headings = (host: HTMLElement): string[] =>
+    [...tree(host).querySelectorAll(".rs-navtree-heading")].map((b) => b.textContent?.trim() ?? "");
 
-  it("renders one clickable entry per category", async () => {
+  it("carries one entry per category of the sheet being read", () => {
     const host = mount();
-    const outline = await openOutlinePanel(host);
-    const labels = [...outline.querySelectorAll(".rs-outline-item")].map((b) => b.textContent?.trim());
-    expect(labels.length).toBeGreaterThan(0);
-    expect(labels.join(" ")).toContain("Tuning");
+    expect(headings(host).length).toBeGreaterThan(0);
+    expect(headings(host).join(" ")).toContain("Tuning");
   });
 
-  it("navigates on click without throwing", async () => {
+  it("navigates on click without throwing", () => {
     const host = mount();
-    const outline = await openOutlinePanel(host);
-    const item = outline.querySelector(".rs-outline-item") as HTMLButtonElement;
+    const item = tree(host).querySelector(".rs-navtree-heading .rs-navtree-item") as HTMLElement;
     expect(() => item.click()).not.toThrow();
   });
 
-  it("leaves out a category made only of unset rows, matching the body", async () => {
+  it("leaves out a category made only of unset rows, matching the body", () => {
     const host = mount();
-    const outline = await openOutlinePanel(host);
     // SHEET's "Defaults only" category holds nothing but origin:default rows.
-    expect([...outline.querySelectorAll(".rs-outline-item")].map((b) => b.textContent).join(" "))
-      .not.toContain("Defaults only");
+    expect(headings(host).join(" ")).not.toContain("Defaults only");
   });
 });
 
@@ -632,10 +623,13 @@ describe("viewer: sheet label", () => {
     render(h(Root, { payload: PAYLOAD_S, reviewEnabled: true, initialLang: lang, server: false }), host);
     return host;
   }
-  // `[data-sheet-idx]` excludes the overview tab, which is a .rs-tab too but is
-  // not one of the document's sheets.
+  // The document's sheets, as the tree lists them — its rows that are neither a
+  // chapter nor one of a sheet's own headings. The chapter number is part of
+  // the name (see nav-tree.ts) and is dropped here: what is being asserted is
+  // the words, not the position.
   const tabs = (host: HTMLElement): string[] =>
-    [...host.querySelectorAll(".rs-tab[data-sheet-idx]")].map((b) => (b.textContent ?? "").trim());
+    [...host.querySelectorAll(".rs-navtree-row:not(.rs-navtree-heading) .rs-navtree-item:not(.rs-navtree-group)")]
+      .map((b) => (b.textContent ?? "").trim().replace(/^[\d.]+\s+/, ""));
 
   it("names the tabs in the reader's language", () => {
     expect(tabs(mountSheets("ja"))).toEqual(["OS 設定", "Keycloak 設定"]);
@@ -670,140 +664,23 @@ describe("viewer: sheet label", () => {
   });
 });
 
-// A flat tab strip stops working somewhere around a dozen sheets, and an Excel
-// migration brings a workbook's worth at once. Groups are the header's first
-// row; the sheets of the active group are the second.
-describe("viewer: sheet groups", () => {
-  const cat = (n: string) => ({ name: n, params: [{ key: "k", value: "v", description: "d" }] });
-  const GROUPED = {
-    metadata: { title: "t" },
-    groups: [
-      { name: "infra", label: { ja: "AWS 基盤", en: "AWS" } },
-      { name: "idp", label: { ja: "Keycloak", en: "Keycloak" } },
-    ],
-    sheets: [
-      { name: "aws infrastructure", label: { ja: "AWS インフラ", en: "AWS infrastructure" }, group: "infra", categories: [cat("network")] },
-      { name: "keycloak configuration", label: { ja: "Keycloak 設定", en: "Keycloak configuration" }, group: "idp", categories: [cat("Database")] },
-      { name: "keycloak realm", label: { ja: "Keycloak レルム設定", en: "Keycloak realm" }, group: "idp", categories: [cat("General")] },
-    ],
-  };
-  const payloadOf = (doc: typeof GROUPED) => ({
-    metadata: doc.metadata,
-    versions: [{ version: "current", sheets: doc.sheets, groups: doc.groups }],
-  });
+// The tree is the other half of the same navigation, so it has to follow the
+// path in the header: one sheet is where the reader is, and exactly one row
+// says so.
+describe("viewer: the tree follows the header", () => {
+  const tree = (host: HTMLElement): HTMLElement => host.querySelector(".rs-navtree") as HTMLElement;
 
-  function mountGrouped(payload: Parameters<typeof Root>[0]["payload"] = payloadOf(GROUPED)): HTMLElement {
-    openSheetTab();
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
-    return host;
-  }
-  const groupTabs = (host: HTMLElement): string[] =>
-    [...host.querySelectorAll(".rs-tabs-left .rs-tab[data-sheet-idx]")].map((b) => (b.textContent ?? "").trim());
-  const sheetTabs = (host: HTMLElement): string[] =>
-    [...host.querySelectorAll(".rs-subtab")].map((b) => (b.textContent ?? "").trim());
-
-  it("puts groups on the first row and the active group's sheets on the second", () => {
-    const host = mountGrouped();
-    expect(groupTabs(host)).toEqual(["AWS 基盤", "Keycloak"]);
-    // Sheet 0 is active (hash #1), so its group's sheets are the second row.
-    expect(sheetTabs(host)).toEqual(["AWS インフラ"]);
-  });
-
-  it("switches the second row when a group is chosen, landing on its first sheet", async () => {
-    const host = mountGrouped();
-    const idp = [...host.querySelectorAll(".rs-tabs-left .rs-tab")].find((b) => b.textContent?.trim() === "Keycloak");
-    (idp as HTMLElement).click();
-    await Promise.resolve();
-    expect(sheetTabs(host)).toEqual(["Keycloak 設定", "Keycloak レルム設定"]);
-    expect(host.querySelector(".rs-sheet-header h2")?.textContent).toContain("Keycloak 設定");
-  });
-
-  it("shows no second row on the overview, which belongs to no group", () => {
-    // Filling it with the first group's sheets said "you are in 基盤" while the
-    // reader was on the overview, with nothing in the row marked current.
-    location.hash = "";
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    render(h(Root, { payload: payloadOf(GROUPED), reviewEnabled: true, initialLang: "ja", server: false }), host);
-    expect(host.querySelector(".rs-subtabs")).toBeNull();
-  });
-
-  it("keeps every sheet of the group on the row while reading, so it does not move mid-scroll", async () => {
-    // The bar's height IS allowed to change (it is observed, and every sticky
-    // offset follows it) — but not while reading a sheet, where the body is
-    // full of sticky headings. Same group in, same row out.
-    const host = mountGrouped();
-    const before = sheetTabs(host);
-    const second = [...host.querySelectorAll(".rs-tabs-left .rs-tab")].find((b) => b.textContent?.trim() === "Keycloak");
-    (second as HTMLElement).click();
-    await Promise.resolve();
-    expect(before).toEqual(["AWS インフラ"]);
-    expect(sheetTabs(host)).toEqual(["Keycloak 設定", "Keycloak レルム設定"]);
-  });
-
-  it("groups the outline as well, since it is the same navigation", async () => {
-    const host = mountGrouped();
-    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
-    (btn as HTMLElement).click();
-    await Promise.resolve();
-    const names = [...host.querySelectorAll(".rs-outline-groupname")].map((e) => e.textContent?.trim());
-    expect(names).toEqual(["AWS 基盤", "Keycloak"]);
-    // Each sheet sits under its own group, not in a flat list beside them.
-    const idpBlock = [...host.querySelectorAll(".rs-outline-group")][1]!;
-    expect([...idpBlock.querySelectorAll(".rs-outline-sheetname")].map((e) => e.textContent?.trim().split(" ")[0])).toEqual([
-      "Keycloak",
-      "Keycloak",
-    ]);
-  });
-
-  it("puts the second row after the toolbar, or the toolbar wraps onto a third line", () => {
-    // The bar is a wrapping flex row and this row is full-width, so anything
-    // after it in the DOM is pushed to a line of its own. Placed before the
-    // toolbar it wrapped the toolbar — the exact breakage this ordering fixes.
-    // Asserted on the DOM rather than on CSS `order` deliberately: `order`
-    // would restore the picture and leave keyboard focus travelling through the
-    // sheets before the toolbar drawn above them.
-    const host = mountGrouped();
-    const kids = [...host.querySelector(".rs-sheet-tabs")!.children].map((c) => c.className.split(" ")[0]);
-    expect(kids.indexOf("rs-subtabs")).toBe(kids.length - 1);
-    expect(kids.indexOf("rs-tabs-right")).toBeLessThan(kids.indexOf("rs-subtabs"));
-  });
-
-  it("stays a flat single row when the document declares no groups", () => {
-    const flat = { metadata: { title: "t" }, versions: [{ version: "current", sheets: GROUPED.sheets.map(({ group, ...s }) => s) }] };
-    const host = mountGrouped(flat);
-    expect(host.querySelector(".rs-subtabs")).toBeNull();
-    expect(groupTabs(host)).toEqual(["AWS インフラ", "Keycloak 設定", "Keycloak レルム設定"]);
-  });
-});
-
-// The outline is the other half of the same navigation, so it has to follow the
-// header: switching sheets there used to leave the panel showing a part of the
-// document the reader had left.
-describe("viewer: the outline follows the header", () => {
-  async function openOutline(host: HTMLElement): Promise<HTMLElement> {
-    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
-    (btn as HTMLElement).click();
-    await Promise.resolve();
-    return host.querySelector(".rs-outline") as HTMLElement;
-  }
-
-  it("marks the sheet the header is on", async () => {
+  it("marks the sheet the header is on, and only that one", () => {
     const host = mount();
-    const outline = await openOutline(host);
-    const current = outline.querySelectorAll(".rs-outline-sheet-current");
-    expect(current).toHaveLength(1);
+    expect(tree(host).querySelectorAll(".rs-navtree-current")).toHaveLength(1);
   });
 
-  it("gives every sheet block an address the scroll can find", async () => {
-    // The effect scrolls by looking the active sheet's block up by this
-    // attribute; without it the panel silently never moves.
+  // The keyboard walk and the scroll-into-view both look rows up by this
+  // attribute; without it neither moves, silently.
+  it("gives every row an address they can be found by", () => {
     const host = mount();
-    const outline = await openOutline(host);
-    const blocks = [...outline.querySelectorAll("[data-sheet-nav]")];
-    expect(blocks.length).toBe(host.querySelectorAll(".rs-tab[data-sheet-idx]").length);
+    const rows = [...tree(host).querySelectorAll("[data-nav-row]")];
+    expect(rows.length).toBeGreaterThan(0);
   });
 });
 
@@ -1088,13 +965,10 @@ describe("viewer: the side-by-side view keeps its bearings", () => {
     // its entries have to resolve to something on the page. They used to point
     // at ids that only exist in the stacked view, and clicking did nothing.
     const host = await pivot();
-    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
-    (btn as HTMLElement).click();
-    await Promise.resolve();
-    const items = [...host.querySelectorAll(".rs-outline-item")];
+    const items = [...host.querySelectorAll(".rs-navtree-item")];
     expect(items.length).toBeGreaterThan(0);
-    for (const el of [...host.querySelectorAll(".rs-outline-row")]) {
-      const id = (el.querySelector("button") as HTMLElement | null)?.getAttribute("data-id");
+    for (const el of [...host.querySelectorAll(".rs-navtree-row")]) {
+      const id = (el.querySelector("button") as HTMLElement | null)?.getAttribute("data-nav-id");
       if (id) expect(host.querySelector(`#${CSS.escape(id)}`)).not.toBeNull();
     }
     // The entry names the category, not a component that is no longer a heading.
@@ -1153,10 +1027,7 @@ describe("viewer: the side-by-side view keeps the stacked view's structure", () 
 
   it("lists both levels in the outline", async () => {
     const host = await pivot();
-    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
-    (btn as HTMLElement).click();
-    await Promise.resolve();
-    const items = [...host.querySelectorAll(".rs-outline-item")].map((e) => e.textContent?.trim());
+    const items = [...host.querySelectorAll(".rs-navtree-item")].map((e) => e.textContent?.trim());
     expect(items).toContain("Tokens");
     expect(items).toContain("Access tokens");
   });
@@ -1189,15 +1060,12 @@ describe("viewer: the outline names what is being compared", () => {
       (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
       await Promise.resolve();
     }
-    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
-    (btn as HTMLElement).click();
-    await Promise.resolve();
     return host;
   }
 
   it("lists the components as an ordinary entry, so it looks and behaves like the rest", async () => {
     const host = await outline(true);
-    const items = [...host.querySelectorAll(".rs-outline-item")].map((e) => e.textContent?.trim());
+    const items = [...host.querySelectorAll(".rs-navtree-item")].map((e) => e.textContent?.trim());
     expect(items).toContain("app / master");
   });
 
@@ -1205,15 +1073,15 @@ describe("viewer: the outline names what is being compared", () => {
     // A caption in its own style went nowhere when clicked; an entry has to
     // resolve like every other one.
     const host = await outline(true);
-    const entry = [...host.querySelectorAll(".rs-outline-item")].find((e) => e.textContent?.trim() === "app / master");
-    const row = entry?.closest(".rs-outline-row");
+    const entry = [...host.querySelectorAll(".rs-navtree-item")].find((e) => e.textContent?.trim() === "app / master");
+    const row = entry?.closest(".rs-navtree-row");
     expect(row).not.toBeNull();
     expect(host.querySelector(".rs-pivot .rs-category[id]")).not.toBeNull();
   });
 
   it("lists the components only while comparing", async () => {
     const host = await outline(false);
-    const items = [...host.querySelectorAll(".rs-outline-item")].map((e) => e.textContent?.trim());
+    const items = [...host.querySelectorAll(".rs-navtree-item")].map((e) => e.textContent?.trim());
     expect(items).not.toContain("app / master");
   });
 });
@@ -2335,43 +2203,38 @@ describe("viewer: a document sheet", () => {
     expect(host.querySelectorAll(".rs-param-table")).toHaveLength(0);
   });
 
-  it("is named by its label in the tab bar, like any other sheet", () => {
+  it("is named by its label in the tree, like any other sheet", () => {
     const host = mountDoc();
-    const tabs = [...host.querySelectorAll(".rs-tab, .rs-subtab")].map((e) => (e.textContent ?? "").trim());
-    expect(tabs.some((tx) => tx.includes("移行方針"))).toBe(true);
+    const rows = [...host.querySelectorAll(".rs-navtree-item")].map((e) => (e.textContent ?? "").trim());
+    expect(rows.some((tx) => tx.includes("移行方針"))).toBe(true);
   });
 
   it("lists its headings in the outline", async () => {
     const host = mountDoc();
-    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
-    (btn as HTMLElement).click();
-    await Promise.resolve();
-    const items = [...host.querySelectorAll(".rs-outline-item")].map((e) => (e.textContent ?? "").trim());
+    const items = [...host.querySelectorAll(".rs-navtree-item")].map((e) => (e.textContent ?? "").trim());
     expect(items).toContain("移行方針");
     expect(items).toContain("前提");
   });
 
-  it("follows its headings in the outline instead of clearing the highlight", async () => {
-    // The scroll-spy used to look only for .rs-category[id]. A document has
-    // none, so it found zero elements and set the current entry to null on
-    // every scroll — which also wiped the highlight a click had just set. The
-    // outline looked broken in a document and only there.
+  // A document has no `.rs-category[id]`, so the tree's entries point at the
+  // headings the RENDER produced. Jumping to one marks it — the one thing about
+  // a document's navigation that can be observed without a layout engine; the
+  // scroll-spy's own arithmetic is covered where there is one to observe.
+  it("marks the heading a jump lands on", async () => {
     const host = mountDoc();
-    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
-    (btn as HTMLElement).click();
-    await Promise.resolve();
-    window.dispatchEvent(new Event("scroll"));
-    await Promise.resolve();
-    expect(host.querySelectorAll(".rs-outline-current").length).toBeGreaterThan(0);
+    const entry = [...host.querySelectorAll(".rs-navtree-heading .rs-navtree-item")]
+      .find((e) => (e.textContent ?? "").includes("前提")) as HTMLElement;
+    entry.click();
+    await new Promise((r) => setTimeout(r, 30));
+    const here = [...host.querySelectorAll(".rs-navtree-here")];
+    expect(here).toHaveLength(1);
+    expect(here[0].textContent).toContain("前提");
   });
 
   it("points each outline entry at an anchor that is really on the page", async () => {
     // The failure this replaces is silent: an entry whose id is not in the DOM
     // simply does nothing when clicked.
     const host = mountDoc();
-    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
-    (btn as HTMLElement).click();
-    await Promise.resolve();
     for (const id of ["rs-doc-移行方針", "rs-doc-前提"]) {
       expect(host.querySelector(`[id="${id}"]`)).not.toBeNull();
     }
@@ -2405,23 +2268,19 @@ describe("viewer: two documents with the same heading", () => {
   }
 
   async function currentCount(host: HTMLElement): Promise<number> {
-    const btn = [...host.querySelectorAll("button")].find((b) => /目次/.test(b.getAttribute("aria-label") ?? ""));
-    (btn as HTMLElement).click();
-    await Promise.resolve();
     window.dispatchEvent(new Event("scroll"));
-    await Promise.resolve();
-    return host.querySelectorAll(".rs-outline-current").length;
+    await new Promise((r) => setTimeout(r, 30));
+    return host.querySelectorAll(".rs-navtree-here").length;
   }
 
+  // The tree marks where the reader is by comparing ids, so one id shared by
+  // two sheets would be two entries claiming it — or, since the collision also
+  // confuses the lookup, none. `recipes/document.ts` namespaces the ids by
+  // sheet so that input cannot be produced; that it does is checked where it
+  // happens (tests/recipe-document.test.ts). What is checked HERE is the
+  // consumer's side of the same contract: distinct ids, exactly one mark.
   it("marks one entry current when the ids differ", async () => {
     expect(await currentCount(mountWith("rs-doc-a-ツリー", "rs-doc-b-ツリー"))).toBe(1);
-  });
-
-  it("would mark two if they collided, which is what the ids are namespaced to prevent", async () => {
-    // The failure itself, stated once: the outline compares ids, so one id
-    // shared by two sheets is two "current" entries. recipes/document.ts
-    // namespaces the ids by sheet so this input cannot be produced.
-    expect(await currentCount(mountWith("rs-doc-ツリー", "rs-doc-ツリー"))).toBe(2);
   });
 });
 
@@ -2833,7 +2692,7 @@ describe("the outline of a hand-maintained sheet", () => {
     document.body.appendChild(host);
     render(h(Root, { payload: payload as never, reviewEnabled: false, initialLang: "ja", server: false }), host);
     await waitForEffects();
-    const outline = host.querySelector(".rs-outline-body")?.textContent ?? "";
+    const outline = host.querySelector(".rs-navtree-body")?.textContent ?? "";
     expect(outline).toContain("SELinux");
     expect(outline).toContain("firewalld");
   });

@@ -25,7 +25,7 @@ const sheet = (name: string, group: string) => ({
 
 const MODEL = {
   metadata: { title: "t" },
-  nav: "book",
+
   groups: [
     { name: "requirements", label: { ja: "要件定義", en: "Requirements" } },
     {
@@ -253,12 +253,6 @@ describe("a document set read as chapters", () => {
     expect(host.querySelector(".rs-subtabs") !== null).toBe(false);
   });
 
-  it("keeps that row in a tabbed document, where it is the only one", () => {
-    const { nav: _nav, ...tabs } = MODEL as unknown as Record<string, unknown>;
-    const host = mount(tabs as unknown as ParameterSheetInput, "#3");
-    expect(host.querySelector(".rs-subtabs") !== null).toBe(true);
-  });
-
   // Nothing on paper needs a panel, and the space it held is a third of the
   // page.
   it("prints without the tree or the margin it held", async () => {
@@ -266,7 +260,7 @@ describe("a document set read as chapters", () => {
     // The selector list itself: there is more than one @media print block, and
     // the tree is named twice inside the one that matters, so a search scoped
     // by position passes on the wrong occurrence.
-    expect(customStyles).toContain(".rs-outline,\n  .rs-navtree,\n  .rs-palette-overlay {");
+    expect(customStyles).toContain(".rs-navtree,\n  .rs-palette-overlay {");
     expect(customStyles).toContain(".rs-app.rs-book.rs-outline-open .rs-main { margin-left: 0; }");
   });
 
@@ -345,11 +339,13 @@ describe("a document set read as chapters", () => {
     expect(headings(host)).toHaveLength(3);
   });
 
-  it("stays a tab strip for a document that does not say otherwise", () => {
-    const { nav: _nav, ...tabs } = MODEL as unknown as Record<string, unknown>;
-    const host = mount(tabs as unknown as ParameterSheetInput);
-    expect(host.querySelector(".rs-navtree") !== null).toBe(false);
-    expect(host.querySelector(".rs-tabs-left") !== null).toBe(true);
+  // Every document is read this way now, whether it declared chapters or not:
+  // with none, the tree is the flat sheet list plus each sheet's own sections,
+  // which is strictly more than a strip of tabs could show.
+  it("draws the tree for a document with no chapters at all", () => {
+    const { groups: _g, ...flat } = MODEL as unknown as Record<string, unknown>;
+    const host = mount(flat as unknown as ParameterSheetInput);
+    expect(host.querySelector(".rs-navtree") !== null).toBe(true);
   });
 });
 

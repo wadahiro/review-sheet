@@ -57,7 +57,6 @@ function normalize(input: ParameterSheetInput | VersionedSheetInput): {
         sheets: input.sheets,
         columns: input.columns,
         groups: input.groups,
-        nav: input.nav,
         numbering: input.numbering,
         artifacts: input.artifacts,
       },
@@ -79,7 +78,6 @@ export function assembleVersions(inputs: { file: string; input: ParameterSheetIn
     sheets: input.sheets,
     columns: input.columns,
     groups: input.groups,
-    nav: input.nav,
     numbering: input.numbering,
     artifacts: input.artifacts,
   }));
