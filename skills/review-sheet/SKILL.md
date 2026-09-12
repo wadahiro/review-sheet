@@ -3799,6 +3799,27 @@ Three ways to read an output and no more, each a shape a real command has
 rather than a step in a language — a general evaluator here would put a
 project's rules where no test of this tool can reach them.
 
+**`review-sheet collect` gathers through whatever already reaches the host.**
+The tool still does not reach: it runs the command YOU give it, so the
+credentials, the audit trail and the network path stay with the thing that
+already had them.
+
+```sh
+review-sheet collect -i input.json --environment local \
+  --host kc-node1 kc-node2 --exec 'docker exec {host} sh -c {cmd}' -o obs-local.json
+# …or 'kubectl exec {host} -- sh -c {cmd}', or 'ssh {host} {cmd}'
+```
+
+It reads the files the sheets describe, runs the commands their channels ask
+for, and follows the files a configuration NAMES — expanding the glob on the
+host, because that is where they are. A file the host does not have is recorded
+as null and a command it does not carry as null, because both are answers. This
+is the SECOND way to produce an observation, not a replacement for the first: a
+closed network that has Ansible and nothing else uses the role below, and a
+laptop or a CI job with `docker`/`kubectl` on the PATH uses this. Checked
+against each other on the same pair of hosts — same files, same commands, same
+included files, byte for byte.
+
 **The collecting itself is mostly not a project's either.** `collect-plan`
 already says what to gather; reading those files, running those commands, and
 following the files a configuration NAMES is the same work in every project, so

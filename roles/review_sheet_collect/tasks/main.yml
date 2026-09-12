@@ -48,10 +48,10 @@
   ansible.builtin.set_fact:
     _rs_globs: >-
       {{ _rs_globs | default({}) | combine({
-           item.file: _rs_text[item.file] | regex_findall(item.pattern) }) }}
+           item.file: _rs_text[item.file] | regex_findall(item.pattern, multiline=True) }) }}
     _rs_roots: >-
       {{ _rs_roots | default({}) | combine({
-           item.file: (_rs_text[item.file] | regex_search(item.root, '\1') | default([''], true) | first)
+           item.file: (_rs_text[item.file] | regex_search(item.root, '\1', multiline=True) | default([''], true) | first)
                       if item.root is defined else '' }) }}
   loop: "{{ _rs_plan.includes | default([]) }}"
   loop_control:

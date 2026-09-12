@@ -114,8 +114,8 @@ describe("what a collector has to gather", () => {
     expect(got.includes).toEqual([
       {
         file: "/etc/httpd/conf/httpd.conf",
-        pattern: "(?m)^\\s*Include(?:Optional)?\\s+(\\S+)",
-        root: '(?m)^\\s*ServerRoot\\s+"?([^"\\s]+)"?',
+        pattern: "^\\s*Include(?:Optional)?\\s+(\\S+)",
+        root: '^\\s*ServerRoot\\s+"?([^"\\s]+)"?',
       },
     ]);
     // A file whose product names nothing gets no instructions rather than a guess.

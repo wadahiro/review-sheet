@@ -12,6 +12,7 @@ import { judgeFiles, evidenceFrom, collectPlan, registerModelChannels, answerThe
 import { findBakedSecrets, formatBakedSecrets, findSecretsInEvidence, formatEvidenceLeaks } from "./secrets.js";
 import { toFullEditInput } from "./full-edit.js";
 import { listProbeRules } from "./channel.js";
+import { collectHost, reachWith } from "./collect.js";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, ArtifactPreview } from "./types.js";
 import { evidencePreviews } from "./evidence.js";
 import { extractReviewsFromHtml, DOCUMENT_FIELD } from "./edits.js";
@@ -586,6 +587,64 @@ program
       );
     } catch (e) {
       console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("collect")
+  .description(
+    "Gather what `judge` needs, through whatever already reaches the host — the command you give it runs under its own identity, this only says what to ask for"
+  )
+  .requiredOption("-i, --input <file>", "Model (input.json)")
+  .requiredOption("--environment <name>", "Which environment's files to read")
+  .requiredOption("--host <name...>", "The hosts to ask (repeatable). Substituted into --exec as {host}")
+  .requiredOption(
+    "--exec <template>",
+    "How to run one command on one host: 'docker exec {host} sh -c {cmd}', 'kubectl exec {host} -- sh -c {cmd}', 'ssh {host} {cmd}'"
+  )
+  .option("-o, --output <file>", "Where to write the observation (default: stdout)")
+  .action((opts: { input: string; environment: string; host: string[]; exec: string; output?: string }) => {
+    try {
+      const model = JSON.parse(readFileSync(opts.input, "utf-8")) as ParameterSheetInput;
+      registerModelChannels(model);
+      const { plan } = buildTestPlan(model);
+      const cp = collectPlan(plan, model.builds, model.defaults_checked_by, [
+        ...(model.functional_channels ?? []).map((c) => c.channel),
+        ...(model.functional_rules ?? []).map((r) => r.rule),
+      ]);
+      const run = (host: string, command: string) => {
+        const argv = reachWith(opts.exec, host, command);
+        const r = Bun.spawnSync(argv);
+        const out = new TextDecoder().decode(r.stdout);
+        return { ok: r.exitCode === 0, out };
+      };
+      const hosts: Record<string, unknown> = {};
+      for (const host of opts.host) hosts[host] = collectHost(cp, opts.environment, host, run);
+      const observation = {
+        environment: opts.environment,
+        collected_at: new Date().toISOString(),
+        hosts,
+      };
+      const text = JSON.stringify(observation, null, 2) + "\n";
+      if (opts.output === undefined) process.stdout.write(text);
+      else writeFileSync(opts.output, text);
+      const counted = Object.entries(hosts).map(
+        ([h, v]) =>
+          `${h}: ${Object.values((v as { files: Record<string, string | null> }).files).filter((x) => x !== null).length}/${
+            Object.keys((v as { files: Record<string, string | null> }).files).length
+          } file(s), ${Object.values((v as { commands: Record<string, string | null> }).commands).filter((x) => x !== null).length}/${
+            Object.keys((v as { commands: Record<string, string | null> }).commands).length
+          } command(s)`
+      );
+      // A file the host does not have and a command it does not carry are
+      // ANSWERS, so they are counted rather than failed — and said out loud,
+      // because a collection that quietly gathered nothing looks like one that
+      // found nothing wrong.
+      console.error(`collected ${opts.environment} — ${counted.join("; ")}`);
+      if (opts.output !== undefined) console.error(`wrote ${opts.output}`);
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : String(e));
       process.exit(1);
     }
   });

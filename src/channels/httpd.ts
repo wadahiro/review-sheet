@@ -82,10 +82,13 @@ export function includeSyntaxFor(path: string): { pattern: string; root?: string
   if (!/httpd\.conf$|apache2\.conf$|\/conf\.d\/.*\.conf$/.test(path)) return [];
   return [
     {
-      // The glob each Include line carries.
-      pattern: "(?m)^\\s*Include(?:Optional)?\\s+(\\S+)",
+      // The glob each Include line carries. NO INLINE FLAGS: this pattern is
+      // read by whatever collects — an Ansible filter (Python) and the tool's
+      // own `collect` (JavaScript) among them — and `(?m)` is a Python
+      // spelling JavaScript refuses outright. Each applies multiline itself.
+      pattern: "^\\s*Include(?:Optional)?\\s+(\\S+)",
       // …and what a relative one is relative to.
-      root: '(?m)^\\s*ServerRoot\\s+"?([^"\\s]+)"?',
+      root: '^\\s*ServerRoot\\s+"?([^"\\s]+)"?',
     },
   ];
 }
