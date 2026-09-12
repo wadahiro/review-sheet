@@ -60,6 +60,18 @@ describe("what a Dockerfile decides", () => {
     expect(r.has("PATH")).toBe(false);
   });
 
+  // The exec form IS JSON, so the row carries the value and not the spacing
+  // somebody typed: the runtime reports `["start","--optimized"]`, and a row
+  // holding the typed `["start", "--optimized"]` differed from the image built
+  // from its own file.
+  it("stores an exec form as JSON, not as the spacing it was typed with", () => {
+    const r = rows('ENTRYPOINT ["a",  "b"]\nCMD [ "start" , "--optimized" ]\n');
+    expect(r.get("entrypoint")).toBe('["a","b"]');
+    expect(r.get("cmd")).toBe('["start","--optimized"]');
+    // …while the shell form is a string and stays exactly as written.
+    expect(rows("CMD run --server\n").get("cmd")).toBe("run --server");
+  });
+
   it("indexes a repeated instruction rather than losing one", () => {
     const r = rows();
     expect(r.get("expose")).toBe("8080");

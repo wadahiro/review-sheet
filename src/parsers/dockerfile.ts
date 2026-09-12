@@ -24,6 +24,21 @@ const PAIRS = /([A-Za-z_][A-Za-z0-9_.-]*)=("[^"]*"|'[^']*'|\S*)/g;
 
 const unquote = (v: string): string => v.replace(/^(["'])(.*)\1$/s, "$2");
 
+// The EXEC form is JSON, so it is stored as JSON rather than as the spacing
+// somebody typed: `["start", "--optimized"]` and `["start","--optimized"]` are
+// one value, and the runtime reports the second. Comparing the text made a row
+// differ from the image built from it. Anything that does not parse is kept
+// verbatim — the shell form is a string, not a list.
+const canonical = (v: string): string => {
+  if (!/^\s*\[/.test(v)) return v;
+  try {
+    const parsed: unknown = JSON.parse(v);
+    return Array.isArray(parsed) ? JSON.stringify(parsed) : v;
+  } catch {
+    return v;
+  }
+};
+
 // Which instructions carry a setting, and whether they name it themselves.
 const NAMED = new Set(["ENV", "ARG", "LABEL"]);
 const PLAIN = new Set(["FROM", "USER", "WORKDIR", "ENTRYPOINT", "CMD", "EXPOSE", "STOPSIGNAL", "HEALTHCHECK", "SHELL", "VOLUME"]);
@@ -72,7 +87,7 @@ export function dockerfileEntries(content: string, file: string): Entry[] {
       if (one !== null) add(one[1]!, unquote(one[2]!.trim()));
       continue;
     }
-    add(kw.toLowerCase(), kw === "FROM" ? rest.replace(/\s+AS\s+\S+\s*$/i, "") : rest);
+    add(kw.toLowerCase(), kw === "FROM" ? rest.replace(/\s+AS\s+\S+\s*$/i, "") : canonical(rest));
   }
   return out;
 }
@@ -92,6 +107,7 @@ export const dockerfileParser: ConfigParser = {
     detection: "filename",
     pathStyle: "The name the instruction carries (`KC_DB` for `ENV KC_DB=…`), or the instruction's own name lowercased (`from`, `user`, `entrypoint`). A multi-stage build prefixes the stage (`build.PATH`); a repeat is indexed.",
     notes: [
+      "`FROM` is a row of the file and has no counterpart in `docker inspect`: the built image does not carry what it was built FROM (buildkit records no parent), so that row is judged against the build, not against the image.",
       "`RUN` is a build step, not a setting: what it changes is inside the layer it produces, and reading its shell as configuration would put a package manager's arguments on a parameter sheet.",
       "A continued instruction (`\\` at end of line) is ONE instruction — `ENV A=1 \\` + `B=2` is two values of one ENV, and reading the second line alone would make a row out of a fragment.",
       "`ENV NAME value` (the older, unequalled form) is read too, with the value running to end of line.",

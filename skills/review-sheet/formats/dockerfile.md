@@ -14,6 +14,7 @@ The name the instruction carries (`KC_DB` for `ENV KC_DB=…`), or the instructi
 
 ## Notes
 
+- `FROM` is a row of the file and has no counterpart in `docker inspect`: the built image does not carry what it was built FROM (buildkit records no parent), so that row is judged against the build, not against the image.
 - `RUN` is a build step, not a setting: what it changes is inside the layer it produces, and reading its shell as configuration would put a package manager's arguments on a parameter sheet.
 - A continued instruction (`\` at end of line) is ONE instruction — `ENV A=1 \` + `B=2` is two values of one ENV, and reading the second line alone would make a row out of a fragment.
 - `ENV NAME value` (the older, unequalled form) is read too, with the value running to end of line.
