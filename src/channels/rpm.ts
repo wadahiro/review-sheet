@@ -83,6 +83,50 @@ export function buildMismatch(
   return out;
 }
 
+// The same held-to-its-pin check, for a product `rpm -q` cannot answer for.
+//
+// Split from `buildMismatch` rather than folded into it because the two differ
+// in what they are allowed to conclude from silence. A package the host does
+// not have says nothing (the sheet may describe something this host does not
+// carry). A product that DOES report its own configuration and yet does not
+// state a version is a different matter — but still not a mismatch, so it is
+// returned separately for the caller to report as unverified rather than as
+// wrong.
+//
+// `asked` is the already-collected output of the product's own
+// `defaults_checked_by` command, keyed by that entry's product.
+export function buildMismatchReported(
+  builds: { sheet: string; product: string; version: string }[],
+  sheet: string,
+  asked: Map<string, string>,
+  versionFor: (product: string) => { from: string; version: (out: string) => string | undefined } | undefined
+): { mismatch: string[]; unverified: string[] } {
+  const mismatch: string[] = [];
+  const unverified: string[] = [];
+  const seen = new Set<string>();
+  for (const b of builds) {
+    if (b.sheet !== sheet || seen.has(b.product)) continue;
+    seen.add(b.product);
+    // Anything rpm answers for is the other function's business; checking it
+    // twice would report one host's one mismatch as two.
+    if (packageOf(b.product) !== undefined) continue;
+    const recipe = versionFor(b.product);
+    if (recipe === undefined) continue;
+    const out = asked.get(recipe.from);
+    if (out === undefined) continue;
+    const got = recipe.version(out);
+    if (got === undefined) {
+      unverified.push(`${b.product} ${b.version}`);
+      continue;
+    }
+    // The same granularity rule as above: a pin naming no release cannot be
+    // held to one.
+    const ok = b.version.includes("-") ? got === b.version : got.split("-")[0] === b.version;
+    if (!ok) mismatch.push(`${b.product} ${got}（シートは ${b.version} を記述）`);
+  }
+  return { mismatch, unverified };
+}
+
 // Which packages a run has to ask about, derived from what the sheets describe.
 export function packagesToQuery(
   builds: { sheet: string; product: string; version: string }[],

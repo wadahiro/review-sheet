@@ -293,6 +293,48 @@ export function listProductDefaults(): ProductDefaults[] {
   return [...defaultsBy];
 }
 
+// How a product says WHICH BUILD it is — for the products `rpm -q` cannot
+// answer for.
+//
+// A sheet's `builds:` pin (assemble-spec.ts) says which build it describes, and
+// `buildMismatch` (channels/rpm.ts) holds a host to it. That check reaches only
+// products the tool maps to an RPM package: measured on one real project, six
+// of fourteen pinned products were checked and eight — everything installed
+// from a tarball, an image or a cloud API — were never checked at all. A
+// Keycloak upgrade therefore left every sheet silently reviewing the previous
+// version's attack surface, which is precisely the "answered by a product the
+// sheet does not describe, with an answer that looks exactly like a correct
+// one" the pin exists to prevent.
+//
+// `products` is a LIST because one deployed product is usually described by
+// several dictionaries — Keycloak's server options, its realms, its clients and
+// its LDAP providers are four products to a binding and one install on a host.
+//
+// `from` names the `defaults_checked_by` product whose command already carries
+// the answer, so this adds nothing to collect: a product that reports its own
+// effective configuration states its version in the same breath.
+export type ProductVersion = {
+  products: string[];
+  from: string;
+  version: (output: string) => string | undefined;
+};
+
+const versions = sharedRegistry<ProductVersion>("review-sheet.product-versions.v1");
+
+export function registerProductVersion(v: ProductVersion): void {
+  const i = versions.findIndex((x) => x.from === v.from);
+  if (i >= 0) versions[i] = v;
+  else versions.push(v);
+}
+
+export function productVersionFor(product: string): ProductVersion | undefined {
+  return versions.find((v) => v.products.includes(product));
+}
+
+export function listProductVersions(): ProductVersion[] {
+  return [...versions];
+}
+
 const lineOf = (text: string, re: RegExp): number | undefined => {
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) if (re.test(lines[i]!)) return i + 1;

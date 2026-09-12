@@ -10,7 +10,7 @@
 // that family needs the same thing.
 
 import { describe, it, expect } from "bun:test";
-import { rpmVersions, buildMismatch, packagesToQuery, packageOf } from "../src/channels/rpm";
+import { rpmVersions, buildMismatch, packagesToQuery, packageOf, buildMismatchReported } from "../src/channels/rpm";
 
 const builds = [
   { sheet: "os", product: "httpd", version: "2.4.62" },
@@ -83,5 +83,77 @@ describe("whether this host is that build", () => {
 
   it("says nothing about another sheet's build", () => {
     expect(buildMismatch(builds, "other", rpmVersions("httpd 2.4.57-5.el9\n"))).toEqual([]);
+  });
+});
+
+// The same held-to-its-pin check, for the products `rpm -q` cannot answer for.
+//
+// Measured on one real project: six of fourteen pinned products resolved to an
+// RPM package and eight did not — everything from a tarball, an image or a
+// cloud API — so a Keycloak upgrade left five sheets reviewing the previous
+// version's attack surface and nothing said so. With this, the same doctored
+// observation blocks 932 rows across those five sheets; with the version
+// matching, none.
+describe("holding a non-package product to its pin", () => {
+  const recipe = { from: "keycloak", version: (out: string) => /^\s*kc\.version\s*=\s*(\S+)/m.exec(out)?.[1] };
+  const versionFor = (p: string): typeof recipe | undefined =>
+    ["keycloak", "keycloak-client"].includes(p) ? recipe : undefined;
+  const builds = [
+    { sheet: "s", product: "keycloak", version: "26.7.0" },
+    { sheet: "s", product: "keycloak-client", version: "26.7.0" },
+  ];
+  // The real shape: a leading tab, two spaces after `=`, and every option
+  // annotated with where it came from — so the value is not the rest of the line.
+  const shown = (v: string): Map<string, string> =>
+    new Map([["keycloak", `Current Configuration:\n\tkc.db =  postgres (keycloak.conf)\n\tkc.version =  ${v} (SysPropConfigSource)\n`]]);
+
+  it("says nothing when the host runs the build the sheet describes", () => {
+    expect(buildMismatchReported(builds, "s", shown("26.7.0"), versionFor).mismatch).toEqual([]);
+  });
+
+  it("names the product and both versions when it does not", () => {
+    const { mismatch } = buildMismatchReported(builds, "s", shown("26.9.9"), versionFor);
+    expect(mismatch).toHaveLength(2);
+    expect(mismatch[0]).toContain("26.9.9");
+    expect(mismatch[0]).toContain("26.7.0");
+  });
+
+  // Four dictionary products describe one install, and one of them is enough to
+  // find the command that answers — the pin is per product, the reading is not.
+  it("answers for a dictionary product through the install it belongs to", () => {
+    const { mismatch } = buildMismatchReported(
+      [{ sheet: "s", product: "keycloak-client", version: "26.7.0" }],
+      "s",
+      shown("26.9.9"),
+      versionFor
+    );
+    expect(mismatch).toHaveLength(1);
+  });
+
+  // Not a mismatch, and not silence either: the product answered and did not
+  // say, which the caller reports as unverified rather than as wrong.
+  it("separates 'did not say' from 'said something else'", () => {
+    const { mismatch, unverified } = buildMismatchReported(builds, "s", new Map([["keycloak", "Current Mode: production\n"]]), versionFor);
+    expect(mismatch).toEqual([]);
+    expect(unverified).toHaveLength(2);
+  });
+
+  // Whatever rpm answers for is the other function's business; checking it in
+  // both would report one host's one mismatch twice.
+  it("leaves a packaged product alone", () => {
+    const { mismatch, unverified } = buildMismatchReported(
+      [{ sheet: "s", product: "httpd", version: "2.4.62" }],
+      "s",
+      shown("26.9.9"),
+      () => recipe
+    );
+    expect(mismatch).toEqual([]);
+    expect(unverified).toEqual([]);
+  });
+
+  // A pin naming no release cannot be held to one — the same granularity rule
+  // the package check follows.
+  it("compares at the granularity the pin was written at", () => {
+    expect(buildMismatchReported(builds, "s", shown("26.7.0-1"), versionFor).mismatch).toEqual([]);
   });
 });

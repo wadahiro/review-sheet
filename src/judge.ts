@@ -31,12 +31,13 @@ import { registerKeycloakChannels, registerKeycloakRules } from "./channels/keyc
 import { registerAwsRdsRouter, registerAwsRdsChannel } from "./channels/aws-rds.js";
 import { registerLogrotateRules } from "./channels/logrotate.js";
 import { registerSystemdRules } from "./channels/systemd.js";
-import { buildMismatch, rpmVersions, packagesToQuery } from "./channels/rpm.js";
+import { buildMismatch, buildMismatchReported, rpmVersions, packagesToQuery } from "./channels/rpm.js";
+import "./channels/reads.js"; // the product recipes (reads/addresses/defaults/versions) register on load
 import { compiledInFor, injectedOptions, lineOfCompiledIn, includeSyntaxFor } from "./channels/httpd.js";
 import { effectiveConfig, isProductDefault, lineOfEffective, SECRET_FIELDS, REDACTED, MASKED, LOGIN_MARKS_LIST } from "./channels/keycloak.js";
 import type { TestItem, TestPlan } from "./testplan.js";
 import type { LangText } from "./types.js";
-import { listChannels, listFunctionalChannels, listProbeRules, registerChannel, commandChannel, getDocumentRouter, type Channel } from "./channel.js";
+import { listChannels, listFunctionalChannels, listProbeRules, registerChannel, commandChannel, getDocumentRouter, productVersionFor, type Channel } from "./channel.js";
 import type { TestResult, TestResults } from "./testresults.js";
 
 // One environment, as somebody collected it. The shape is a contract rather
@@ -552,6 +553,26 @@ export function judgeFiles(
     const obs0 = byEnv.get(item.target.instance);
     const doc = obs0 === undefined ? undefined : documentFor(obs0, item, opts.documents ?? [], obs0.substitutions ?? {});
     if (doc !== undefined) {
+      // A row saying "the product's own default applies" is a claim about ONE
+      // build here exactly as it is on the file path below, and the document
+      // branch returned before ever asking. That is the half that mattered
+      // most: a realm's and a client's untouched fields are precisely the rows
+      // an upgrade moves, and they are answered from a document, never a file.
+      const heldDoc = obs0?.hosts?.[doc.host];
+      const wrongBuildDoc =
+        item.kind === "default-in-force" && heldDoc !== undefined
+          ? buildOf(heldDoc, item.target.sheet, opts.builds ?? [], opts.rpmCommand, opts.defaultsCheckedBy ?? [])
+          : undefined;
+      if (wrongBuildDoc !== undefined) {
+        out.results.push({
+          target: { sheet: item.target.sheet, path: item.target.path, key: item.target.key, instance: item.target.instance },
+          at,
+          evidence: { host: doc.host },
+          status: "not_run",
+          reason: t.otherBuild(wrongBuildDoc),
+        });
+        continue;
+      }
       out.results.push(...answerByDocument(item, doc.doc, doc.host, doc.address, doc.expected, at, t, parsedDoc, doc.idFields));
       continue;
     }
@@ -648,7 +669,7 @@ export function judgeFiles(
             continue;
           }
         }
-        const wrongBuild = buildOf(held, item.target.sheet, opts.builds ?? [], opts.rpmCommand);
+        const wrongBuild = buildOf(held, item.target.sheet, opts.builds ?? [], opts.rpmCommand, opts.defaultsCheckedBy ?? []);
         if (wrongBuild !== undefined) {
           out.results.push({
             target, at,
@@ -734,12 +755,27 @@ function buildOf(
   held: ObservedHost,
   sheet: string,
   builds: { sheet: string; product: string; version: string }[],
-  command: string | undefined
+  command: string | undefined,
+  // The `defaults_checked_by` entries, so a product that reports its own
+  // configuration can also be held to its pin — `rpm -q` answers for a package
+  // and says nothing about a tarball, an image or a cloud API, which on one
+  // real project was eight of fourteen pinned products (see ProductVersion).
+  defaultsCheckedBy: { product: string; command?: string }[] = []
 ): string | undefined {
-  if (builds.length === 0 || command === undefined) return undefined;
-  const out = held.commands?.[command];
-  if (typeof out !== "string") return undefined;
-  const bad = buildMismatch(builds, sheet, rpmVersions(out));
+  if (builds.length === 0) return undefined;
+  const bad: string[] = [];
+  if (command !== undefined) {
+    const out = held.commands?.[command];
+    if (typeof out === "string") bad.push(...buildMismatch(builds, sheet, rpmVersions(out)));
+  }
+  // What each product's own configuration command reported, keyed by the
+  // product whose entry asked for it.
+  const asked = new Map<string, string>();
+  for (const d of defaultsCheckedBy) {
+    const out = d.command === undefined ? undefined : held.commands?.[d.command];
+    if (typeof out === "string") asked.set(d.product, out);
+  }
+  bad.push(...buildMismatchReported(builds, sheet, asked, productVersionFor).mismatch);
   return bad.length === 0 ? undefined : bad.join(", ");
 }
 

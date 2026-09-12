@@ -10,7 +10,7 @@
 // Each is keyed by the dictionary product a sheet binds. See `ProductRead` in
 // channel.ts for why these live in code and not in the dictionary YAML.
 
-import { registerProductRead, registerProductAddress, registerProductDefaults } from "../channel.js";
+import { registerProductRead, registerProductAddress, registerProductDefaults, registerProductVersion } from "../channel.js";
 
 // `getenforce` prints the mode and nothing else — the output IS the value.
 // Lowercased because the file states it lowercase (`SELINUX=enforcing`) and the
@@ -74,4 +74,22 @@ registerProductDefaults({
     const home = conf.slice(0, conf.lastIndexOf("/"));
     return `${home}/bin/kc.sh show-config`;
   },
+});
+
+// ---------------------------------------------------------------------------
+// Which build a product is, where `rpm -q` cannot say. See `ProductVersion`.
+
+// `kc.sh show-config` prints `kc.version` among the options it reports, so the
+// command `defaults_checked_by` already collects answers this too. Four
+// dictionary products describe one install: the server's own options, and the
+// realms, clients and LDAP providers it serves.
+//
+// The line is `\tkc.version =  26.7.0 (SysPropConfigSource)` — every option
+// this command reports carries WHERE it came from, so the value is not the rest
+// of the line and an end-of-line anchor matches nothing. Found by running it
+// against a real host's output rather than by reading the format.
+registerProductVersion({
+  products: ["keycloak", "keycloak-client", "keycloak-realm", "keycloak-ldap"],
+  from: "keycloak",
+  version: (out) => /^\s*kc\.version\s*=\s*(\S+)/m.exec(out)?.[1],
 });
