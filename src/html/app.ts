@@ -6,6 +6,7 @@ import { createPortal } from "preact/compat";
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "preact/hooks";
 import htm from "htm";
 import { getMessages, type Lang, type Messages } from "./i18n.js";
+import { localizeSheets, localizeGroups, localizeColumns } from "../localize.js";
 import {
   buildPromptText,
   targetLabel,
@@ -93,46 +94,6 @@ function originTag(param: ParamData, t: Messages): { label: string; title: strin
   return null;
 }
 
-// Resolve every LangText prose field (description / remarks) in a sheet tree to
-// the active display language. Done once per (data, lang) at the top of Root so
-// the whole downstream pipeline — rendering, search, and diff — sees plain
-// strings, and flipping the language toggle re-resolves them live.
-// An out-of-scope reason is prose written by the project (often in Japanese),
-// so it is resolved for the active language exactly like description/remarks —
-// otherwise the English UI shows a translated label in front of untranslated
-// text. The owner is a team name and stays as authored.
-function localizeOutOfScope(oos: OutOfScope | undefined, lang: Lang): OutOfScope | undefined {
-  return oos === undefined ? undefined : { ...oos, reason: pickLang(oos.reason, lang) ?? "" };
-}
-function localizeParam(p: ParamData, lang: Lang): ParamData {
-  if (
-    p.label === undefined &&
-    p.description === undefined &&
-    p.remarks === undefined &&
-    p.out_of_scope === undefined &&
-    p.options === undefined
-  )
-    return p;
-  return {
-    ...p,
-    label: pickLang(p.label, lang),
-    description: pickLang(p.description, lang),
-    remarks: pickLang(p.remarks, lang),
-    out_of_scope: localizeOutOfScope(p.out_of_scope, lang),
-    // `value` is identity and is never touched; only the option's LABEL is
-    // resolved, and pickLang's cross-language fallback matters here more than
-    // anywhere else — a product translates its field labels long before its
-    // option lists, so a Japanese reader routinely sees an English option name
-    // beside a Japanese description. Showing the English one beats showing
-    // nothing, which is what a bare code already was.
-    options: p.options?.map((o) => ({ value: o.value, label: pickLang(o.label, lang) })),
-    // The product's word for presence, resolved like every other LangText the
-    // viewer shows — without this the cell falls back to the neutral word even
-    // where the dictionary supplied a better one.
-    presence_label: pickLang(p.presence_label, lang),
-  };
-}
-
 // What the product's own UI calls this value, if the dictionary says. Returns
 // undefined for a value no option covers — a deployed value the bound
 // dictionary version does not list, or one carrying a placeholder — and that
@@ -166,48 +127,6 @@ function optionLabel(param: ParamData, value: string, t?: Messages): string | un
   const label = hit?.label;
   return typeof label === "string" && label.length > 0 && label !== value ? label : undefined;
 }
-function localizeCategory(c: CategoryData, lang: Lang): CategoryData {
-  return {
-    ...c,
-    // `name` is identity and is never touched; `display` is what the reader
-    // sees, resolved here alongside every other LangText so the language
-    // toggle switches a component's heading live — see types.ts's Category.
-    display: (c.label ? pickLang(c.label, lang) : undefined) ?? c.name,
-    // Resolved here with every other LangText, so what reaches the render is a
-    // plain string and the language toggle re-resolves it live.
-    note: pickLang(c.note, lang),
-    out_of_scope: localizeOutOfScope(c.out_of_scope, lang),
-    params: c.params?.map((p) => localizeParam(p, lang)),
-    categories: c.categories?.map((sc) => localizeCategory(sc, lang)),
-  };
-}
-function localizeGroups(groups: SheetData["groups"], lang: Lang): SheetData["groups"] {
-  // Recursive: a chapter inside a chapter has a label of its own, and one left
-  // unresolved would show its name — the identity, not the words a reader was
-  // meant to see.
-  return groups?.map((g) => ({
-    ...g,
-    display: (g.label ? pickLang(g.label, lang) : undefined) ?? g.name,
-    ...(g.groups ? { groups: localizeGroups(g.groups, lang) } : {}),
-  }));
-}
-// A column's heading is a LangText when the project declared one (an under_key
-// label). Resolved here with the rest, so everything downstream sees a plain
-// string and the language toggle re-resolves it live.
-function localizeColumns(columns: SheetData["columns"], lang: Lang): SheetData["columns"] {
-  return columns?.map((c) => (c.header_lang ? { ...c, header: pickLang(c.header_lang, lang) ?? c.header } : c));
-}
-function localizeSheets(sheets: SheetData["sheets"], lang: Lang): SheetData["sheets"] {
-  return sheets.map((s) => ({
-    ...s,
-    // Same split as a category's: `name` is identity and is never touched (it
-    // is the review target, the diff key and the outline's search text), while
-    // `display` is what the reader sees and switches with the language toggle.
-    display: (s.label ? pickLang(s.label, lang) : undefined) ?? s.name,
-    categories: s.categories.map((c) => localizeCategory(c, lang)),
-  }));
-}
-
 // ============================================================
 // Type definitions (minimal set for browser-side use)
 // ============================================================
@@ -3635,7 +3554,7 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, dock, onD
   `;
 }
 
-function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, lang, setLang, diff, reviewsOverride, versionPivot, server, applyEnabled }: {
+function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, lang, diff, reviewsOverride, versionPivot, server, applyEnabled }: {
   data: SheetData;
   // A whole-document columnar comparison: rows keyed by sheet + path + key,
   // one column per VERSION. Supplied only while comparing, and rendered
@@ -3656,7 +3575,6 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // often something its holder has no use for.
   promptEnabled?: boolean;
   lang: Lang;
-  setLang: (l: Lang) => void;
   // Diff overlay: when comparing versions, App renders the merged sheets with
   // these synthetic reviews (changed values as old -> new) and a status map for
   // row/instance tinting. Review editing is disabled in this mode.
@@ -4532,12 +4450,6 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                 it was generated in — so the switch would move the buttons and
                 leave every description, heading and column header as it was.
                 A control that half works is worse than one that is not there. */ ""}
-          ${!markdownSheets && html`
-            <button class="rs-toolbar-btn rs-lang-switch" aria-label=${lang === "ja" ? "Switch to English" : "日本語に切り替え"}
-                    onClick=${() => setLang(lang === "ja" ? "en" : "ja")}>
-              ${lang === "ja" ? "EN" : "JA"}
-            </button>
-          `}
         </div>
         ${/* Not in a book document: this row is the current chapter's sheets,
               flat, with no numbers, no hierarchy and no filter — a subset of
@@ -4901,7 +4813,9 @@ function Root({ payload, reviewEnabled, promptEnabled = true, showSources: sourc
   // Applied here rather than in an effect: it decides what the FIRST render
   // draws, and an effect runs after it.
   setShowSources(sources);
-  const [lang, setLang] = useState<Lang>(initialLang);
+  // The content's language was decided at generation (localize.ts); this is
+  // the same answer, for the UI's own chrome.
+  const lang = initialLang;
   const t = useMemo(() => getMessages(lang), [lang]);
   // Document-level opt-out (`capabilities.apply: false`): hides every
   // apply-related affordance (the "apply to files" panel and the AI-prompt
@@ -4967,7 +4881,7 @@ function Root({ payload, reviewEnabled, promptEnabled = true, showSources: sourc
         onFrom=${setFromId} onTo=${setToId} diffSummary=${diffModel?.summary}
         changedOnly=${changedOnly} onChangedOnly=${setChangedOnly}
         columnar=${columnar} onColumnar=${setColumnar} t=${t} />`}
-      <${App} data=${data} artifacts=${shown.artifacts} reviewEnabled=${reviewEnabled} promptEnabled=${promptEnabled} lang=${lang} setLang=${setLang}
+      <${App} data=${data} artifacts=${shown.artifacts} reviewEnabled=${reviewEnabled} promptEnabled=${promptEnabled} lang=${lang}
         diff=${diffModel?.status} reviewsOverride=${diffModel?.reviews} versionPivot=${versionPivot}
         server=${server} applyEnabled=${applyEnabled} />
     </div>

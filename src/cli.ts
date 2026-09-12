@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, readdirSync } from "fs";
 import { resolve, relative, join } from "path";
 import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
+import { langFallbacks } from "./localize.js";
 import { validateInput, validateReview, validateResults, validateObservation, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
 import { renderTestDoc, renderExcluded, injectBlocks, unitDocuments } from "./testdoc.js";
@@ -451,6 +452,19 @@ program
         if (leaked.length > 0) console.error(formatEvidenceLeaks(leaked));
       }
       const lang = opts.lang === "en" ? "en" : "ja";
+      // The document is generated in ONE language now, so prose this project
+      // only has in the other one is shown in that other one — `pickLang`'s
+      // fallback, which is right (something beats nothing) and silent. Said out
+      // loud here, with its first few members, because a Japanese sheet quietly
+      // carrying English descriptions reads as a broken toggle rather than as a
+      // translation nobody wrote.
+      const untranslated = langFallbacks("versions" in input ? input.versions : [{ sheets: input.sheets }], lang);
+      if (untranslated.length > 0) {
+        const shown = untranslated.slice(0, 5).map((f) => `${f.sheet} > ${f.key} (${f.field})`);
+        console.error(
+          `Note: ${untranslated.length} field(s) have no ${lang} text and are shown in the other language — ${shown.join(", ")}${untranslated.length > 5 ? ", …" : ""}`
+        );
+      }
       const caps = parseAllow(opts.allow);
       // Both spellings of "read nothing else into this document".
       const readable = !(opts.readonly === true || opts.review === false);

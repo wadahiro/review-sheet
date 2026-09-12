@@ -399,16 +399,6 @@ describe("viewer: category label vs identity", () => {
     expect(host.querySelector(".rs-cat-label")?.textContent).toBe("Keycloak database");
   });
 
-  it("switches with the language toggle, live, without a rebuild", async () => {
-    const host = mountLabelled("ja");
-    expect(host.querySelector(".rs-cat-label")?.textContent).toBe("Keycloak DB");
-    const toggle = [...host.querySelectorAll("button")].find((b) => /^(EN|JA)$/.test((b.textContent ?? "").trim()));
-    if (!toggle) throw new Error("language toggle not found");
-    (toggle as HTMLElement).click();
-    await Promise.resolve();
-    expect(host.querySelector(".rs-cat-label")?.textContent).toBe("Keycloak database");
-  });
-
   it("keeps the ID in the anchor, so a review target survives a rewording", () => {
     const host = mountLabelled("ja");
     const anchored = [...host.querySelectorAll("[id]")].map((e) => e.id).join(" ");
@@ -479,15 +469,6 @@ describe("viewer: product display name", () => {
     const host = mount();
     const cell = rowOf(host, "saml.signature.algorithm").querySelector(".rs-col-key");
     expect(cell?.textContent).toContain('attributes["saml.signature.algorithm"]');
-  });
-
-  it("switches the label with the language toggle", async () => {
-    const host = mount();
-    const toggle = [...host.querySelectorAll("button")].find((b) => /^(EN|JA)$/.test((b.textContent ?? "").trim()));
-    (toggle as HTMLElement).click();
-    await Promise.resolve();
-    const cell = rowOf(host, "saml.signature.algorithm").querySelector(".rs-col-key");
-    expect(cell?.textContent).toContain("Signature algorithm");
   });
 
   it("falls back to the key for a setting the product does not name", () => {
@@ -660,15 +641,6 @@ describe("viewer: sheet label", () => {
     expect(tabs(mountSheets("ja"))).toEqual(["OS 設定", "Keycloak 設定"]);
     document.body.innerHTML = "";
     expect(tabs(mountSheets("en"))).toEqual(["OS baseline", "Keycloak configuration"]);
-  });
-
-  it("switches with the language toggle, live", async () => {
-    const host = mountSheets("ja");
-    const toggle = [...host.querySelectorAll("button")].find((b) => /^(EN|JA)$/.test((b.textContent ?? "").trim()));
-    if (!toggle) throw new Error("language toggle not found");
-    (toggle as HTMLElement).click();
-    await Promise.resolve();
-    expect(tabs(host)).toEqual(["OS baseline", "Keycloak configuration"]);
   });
 
   it("heads the sheet with the label too, not just the tab", () => {
@@ -2180,17 +2152,16 @@ describe("option labels", () => {
     expect(labels(host).some((l) => l.includes("READ_ONLY") || l.includes("Read only"))).toBe(false);
   });
 
-  it("follows the language toggle, and falls back to English where the product has no translation", async () => {
+  it("falls back to English where the product has no translation", () => {
     const host = mountOptioned("ja");
     // `2` is translated, `1` is not — and showing the English name beats
     // showing nothing, which is what a bare code already was.
     expect(labels(host)).toContain("サブツリー");
     expect(labels(host)).toContain("One Level");
-    const toggle = [...host.querySelectorAll("button")].find((b) => /^(EN|JA)$/.test((b.textContent ?? "").trim()));
-    if (!toggle) throw new Error("language toggle not found");
-    (toggle as HTMLElement).click();
-    await Promise.resolve();
-    expect(labels(host)).toContain("Subtree");
+  });
+
+  it("names them in English in an English document", () => {
+    expect(labels(mountOptioned("en"))).toContain("Subtree");
   });
 });
 

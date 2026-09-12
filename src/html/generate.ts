@@ -3,6 +3,7 @@ import { fileURLToPath } from "url";
 import type { ParameterSheetInput, VersionedSheetInput, SheetVersion, GenerateOptions } from "../types.js";
 import { customStyles } from "./styles.js";
 import { toBase64Gzip, BOOTSTRAP } from "./compress.js";
+import { localizeVersions } from "../localize.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -120,7 +121,11 @@ export async function generateHtml(
   const reviewEnabled = options?.review !== false;
   const promptEnabled = options?.prompt !== false;
   const lang = options?.lang ?? "ja";
-  const data = normalize(input);
+  // The content's language is decided HERE and never again: the payload carries
+  // resolved strings, so nothing downstream can re-resolve a description into
+  // the other language — see localize.ts.
+  const raw = normalize(input);
+  const data = { ...raw, versions: localizeVersions(raw.versions, lang) };
   // The renderer travels only where it can be used: a document sheet whose
   // markdown IS the page, which the viewer lays out itself. A prose document
   // is already rendered into `html` at build time and needs nothing.
