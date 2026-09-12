@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: review_sheet_collect
+  namespace: review_sheet
+  description: >-
+    Gather what `review-sheet judge` needs from one host — the files the sheets
+    describe, the commands their channels ask for, and the files those files
+    name — from the collect plan the tool derives.
+  license: MIT
+  min_ansible_version: "2.14"
+  galaxy_tags: [review_sheet, testing, compliance]
+dependencies: []

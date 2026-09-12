@@ -1,0 +1,10 @@
+---
+# The plan, as `review-sheet collect-plan -i <model> -o <file>` wrote it.
+review_sheet_collect_plan: ""
+# Which environment's files to read. The commands are not per environment — a
+# channel covers a row, and a row's environments are the sheet's.
+review_sheet_environment: ""
+# Where the result is left, as a fact on each host. A project adds whatever only
+# it can gather (a product's API, a probe of its own) to the same shape before
+# writing the observation out.
+review_sheet_fact: review_sheet_observation

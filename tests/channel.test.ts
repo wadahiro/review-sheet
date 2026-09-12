@@ -106,10 +106,20 @@ describe("what a collector has to gather", () => {
     registerChannel(commandChannel({ sheet: "os baseline", keys: ["selinux_state"], command: "getenforce", read: { whole: true } }));
     const withFile = (key: string, file: string): TestItem => ({ ...item(key, "1"), file }) as TestItem;
     const p = planOf([item("firewalld.ssh", "true"), item("selinux_state", "disabled"), withFile("Listen", "/etc/httpd/conf/httpd.conf")]);
-    expect(collectPlan(p)).toEqual({
-      files: { stg: ["/etc/httpd/conf/httpd.conf"] },
-      commands: ["firewall-cmd --list-services", "getenforce"],
-    });
+    const got = collectPlan(p);
+    expect(got.files).toEqual({ stg: ["/etc/httpd/conf/httpd.conf"] });
+    expect(got.commands).toEqual(["firewall-cmd --list-services", "getenforce"]);
+    // …and HOW to find the files that one NAMES, which is httpd's grammar and
+    // not something a collector can be expected to know.
+    expect(got.includes).toEqual([
+      {
+        file: "/etc/httpd/conf/httpd.conf",
+        pattern: "(?m)^\\s*Include(?:Optional)?\\s+(\\S+)",
+        root: '(?m)^\\s*ServerRoot\\s+"?([^"\\s]+)"?',
+      },
+    ]);
+    // A file whose product names nothing gets no instructions rather than a guess.
+    expect(collectPlan(planOf([withFile("x", "/etc/chrony.conf")])).includes).toEqual([]);
   });
 
   it("asks for no command when no channel covers anything", () => {

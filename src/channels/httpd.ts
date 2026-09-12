@@ -64,3 +64,28 @@ export function lineOfCompiledIn(text: string | null | undefined, directive: str
   const at = text.split("\n").findIndex((l) => new RegExp(`^\\s*-D\\s+${name}="`).test(l));
   return at < 0 ? undefined : at + 1;
 }
+
+// WHICH files a configuration NAMES, and how to resolve them.
+//
+// "Nothing sets this, so the product's default applies" is a claim about every
+// file the subject reads, and a collector has to fetch them before anyone can
+// judge it. Where they are is httpd's grammar: `Include` and `IncludeOptional`
+// take a glob, and a relative one is resolved against `ServerRoot` — which the
+// file itself states. A project writing that out was writing httpd's manual
+// into its playbook, and getting `IncludeOptional` or the ServerRoot arm wrong
+// costs it nothing visible: the files are simply not fetched, and every row
+// that depended on them says the default applies.
+//
+// Keyed off the file's NAME, because the collect plan is made before anything
+// has been read — there is no content to detect from yet.
+export function includeSyntaxFor(path: string): { pattern: string; root?: string }[] {
+  if (!/httpd\.conf$|apache2\.conf$|\/conf\.d\/.*\.conf$/.test(path)) return [];
+  return [
+    {
+      // The glob each Include line carries.
+      pattern: "(?m)^\\s*Include(?:Optional)?\\s+(\\S+)",
+      // …and what a relative one is relative to.
+      root: '(?m)^\\s*ServerRoot\\s+"?([^"\\s]+)"?',
+    },
+  ];
+}

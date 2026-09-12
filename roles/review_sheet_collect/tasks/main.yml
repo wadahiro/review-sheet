@@ -1,0 +1,112 @@
+---
+# EVERYTHING A COLLECTOR DOES THAT IS NOT ABOUT THIS PROJECT.
+#
+# `review-sheet collect-plan` derives what has to be gathered — every deployed
+# file the sheets describe, every command their channels ask for, and how to
+# find the files those files NAME. This reads that plan and produces one host's
+# half of an observation, in the shape `judge` declares (see the tool's
+# observations schema).
+#
+# WHAT IT DOES NOT DO is decide what to ask. A probe of a product's own API, an
+# intrusive restart, a realm dumped through an admin client — those are the
+# project's, and they are added to this fact before it is written out.
+#
+# Every failure is RECORDED rather than fatal: a file the host does not have and
+# a command it does not carry are answers ("this environment does not apply that
+# setting"), and the judge says so per row. A collection that stops at the first
+# missing file answers nothing at all.
+
+- name: Load the collect plan
+  ansible.builtin.set_fact:
+    _rs_plan: "{{ lookup('file', review_sheet_collect_plan) | from_json }}"
+
+- name: Read every deployed file the sheets describe
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop: "{{ _rs_plan.files[review_sheet_environment] | default([]) }}"
+  register: _rs_files
+  failed_when: false
+
+- name: Ask the host everything the sheets say has to be asked
+  ansible.builtin.command: "{{ item }}"
+  loop: "{{ _rs_plan.commands | default([]) }}"
+  register: _rs_commands
+  changed_when: false
+  failed_when: false
+
+- name: The deployed files, as text
+  ansible.builtin.set_fact:
+    _rs_text: >-
+      {{ dict(_rs_files.results | selectattr('content', 'defined') | map(attribute='item')
+              | zip(_rs_files.results | selectattr('content', 'defined') | map(attribute='content')
+                    | map('b64decode'))) }}
+
+# WHICH files each one names, using the product's own grammar as the plan states
+# it — `Include`/`IncludeOptional` and the root a relative glob resolves
+# against. Nothing here knows that httpd has such a thing.
+- name: The globs each deployed file names, and what a relative one is relative to
+  ansible.builtin.set_fact:
+    _rs_globs: >-
+      {{ _rs_globs | default({}) | combine({
+           item.file: _rs_text[item.file] | regex_findall(item.pattern) }) }}
+    _rs_roots: >-
+      {{ _rs_roots | default({}) | combine({
+           item.file: (_rs_text[item.file] | regex_search(item.root, '\1') | default([''], true) | first)
+                      if item.root is defined else '' }) }}
+  loop: "{{ _rs_plan.includes | default([]) }}"
+  loop_control:
+    label: "{{ item.file }}"
+  when: item.file in _rs_text
+
+- name: Find what those globs match
+  ansible.builtin.find:
+    paths: >-
+      {{ (item.1 if item.1.startswith('/') else _rs_roots[item.0.key] ~ '/' ~ item.1) | dirname }}
+    patterns: "{{ item.1 | basename }}"
+  loop: "{{ _rs_globs | default({}) | dict2items | subelements('value') }}"
+  loop_control:
+    label: "{{ item.0.key }} -> {{ item.1 }}"
+  register: _rs_found
+
+- name: Group what was found under the file that named it
+  ansible.builtin.set_fact:
+    _rs_included_by: >-
+      {{ _rs_included_by | default({}) | combine({
+           item: _rs_found.results | selectattr('item.0.key', 'equalto', item)
+                 | map(attribute='files') | flatten | map(attribute='path') | list }) }}
+  loop: "{{ (_rs_globs | default({})).keys() | list }}"
+
+- name: Read them too
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop: >-
+    {{ _rs_found.results | map(attribute='files') | flatten | map(attribute='path') | unique | list }}
+  register: _rs_extra
+  failed_when: false
+
+# NULL where the host does not carry the command, and the output where it does:
+# the judge has to tell "this host says Disabled" from "this host has no
+# getenforce", and an empty string cannot say which. A command that FAILED but
+# still printed is kept — `rpm -q` exits non-zero for a batch with one package
+# missing and prints the rest, and discarding that loses every answer it gave.
+- name: Shape what each command said
+  ansible.builtin.set_fact:
+    _rs_commands_map: >-
+      {{ _rs_commands_map | default({}) | combine({
+           item.item: (item.stdout if (item.rc == 0 or item.stdout != '') else None) }) }}
+  loop: "{{ _rs_commands.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: One host's half of an observation
+  ansible.builtin.set_fact:
+    "{{ review_sheet_fact }}":
+      # A file the host does not have is absent from the map, which the judge
+      # reads as "not there" and reports against every row of it.
+      files: "{{ _rs_text }}"
+      included_by: "{{ _rs_included_by | default({}) }}"
+      included: >-
+        {{ dict(_rs_extra.results | selectattr('content', 'defined') | map(attribute='item')
+                | zip(_rs_extra.results | selectattr('content', 'defined') | map(attribute='content')
+                      | map('b64decode'))) }}
+      commands: "{{ _rs_commands_map | default({}) }}"

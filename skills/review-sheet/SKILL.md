@@ -3798,6 +3798,27 @@ Three ways to read an output and no more, each a shape a real command has
 rather than a step in a language — a general evaluator here would put a
 project's rules where no test of this tool can reach them.
 
+**The collecting itself is mostly not a project's either.** `collect-plan`
+already says what to gather; reading those files, running those commands, and
+following the files a configuration NAMES is the same work in every project, so
+it ships as an Ansible role (`roles/review_sheet_collect`) that turns the plan
+into one host's half of an observation:
+
+```yaml
+- hosts: all
+  roles:
+    - role: review_sheet_collect
+      review_sheet_collect_plan: "{{ out }}/collect.json"
+      review_sheet_environment: "{{ env }}"
+```
+
+A project adds what only it can gather — a probe of its product's API, an
+intrusive restart, a document dumped through an admin client — to the fact the
+role leaves, and writes the observation out. WHICH syntax names further files
+is the product's and travels in the plan (`includes:`): httpd's
+`Include`/`IncludeOptional` resolved against its `ServerRoot`, which every
+project that wrote it out was copying from httpd's manual into a playbook.
+
 **The axis is the channel, not whoever collects.** Ansible is what reaches a
 host; `getenforce` reads the same whether Ansible, Salt or a person ran it, and
 this tool runs none of them. Which is why a channel declares what it NEEDS:
