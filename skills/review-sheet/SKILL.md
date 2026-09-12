@@ -3613,9 +3613,19 @@ field something else.
 
 ```yaml
 documents:
-  - { sheet: keycloak realm,     document: "{component}", address: "{key}" }   # a template
-  - { sheet: aws infrastructure, router: aws-rds }                             # …or a plugin
+  - { sheet: keycloak realm,     document: "{component}" }   # address derived from the binding
+  - { sheet: aws infrastructure, router: aws-rds }           # …or a plugin routes it
 ```
+
+**Say which document; the address usually derives.** Where a row sits in a
+product's own export is the product's shape, not yours, so a sheet bound to
+`keycloak-realm`, `keycloak-client` or `keycloak-ldap` needs no `address:` — the
+build fills it in from the binding and prints what it used. State one only to
+override, or for a sheet whose binding cannot say; an entry left with no address
+at all fails the build rather than going quietly unanswered. `substitute:` stays
+yours either way: it varies between sheets of one product, so it is a fact about
+your data rather than about the product.
+
 
 `aurora.aws_rds_cluster_parameter_group.this.parameter[name=max_connections].value`
 is `Parameters[ParameterName=max_connections].ParameterValue`, and that relation
@@ -3790,7 +3800,19 @@ was read from, carries those files as evidence, and runs the coverage check.
 enforcing, which services the firewall permits, what a product says its
 effective configuration is — every project doing infrastructure tests writes
 that table, and before this there was no shape for it, so every project invented
-one too. Declared as DATA in the build spec:
+one too.
+
+**Most of them you no longer write.** An entry carries two unrelated things:
+WHICH rows, and HOW to read them. The second is the product's — `getenforce` is
+how SELinux states its mode in every project there is — so review-sheet ships
+it, keyed by the dictionary product a sheet binds. That binding already selects
+exactly the right rows, so **a sheet bound to `selinux`, `selinux-boolean` or
+`firewalld-service` needs no `channels:` entry at all**: the build derives it
+and prints each one with the keys it covers. Declare an entry only for a row no
+dictionary binding reaches (a product's own version, say), or to override what
+is shipped — a declared entry always wins over a derived one, per row.
+
+The shape, for when you do declare one:
 
 ```yaml
 channels:

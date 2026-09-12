@@ -169,6 +169,88 @@ export type CommandChannelSpec = {
   read: CommandRead;
 };
 
+// ---------------------------------------------------------------------------
+// How a PRODUCT reports its own settings — the half of a `channels:` entry that
+// was never the project's.
+//
+// A declared entry carries two unrelated things: WHICH rows (a sheet, some
+// keys) and HOW to read them (a command, and the shape of its output). The
+// second is the product's, identically, in every project that runs it —
+// `getenforce` is how SELinux states its mode and always will be — and a
+// project writing it down is writing product knowledge into project config,
+// where no test of this tool reaches it. Measured on one real spec: three of
+// four entries were nothing but this.
+//
+// Keyed by the DICTIONARY PRODUCT a sheet binds, because that binding already
+// selects exactly the right rows — verified against the same spec: the rows a
+// `getenforce` entry named and the rows bound to `selinux` are the same set,
+// and likewise for `selinux-boolean` and `firewalld-service`. So a recipe needs
+// no scope of its own; the build derives it (see assemble-spec.ts).
+//
+// Not in the dictionary YAML: a dictionary is written wholesale by a generator
+// from the product's own documentation, and a man page does not say which
+// command reports the setting — a hand-added recipe would be destroyed by the
+// next regeneration. This is code, like the judging half beside it.
+export type ProductRead = {
+  // The product name a `dictionaries:` binding names. Versionless: a product
+  // that changed how it reports a setting would need a new recipe, and none of
+  // the ones here ever has. Add a version when one does, not before.
+  product: string;
+  command: string;
+  read: CommandRead;
+};
+
+const reads = sharedRegistry<ProductRead>("review-sheet.product-reads.v1");
+
+export function registerProductRead(r: ProductRead): void {
+  const i = reads.findIndex((x) => x.product === r.product);
+  if (i >= 0) reads[i] = r;
+  else reads.push(r);
+}
+
+export function getProductRead(product: string): ProductRead | undefined {
+  return reads.find((r) => r.product === product);
+}
+
+export function listProductReads(): ProductRead[] {
+  return [...reads];
+}
+
+// WHERE a row sits in what a product's own API returned — the other half of a
+// `documents:` entry, and the other thing that was never the project's.
+//
+// `clients[clientId={component}].{key}` is the shape of a Keycloak realm
+// export, not a decision anyone made here, and a project that spells it even
+// slightly wrong gets rows that silently resolve to nothing. The realm DOCUMENT
+// a sheet is compared against (`poc`, `master`) stays the project's, as does
+// `substitute:` — measured, that one varies BETWEEN SHEETS OF ONE PRODUCT (the
+// project's own clients carry `$(env:…)` references and the product's default
+// clients do not), so it is a fact about the data, not about the product.
+//
+// Per SHEET rather than per row, because a `documents:` entry is: the sheet's
+// one bound product with an address recipe decides it, and two would be an
+// ambiguity the build refuses rather than resolves.
+export type ProductAddress = {
+  product: string;
+  address: string;
+};
+
+const addresses = sharedRegistry<ProductAddress>("review-sheet.product-addresses.v1");
+
+export function registerProductAddress(a: ProductAddress): void {
+  const i = addresses.findIndex((x) => x.product === a.product);
+  if (i >= 0) addresses[i] = a;
+  else addresses.push(a);
+}
+
+export function getProductAddress(product: string): ProductAddress | undefined {
+  return addresses.find((a) => a.product === product);
+}
+
+export function listProductAddresses(): ProductAddress[] {
+  return [...addresses];
+}
+
 const lineOf = (text: string, re: RegExp): number | undefined => {
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) if (re.test(lines[i]!)) return i + 1;

@@ -304,10 +304,18 @@ const specSchema = {
           substitute: { type: "string" },
           router: { type: "string" },
         },
-        // Either the entry SAYS where the value sits, or it names the product
-        // plugin that does. An entry that does neither answers nothing, and
-        // silently — which is the one thing a declaration must never do.
-        oneOf: [{ required: ["document", "address"] }, { required: ["router"] }],
+        // Either the entry names the DOCUMENT its rows are compared against,
+        // or it names the product plugin that routes them. Where in that
+        // document a row sits (`address`) may be left out: the build derives
+        // it from the sheet's binding, since the shape of a product's own
+        // export is the product's fact (see derive-wiring.ts).
+        //
+        // The gate that used to live here — an entry saying neither answers
+        // nothing, and silently, which is the one thing a declaration must
+        // never do — has NOT been dropped. It moved to after derivation
+        // (assembleFromSpecWithReport), which is the only place that can tell
+        // "no address" from "an address nobody had to write".
+        oneOf: [{ required: ["document"] }, { required: ["router"] }],
       },
     },
     not_checked: {

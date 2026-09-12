@@ -1191,7 +1191,7 @@ async function runSpecImport(opts: {
     // just as well, and a committed input.json shouldn't bake in a local
     // filesystem layout. This means verify/apply must be run from the same CWD
     // used for `import --spec`, same as every other path this CLI records.
-    const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, layoutNotes } = assembleFromSpecWithReport(spec, {
+    const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, layoutNotes, derivedChannels, derivedDocuments } = assembleFromSpecWithReport(spec, {
       readFile,
       listDir,
       readBinary,
@@ -1300,6 +1300,31 @@ async function runSpecImport(opts: {
     // one of them is worth a human or AI glance, printed one per line to
     // stdout, unconditionally (independent of --bind-report). A CI job that
     // wants "did any new inference appear" greps stdout, never stderr.
+    // The channels nobody wrote. Printed with the rows each one answers (R4:
+    // an aggregate ships its exemplars) because this is config appearing from
+    // nowhere as far as the author is concerned — a count alone would be
+    // unreviewable, and the keys are exactly what makes it checkable.
+    for (const d of derivedChannels.derived) {
+      console.error(
+        `channel: ${d.sheet} <- ${d.product} — \`${d.command}\` answers ${d.keys.length} row(s): ${d.keys.slice(0, 4).join(", ")}` +
+          (d.keys.length > 4 ? `, +${d.keys.length - 4} more` : "") +
+          " (derived from the binding — no declaration needed)"
+      );
+    }
+    for (const d of derivedDocuments.addresses) {
+      console.error(`document: ${d.sheet} — rows sit at \`${d.address}\` (derived from the binding — no declaration needed)`);
+    }
+    for (const d of derivedDocuments.skipped) {
+      if (d.kind === "declared") continue; // the spec said it itself
+      console.error(`Warning: no address derived for ${d.sheet}: ${d.reason}`);
+    }
+    // A recipe that could not be scoped. Never silent: the product is bound, a
+    // reading for it exists, and the rows still went unanswered.
+    for (const s of derivedChannels.skipped) {
+      if (s.kind === "claimed") continue; // the project declared it itself — nothing lost
+      console.error(`Warning: no channel derived for ${s.sheet} <- ${s.product}: ${s.reason}`);
+    }
+
     const totalBindings = Object.values(binding.byMethod).reduce((a, b) => a + b, 0);
     if (totalBindings > 0) {
       const tally = [...BIND_METHODS, "none" as const].map((m) => `${binding.byMethod[m]} ${m}`).join(", ");

@@ -14,6 +14,9 @@
 // recorded in the model's source maps.
 
 import { resolve as resolvePath } from "node:path";
+import { deriveChannels, deriveDocuments, type DerivedChannels, type DerivedDocuments } from "./derive-wiring.js";
+import { getProductRead, getProductAddress } from "./channel.js";
+import "./channels/reads.js";
 import type { DictionaryBinding } from "./metadata.js";
 import {
   assembleSheetsWithReport,
@@ -82,6 +85,12 @@ export function assembleFromSpecWithReport(
   categoryWarnings: string[];
   // Advice about a sheet's layout — see assembleSheetsWithReport.
   layoutNotes: string[];
+  // The `channels:` entries the bindings produced, and the ones they could not
+  // — see derive-channels.ts. Reported rather than merely appended: a channel
+  // nobody wrote is as surprising as a row nobody wrote.
+  derivedChannels: DerivedChannels;
+  // The `documents:` addresses the bindings supplied — see derive-wiring.ts.
+  derivedDocuments: DerivedDocuments;
 } {
   const resolvePathOpt = opts.resolve ?? ((p: string): string => resolvePath(opts.specDir, p));
 
@@ -214,7 +223,7 @@ export function assembleFromSpecWithReport(
     if (sheetSpec.dictionaries) dictionaries[sheetSpec.name] = sheetSpec.dictionaries;
   }
 
-  return assembleSheetsWithReport(inputs, {
+  const assembled = assembleSheetsWithReport(inputs, {
     readFile: opts.readFile,
     projectPath: spec.enrich?.project,
     metadataDirs: spec.enrich?.metadata_dirs,
@@ -252,6 +261,38 @@ export function assembleFromSpecWithReport(
     hooks: opts.hooks,
     dictionaries,
   });
+
+  // The channels the project did not have to write. Derived AFTER assembly
+  // because the bindings are what scope them, and they exist only once every
+  // sheet has bound. Appended to whatever the spec declared — a declared entry
+  // always wins, which `deriveChannels` enforces by skipping rows it claims.
+  const derivedChannels = deriveChannels(assembled.binding.rows, spec.channels, getProductRead);
+  if (derivedChannels.channels.length > 0) {
+    assembled.input.channels = [...(assembled.input.channels ?? []), ...derivedChannels.channels];
+  }
+
+  // …and the same for where a row sits in what the product's API returned. This
+  // one FILLS IN a declaration the project already made (the entry names its
+  // document; only the address is supplied), so it edits the entries in place
+  // rather than appending new ones.
+  const derivedDocuments = deriveDocuments(assembled.binding.rows, spec.documents, getProductAddress);
+  // The gate the spec schema used to hold (see spec.ts's `documents`): an entry
+  // that says where nothing sits answers nothing, silently. Only here can
+  // "nobody stated an address" be told apart from "nobody had to". Every
+  // offender at once, the same way every other check in this pipeline reports.
+  if (derivedDocuments.unresolved.length > 0) {
+    throw new Error(
+      `documents: ${derivedDocuments.unresolved.length} entr(y/ies) have no address, so their rows would go unanswered with nothing said:\n` +
+        derivedDocuments.unresolved.map((u) => `  ${u.sheet}: ${u.reason}`).join("\n")
+    );
+  }
+  if (derivedDocuments.addresses.length > 0) {
+    const fill = new Map(derivedDocuments.addresses.map((a) => [a.sheet, a.address]));
+    assembled.input.documents = (assembled.input.documents ?? []).map((d) =>
+      d.address === undefined && fill.has(d.sheet) ? { ...d, address: fill.get(d.sheet)! } : d
+    );
+  }
+  return { ...assembled, derivedChannels, derivedDocuments };
 }
 
 export function assembleFromSpec(spec: BuildSpec, opts: SpecAssembleOpts): ParameterSheetInput {
