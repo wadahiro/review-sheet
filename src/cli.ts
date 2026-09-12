@@ -1,11 +1,14 @@
 #!/usr/bin/env bun
 
 import { Command } from "commander";
-import { readFileSync, writeFileSync, readdirSync } from "fs";
-import { resolve, relative, join } from "path";
+import { readFileSync, writeFileSync, readdirSync, mkdirSync } from "fs";
+import { createHash } from "crypto";
+import { resolve, relative, join, dirname, basename } from "path";
 import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
-import { langFallbacks } from "./localize.js";
+import { langFallbacks, localizeVersions } from "./localize.js";
+import { toMarkdownSet, href } from "./md-set.js";
+import type { ParamData } from "./prompt.js";
 import { validateInput, validateReview, validateResults, validateObservation, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
 import { renderTestDoc, renderExcluded, injectBlocks, unitDocuments } from "./testdoc.js";
@@ -346,11 +349,92 @@ function parseAllow(spec: string | undefined): Set<string> | undefined {
   return new Set(names);
 }
 
+// The model as a set of markdown files, written out.
+//
+// The addresses are LINKS, relative to the file the row is in — which is what
+// makes a handed-over set navigable: a reader, or the assistant they hand it
+// to, follows the link to the line and edits the configuration file, rather
+// than editing the sheet and hoping somebody applies it. A plain markdown
+// reader resolves them; so does an editor; so does a forge.
+//
+// The stamp goes in the index and says which model this set was written from.
+// `verify` reads it back to say whether the committed markdown still describes
+// the model beside it.
+function writeMarkdownSet(
+  input: ParameterSheetInput | VersionedSheetInput,
+  outDir: string,
+  lang: "ja" | "en",
+  sources: boolean
+): void {
+  // A markdown set is a SNAPSHOT, so it is written from the current version —
+  // the newest one, which is what `assembleVersions` puts last. The comparison
+  // a version history is for lives in the HTML.
+  const versions = "versions" in input ? input.versions : [{ version: "current", sheets: input.sheets, columns: input.columns, groups: input.groups }];
+  const current = localizeVersions(versions, lang)[versions.length - 1]!;
+  const data = { metadata: input.metadata, ...current } as never as Parameters<typeof toMarkdownSet>[0];
+
+  // Identifies the MODEL, not this rendering: the same model written twice in
+  // two languages is the same model, and a stamp that moved with the rendering
+  // could not say whether the configuration had changed underneath.
+  const stamp = createHash("sha256").update(JSON.stringify(input)).digest("hex").slice(0, 16);
+
+  const link = (file: string, line: number | undefined, fromDir: string): string => {
+    const rel = relative(fromDir, file).split("\\").join("/");
+    const text = line === undefined ? basename(file) : `${basename(file)}:${line}`;
+    return `[${text}](${href(rel)}${line === undefined ? "" : `#L${line}`})`;
+  };
+
+  const { files, problems } = toMarkdownSet(data, lang, {
+    stamp,
+    ...(sources
+      ? {
+          source: (sheetPath: string) => {
+            const fromDir = join(outDir, dirname(sheetPath));
+            return (row: ParamData) => {
+              // One address, or one per environment where they differ — which
+              // for a per-environment row is the ordinary case, since that is
+              // what having a file per environment means. Deduped by address:
+              // three environments written in one file is one link, not three.
+              // A location with no file is a row that says where in a file it
+              // is without saying which — nothing to link, and the cell is left
+              // empty rather than pointing at the document's own directory.
+              if (row.source?.file !== undefined) return link(row.source.file, row.source.line, fromDir);
+              const seen = new Map<string, string[]>();
+              for (const i of row.instances ?? []) {
+                if (i.source?.file === undefined) continue;
+                const at = `${i.source.file}#${i.source.line ?? ""}`;
+                seen.set(at, [...(seen.get(at) ?? []), i.name]);
+              }
+              if (seen.size === 0) return undefined;
+              const shown = [...seen.entries()].map(([at, names]) => {
+                const [file = "", line = ""] = at.split("#");
+                const one = link(file, line === "" ? undefined : Number(line), fromDir);
+                return seen.size === 1 ? one : `${names.join(", ")}: ${one}`;
+              });
+              return shown.join("<br>");
+            };
+          },
+        }
+      : {}),
+  });
+
+  for (const f of files) {
+    const at = join(outDir, f.path);
+    mkdirSync(dirname(at), { recursive: true });
+    writeFileSync(at, f.text.endsWith("\n") ? f.text : `${f.text}\n`, "utf-8");
+  }
+  // Never silent about a sheet that did not land where its chapter says: a set
+  // whose index and whose files disagree is the failure this is for.
+  for (const p of problems) console.error(`Warning: ${p}`);
+  console.error(`Generated: ${files.length} file(s) under ${outDir}/ (model ${stamp})`);
+}
+
 program
   .command("generate")
   .description("Generate parameter sheet HTML")
   .requiredOption("-i, --input <file...>", "Input JSON file(s); pass several snapshots to build a version history")
-  .option("-o, --output <file>", "Output file (default: stdout)")
+  .option("-o, --output <file>", "Output file — or, with --format md, the DIRECTORY the set is written to (default: stdout)")
+  .option("--format <kind>", "html (default) | md — markdown is the same model as a set of files, one per sheet, with the chapter tree as directories", "html")
   .option("--title <title>", "Document title")
   .option("--readonly", "A document that can only be read: no review, no editing, no prompt")
   // Kept working: it named only the review UI, but by the time editing and the
@@ -364,7 +448,7 @@ program
   .option("--sheets <names...>", "Make this document out of these sheets only. A requirements note, a parameter sheet and a test record are separate documents in the world — approved separately, revised on their own cycles — and one build can produce each of them. The sheets keep the document's own order; what is left out is reported")
   .option("--instances <names...>", "Deliver only these environments: the columns, the per-environment values and the previews rendered for the others are left out of the document. Not every environment a build knows belongs to the same handover — one of them is usually the one an engineer keeps in order to build the others. What it drops is reported, including rows left with nothing to show")
   .option("--evidence <file>", "Carry the RAW material the test results point at — the deployed files as the hosts held them, the output of the commands that were run — as documents in the page, beside the verdicts that cite them. Without it a verdict names an address on a machine the reader cannot reach. The judge that wrote the results decided what may travel; this only carries it, and --instances narrows it exactly as it narrows values")
-  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; lang: string; instances?: string[]; sheets?: string[]; evidence?: string }) => {
+  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; lang: string; format: string; instances?: string[]; sheets?: string[]; evidence?: string }) => {
     try {
       const files = opts.input;
       let input: ParameterSheetInput | VersionedSheetInput;
@@ -465,6 +549,12 @@ program
           `Note: ${untranslated.length} field(s) have no ${lang} text and are shown in the other language — ${shown.join(", ")}${untranslated.length > 5 ? ", …" : ""}`
         );
       }
+      if (opts.format === "md") {
+        if (opts.output === undefined) throw new Error("--format md writes a SET of files, so it needs a directory: -o <dir>");
+        writeMarkdownSet(input, opts.output, lang, opts.sources);
+        return;
+      }
+      if (opts.format !== "html") throw new Error(`--format takes html or md, not ${opts.format}`);
       const caps = parseAllow(opts.allow);
       // Both spellings of "read nothing else into this document".
       const readable = !(opts.readonly === true || opts.review === false);

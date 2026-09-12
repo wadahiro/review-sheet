@@ -50,6 +50,12 @@ export type MarkdownRow = {
   default: string;
   description: string;
   remarks: string;
+  // WHERE the value is written, as the text a reader follows — a relative link
+  // to the real configuration file, or nothing. Written by the CALLER
+  // (`ProjectionOptions.source`), because how far it is from this document to
+  // that file is a fact about where the document was put, which the projection
+  // does not know. Last column, so a table without it is the same table.
+  source?: string;
 };
 
 // A heading and the rows under it. The heading path IS the category path, so
@@ -139,6 +145,13 @@ export type ProjectionOptions = {
   // it is what makes "hide the rows nobody set" a rule about the TEXT — which
   // is all a document has once the model is gone.
   markUnset?: boolean;
+  // The address column, as a function of the row: the caller decides what a
+  // link from THIS document to that file looks like, and returning undefined
+  // leaves the column out. This is the half of the projection that makes a
+  // handed-over markdown set navigable — a reader (or the AI they hand it to)
+  // follows the link to the line and edits the configuration, rather than
+  // editing the sheet and hoping somebody applies it.
+  source?: (p: ParamData) => string | undefined;
 };
 
 const INDENT = "  ";
@@ -179,6 +192,7 @@ function rowOf(p: ParamData, instances: string[], l: Lang, opts: ProjectionOptio
     default: cell(applies ?? ""),
     description: lang(p.description, l),
     remarks: lang(p.remarks, l),
+    ...(opts.source === undefined ? {} : { source: cell(opts.source(p) ?? "") }),
   };
 }
 
@@ -270,18 +284,19 @@ function valueColumns(doc: MarkdownSheet): string[] {
 // (see `parseSheetMarkdown`), so a reviewer may rename a column, translate the
 // row, or leave it as it is, and the document still reads.
 const HEAD_BY_LANG = {
-  ja: { key: "設定項目", value: "設定値", default: "デフォルト値", description: "説明", remarks: "備考" },
-  en: { key: "Parameter", value: "Value", default: "Default", description: "Description", remarks: "Remarks" },
+  ja: { key: "設定項目", value: "設定値", default: "デフォルト値", description: "説明", remarks: "備考", source: "定義場所" },
+  en: { key: "Parameter", value: "Value", default: "Default", description: "Description", remarks: "Remarks", source: "Written in" },
 } as const;
 
 // The columns, in the order the SHEET puts them — key, description, default,
 // then one per environment, then remarks (`leadingLines` in html/app.ts). Not an
 // order of this projection's own: a reader who has the sheet in front of them
 // and the same sheet as markdown must not have to re-learn where to look.
-type MarkdownColumns = { description: boolean; remarks: boolean };
+type MarkdownColumns = { description: boolean; remarks: boolean; source: boolean };
 const columnsOf = (doc: MarkdownSheet): MarkdownColumns => ({
   description: doc.sections.some((s) => s.rows.some((r) => r.description !== "")),
   remarks: doc.sections.some((s) => s.rows.some((r) => r.remarks !== "")),
+  source: doc.sections.some((s) => s.rows.some((r) => (r.source ?? "") !== "")),
 });
 
 // Which columns of a document are environments.
@@ -417,6 +432,7 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
       HEAD.default,
       ...cols.map((c) => c || HEAD.value),
       ...(shown.remarks ? [HEAD.remarks] : []),
+      ...(shown.source ? [HEAD.source] : []),
     ];
     out.push(`| ${header.join(" | ")} |`);
     out.push(`| ${header.map(() => "---").join(" | ")} |`);
@@ -430,6 +446,11 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
         escapeCell(row.default),
         ...cols.map((c) => escapeCell(row.values[c] ?? "")),
         ...(shown.remarks ? [escapeCell(row.remarks)] : []),
+        // NOT escaped as a cell: this is a markdown link the caller composed,
+        // and escaping it would put the brackets on the page instead of the
+        // address behind them. A `|` in a path would break the row — so the
+        // one character a table cannot hold is the one thing removed.
+        ...(shown.source ? [(row.source ?? "").replace(/\|/g, "\\|")] : []),
       ];
       out.push(`| ${cells.join(" | ")} |`);
     }
@@ -827,8 +848,16 @@ export function parseSheetMarkdown(text: string, instances: string[], l: Lang = 
 // The one entry point that takes a model sheet and returns text — everything
 // above it is the projection in pieces, and a caller that assembles them itself
 // would be deciding those two options again, differently.
-export function sheetToMarkdown(sheet: Sheet, lang: Lang): string {
+export function sheetToMarkdown(
+  sheet: Sheet,
+  lang: Lang,
+  source?: (p: ParamData) => string | undefined
+): string {
   return renderSheetMarkdown(
-    toMarkdownSheet(sheet as unknown as SheetData["sheets"][number], lang, { indent: true, markUnset: true })
+    toMarkdownSheet(sheet as unknown as SheetData["sheets"][number], lang, {
+      indent: true,
+      markUnset: true,
+      ...(source === undefined ? {} : { source }),
+    })
   );
 }
