@@ -27,7 +27,6 @@ review-sheet import   --spec review-sheet/build.yml   # build it from a declarat
 review-sheet generate -i input.json -o sheet.html   # build the HTML sheet
 review-sheet generate -i input.json --readonly -o sheet.html  # read-only copy
 review-sheet generate -i input.json --no-sources -o sheet.html  # hide WHERE each value is written (see below)
-review-sheet apply    -i input.json -r returned.html --emit-prompt  # the edited HTML is the review file; applies what a source map proves, prompts for the rest
 review-sheet validate -i input.json                 # a model
 review-sheet validate -i review.json                # a review export
 review-sheet validate -i <product>@<version>.yml    # a dictionary, or its .overlay.yml
@@ -41,7 +40,23 @@ review-sheet test-plan -i input.json -o plan.json   # what a unit test has to ch
 review-sheet validate -i results.json --plan plan.json  # do these answers answer that plan
 review-sheet test-doc -i input.json -r results.json --unit <name> -d record.md  # the tables, into the record a project wrote
 review-sheet generate -i input.json --evidence results.json -o sheet.html  # …carrying what the verdicts were read from
+review-sheet generate -i input.json --format md -o sheet/  # the same model as a markdown SET: one file per sheet, chapters as directories, + viewer.html
+review-sheet verify   -i input.json --md sheet/     # …and that a committed set still describes this model
 ```
+
+The generated HTML is READ, not edited. A sheet is a view of a model and the
+model is what the sources say, so a value that has moved is changed WHERE IT IS
+WRITTEN and the sheet is generated again. What a review produces is findings,
+and they leave through `apply -r review.json`, the AI prompt, or `serve`.
+
+`--format md` is how a sheet is HANDED OVER. It writes an index, one file per
+sheet with the chapter tree as directories, the rendered artifacts and collected
+evidence beside the chapter that describes them, and a `viewer.html` that opens
+on the set and takes a dropped folder. Every row carries the address it is
+written at as a link, so the recipient — or the assistant they hand the file to
+— follows it to the configuration file rather than editing the sheet and hoping
+somebody applies it. A project that keeps the repository commits the set and
+reviews `git diff` over it; `verify --md` is what says it has gone stale.
 
 ## Generating input.json from existing files
 
@@ -105,11 +120,16 @@ Procedure:
    comments or your knowledge — but give them **no `source`** (they are not in
    the deployed config).
    - **Multilingual prose.** `description` and `remarks` accept either a plain
-     string or a `{ en, ja }` language map; the viewer resolves the language at
-     display time, so the in-page language toggle switches the text live. Write
-     the map in **block style (one language per line)**, never flow style, so a
-     single-language edit is a one-line diff and adding a language is a one-line
-     append:
+     string or a `{ en, ja }` language map. The map is carried through the whole
+     pipeline because its two halves come from different places — a native
+     channel writes `en`, the project's `sheet.yml` writes `ja` — and it is
+     resolved once, when the document is GENERATED (`--lang`). There is no
+     switch in the page: a document that said two different things depending on
+     a button could not be projected to markdown, which holds one language.
+     Prose a project only has in the other language is shown in it and counted
+     by `generate`, rather than shown silently. Write the map in **block style
+     (one language per line)**, never flow style, so a single-language edit is a
+     one-line diff and adding a language is a one-line append:
 
      ```yaml
      # good — line-oriented, git-friendly

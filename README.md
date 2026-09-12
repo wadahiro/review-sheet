@@ -10,8 +10,12 @@ source map recording where it lives in the real files, so an approved change can
 be written to that line. Values that cannot be edited deterministically are
 collected into an AI prompt instead.
 
-- One HTML file. No server, no runtime dependencies; open it in a browser.
-- Reviewers edit values and leave comments, then export their feedback as
+- Two shapes, one model. **HTML** for reading and reviewing: one self-contained
+  file, no server, no runtime dependencies. **Markdown** (`--format md`) for
+  handing over: one file per sheet, the chapter tree as directories, every row
+  linked to the line it is written at — the shape a recipient maintains with an
+  assistant, and the one a repository diffs.
+- Reviewers propose values and leave comments, then export their feedback as
   `review.json`.
 - `apply` writes the approved value changes back to your config files, verified
   and idempotent. What it cannot apply deterministically becomes an AI prompt.
@@ -23,7 +27,10 @@ collected into an AI prompt instead.
   (EC2 vs. ECS, mid-migration) land on the same product keys, so
   `--equivalence` answers "are these configured the same" instead of just
   "what changed".
-- Japanese / English UI (`--lang`). The AI prompt is always English.
+- Japanese or English, decided when the document is generated (`--lang`) — for
+  the prose as much as for the chrome, so the markdown and the HTML say the same
+  words. Prose the project only has in the other language is shown in it and
+  COUNTED, rather than shown silently. The AI prompt is always English.
 
 ---
 
@@ -56,7 +63,9 @@ The examples below write `review-sheet` for brevity. Substitute
 You start by drafting a source-mapped model (`import`) and confirming it
 (`verify`). From there, there are two ways to collect the review and land the
 edits. Pick by whether the reviewers are remote (hand them a file) or local
-(edits go straight to disk).
+(edits go straight to disk). Whichever you pick, [handing the sheet
+over](#handing-a-sheet-over) afterwards is its own question, answered by
+`--format md`.
 
 ### A. Distribute the HTML (no server, no tooling for reviewers)
 
@@ -73,7 +82,7 @@ edits. Pick by whether the reviewers are remote (hand them a file) or local
 1. `import` → `verify`: draft `input.json` (with source maps) and confirm it.
 2. Refine: add descriptions and defaults, group settings, merge per-environment files.
 3. `generate`: build `sheet.html`, one self-contained file that opens in any browser.
-4. Review: send the HTML to reviewers. They change values and add comments, then Export `review.json`.
+4. Review: send the HTML to reviewers. They propose values and add comments, then Export `review.json`.
 5. `apply`: write the approved changes back to the config files. The rest goes to the AI prompt.
 
 ### B. Serve locally (edits written straight to your files)
@@ -104,7 +113,7 @@ review-sheet verify -i input.json
 # 3. Build the reviewable HTML
 review-sheet generate -i input.json -o sheet.html
 
-#    ... share sheet.html, reviewers edit values + comment, Export -> review.json ...
+#    ... share sheet.html, reviewers propose values + comment, Export -> review.json ...
 
 # 4. Preview the edits, then write them
 review-sheet apply -i input.json -r review.json            # dry-run diff
@@ -112,6 +121,10 @@ review-sheet apply -i input.json -r review.json --write     # apply
 
 # --- or, instead of steps 3-4, review locally and write edits straight to disk ---
 review-sheet serve -i input.json                            # localhost UI, applies on save
+
+# 5. Hand it over: the same model as a markdown set, with a viewer beside it
+review-sheet generate -i input.json --format md -o sheet/
+review-sheet verify   -i input.json --md sheet/             # …and in CI, so it cannot go stale
 ```
 
 ---
@@ -267,18 +280,20 @@ What that buys you:
   within its component), and every move is reported rather than followed
   silently. Where the answer would be a guess, it resolves to nothing instead.
 - **Sheets can be grouped.** `groups:` in `sheet.yml` declares the reading
-  order; each sheet names one with `group:`. The header becomes two rows —
-  groups, then the sheets of the one you are in (nothing on the overview, which
-  belongs to no group) — and the outline gets the same headings, which is what lets a document hold a workbook's worth of sheets
-  instead of a tab strip's. Checked both ways: a sheet naming an undeclared
+  order; each sheet names one with `group:`. They are the CHAPTERS: the tree
+  beside the text is drawn from them, the sticky bar keeps the path to where the
+  reader is, and `--format md` writes them as the directories the set is in.
+  That is what lets a document hold a workbook's worth of sheets — a strip of a
+  hundred tabs is a menu nobody can see. Checked both ways: a sheet naming an undeclared
   group, an unused group, and an ungrouped sheet in a grouped document are all
   build errors. A group is display structure only — it appears in no review
   target, so grouping an existing document orphans nothing.
 - **A sheet's name is identity; `label:` is what a reader sees.** Declared in
   `sheet.yml` beside the sheet's other display facts, as a `{ ja, en }` pair,
-  and switched live by the viewer's language toggle. The name still keys every
-  review target, diff and CLI message, so a tab can be renamed in either
-  language without orphaning a finding filed against it.
+  resolved for the language the document is generated in. The name still keys
+  every review target, diff and CLI message, so a sheet can be renamed in either
+  language without orphaning a finding filed against it — and the markdown set
+  names its file by the label while the identity stays underneath.
 - **A build that can't proceed says so, and hands you the fix.** A parameter
   with no category or description fails the build, naming every offender
   with a paste-able `sheet.yml` fragment (`--scaffold <file>` writes it out;
@@ -410,46 +425,52 @@ them one row would overwrite the other.
 `skills/review-sheet/SKILL.md` and `review-sheet import --spec --help` cover
 every field; this is the shape, not the reference.
 
-### `generate` — model → reviewable HTML
+### `generate` — model → a document to read, or a set to hand over
 
 ```sh
 review-sheet generate -i input.json -o sheet.html
 review-sheet generate -i v1.json v2.json v3.json -o sheet.html  # version history (ordered by date)
 review-sheet generate -i input.json --readonly -o sheet.html    # a copy that can only be read
-review-sheet generate -i input.json --lang en -o sheet.html     # English UI (default: ja)
+review-sheet generate -i input.json --lang en -o sheet.html     # English (default: ja)
+review-sheet generate -i input.json --format md -o sheet/       # the same model as a markdown set
 ```
 
 `-i` accepts multiple files; each is a snapshot, ordered by its
 `metadata.generated_at` (see [Versions & diff](#versions--diff)). `-o` defaults to
-stdout. `--title` overrides the document title.
+stdout, and is a DIRECTORY under `--format md`. `--title` overrides the document
+title.
 
-`--allow` states what the recipient may do — `review` **or** `edit`, never both.
-They are different jobs done by different people at different times: proposing
-changes before the sheet is handed over, and maintaining values afterwards. A
-document offering both would put two primary actions on every cell and mix
-proposals with facts in one file.
+`--lang` decides the content's language as well as the chrome's, once, here —
+there is no switch in the page. A document that said two different things
+depending on a button could not be projected to markdown, which holds one
+language, and one model saying two things is what made the markdown a lesser
+view of it. Prose the project only has in the other language is shown in it and
+counted, rather than shown silently.
 
-`prompt` is not a mode; it adds the AI-prompt affordance to whichever one is on.
-It is off unless named, because it is a judgement about the AUDIENCE: in the
-usual flow the edited document comes back to whoever built it and `apply`
-produces the prompt there, against the real files, so the handed-over copy
-often has no use for one. Asking for `prompt` alone is an error — it is built from
-findings or edits, and a document with neither has nothing to put in it.
+`--format md` writes the set described in
+[Handing a sheet over](#handing-a-sheet-over): an index, one file per sheet, the
+chapter tree as directories, the artifacts and evidence beside the chapter that
+describes them, and a `viewer.html` that reads it back.
 
-| `--allow` | review | edit | prompt |
-|---|:--:|:--:|:--:|
-| *(omitted)* — same as `review,prompt` | ✅ | | ✅ |
-| `--readonly` | | | |
-| `review` | ✅ | | |
-| `edit` | | ✅ | |
-| `edit,prompt` | | ✅ | ✅ |
-| `edit,review` | *error* | | |
+`--allow` states what the recipient may do: `review`, optionally with `prompt`.
+`prompt` is not a mode; it adds the AI-prompt affordance. It is off unless named,
+because it is a judgement about the AUDIENCE: in the usual flow the review comes
+back to whoever built the sheet and `apply` produces the prompt there, against
+the real files, so the handed-over copy often has no use for one. Asking for
+`prompt` alone is an error — it is built from findings, and a document with none
+has nothing to put in it.
+
+| `--allow` | review | prompt |
+|---|:--:|:--:|
+| *(omitted)* — same as `review,prompt` | ✅ | ✅ |
+| `--readonly` | | |
+| `review` | ✅ | |
+| `review,prompt` | ✅ | ✅ |
+| `prompt` | *error* | |
 
 Without `--allow`, `--readonly` decides: it hands over a document that can only
-be read. (`--no-review` is the old spelling of it — it named only the review UI,
-but once editing and the prompt existed it meant none of them.) An unknown name
-is an error, not an ignored word. See
-[Editing a generated sheet](#editing-a-generated-sheet).
+be read. (`--no-review` is the old spelling of it.) An unknown name is an error,
+not an ignored word.
 
 ### `validate` — schema check
 
@@ -598,6 +619,7 @@ the address as plain text: an affordance that opens nothing is worse than none.
 
 ```sh
 review-sheet verify -i input.json [--quiet]
+review-sheet verify -i input.json --md sheet/   # …and that a committed set still describes it
 ```
 
 Checks every value's source: the file is readable, the value is located by
@@ -606,13 +628,20 @@ Reports `ok` / `warn` (ambiguous anchor) / `error` (stale value or wrong locator
 / `unmapped` (intentionally left to the AI prompt), and exits non-zero on errors.
 Run it after `import` and after any hand edits.
 
+`--md` adds the other staleness question. A committed markdown set is read for
+months and nothing about it says it has stopped describing the configuration: a
+value moves in a file, the HTML is regenerated, and the markdown goes on looking
+exactly as correct as the day it was written. The set's index carries which
+model it came from; this holds it to that, and fails when they are not the same
+one. A set written before the stamp existed warns rather than fails — not being
+able to answer is not the same as being wrong.
+
 ### `apply` — review.json → config edits
 
 ```sh
 review-sheet apply -i input.json -r review.json                 # dry-run preview (diff)
 review-sheet apply -i input.json -r review.json --write          # write the edits
 review-sheet apply -i input.json -r review.json --emit-prompt    # print the AI prompt for the rest
-review-sheet apply -i input.json -r returned.html                # an edited sheet is its own review file
 ```
 
 For each approved value change, `apply` confirms the location (by line + anchor,
@@ -850,8 +879,7 @@ built-in format, so that one plugin remains.
 
 Open `sheet.html` (generated without `--readonly`). Reviewers can:
 
-- Edit a value to suggest a change, and leave a comment on any parameter,
-  category, or sheet.
+- Propose a value and leave a comment on any parameter, category, or sheet.
 - Toggle comments, filter to commented rows, search across everything
   (Cmd/Ctrl+K), and navigate via the outline.
 - Export their feedback as `review.json`, import an existing one to merge, or
@@ -862,16 +890,49 @@ resume. The exported `review.json` is what you feed to `apply`.
 
 ---
 
-## Maintaining a delivered sheet
+## Handing a sheet over
 
 The generated HTML is READ, not edited. A sheet is a view of a model, and the
 model is what the sources say — so a value that has moved is changed where it is
 written, and the sheet is generated again. What a reviewer produces is findings,
 and those leave through `apply -r review.json`, the AI prompt, or `serve`.
 
-The mode that let a recipient maintain the document itself was built and
-removed: a sheet with no model behind it has no per-cell review target, no
-origin and no dictionary, and `apply` could only guess where its text belonged.
+Which leaves the question of who does the regenerating, and there are two
+answers.
+
+**A project that keeps the repository** regenerates it. The sheet and the
+markdown are both projections of the model; the markdown is committed, so
+`git diff` over it is a review of what moved, and `verify --md` says when it has
+stopped describing the model beside it.
+
+```sh
+review-sheet generate -i input.json --format md -o sheet/
+review-sheet verify   -i input.json --md sheet/     # …and in CI
+```
+
+**A project that does not** gets the folder. `--format md` writes a `viewer.html`
+beside the set: it opens on the sheet as delivered, and a folder dropped onto it
+replaces what is shown with what the folder says — which is how a recipient with
+no toolchain looks at what they, or the assistant they asked, have since
+changed. The page says so while it is showing one, and reviewing is off in that
+state: the rows are no longer the model's.
+
+```
+sheet/
+  README.md                     the index, the model's stamp, and what to do
+  viewer.html                   open this; drop the folder on it
+  詳細設計/SSO サーバ/Keycloak.md        one file per sheet
+  詳細設計/SSO サーバ/artifacts/…        what the deployed file says
+  詳細設計/SSO サーバ/evidence/…         what a host was found holding
+```
+
+Every row carries the address it is written at, as a link — so a reader, or the
+assistant they hand the file to, follows it to the configuration file rather
+than editing the sheet and hoping somebody applies it.
+
+The mode that let a recipient maintain the HTML itself was built and removed: a
+sheet with no model behind it has no per-cell review target, no origin and no
+dictionary, and `apply` could only guess where its text belonged.
 
 ## Agent skill
 
