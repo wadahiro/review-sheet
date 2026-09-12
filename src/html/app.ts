@@ -4769,10 +4769,11 @@ function init() {
       appEl
     );
   };
-  // A set the page CARRIES. `update.bat` (written beside a generated set) reads
-  // the folder and splices it in here, so the document opens on the current
-  // text without anybody dragging anything — which is the friction the drop
-  // below exists to answer and does not remove.
+  // A set the page CARRIES — what "Save as one file" wrote into a copy of this
+  // page, so the document opens on the current text with no folder beside it
+  // and no gesture. That is the whole of what the drop below is a way IN to:
+  // dragging is a gesture to repeat after every edit, and this is how it stops
+  // being one.
   //
   // The same code path as the drop, fed from a block instead of a folder: two
   // ways in, one reading, so a page cannot show one thing when dropped and

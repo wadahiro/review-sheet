@@ -945,12 +945,13 @@ into a copy of itself: press **Save as one file** and you get a `sheet.html`
 that carries the whole set. Open that from then on — no folder, no dragging —
 and a link into the set opens beside the sheet rather than in the browser.
 
-A button rather than a script, deliberately. A `.bat` that rebuilt the page was
-built and removed: it can be refused by an EDR, by AppLocker, by the
-mark-of-the-web on a file out of a downloaded zip, and by ConstrainedLanguage —
-what PowerShell drops into under WDAC, where `[IO.File]` is refused outright. A
-button in a page the recipient is already looking at cannot be refused by any of
-them.
+A button, and nothing to run. A `.bat` that rebuilt the page was written and
+removed: every way it could be refused belonged to the act of running a script —
+an EDR, an AppLocker rule, the mark-of-the-web on a file out of a downloaded
+zip, and ConstrainedLanguage, which is what PowerShell drops into under WDAC and
+where the .NET it needed is refused outright. A button in a page the recipient
+is already looking at is refused by none of them. Nothing in a delivery is
+executable.
 
 The mode that let a recipient maintain the HTML itself was built and removed: a
 sheet with no model behind it has no per-cell review target, no origin and no
