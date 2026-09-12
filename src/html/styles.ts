@@ -1094,10 +1094,15 @@ code {
 /* What the product's own UI calls this value, beside the value and never in
    it. Muted and parenthesised so it reads as an annotation: the value is the
    reviewable fact, this is the vocabulary a reviewer met in the console. */
+/* The product's own name for the value, beside it. It WRAPS: a product that
+   names its options at all sometimes names them in a sentence (SELinux's
+   "No SELinux policy is loaded"), and nowrap put that sentence across the
+   next two environment columns — on a real sheet, unreadable in three cells
+   at once rather than one. */
 .rs-option-label {
   color: var(--rs-text-muted);
   font-size: 0.85em;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .rs-option-label::before { content: "("; }
 .rs-option-label::after { content: ")"; }
