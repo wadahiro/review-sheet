@@ -92,20 +92,6 @@ describe("generateHtml", () => {
     expect(html).toContain('"review":true');
   });
 
-  // Editing is off unless asked for. A delivered sheet that silently accepted
-  // edits would let the recipient change values nobody knows changed.
-  it("keeps editing off by default", async () => {
-    const html = expand(await generateHtml(simpleFixture as ParameterSheetInput));
-    expect(html).toContain('"edit":false');
-  });
-
-  it("enables editing with edit: true", async () => {
-    const html = expand(await generateHtml(simpleFixture as ParameterSheetInput, {
-      edit: true,
-    }));
-    expect(html).toContain('"edit":true');
-  });
-
   // A "</script>" anywhere in the embedded text ends the element early and the
   // rest of the document becomes markup. The app's own source contains one (it
   // reads its embedded history back out), and any config value could too — so
@@ -124,9 +110,9 @@ describe("generateHtml", () => {
       [...parse(html).querySelectorAll("script")].map((e) => e.textContent ?? "");
 
     it("keeps the app bundle whole", async () => {
-      const raw = await generateHtml(simpleFixture as ParameterSheetInput, { edit: true });
-      // theme, config, reviews, style-gz, data-gz, app-gz, bootstrap.
-      expect(scriptsOf(raw)).toHaveLength(7);
+      const raw = await generateHtml(simpleFixture as ParameterSheetInput);
+      // theme, config, style-gz, data-gz, app-gz, bootstrap.
+      expect(scriptsOf(raw)).toHaveLength(6);
       const app = readGzipBlock(raw, "sheet-app-gz") ?? "";
       expect(app.length).toBeGreaterThan(10_000);
       // Truncation happens INSIDE the bundle, so the tail is what proves it whole.
@@ -232,13 +218,13 @@ describe("generateHtml: the page carries only the viewer it needs", () => {
   const appOf = (out: string): string => readGzipBlock(out, "sheet-app-gz") ?? "";
 
   it("leaves the diagram renderer out of a document that draws none", async () => {
-    const out = await generateHtml(withDocument("<p>x</p>", false), { edit: true });
+    const out = await generateHtml(withDocument("<p>x</p>", false), {});
     expect(appOf(out).length).toBeLessThan(1_000_000);
   });
 
-  it("carries it for a document that draws one — even read-only", async () => {
-    // A diagram is NOT already rendered in a read-only copy: the build has no
-    // browser, so the page draws it. That makes this independent of editing.
+  it("carries it for a document that draws one", async () => {
+    // A diagram is NOT already rendered by the build: it has no browser, so
+    // the page draws it — unlike the prose around it.
     const out = await generateHtml(withDocument('<pre class="mermaid">graph LR</pre>', true), {});
     expect(appOf(out).length).toBeGreaterThan(1_000_000);
   });

@@ -1067,10 +1067,6 @@ export type GenerateOptions = {
   // `review-sheet serve` backend (POST /api/apply, /api/verify) to apply
   // reviewed changes directly to local files instead of exporting review.json.
   server?: boolean;
-  // Let whoever maintains the sheet edit values and remarks in the generated
-  // HTML. Edits are appended as `applied` review items over the baseline, never
-  // written into the rows themselves, so the original value always survives.
-  edit?: boolean;
   // Offer the AI prompt (the change requests, ready to hand to an assistant).
   // Separate from the mode because it is a judgement about the AUDIENCE:
   // whoever maintains a sheet may have no use for it, or no wish to be

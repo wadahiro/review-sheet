@@ -9,11 +9,11 @@
 //   app-mermaid.ts  every diagram stayed a block of text. Visible, and pinned
 //                   by tests/mermaid-runtime.test.ts, which also makes the
 //                   order stop mattering for that half.
-//   app-md.ts       a document that already carried a saved edit opened showing
-//                   the text it was BUILT from, until something else caused a
-//                   re-render. NOT visible: the file looks right, and only the
-//                   one document somebody had edited is wrong. That is this
-//                   file's subject.
+//   app-md.ts       a sheet whose model IS its markdown opened with its prose
+//                   unrendered — the raw text, until something else caused a
+//                   re-render. NOT visible: the tables look right, and only the
+//                   paragraphs between them are wrong. That is this file's
+//                   subject.
 //
 // Run in a CHILD PROCESS, which is the only place the property exists to be
 // observed: an entry point starts the app the first time it is evaluated, and
@@ -34,22 +34,18 @@ const PAYLOAD = {
   versions: [
     {
       version: "current",
-      sheets: [{ name: "doc", categories: [], document: { html: "<p>built</p>", markdown: "built\n" } }],
+      sheets: [
+        {
+          name: "doc",
+          categories: [],
+          // `mode: "sheet"` is the one shape whose markdown is rendered in the
+          // browser rather than at build time — so it is the one that needs
+          // the renderer to be there before the first render.
+          document: { html: "", markdown: "# doc\n\n**emphasised** prose\n", mode: "sheet" },
+        },
+      ],
     },
   ],
-};
-
-const HISTORY = {
-  reviews: [
-    {
-      id: "rev_1",
-      target: { sheet: "doc", field: "document" },
-      changes: [{ field: "document", suggested: "edited\n" }],
-      status: "applied",
-      at: "2026-09-01T00:00:00Z",
-    },
-  ],
-  saves: [],
 };
 
 const script = (): string => `
@@ -65,19 +61,18 @@ const el = (id, text) => {
 };
 document.body.innerHTML = '<div id="app"></div>';
 el("sheet-data", ${JSON.stringify(JSON.stringify(PAYLOAD))});
-el("sheet-config", '{"review":false,"edit":true,"lang":"ja"}');
-el("sheet-reviews", ${JSON.stringify(JSON.stringify(HISTORY))});
+el("sheet-config", '{"review":false,"lang":"ja"}');
 await import("${root}/src/html/app-md.ts");
-console.log(JSON.stringify({ doc: document.querySelector(".rs-doc")?.textContent ?? "" }));
+console.log(JSON.stringify({ doc: document.querySelector(".rs-md-prose")?.innerHTML ?? "" }));
 `;
 
-describe("a saved document edit is on screen the moment the file opens", () => {
-  it("renders the edit, not the text the file was built from", () => {
+describe("a markdown-backed sheet is rendered the moment the file opens", () => {
+  it("renders its prose, rather than showing the markdown that produces it", () => {
     const out = Bun.spawnSync(["bun", "-e", script()], { cwd: root, stderr: "pipe" });
     expect(out.exitCode, out.stderr.toString().slice(0, 400)).toBe(0);
     const last = out.stdout.toString().trim().split("\n").at(-1) ?? "";
     const { doc } = JSON.parse(last) as { doc: string };
-    expect(doc).toContain("edited");
-    expect(doc).not.toContain("built");
+    expect(doc).toContain("<strong>emphasised</strong>");
+    expect(doc).not.toContain("**");
   });
 });

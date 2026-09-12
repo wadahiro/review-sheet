@@ -301,15 +301,13 @@ program
 // offering both puts two primary actions on every cell and mixes proposals with
 // facts in one file. `prompt` is not a mode; it is one affordance that either
 // mode may or may not carry.
-const ALLOWED_CAPS = ["review", "edit", "prompt"] as const;
+const ALLOWED_CAPS = ["review", "prompt"] as const;
 
 // Displaying WHERE a value is written is not a capability, so it is a flag of
 // its own: `--no-sources` hides the file names — the tag under a row's key, the
 // "rendered from" line under a sheet's heading, the source line in a preview.
 // The source map itself stays in the document; apply and verify resolve every
 // change through it.
-const EXCLUSIVE_MODES = ["review", "edit"] as const;
-
 // `-r` takes a review.json or the edited sheet HTML. Distinguished by content,
 // not by extension: a file renamed on the way back should still work.
 function readReviewSource(path: string): ReviewDocument {
@@ -347,15 +345,11 @@ function parseAllow(spec: string | undefined): Set<string> | undefined {
     console.error(`Error: unknown --allow value: ${unknown.join(", ")} (known: ${ALLOWED_CAPS.join(", ")})`);
     process.exit(1);
   }
-  if (EXCLUSIVE_MODES.every((m) => names.includes(m))) {
-    console.error("Error: --allow takes review OR edit, not both. Reviewing a sheet and maintaining one are different jobs; a document that offers both puts two primary actions on every cell.");
-    process.exit(1);
-  }
-  // The prompt is built FROM findings or edits. Without a mode that produces
-  // either, asking for it names something the document cannot offer — said out
-  // loud rather than quietly ignored.
-  if (names.includes("prompt") && !EXCLUSIVE_MODES.some((m) => names.includes(m))) {
-    console.error("Error: --allow prompt needs review or edit — the prompt is built from findings or edits, and a document with neither has nothing to put in it.");
+  // The prompt is built FROM findings. Without reviewing, asking for it names
+  // something the document cannot offer — said out loud rather than quietly
+  // ignored.
+  if (names.includes("prompt") && !names.includes("review")) {
+    console.error("Error: --allow prompt needs review — the prompt is built from findings, and a document with none has nothing to put in it.");
     process.exit(1);
   }
   return new Set(names);
@@ -372,7 +366,7 @@ program
   // prompt existed it meant "none of them" — which is what --readonly says.
   // Same behaviour, so nothing breaks.
   .option("--no-review", "Deprecated spelling of --readonly")
-  .option("--allow <caps>", "What the recipient may do: review OR edit, optionally with prompt. Omitted, the default is review,prompt (overrides --no-review)")
+  .option("--allow <caps>", "What the recipient may do: review, optionally with prompt. Omitted, the default is review,prompt (overrides --no-review)")
   .option("--no-sources", "Hide where each value is written (the file name under a row, the sheet's rendered-from line, a preview's source line). The source map stays in the file — apply and verify still work")
   .option("--lang <lang>", "UI language: ja | en (default: ja)", "ja")
   .option("--no-previews", "Leave the previewed files out: the panel that shows a row's line in its deployed file, and the affordance that opens it. They are the file as it was AT GENERATION — a document maintained by hand afterwards keeps its values current and the preview does not, so a delivery that will be edited for a long time may prefer not to carry a picture that quietly ages. Also the biggest single part of the file (measured on a real document: 1.1 MB of payload against 0.6 MB without)")
@@ -475,13 +469,12 @@ program
         // --allow, when given, states the whole permission set; otherwise the
         // older --no-review still decides, with editing off.
         review: caps ? caps.has("review") : readable,
-        edit: caps ? caps.has("edit") : false,
         // Naming the set means naming ALL of it: a document handed to someone
         // else should not carry an affordance nobody asked to include.
         // Without --allow, the older behaviour stands and the prompt is there —
         // but never in a document that produces nothing to put in one, where
         // claiming the capability would describe a button that cannot exist.
-        prompt: (caps ? caps.has("prompt") : readable) && (caps ? caps.has("review") || caps.has("edit") : readable),
+        prompt: (caps ? caps.has("prompt") : readable) && (caps ? caps.has("review") : readable),
         // Not a capability — nobody is permitted or forbidden anything by it —
         // so a flag of its own rather than a name in --allow.
         sources: opts.sources,

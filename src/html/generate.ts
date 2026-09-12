@@ -118,25 +118,25 @@ export async function generateHtml(
   options?: GenerateOptions
 ): Promise<string> {
   const reviewEnabled = options?.review !== false;
-  const editEnabled = options?.edit === true;
   const promptEnabled = options?.prompt !== false;
   const lang = options?.lang ?? "ja";
   const data = normalize(input);
-  // The renderer travels only where it can be used: a document sheet that
-  // somebody may edit. A read-only document is already rendered.
-  const editableDocument =
-    editEnabled && data.versions.some((v) => v.sheets.some((s) => s.document !== undefined));
+  // The renderer travels only where it can be used: a document sheet whose
+  // markdown IS the page, which the viewer lays out itself. A prose document
+  // is already rendered into `html` at build time and needs nothing.
+  const rendersMarkdown =
+    data.versions.some((v) => v.sheets.some((s) => s.document?.mode === "sheet"));
   // A diagram, unlike a heading or a paragraph, is NOT already rendered in a
   // read-only copy: the build leaves the diagram's source in the page because
   // it has no browser to draw it with, so the page draws it. That makes this
-  // independent of `editEnabled` — a read-only document needs the renderer just
-  // as much as an editable one.
+  // independent of the above — a prose document needs the renderer just as
+  // much as one the viewer lays out itself.
   const drawsDiagram = data.versions.some((v) => v.sheets.some((s) => s.document?.mermaid === true));
-  const entry = drawsDiagram ? "app-mermaid.ts" : editableDocument ? "app-md.ts" : "app.ts";
+  const entry = drawsDiagram ? "app-mermaid.ts" : rendersMarkdown ? "app-md.ts" : "app.ts";
   const appJS = await getAppBundle(entry);
   const dataJson = JSON.stringify(data);
   const showSources = options?.sources !== false;
-  const configJson = escapeScriptClose(JSON.stringify({ review: reviewEnabled, edit: editEnabled, prompt: promptEnabled, sources: showSources, lang, server: options?.server === true }));
+  const configJson = escapeScriptClose(JSON.stringify({ review: reviewEnabled, prompt: promptEnabled, sources: showSources, lang, server: options?.server === true }));
   const title = options?.title ?? data.metadata?.title ?? (lang === "en" ? "Parameter Sheet" : "パラメータシート");
 
   return `<!DOCTYPE html>
@@ -152,9 +152,6 @@ export async function generateHtml(
 <script type="application/json" id="sheet-config">
 ${configJson}
 </script>
-${editEnabled ? `<script type="application/json" id="sheet-reviews">
-[]
-</script>` : ""}
 <script type="application/gzip-base64" id="sheet-style-gz">
 ${toBase64Gzip(customStyles)}
 </script>
