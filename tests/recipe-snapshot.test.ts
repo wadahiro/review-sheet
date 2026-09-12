@@ -5,7 +5,7 @@
 //   1. Unit tests against in-memory artifacts — the recipe's own contract
 //      (empty base -> everything Pattern B, generated sources, include/exclude
 //      globs, partial instances, instance validation).
-//   2. An end-to-end pass over the committed examples/cdk-snapshot: its real
+//   2. An end-to-end pass over the committed tests/fixtures/projects/cdk-snapshot: its real
 //      build.yml + CloudFormation templates through loadBuildSpec ->
 //      recipe.load -> assembleSheetsWithReport, then computeApply to prove a
 //      change against a generated source is HELD rather than written into the
@@ -176,7 +176,7 @@ describe("snapshot recipe", () => {
 // ---- 2. end-to-end: the committed cdk-snapshot example ------------------------
 
 function buildExample(): { input: ParameterSheetInput; report: ReturnType<typeof assembleSheetsWithReport>["report"] } {
-  const exampleRoot = join(REPO_ROOT, "examples", "cdk-snapshot");
+  const exampleRoot = join(REPO_ROOT, "tests", "fixtures", "projects", "cdk-snapshot");
   const specDir = join(exampleRoot, "review-sheet");
   const readFile = (p: string): string | null => {
     try {
@@ -508,7 +508,7 @@ describe("snapshot recipe: empty_means_unset", () => {
   });
 });
 
-describe("snapshot recipe: examples/cdk-snapshot", () => {
+describe("snapshot recipe: tests/fixtures/projects/cdk-snapshot", () => {
   it("turns two synthesized templates into one all-Pattern-B sheet", () => {
     const { input, report } = buildExample();
     const params = allParams(input);

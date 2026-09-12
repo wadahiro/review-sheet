@@ -420,7 +420,7 @@ Tool-specific notes (still just the generic approach underneath):
     value is marked `source.generated`, so `apply` holds it instead of editing a
     file the next `synth` overwrites — pair it with `capabilities: { apply: false }`.
     Recipes never execute a toolchain: render the artifacts yourself and commit
-    them (or render in CI right before `import`). See `examples/cdk-snapshot/`.
+    them (or render in CI right before `import`). See `tests/fixtures/projects/cdk-snapshot/`.
 
   They are **complementary**: annotate the curated, editable knobs **and** keep a synth
   import as a record of what actually deploys, if you want both.
@@ -450,11 +450,11 @@ turns YAML into a sheet. Check the built-ins before writing anything:
   parameters looks for — while keeping the template as the sheet's
   `source_file`. Declared, never inferred: a task's `dest` is often a variable
   expression, and a wrongly inferred path displayed as fact is worse than none.
-  See `examples/ansible-*/review-sheet/build.yml`.
+  See `tests/fixtures/projects/ansible-*/review-sheet/build.yml`.
 - `snapshot` — the per-environment divergence lives in program logic (CDK
   `if (stage)`, Terraform conditionals), so the only per-environment values are
   the artifacts the tool renders, one per environment. See
-  `examples/cdk-snapshot/review-sheet/build.yml`.
+  `tests/fixtures/projects/cdk-snapshot/review-sheet/build.yml`.
 - `layered` — the same base+overlay engine `ansible` wraps, minus the
   Ansible-only extras (no `template`, no `deployed_path` — so every row keeps
   its extracted identity as its key by default; there is nothing in the
@@ -1554,7 +1554,7 @@ just advised: a dictionary must declare `coverage: full` to be materialized —
 `coverage: partial` (or omitting it, which defaults to `partial`) makes
 `materialize` fail with an error. `import --spec` reports how many of the
 dictionary's keys were skipped as containers (never silently) alongside how
-many rows were actually materialized. See `examples/ansible-basic/` and
+many rows were actually materialized. See `tests/fixtures/projects/ansible-basic/` and
 "Authoring a product dictionary" below.
 
 A dictionary entry with **no documented `default`** is also excluded by
@@ -3000,7 +3000,7 @@ like `description` is: once on the document (the default every entry falls
 back to), and overridden per entry wherever that default stops being true:
 
 ```yaml
-# the real examples/ansible-basic/review-sheet/metadata/nginx@1.26.yml
+# the real tests/fixtures/projects/ansible-basic/review-sheet/metadata/nginx@1.26.yml
 provenance:
   en: official     # transcribed from nginx.org/en/docs
   ja: community     # this repo's own translation — nginx publishes no Japanese docs
@@ -3089,18 +3089,18 @@ naming the sheet and the dictionary.
 
 The bar for `full` is **mechanical enumeration**, not manual completeness. Ask:
 did a person choose which settings to include, or did a machine walk the
-product's own list of them? The two generation scripts under `examples/`
+product's own list of them? The two generation scripts under `tests/fixtures/projects/`
 answer this differently for the same reason:
 
-- `examples/ansible-keycloak/review-sheet/metadata/extract/` reads Keycloak's
+- `tests/fixtures/projects/ansible-keycloak/review-sheet/metadata/extract/` reads Keycloak's
   own `PropertyMappers` registry inside the official container image — the
   registry the server itself consults to decide whether a `kc.*` key exists,
   so nothing is selected and nothing the server accepts is left out.
-- `examples/ansible-basic/review-sheet/metadata/normalize-pg.ts` normalizes a
+- `tests/fixtures/projects/ansible-basic/review-sheet/metadata/normalize-pg.ts` normalizes a
   `SELECT * FROM pg_settings` dump — PostgreSQL's own enumeration of every GUC
   the running server knows about.
 
-Both are `coverage: full`. `examples/ansible-httpd/review-sheet/metadata/httpd@2.4.yml`
+Both are `coverage: full`. `tests/fixtures/projects/ansible-httpd/review-sheet/metadata/httpd@2.4.yml`
 is `coverage: partial` even though it was written from the same official docs
 Apache publishes, because a person picked which 18 of httpd's ~700 directives
 to transcribe — a hand-picked subset stays partial no matter how faithfully
@@ -3139,7 +3139,7 @@ The shape is the same across products even though the source differs:
      `materializeDrafts`, versus the 18 in `httpd@2.4.yml`). This is
      `provenance: official` (the wording is Apache's own) at `coverage: full`
      (the parse is exhaustive) — the two axes really are independent, per
-     above. This was **not** wired into `examples/ansible-httpd/` — the
+     above. This was **not** wired into `tests/fixtures/projects/ansible-httpd/` — the
      existing partial `httpd@2.4.yml` there is deliberately left alone; this
      is a feasibility note, not a recommendation to replace it.
 2. **Write a normalizer, not a converter you eyeball.** A small per-product
@@ -3148,7 +3148,7 @@ The shape is the same across products even though the source differs:
    product upgrade and a wrong field is a compile error, not a silently
    ignored key.
 3. **Commit the raw extraction output**, not just the rendered dictionary
-   (`examples/ansible-keycloak/review-sheet/metadata/keycloak-defaults-26.7.0.json`
+   (`tests/fixtures/projects/ansible-keycloak/review-sheet/metadata/keycloak-defaults-26.7.0.json`
    is the reflection output `build-dict.ts` reads). This is what lets the
    dictionary be regenerated — and diffed, and audited — without a working
    Docker toolchain on hand; `normalize-pg.ts` instead documents the exact
@@ -3317,7 +3317,7 @@ carried-over translation. That rename IS the review checkpoint — there is no
 separate "re-audit the translations" step to remember.
 
 **Worked example**, the real `db` entry
-(`examples/ansible-keycloak/review-sheet/metadata/`):
+(`tests/fixtures/projects/ansible-keycloak/review-sheet/metadata/`):
 
 ```yaml
 # keycloak@26.7.0.yml — GENERATED by build-dict.ts, English only
@@ -3375,8 +3375,8 @@ unless the product actually changed. The top-level field order is always
 `product`, `version`, `provenance`, `coverage`, `generated_by`, `docs_url`,
 `parameters` — fixed by `renderDictionary()` itself, not by the order you set
 them on `doc`, so every dictionary in a project reads the same way. Working
-examples: `examples/ansible-basic/review-sheet/metadata/normalize-pg.ts` and
-`examples/ansible-keycloak/review-sheet/metadata/build-dict.ts`.
+examples: `tests/fixtures/projects/ansible-basic/review-sheet/metadata/normalize-pg.ts` and
+`tests/fixtures/projects/ansible-keycloak/review-sheet/metadata/build-dict.ts`.
 
 ### Custom metadata providers
 

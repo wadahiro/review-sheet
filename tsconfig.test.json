@@ -16,5 +16,13 @@
     "sourceMap": false
   },
   "include": ["src/**/*", "tests/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    // Miniature PROJECTS, not test code: they import their own toolchain
+    // (aws-cdk-lib and the like), which this repo does not depend on. They are
+    // read as files by the recipe tests and the extraction goldens, never
+    // compiled — see tests/fixtures/projects/README.md.
+    "tests/fixtures/projects"
+  ]
 }

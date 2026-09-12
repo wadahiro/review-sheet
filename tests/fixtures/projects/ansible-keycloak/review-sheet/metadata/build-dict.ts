@@ -44,7 +44,7 @@ import { fileURLToPath } from "node:url";
 // The dictionary SHAPE belongs to review-sheet; only the reshaping below is
 // Keycloak-specific. Building a typed DictionaryDoc means a wrong field is a
 // compile error rather than a key the loader silently ignores.
-import { renderDictionary, type DictionaryDoc, type DictionaryParam } from "../../../../src/index.js";
+import { renderDictionary, type DictionaryDoc, type DictionaryParam } from "../../../../../../src/index.js";
 
 const VERSION = "26.7.0";
 const here = dirname(fileURLToPath(import.meta.url));

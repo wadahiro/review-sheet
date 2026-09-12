@@ -25,7 +25,7 @@ export const GOLDEN_FILE = "tests/goldens/extraction.json";
 // Everything the repo owns, minus what it merely vendors. A parser reading a
 // dependency's YAML is not a fact about this project.
 const FIND =
-  `find tests/fixtures examples -type f ` +
+  `find tests/fixtures -type f ` +
   `-not -path "*/.venv/*" -not -path "*/node_modules/*" -not -path "*/out/*" ` +
   `-not -path "*/collections/*" -not -name "*.lock"`;
 

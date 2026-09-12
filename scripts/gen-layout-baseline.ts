@@ -27,10 +27,10 @@ export const BASELINE_FILE = "tests/goldens/layout.json";
 // The repository's own examples. A project outside it can be passed on the
 // command line for a local run; nothing committed here may depend on one.
 export const SPECS = [
-  "examples/ansible-basic/review-sheet/build.yml",
-  "examples/ansible-httpd/review-sheet/build.yml",
-  "examples/ansible-keycloak/review-sheet/build.yml",
-  "examples/cdk-snapshot/review-sheet/build.yml",
+  "tests/fixtures/projects/ansible-basic/review-sheet/build.yml",
+  "tests/fixtures/projects/ansible-httpd/review-sheet/build.yml",
+  "tests/fixtures/projects/ansible-keycloak/review-sheet/build.yml",
+  "tests/fixtures/projects/cdk-snapshot/review-sheet/build.yml",
 ];
 
 export type Placement = { sheet: string; path: string; key: string };

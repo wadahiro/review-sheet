@@ -20,7 +20,7 @@
 import { readFileSync } from "node:fs";
 // The dictionary SHAPE belongs to review-sheet; only the pg_settings reshaping
 // below is PostgreSQL-specific.
-import { renderDictionary, type DictionaryDoc, type DictionaryParam } from "../../../../src/index.js";
+import { renderDictionary, type DictionaryDoc, type DictionaryParam } from "../../../../../../src/index.js";
 
 const MEM: Record<string, number> = { B: 1, kB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 };
 const TIME_MS: Record<string, number> = { us: 1e-3, ms: 1, s: 1000, min: 60000, h: 3_600_000, d: 86_400_000 };

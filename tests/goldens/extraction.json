@@ -1,605 +1,5 @@
 [
   {
-    "file": "examples/README.md",
-    "parser": "generic",
-    "count": 5,
-    "sha": "df91c3d3937cc2cd"
-  },
-  {
-    "file": "examples/ansible-basic/.gitignore",
-    "parser": "generic",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/ansible-basic/README.md",
-    "parser": "generic",
-    "count": 33,
-    "sha": "3444a961012fcff6"
-  },
-  {
-    "file": "examples/ansible-basic/ansible.cfg",
-    "parser": "ini",
-    "count": 7,
-    "sha": "b45ce4de9eebe160"
-  },
-  {
-    "file": "examples/ansible-basic/input.json",
-    "parser": "json",
-    "count": 3430,
-    "sha": "e4029fb79b63ddef"
-  },
-  {
-    "file": "examples/ansible-basic/inventories/production/group_vars/db.yml",
-    "parser": "yaml",
-    "count": 12,
-    "sha": "dfa042e593d71a1a"
-  },
-  {
-    "file": "examples/ansible-basic/inventories/production/group_vars/web.yml",
-    "parser": "yaml",
-    "count": 3,
-    "sha": "d8170c55ea245fa1"
-  },
-  {
-    "file": "examples/ansible-basic/inventories/production/hosts.yml",
-    "parser": "yaml",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/ansible-basic/inventories/staging/group_vars/db.yml",
-    "parser": "yaml",
-    "count": 6,
-    "sha": "e70b8460c892dade"
-  },
-  {
-    "file": "examples/ansible-basic/inventories/staging/group_vars/web.yml",
-    "parser": "yaml",
-    "count": 3,
-    "sha": "78f8b020abe1d5b7"
-  },
-  {
-    "file": "examples/ansible-basic/inventories/staging/hosts.yml",
-    "parser": "yaml",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/ansible-basic/mise.toml",
-    "parser": "toml",
-    "count": 14,
-    "sha": "376b526dd43a5c90"
-  },
-  {
-    "file": "examples/ansible-basic/molecule/default/converge.yml",
-    "parser": "yaml",
-    "count": 1,
-    "sha": "4302e41c6c2e7733"
-  },
-  {
-    "file": "examples/ansible-basic/molecule/default/create.yml",
-    "parser": "yaml",
-    "count": 24,
-    "sha": "fa1aae75a555faa5"
-  },
-  {
-    "file": "examples/ansible-basic/molecule/default/destroy.yml",
-    "parser": "yaml",
-    "count": 9,
-    "sha": "ab630308e911c1ad"
-  },
-  {
-    "file": "examples/ansible-basic/molecule/default/molecule.yml",
-    "parser": "yaml",
-    "count": 17,
-    "sha": "6d3cbbcd98ed1d32"
-  },
-  {
-    "file": "examples/ansible-basic/molecule/default/verify.yml",
-    "parser": "yaml",
-    "count": 1,
-    "sha": "4c151c77a334cb7e"
-  },
-  {
-    "file": "examples/ansible-basic/pyproject.toml",
-    "parser": "toml",
-    "count": 4,
-    "sha": "b23703263fabf2aa"
-  },
-  {
-    "file": "examples/ansible-basic/requirements.yml",
-    "parser": "yaml",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/ansible-basic/review-sheet/build.yml",
-    "parser": "yaml",
-    "count": 29,
-    "sha": "8562dea3e81791a1"
-  },
-  {
-    "file": "examples/ansible-basic/review-sheet/metadata/nginx@1.26.yml",
-    "parser": "yaml",
-    "count": 118,
-    "sha": "f5b563a7a394219c"
-  },
-  {
-    "file": "examples/ansible-basic/review-sheet/metadata/normalize-pg.ts",
-    "parser": "ts",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/ansible-basic/review-sheet/metadata/postgresql@16.yml",
-    "parser": "yaml",
-    "count": 1457,
-    "sha": "7e0c3da1fb7993b3"
-  },
-  {
-    "file": "examples/ansible-basic/review-sheet/sheet.yml",
-    "parser": "yaml",
-    "count": 84,
-    "sha": "bb0fb66de443492a"
-  },
-  {
-    "file": "examples/ansible-basic/roles/nginx/defaults/main.yml",
-    "parser": "yaml",
-    "count": 8,
-    "sha": "ee13881e715857af"
-  },
-  {
-    "file": "examples/ansible-basic/roles/nginx/files/security.conf",
-    "parser": "sysctl",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/ansible-basic/roles/nginx/handlers/main.yml",
-    "parser": "yaml",
-    "count": 2,
-    "sha": "1a4e9fa54dbb206e"
-  },
-  {
-    "file": "examples/ansible-basic/roles/nginx/tasks/main.yml",
-    "parser": "yaml",
-    "count": 27,
-    "sha": "4029b15b2c64290a"
-  },
-  {
-    "file": "examples/ansible-basic/roles/nginx/templates/nginx.conf.j2",
-    "parser": "jinja2",
-    "count": 18,
-    "sha": "5ee5698dfe810bb9"
-  },
-  {
-    "file": "examples/ansible-basic/roles/postgresql/defaults/main.yml",
-    "parser": "yaml",
-    "count": 20,
-    "sha": "ce8583ea2eb2df74"
-  },
-  {
-    "file": "examples/ansible-basic/roles/postgresql/meta/argument_specs.yml",
-    "parser": "yaml",
-    "count": 5,
-    "sha": "4f9a93950c002fea"
-  },
-  {
-    "file": "examples/ansible-basic/roles/postgresql/tasks/main.yml",
-    "parser": "yaml",
-    "count": 5,
-    "sha": "2c973ca5ef1f54e7"
-  },
-  {
-    "file": "examples/ansible-basic/roles/postgresql/templates/postgresql.conf.j2",
-    "parser": "jinja2",
-    "count": 22,
-    "sha": "4e0f584bedd514b2"
-  },
-  {
-    "file": "examples/ansible-basic/sheet.html",
-    "parser": "generic",
-    "count": 2075,
-    "sha": "0262d7576ef8858f"
-  },
-  {
-    "file": "examples/ansible-basic/site.yml",
-    "parser": "yaml",
-    "count": 12,
-    "sha": "d928f436a96d88fb"
-  },
-  {
-    "file": "examples/ansible-basic/validate.yml",
-    "parser": "yaml",
-    "count": 23,
-    "sha": "8cb06cfa37c3f4d0"
-  },
-  {
-    "file": "examples/ansible-httpd/.gitignore",
-    "parser": "generic",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/ansible-httpd/README.md",
-    "parser": "generic",
-    "count": 13,
-    "sha": "c79229f72fe77862"
-  },
-  {
-    "file": "examples/ansible-httpd/ansible.cfg",
-    "parser": "ini",
-    "count": 7,
-    "sha": "b45ce4de9eebe160"
-  },
-  {
-    "file": "examples/ansible-httpd/input.json",
-    "parser": "json",
-    "count": 473,
-    "sha": "de20e4cec4b3988b"
-  },
-  {
-    "file": "examples/ansible-httpd/inventories/production/group_vars/web.yml",
-    "parser": "yaml",
-    "count": 6,
-    "sha": "3578d3a82ddfc3f4"
-  },
-  {
-    "file": "examples/ansible-httpd/inventories/production/hosts.yml",
-    "parser": "yaml",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/ansible-httpd/inventories/staging/group_vars/web.yml",
-    "parser": "yaml",
-    "count": 3,
-    "sha": "8871a14659f63f47"
-  },
-  {
-    "file": "examples/ansible-httpd/inventories/staging/hosts.yml",
-    "parser": "yaml",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/ansible-httpd/review-sheet/build.yml",
-    "parser": "yaml",
-    "count": 17,
-    "sha": "04e058381968e33f"
-  },
-  {
-    "file": "examples/ansible-httpd/review-sheet/metadata/httpd@2.4.yml",
-    "parser": "yaml",
-    "count": 120,
-    "sha": "cc491fcb00cceb1d"
-  },
-  {
-    "file": "examples/ansible-httpd/review-sheet/sheet.yml",
-    "parser": "yaml",
-    "count": 27,
-    "sha": "bfbcb1394c0936c2"
-  },
-  {
-    "file": "examples/ansible-httpd/roles/httpd/defaults/main.yml",
-    "parser": "yaml",
-    "count": 16,
-    "sha": "116d783312b2572d"
-  },
-  {
-    "file": "examples/ansible-httpd/roles/httpd/handlers/main.yml",
-    "parser": "yaml",
-    "count": 2,
-    "sha": "8f2691ec0350ec9c"
-  },
-  {
-    "file": "examples/ansible-httpd/roles/httpd/meta/argument_specs.yml",
-    "parser": "yaml",
-    "count": 5,
-    "sha": "7d86ce2c0f7019c7"
-  },
-  {
-    "file": "examples/ansible-httpd/roles/httpd/tasks/main.yml",
-    "parser": "yaml",
-    "count": 11,
-    "sha": "71c16c4edfb040b0"
-  },
-  {
-    "file": "examples/ansible-httpd/roles/httpd/templates/httpd.conf.j2",
-    "parser": "jinja2",
-    "count": 19,
-    "sha": "b3e6d0a2fea80533"
-  },
-  {
-    "file": "examples/ansible-httpd/sheet.html",
-    "parser": "generic",
-    "count": 2075,
-    "sha": "030d43fec1f7664a"
-  },
-  {
-    "file": "examples/ansible-httpd/site.yml",
-    "parser": "yaml",
-    "count": 3,
-    "sha": "c5c5fba519b4ddef"
-  },
-  {
-    "file": "examples/ansible-keycloak/README.md",
-    "parser": "generic",
-    "count": 36,
-    "sha": "2b6338c8b1ab1c39"
-  },
-  {
-    "file": "examples/ansible-keycloak/ansible.cfg",
-    "parser": "ini",
-    "count": 3,
-    "sha": "6d0fde33915de21d"
-  },
-  {
-    "file": "examples/ansible-keycloak/input.json",
-    "parser": "json",
-    "count": 3309,
-    "sha": "d71e642b1594929d"
-  },
-  {
-    "file": "examples/ansible-keycloak/inventories/production/group_vars/keycloak.yml",
-    "parser": "yaml",
-    "count": 15,
-    "sha": "2095b2a58fff575f"
-  },
-  {
-    "file": "examples/ansible-keycloak/inventories/production/hosts",
-    "parser": "generic",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/ansible-keycloak/inventories/staging/group_vars/keycloak.yml",
-    "parser": "yaml",
-    "count": 19,
-    "sha": "db3896efe9fcce65"
-  },
-  {
-    "file": "examples/ansible-keycloak/inventories/staging/hosts",
-    "parser": "generic",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/ansible-keycloak/review-sheet/build.yml",
-    "parser": "yaml",
-    "count": 38,
-    "sha": "dcaedf3013169acb"
-  },
-  {
-    "file": "examples/ansible-keycloak/review-sheet/metadata/build-client-dict.ts",
-    "parser": "ts",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/ansible-keycloak/review-sheet/metadata/build-dict.ts",
-    "parser": "ts",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/ansible-keycloak/review-sheet/metadata/build-realm-dict.ts",
-    "parser": "ts",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/ansible-keycloak/review-sheet/metadata/keycloak-client@26.7.0.yml",
-    "parser": "yaml",
-    "count": 639,
-    "sha": "fd5b0d6d80ce1410"
-  },
-  {
-    "file": "examples/ansible-keycloak/review-sheet/metadata/keycloak-defaults-26.7.0.json",
-    "parser": "json",
-    "count": 1827,
-    "sha": "5855060f63117920"
-  },
-  {
-    "file": "examples/ansible-keycloak/review-sheet/metadata/keycloak-realm-26.7.0.json",
-    "parser": "json",
-    "count": 4251,
-    "sha": "1258c95870e35f71"
-  },
-  {
-    "file": "examples/ansible-keycloak/review-sheet/metadata/keycloak-realm@26.7.0.overlay.yml",
-    "parser": "yaml",
-    "count": 29,
-    "sha": "314ef7a0735c0bb8"
-  },
-  {
-    "file": "examples/ansible-keycloak/review-sheet/metadata/keycloak-realm@26.7.0.yml",
-    "parser": "yaml",
-    "count": 948,
-    "sha": "2e194bf3a4032255"
-  },
-  {
-    "file": "examples/ansible-keycloak/review-sheet/metadata/keycloak@26.7.0.overlay.yml",
-    "parser": "yaml",
-    "count": 41,
-    "sha": "ce0fe625c360ade5"
-  },
-  {
-    "file": "examples/ansible-keycloak/review-sheet/metadata/keycloak@26.7.0.yml",
-    "parser": "yaml",
-    "count": 1154,
-    "sha": "f364e66c15da4451"
-  },
-  {
-    "file": "examples/ansible-keycloak/review-sheet/sheet.yml",
-    "parser": "yaml",
-    "count": 70,
-    "sha": "3cf452c8b8bf8207"
-  },
-  {
-    "file": "examples/ansible-keycloak/roles/keycloak/defaults/main.yml",
-    "parser": "yaml",
-    "count": 66,
-    "sha": "4e74aa1d19c24b80"
-  },
-  {
-    "file": "examples/ansible-keycloak/roles/keycloak/handlers/main.yml",
-    "parser": "yaml",
-    "count": 3,
-    "sha": "04a1255228bf13ef"
-  },
-  {
-    "file": "examples/ansible-keycloak/roles/keycloak/meta/argument_specs.yml",
-    "parser": "yaml",
-    "count": 5,
-    "sha": "ab2c42291024c1eb"
-  },
-  {
-    "file": "examples/ansible-keycloak/roles/keycloak/tasks/main.yml",
-    "parser": "yaml",
-    "count": 48,
-    "sha": "cdfd7c7a5011e642"
-  },
-  {
-    "file": "examples/ansible-keycloak/roles/keycloak/templates/clients-partial-import.json.j2",
-    "parser": "jinja2",
-    "count": 28,
-    "sha": "3d4d111f4921e087"
-  },
-  {
-    "file": "examples/ansible-keycloak/roles/keycloak/templates/keycloak.conf.j2",
-    "parser": "jinja2",
-    "count": 18,
-    "sha": "721c351474094780"
-  },
-  {
-    "file": "examples/ansible-keycloak/roles/keycloak/templates/keycloak.service.j2",
-    "parser": "jinja2",
-    "count": 10,
-    "sha": "c0a9c022ea19c4dc"
-  },
-  {
-    "file": "examples/ansible-keycloak/roles/keycloak/templates/realm-corp.json.j2",
-    "parser": "jinja2",
-    "count": 25,
-    "sha": "c306b950953f6f4d"
-  },
-  {
-    "file": "examples/ansible-keycloak/roles/keycloak/vars/main.yml",
-    "parser": "yaml",
-    "count": 3,
-    "sha": "6fc797e72d877288"
-  },
-  {
-    "file": "examples/ansible-keycloak/sheet.html",
-    "parser": "generic",
-    "count": 2075,
-    "sha": "0e42277d91f23239"
-  },
-  {
-    "file": "examples/ansible-keycloak/site.yml",
-    "parser": "yaml",
-    "count": 3,
-    "sha": "8b556b850dd9f72d"
-  },
-  {
-    "file": "examples/cdk-annotations/README.md",
-    "parser": "generic",
-    "count": 2,
-    "sha": "1ae068a8004f0d6d"
-  },
-  {
-    "file": "examples/cdk-annotations/cdk-py/storage_stack.py",
-    "parser": "py",
-    "count": 7,
-    "sha": "d1b29c7d6a360c2b"
-  },
-  {
-    "file": "examples/cdk-annotations/cdk-ts/env/dev.ts",
-    "parser": "ts",
-    "count": 3,
-    "sha": "6d701d36890d3d98"
-  },
-  {
-    "file": "examples/cdk-annotations/cdk-ts/env/prod.ts",
-    "parser": "ts",
-    "count": 3,
-    "sha": "8c23453a1f3972a8"
-  },
-  {
-    "file": "examples/cdk-annotations/cdk-ts/storage-stack.ts",
-    "parser": "ts",
-    "count": 8,
-    "sha": "1e829c255c59a137"
-  },
-  {
-    "file": "examples/cdk-annotations/input.json",
-    "parser": "json",
-    "count": 170,
-    "sha": "e18cbcd7b84d4b5b"
-  },
-  {
-    "file": "examples/cdk-annotations/sheet.html",
-    "parser": "generic",
-    "count": 1814,
-    "sha": "2d7132dbd9d4723d"
-  },
-  {
-    "file": "examples/cdk-snapshot/README.md",
-    "parser": "generic",
-    "count": 23,
-    "sha": "f76f7a6ff9c0751c"
-  },
-  {
-    "file": "examples/cdk-snapshot/app/api-stack.ts",
-    "parser": "ts",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/cdk-snapshot/app/app.ts",
-    "parser": "ts",
-    "count": 0,
-    "sha": "e3b0c44298fc1c14"
-  },
-  {
-    "file": "examples/cdk-snapshot/input.json",
-    "parser": "json",
-    "count": 290,
-    "sha": "4ad3f5b7e4847972"
-  },
-  {
-    "file": "examples/cdk-snapshot/review-sheet/build.yml",
-    "parser": "yaml",
-    "count": 18,
-    "sha": "aa18b72f03972a01"
-  },
-  {
-    "file": "examples/cdk-snapshot/review-sheet/sheet.yml",
-    "parser": "yaml",
-    "count": 72,
-    "sha": "92c0e45ec07c8646"
-  },
-  {
-    "file": "examples/cdk-snapshot/sheet.html",
-    "parser": "generic",
-    "count": 2075,
-    "sha": "895f2c85d8c7f79a"
-  },
-  {
-    "file": "examples/cdk-snapshot/snapshots/ProductionApiStack.template.json",
-    "parser": "json",
-    "count": 61,
-    "sha": "c3a41e222c4bd146"
-  },
-  {
-    "file": "examples/cdk-snapshot/snapshots/StagingApiStack.template.json",
-    "parser": "json",
-    "count": 48,
-    "sha": "475f4fe23273ada8"
-  },
-  {
     "file": "tests/fixtures/artifact-rows-conditional-block/defaults.yml",
     "parser": "yaml",
     "count": 2,
@@ -948,6 +348,12 @@
     "sha": "a7d3dc505866b06d"
   },
   {
+    "file": "tests/fixtures/parsers/settings.py",
+    "parser": "py",
+    "count": 7,
+    "sha": "83c3e5723f3893aa"
+  },
+  {
     "file": "tests/fixtures/parsers/vhost.conf.j2",
     "parser": "jinja2",
     "count": 4,
@@ -970,6 +376,540 @@
     "parser": "ts",
     "count": 0,
     "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/README.md",
+    "parser": "generic",
+    "count": 3,
+    "sha": "dc3f83a3c7386301"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/.gitignore",
+    "parser": "generic",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/ansible.cfg",
+    "parser": "ini",
+    "count": 7,
+    "sha": "b45ce4de9eebe160"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/input.json",
+    "parser": "json",
+    "count": 3430,
+    "sha": "906cac6b74daab6a"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/inventories/production/group_vars/db.yml",
+    "parser": "yaml",
+    "count": 12,
+    "sha": "dfa042e593d71a1a"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/inventories/production/group_vars/web.yml",
+    "parser": "yaml",
+    "count": 3,
+    "sha": "d8170c55ea245fa1"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/inventories/production/hosts.yml",
+    "parser": "yaml",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/inventories/staging/group_vars/db.yml",
+    "parser": "yaml",
+    "count": 6,
+    "sha": "e70b8460c892dade"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/inventories/staging/group_vars/web.yml",
+    "parser": "yaml",
+    "count": 3,
+    "sha": "78f8b020abe1d5b7"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/inventories/staging/hosts.yml",
+    "parser": "yaml",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/mise.toml",
+    "parser": "toml",
+    "count": 14,
+    "sha": "376b526dd43a5c90"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/molecule/default/converge.yml",
+    "parser": "yaml",
+    "count": 1,
+    "sha": "4302e41c6c2e7733"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/molecule/default/create.yml",
+    "parser": "yaml",
+    "count": 24,
+    "sha": "fa1aae75a555faa5"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/molecule/default/destroy.yml",
+    "parser": "yaml",
+    "count": 9,
+    "sha": "ab630308e911c1ad"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/molecule/default/molecule.yml",
+    "parser": "yaml",
+    "count": 17,
+    "sha": "6d3cbbcd98ed1d32"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/molecule/default/verify.yml",
+    "parser": "yaml",
+    "count": 1,
+    "sha": "4c151c77a334cb7e"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/pyproject.toml",
+    "parser": "toml",
+    "count": 4,
+    "sha": "b23703263fabf2aa"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/requirements.yml",
+    "parser": "yaml",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/review-sheet/build.yml",
+    "parser": "yaml",
+    "count": 29,
+    "sha": "8562dea3e81791a1"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/review-sheet/metadata/nginx@1.26.yml",
+    "parser": "yaml",
+    "count": 118,
+    "sha": "f5b563a7a394219c"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/review-sheet/metadata/normalize-pg.ts",
+    "parser": "ts",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/review-sheet/metadata/postgresql@16.yml",
+    "parser": "yaml",
+    "count": 1457,
+    "sha": "7e0c3da1fb7993b3"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/review-sheet/sheet.yml",
+    "parser": "yaml",
+    "count": 84,
+    "sha": "bb0fb66de443492a"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/roles/nginx/defaults/main.yml",
+    "parser": "yaml",
+    "count": 8,
+    "sha": "ee13881e715857af"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/roles/nginx/files/security.conf",
+    "parser": "sysctl",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/roles/nginx/handlers/main.yml",
+    "parser": "yaml",
+    "count": 2,
+    "sha": "1a4e9fa54dbb206e"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/roles/nginx/tasks/main.yml",
+    "parser": "yaml",
+    "count": 27,
+    "sha": "4029b15b2c64290a"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/roles/nginx/templates/nginx.conf.j2",
+    "parser": "jinja2",
+    "count": 18,
+    "sha": "5ee5698dfe810bb9"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/roles/postgresql/defaults/main.yml",
+    "parser": "yaml",
+    "count": 20,
+    "sha": "ce8583ea2eb2df74"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/roles/postgresql/meta/argument_specs.yml",
+    "parser": "yaml",
+    "count": 5,
+    "sha": "4f9a93950c002fea"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/roles/postgresql/tasks/main.yml",
+    "parser": "yaml",
+    "count": 5,
+    "sha": "2c973ca5ef1f54e7"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/roles/postgresql/templates/postgresql.conf.j2",
+    "parser": "jinja2",
+    "count": 22,
+    "sha": "4e0f584bedd514b2"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/sheet.html",
+    "parser": "generic",
+    "count": 2075,
+    "sha": "0262d7576ef8858f"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/site.yml",
+    "parser": "yaml",
+    "count": 12,
+    "sha": "d928f436a96d88fb"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-basic/validate.yml",
+    "parser": "yaml",
+    "count": 23,
+    "sha": "8cb06cfa37c3f4d0"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/.gitignore",
+    "parser": "generic",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/ansible.cfg",
+    "parser": "ini",
+    "count": 7,
+    "sha": "b45ce4de9eebe160"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/input.json",
+    "parser": "json",
+    "count": 473,
+    "sha": "ef1b4ccb0ee2c0bb"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/inventories/production/group_vars/web.yml",
+    "parser": "yaml",
+    "count": 6,
+    "sha": "3578d3a82ddfc3f4"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/inventories/production/hosts.yml",
+    "parser": "yaml",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/inventories/staging/group_vars/web.yml",
+    "parser": "yaml",
+    "count": 3,
+    "sha": "8871a14659f63f47"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/inventories/staging/hosts.yml",
+    "parser": "yaml",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/review-sheet/build.yml",
+    "parser": "yaml",
+    "count": 17,
+    "sha": "04e058381968e33f"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/review-sheet/metadata/httpd@2.4.yml",
+    "parser": "yaml",
+    "count": 120,
+    "sha": "cc491fcb00cceb1d"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/review-sheet/sheet.yml",
+    "parser": "yaml",
+    "count": 27,
+    "sha": "bfbcb1394c0936c2"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/roles/httpd/defaults/main.yml",
+    "parser": "yaml",
+    "count": 16,
+    "sha": "116d783312b2572d"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/roles/httpd/handlers/main.yml",
+    "parser": "yaml",
+    "count": 2,
+    "sha": "8f2691ec0350ec9c"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/roles/httpd/meta/argument_specs.yml",
+    "parser": "yaml",
+    "count": 5,
+    "sha": "7d86ce2c0f7019c7"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/roles/httpd/tasks/main.yml",
+    "parser": "yaml",
+    "count": 11,
+    "sha": "71c16c4edfb040b0"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/roles/httpd/templates/httpd.conf.j2",
+    "parser": "jinja2",
+    "count": 19,
+    "sha": "b3e6d0a2fea80533"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/sheet.html",
+    "parser": "generic",
+    "count": 2075,
+    "sha": "030d43fec1f7664a"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-httpd/site.yml",
+    "parser": "yaml",
+    "count": 3,
+    "sha": "c5c5fba519b4ddef"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/ansible.cfg",
+    "parser": "ini",
+    "count": 3,
+    "sha": "6d0fde33915de21d"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/input.json",
+    "parser": "json",
+    "count": 3309,
+    "sha": "4285d6cc55a32e47"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/inventories/production/group_vars/keycloak.yml",
+    "parser": "yaml",
+    "count": 15,
+    "sha": "2095b2a58fff575f"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/inventories/production/hosts",
+    "parser": "generic",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/inventories/staging/group_vars/keycloak.yml",
+    "parser": "yaml",
+    "count": 19,
+    "sha": "db3896efe9fcce65"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/inventories/staging/hosts",
+    "parser": "generic",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/review-sheet/build.yml",
+    "parser": "yaml",
+    "count": 38,
+    "sha": "dcaedf3013169acb"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/review-sheet/metadata/build-client-dict.ts",
+    "parser": "ts",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/review-sheet/metadata/build-dict.ts",
+    "parser": "ts",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/review-sheet/metadata/build-realm-dict.ts",
+    "parser": "ts",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/review-sheet/metadata/keycloak-client@26.7.0.yml",
+    "parser": "yaml",
+    "count": 639,
+    "sha": "fd5b0d6d80ce1410"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/review-sheet/metadata/keycloak-defaults-26.7.0.json",
+    "parser": "json",
+    "count": 1827,
+    "sha": "5855060f63117920"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/review-sheet/metadata/keycloak-realm-26.7.0.json",
+    "parser": "json",
+    "count": 4251,
+    "sha": "1258c95870e35f71"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/review-sheet/metadata/keycloak-realm@26.7.0.overlay.yml",
+    "parser": "yaml",
+    "count": 29,
+    "sha": "314ef7a0735c0bb8"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/review-sheet/metadata/keycloak-realm@26.7.0.yml",
+    "parser": "yaml",
+    "count": 948,
+    "sha": "2e194bf3a4032255"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/review-sheet/metadata/keycloak@26.7.0.overlay.yml",
+    "parser": "yaml",
+    "count": 41,
+    "sha": "ce0fe625c360ade5"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/review-sheet/metadata/keycloak@26.7.0.yml",
+    "parser": "yaml",
+    "count": 1154,
+    "sha": "f364e66c15da4451"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/review-sheet/sheet.yml",
+    "parser": "yaml",
+    "count": 70,
+    "sha": "3cf452c8b8bf8207"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/roles/keycloak/defaults/main.yml",
+    "parser": "yaml",
+    "count": 66,
+    "sha": "4e74aa1d19c24b80"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/roles/keycloak/handlers/main.yml",
+    "parser": "yaml",
+    "count": 3,
+    "sha": "04a1255228bf13ef"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/roles/keycloak/meta/argument_specs.yml",
+    "parser": "yaml",
+    "count": 5,
+    "sha": "ab2c42291024c1eb"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/roles/keycloak/tasks/main.yml",
+    "parser": "yaml",
+    "count": 48,
+    "sha": "cdfd7c7a5011e642"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/roles/keycloak/templates/clients-partial-import.json.j2",
+    "parser": "jinja2",
+    "count": 28,
+    "sha": "3d4d111f4921e087"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/roles/keycloak/templates/keycloak.conf.j2",
+    "parser": "jinja2",
+    "count": 18,
+    "sha": "721c351474094780"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/roles/keycloak/templates/keycloak.service.j2",
+    "parser": "jinja2",
+    "count": 10,
+    "sha": "c0a9c022ea19c4dc"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/roles/keycloak/templates/realm-corp.json.j2",
+    "parser": "jinja2",
+    "count": 25,
+    "sha": "c306b950953f6f4d"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/roles/keycloak/vars/main.yml",
+    "parser": "yaml",
+    "count": 3,
+    "sha": "6fc797e72d877288"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/sheet.html",
+    "parser": "generic",
+    "count": 2075,
+    "sha": "0e42277d91f23239"
+  },
+  {
+    "file": "tests/fixtures/projects/ansible-keycloak/site.yml",
+    "parser": "yaml",
+    "count": 3,
+    "sha": "8b556b850dd9f72d"
+  },
+  {
+    "file": "tests/fixtures/projects/cdk-snapshot/app/api-stack.ts",
+    "parser": "ts",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/cdk-snapshot/app/app.ts",
+    "parser": "ts",
+    "count": 0,
+    "sha": "e3b0c44298fc1c14"
+  },
+  {
+    "file": "tests/fixtures/projects/cdk-snapshot/input.json",
+    "parser": "json",
+    "count": 290,
+    "sha": "125d1471f077cd2a"
+  },
+  {
+    "file": "tests/fixtures/projects/cdk-snapshot/review-sheet/build.yml",
+    "parser": "yaml",
+    "count": 18,
+    "sha": "aa18b72f03972a01"
+  },
+  {
+    "file": "tests/fixtures/projects/cdk-snapshot/review-sheet/sheet.yml",
+    "parser": "yaml",
+    "count": 72,
+    "sha": "92c0e45ec07c8646"
+  },
+  {
+    "file": "tests/fixtures/projects/cdk-snapshot/sheet.html",
+    "parser": "generic",
+    "count": 2075,
+    "sha": "895f2c85d8c7f79a"
+  },
+  {
+    "file": "tests/fixtures/projects/cdk-snapshot/snapshots/ProductionApiStack.template.json",
+    "parser": "json",
+    "count": 61,
+    "sha": "c3a41e222c4bd146"
+  },
+  {
+    "file": "tests/fixtures/projects/cdk-snapshot/snapshots/StagingApiStack.template.json",
+    "parser": "json",
+    "count": 48,
+    "sha": "475f4fe23273ada8"
   },
   {
     "file": "tests/fixtures/scaffold-cli-sheets/.review-sheet/build.yml",

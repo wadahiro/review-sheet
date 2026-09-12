@@ -9,5 +9,5 @@ dist/
 !.claude/rules/
 
 # generated example outputs (regenerate with import/annotations/generate)
-examples/**/input.json
-examples/**/sheet.html
+tests/fixtures/projects/**/input.json
+tests/fixtures/projects/**/sheet.html

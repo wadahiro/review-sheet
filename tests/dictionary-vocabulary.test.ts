@@ -25,7 +25,7 @@ const ALIASES: Record<string, string> = {
 describe("dictionary type vocabulary", () => {
   it("uses one spelling per concept in every shipped dictionary", () => {
     const offenders: string[] = [];
-    for (const f of globSync("examples/**/*.yml")) {
+    for (const f of globSync("tests/fixtures/projects/**/*.yml")) {
       if (!f.includes("@")) continue;
       readFileSync(f, "utf8")
         .split("\n")

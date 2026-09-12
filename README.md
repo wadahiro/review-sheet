@@ -201,7 +201,7 @@ review traditionally wants. Two files divide the work:
   another's (two roles reading the same `group_vars` file, say) can't borrow
   the wrong sheet's category and description.
 
-A minimal example, trimmed from `examples/ansible-basic/review-sheet/` (one
+A minimal example, trimmed from `tests/fixtures/projects/ansible-basic/review-sheet/` (one
 Ansible role, base values plus two environment overlays):
 
 ```yaml
