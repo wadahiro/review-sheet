@@ -263,3 +263,46 @@ describe("generate --sheets", () => {
     expect(bad.stderr).toContain("this document has os, os tests");
   });
 });
+
+// A set is written INTO a directory, not over it.
+//
+// Nothing empties the directory first, so a renamed sheet, a moved chapter or a
+// whole earlier layout stays beside the current set and travels with it — and a
+// recipient cannot tell the two apart, because the stale sheets look exactly
+// like the current ones. Found by regenerating a real delivery: the folder held
+// 117 files where the model produces 59, a complete copy from before the set
+// moved under `sheet/`, and nothing had ever said so.
+describe("a markdown set written into a directory that already holds files", () => {
+  const setOut = join(work, "set");
+  const write = (): { code: number | null; stderr: string } => {
+    const proc = Bun.spawnSync(["bun", "run", cli, "generate", "-i", input, "--format", "md", "-o", setOut]);
+    return { code: proc.exitCode, stderr: proc.stderr.toString() };
+  };
+
+  it("says nothing when it wrote everything that is there", () => {
+    rmSync(setOut, { recursive: true, force: true });
+    const { code, stderr } = write();
+    expect(code).toBe(0);
+    expect(stderr).not.toContain("not written by this run");
+  });
+
+  it("names what it did not write, and does not delete it", () => {
+    rmSync(setOut, { recursive: true, force: true });
+    write();
+    writeFileSync(join(setOut, "an-older-sheet.md"), "# from a previous run\n");
+    const { code, stderr } = write();
+    expect(code).toBe(0);
+    expect(stderr).toContain("not written by this run");
+    expect(stderr).toContain("an-older-sheet.md");
+    // `-o` names a directory this tool does not own.
+    expect(readFileSync(join(setOut, "an-older-sheet.md"), "utf-8")).toContain("previous run");
+  });
+
+  // The archive form is built from the model every time, so it cannot carry one.
+  it("has nothing to say about an archive", () => {
+    const zip = join(work, "set.zip");
+    const proc = Bun.spawnSync(["bun", "run", cli, "generate", "-i", input, "--format", "md", "-o", zip]);
+    expect(proc.exitCode).toBe(0);
+    expect(proc.stderr.toString()).not.toContain("not written by this run");
+  });
+});

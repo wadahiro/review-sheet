@@ -433,6 +433,28 @@ function carriedDocuments(
 // The stamp goes in the index and says which model this set was written from.
 // `verify` reads it back to say whether the committed markdown still describes
 // the model beside it.
+// Every file under `dir`, relative to it, that is not in `written`. Walks
+// rather than using a recursive readdir option so the traversal is the same on
+// every runtime this ships to.
+function leftInDirectory(dir: string, written: Set<string>): string[] {
+  const out: string[] = [];
+  const walk = (at: string, prefix: string): void => {
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = readdirSync(at, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const rel = prefix === "" ? e.name : `${prefix}/${e.name}`;
+      if (e.isDirectory()) walk(join(at, e.name), rel);
+      else if (!written.has(rel)) out.push(rel);
+    }
+  };
+  walk(dir, "");
+  return out.sort();
+}
+
 async function writeMarkdownSet(
   input: ParameterSheetInput | VersionedSheetInput,
   outDir: string,
@@ -532,6 +554,28 @@ async function writeMarkdownSet(
       const at = join(outDir, f.path);
       mkdirSync(dirname(at), { recursive: true });
       writeFileSync(at, f.text, "utf-8");
+    }
+    // …and what this run did NOT write, which is still sitting in the delivery.
+    //
+    // Writing a set does not empty the directory first, so a sheet that has
+    // been renamed, a chapter that moved, or a whole earlier layout stays
+    // beside the current one and travels with it. Found by regenerating a real
+    // delivery: the folder held 117 files where the model produces 59 — a
+    // complete stale copy from before the set moved under `SET_DIR`, and
+    // nothing had ever said so. A recipient cannot tell the two apart; the
+    // stale sheets look exactly like the current ones.
+    //
+    // REPORTED, not deleted: `-o` names a directory this tool does not own, and
+    // removing files from it on the strength of a naming convention is not a
+    // decision a generator gets to make. The archive form has no such problem —
+    // it is built from the model every time.
+    const stale = leftInDirectory(outDir, new Set(whole.map((f) => f.path)));
+    if (stale.length > 0) {
+      console.error(
+        `Warning: ${stale.length} file(s) under ${outDir}/ were not written by this run and will travel with the delivery — ` +
+          `${stale.slice(0, 5).join(", ")}${stale.length > 5 ? `, +${stale.length - 5} more` : ""}. ` +
+          `Remove the directory and regenerate if they are from an earlier set.`
+      );
     }
   }
   // Never silent about a sheet that did not land where its chapter says: a set
