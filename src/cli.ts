@@ -6,7 +6,7 @@ import { resolve, relative, join, dirname, basename } from "path";
 import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { langFallbacks, localizeVersions } from "./localize.js";
-import { toMarkdownSet, href, modelStamp, stampOf } from "./md-set.js";
+import { toMarkdownSet, href, modelStamp, stampOf, slug } from "./md-set.js";
 import type { ParamData } from "./prompt.js";
 import { validateInput, validateReview, validateResults, validateObservation, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
@@ -348,6 +348,78 @@ function parseAllow(spec: string | undefined): Set<string> | undefined {
   return new Set(names);
 }
 
+// The documents a sheet's rows are about, as files of the set.
+//
+// Three kinds, told apart by the directory they land in rather than by a header
+// in the file — the file has to BE the file, so it can be diffed against the
+// real one:
+//
+//   artifacts/  what the deployed file says, rendered
+//   sources/    the authored file it was rendered from
+//   evidence/   the bytes a host was found holding, and when
+//
+// All three relative to the SHEET'S own directory, so the chapter that
+// describes a file holds it. A single bucket at the root would be a second,
+// type-shaped arrangement laid over the chapters the document already has.
+// A command, as one path segment. Readable rather than hashed — a reader
+// scanning the directory should see which command a file holds — and cut to a
+// length every filesystem takes.
+//
+// A cut name gets the command's own digest on the end. Without it two long
+// commands that agree for their first sixty characters are one file, and the
+// second is dropped: measured on a real record, two `.well-known` fetches that
+// differ only past the cut. The digest is only on the names that needed it, so
+// a short command stays exactly itself.
+function commandFile(command: string): string {
+  const one = command.replace(/\s+/g, " ").trim();
+  const named = slug(one).trim();
+  if (named.length <= 60) return `${named}.txt`;
+  return `${named.slice(0, 60).trim()}-${modelStamp(one).slice(0, 8)}.txt`;
+}
+
+function carriedDocuments(
+  previews: ArtifactPreview[],
+  instances: string[]
+): { path: string; text: string; sheet: string; label: string }[] {
+  const strip = (f: string): string => f.replace(/^\/+/, "");
+  return previews.map((p) => {
+    // An `absent` line is one this environment does not render. The file on
+    // disk does not have it, so neither does this — the point of writing it out
+    // is that it can be compared with the real thing.
+    const text = p.lines.filter((l) => l.kind !== "absent").map((l) => l.text).join("\n");
+    if (p.nature === "observed") {
+      const from = p.deployed_path ?? p.source_file;
+      const host = p.observed?.host ?? "host";
+      const instance = p.instances?.[0] ?? "";
+      const under = `evidence/${instance === "" ? "" : `${instance}/`}${host}`;
+      // A collected FILE is named by the absolute path the host holds it at —
+      // that is how a host names a file, and it makes the tree under `evidence`
+      // read like the machine it came from. Everything else is the output of a
+      // COMMAND, and a command is not a path: it has quotes, spaces and
+      // newlines in it, and used as a filename it produced directories nobody
+      // asked for and one write that failed outright.
+      const isFile = from.startsWith("/");
+      const named = isFile ? strip(from) : `commands/${commandFile(from)}`;
+      return { sheet: p.sheet, path: `${under}/${named}`, text, label: `${host} ${from}` };
+    }
+    if (p.nature === "source") {
+      return { sheet: p.sheet, path: `sources/${strip(p.source_file)}`, text, label: p.source_file };
+    }
+    // An artifact rendered identically everywhere is written once; one that
+    // differs per environment is written per environment, under the names it
+    // covers — which is what having a file per environment means.
+    const covers = p.instances ?? [];
+    const everywhere = covers.length === 0 || instances.every((i) => covers.includes(i));
+    const at = strip(p.deployed_path ?? p.source_file);
+    return {
+      sheet: p.sheet,
+      path: `artifacts/${everywhere ? "" : `${covers.join("+")}/`}${at}`,
+      text,
+      label: `${p.deployed_path ?? p.source_file}${everywhere ? "" : ` (${covers.join(", ")})`}`,
+    };
+  });
+}
+
 // The model as a set of markdown files, written out.
 //
 // The addresses are LINKS, relative to the file the row is in — which is what
@@ -368,8 +440,12 @@ function writeMarkdownSet(
   // A markdown set is a SNAPSHOT, so it is written from the current version —
   // the newest one, which is what `assembleVersions` puts last. The comparison
   // a version history is for lives in the HTML.
-  const versions = "versions" in input ? input.versions : [{ version: "current", sheets: input.sheets, columns: input.columns, groups: input.groups }];
+  const versions = "versions" in input
+    ? input.versions
+    : [{ version: "current", sheets: input.sheets, columns: input.columns, groups: input.groups, artifacts: input.artifacts }];
   const current = localizeVersions(versions, lang)[versions.length - 1]!;
+  const previews = ((current as { artifacts?: ArtifactPreview[] }).artifacts ?? []);
+  const instances = [...new Set(current.sheets.flatMap((s) => s.instances ?? []))];
   const data = { metadata: input.metadata, ...current } as never as Parameters<typeof toMarkdownSet>[0];
 
   // Identifies the MODEL, not this rendering: the same model written twice in
@@ -385,6 +461,7 @@ function writeMarkdownSet(
 
   const { files, problems } = toMarkdownSet(data, lang, {
     stamp,
+    documents: carriedDocuments(previews, instances),
     ...(sources
       ? {
           source: (sheetPath: string) => {
@@ -425,7 +502,11 @@ function writeMarkdownSet(
   // Never silent about a sheet that did not land where its chapter says: a set
   // whose index and whose files disagree is the failure this is for.
   for (const p of problems) console.error(`Warning: ${p}`);
-  console.error(`Generated: ${files.length} file(s) under ${outDir}/ (model ${stamp})`);
+  const carried = files.length - 1 - data.sheets.length;
+  console.error(
+    `Generated: ${files.length} file(s) under ${outDir}/ (model ${stamp})` +
+      (carried > 0 ? ` — ${data.sheets.length} sheet(s) and ${carried} carried document(s)` : "")
+  );
 }
 
 program

@@ -31,6 +31,23 @@ export type MarkdownSetOptions = {
   // nowhere else: it identifies the set, and a stamp on every file is a stamp
   // to forget on one of them.
   stamp?: string;
+  // The documents a sheet's rows are ABOUT, carried into the set as files: the
+  // rendered artifact, the authored source it came from, the bytes a host was
+  // found holding. Written where the caller says and listed under the sheet
+  // that describes them, so a recipient with no repository can still open what
+  // a row is talking about — which is the difference between a handed-over set
+  // and a table of values with nowhere to go.
+  //
+  // Composed by the caller, because what may travel is the judge's decision
+  // (see evidence.ts) and where these sit on disk is the delivery's.
+  // `path` is RELATIVE TO THE SHEET'S OWN DIRECTORY, not to the set: a
+  // rendered artifact belongs beside the chapter that describes it and a
+  // collected file beside the record that cites it, because that is the
+  // structure the document already has. A single `artifacts/` bucket at the
+  // root would be a second, type-shaped arrangement laid over the chapters —
+  // and the reader who opened 詳細設計 would have to leave it to see what it
+  // is describing.
+  documents?: { path: string; text: string; sheet: string; label: string }[];
 };
 
 // A path segment that survives a filesystem, a zip and a URL — and stays the
@@ -99,6 +116,7 @@ export function toMarkdownSet(
 ): { files: MarkdownFile[]; problems: string[] } {
   const { placed, problems } = place(data);
   const sheets: MarkdownFile[] = [];
+  const carried: MarkdownFile[] = [];
   const taken = new Map<string, string>();
 
   for (const { sheet, dir } of placed) {
@@ -112,11 +130,58 @@ export function toMarkdownSet(
       problems.push(`"${sheet.name}" and "${clash}" both spell ${path} — the second is written as ${finalPath}`);
     }
     taken.set(path, sheet.name);
-    sheets.push({ path: finalPath, text: sheetToMarkdown(sheet as never, lang, opts.source?.(finalPath)) });
+    const body = sheetToMarkdown(sheet as never, lang, opts.source?.(finalPath), sheet.display ?? sheet.name);
+    const mine = (opts.documents ?? []).filter((d) => d.sheet === sheet.name);
+    sheets.push({ path: finalPath, text: withDocuments(body, finalPath, mine, lang) });
+    const under = dir.join("/");
+    for (const d of mine) carried.push({ path: under === "" ? d.path : `${under}/${d.path}`, text: d.text });
+  }
+
+  // Two sheets of one chapter describing the same deployed file would write it
+  // twice at one path, and the reader would get whichever came last. Reported,
+  // and only the first is written — which of the two is right is not this
+  // module's to decide, and quietly picking one is the failure it would hide.
+  const seen = new Set<string>();
+  const documents: MarkdownFile[] = [];
+  for (const d of carried) {
+    if (seen.has(d.path)) {
+      if (!documents.some((x) => x.path === d.path && x.text === d.text)) {
+        problems.push(`two documents are written at ${d.path} — only the first is kept`);
+      }
+      continue;
+    }
+    seen.add(d.path);
+    documents.push(d);
   }
 
   const paths = new Map(placed.map((p, i) => [p.sheet.name, sheets[i]!.path]));
-  return { files: [{ path: "README.md", text: index(data, paths, lang, opts.stamp) }, ...sheets], problems };
+  return {
+    files: [{ path: "README.md", text: index(data, paths, lang, opts.stamp) }, ...sheets, ...documents],
+    problems,
+  };
+}
+
+// The files this sheet describes, listed under its title as ordinary prose.
+//
+// Not a heading of its own: the sheet's categories are the `##` level and a
+// heading here would become one of them — a section with no rows, in the parse
+// and in every reading of it. Prose before the first section is exactly where
+// something about the whole sheet belongs.
+function withDocuments(
+  body: string,
+  sheetPath: string,
+  mine: NonNullable<MarkdownSetOptions["documents"]>,
+  lang: Lang
+): string {
+  if (mine.length === 0) return body;
+  const lead = lang === "ja" ? "このシートが記述するファイル:" : "The files this sheet describes:";
+  const block = [lead, "", ...mine.map((d) => `- [${d.label}](${href(d.path)})`), ""].join("\n");
+  // The title is the first line and is followed by a blank one — that is what
+  // `sheetToMarkdown` writes, and if it ever stops writing it this must be
+  // seen to fail rather than quietly put the list somewhere else.
+  const m = /^(# [^\n]*\n\n)/.exec(body);
+  if (m === null) throw new Error(`${sheetPath}: no title to put the file list under`);
+  return body.slice(0, m[1]!.length) + block + "\n" + body.slice(m[1]!.length);
 }
 
 // The index: the chapter tree, in the order the document declares it, as links.

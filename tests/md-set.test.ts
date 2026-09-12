@@ -93,6 +93,62 @@ describe("where each sheet lands", () => {
   });
 });
 
+// The set is READ, and the two names a reader sees for one sheet have to be
+// the same name: the file is named by the label, so a page headed by the
+// identity reads as the wrong file.
+describe("what a sheet's page is headed by", () => {
+  it("is the name its file carries", () => {
+    const d = doc();
+    (d.sheets as unknown as { display?: string }[])[1]!.display = "OS基本情報";
+    const { files } = toMarkdownSet(d, "ja");
+    const page = files.find((f) => f.path.endsWith("OS基本情報.md"));
+    expect(page).toBeDefined();
+    expect(page!.text.split("\n")[0]).toBe("# OS基本情報");
+  });
+
+  it("is the identity where a sheet has no label of its own", () => {
+    const { files } = toMarkdownSet(doc(), "ja");
+    expect(files.find((f) => f.path === "loose.md")!.text.split("\n")[0]).toBe("# loose");
+  });
+});
+
+describe("the documents a sheet carries", () => {
+  const carried = () =>
+    toMarkdownSet(doc(), "ja", {
+      documents: [
+        { sheet: "httpd", path: "artifacts/etc/httpd/conf/httpd.conf", text: "Listen 80\n", label: "/etc/httpd/conf/httpd.conf" },
+        { sheet: "loose", path: "evidence/local/web01/etc/hosts", text: "127.0.0.1\n", label: "web01 /etc/hosts" },
+      ],
+    });
+
+  // Beside the chapter that describes them, not in a bucket at the root: the
+  // document already has a structure and a second, type-shaped one laid over it
+  // is one the reader has to leave the chapter to follow.
+  it("writes them under the sheet's own directory", () => {
+    const paths = carried().files.map((f) => f.path);
+    expect(paths).toContain("構築/OS/artifacts/etc/httpd/conf/httpd.conf");
+    expect(paths).toContain("evidence/local/web01/etc/hosts");
+  });
+
+  it("lists them under the sheet's title, linked from where the sheet is", () => {
+    const page = carried().files.find((f) => f.path === "構築/OS/httpd.md")!;
+    expect(page.text).toContain("- [/etc/httpd/conf/httpd.conf](artifacts/etc/httpd/conf/httpd.conf)");
+    // Before the first section: this is about the whole sheet, and a heading
+    // here would become one of its categories.
+    expect(page.text.indexOf("artifacts/etc")).toBeLessThan(page.text.indexOf("## c"));
+  });
+
+  it("keeps the first of two documents written at one path, and says so", () => {
+    const { problems } = toMarkdownSet(doc(), "ja", {
+      documents: [
+        { sheet: "httpd", path: "artifacts/a", text: "one", label: "a" },
+        { sheet: "httpd", path: "artifacts/a", text: "two", label: "a" },
+      ],
+    });
+    expect(problems.join(" ")).toContain("two documents are written at");
+  });
+});
+
 describe("the index", () => {
   it("lists the chapters in the order the document declares, as links", () => {
     const { files } = toMarkdownSet(doc(), "ja");

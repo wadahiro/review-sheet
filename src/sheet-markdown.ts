@@ -70,6 +70,12 @@ export type MarkdownSection = {
 
 export type MarkdownSheet = {
   sheet: string;
+  // What the TITLE says, when that is not the identity. A sheet carries a
+  // label, the file it is written to is named by it, and a page whose heading
+  // says something else reads as the wrong file — `OS基本情報.md` opening on
+  // `# os baseline`. Absent, the identity is the title, which is what every
+  // document written before this had.
+  title?: string;
   instances: string[];
   // WHICH language the prose in this document is. `description`/`remarks` are
   // LangText and the projection collapses them to one language (with the usual
@@ -417,7 +423,7 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
   const out: string[] = [];
   // The sheet's name, so a file that has been saved and reopened still says
   // which sheet it is — and so a reviewer editing two of them cannot mix them up.
-  out.push(`# ${doc.sheet}`, "");
+  out.push(`# ${doc.title ?? doc.sheet}`, "");
   if (doc.prose) out.push(doc.prose, "");
   for (const section of doc.sections) {
     out.push(`${"#".repeat(Math.min(6, section.path.length + 1))} ${section.path[section.path.length - 1]}`, "");
@@ -851,13 +857,13 @@ export function parseSheetMarkdown(text: string, instances: string[], l: Lang = 
 export function sheetToMarkdown(
   sheet: Sheet,
   lang: Lang,
-  source?: (p: ParamData) => string | undefined
+  source?: (p: ParamData) => string | undefined,
+  title?: string
 ): string {
-  return renderSheetMarkdown(
-    toMarkdownSheet(sheet as unknown as SheetData["sheets"][number], lang, {
-      indent: true,
-      markUnset: true,
-      ...(source === undefined ? {} : { source }),
-    })
-  );
+  const doc = toMarkdownSheet(sheet as unknown as SheetData["sheets"][number], lang, {
+    indent: true,
+    markUnset: true,
+    ...(source === undefined ? {} : { source }),
+  });
+  return renderSheetMarkdown(title === undefined || title === doc.sheet ? doc : { ...doc, title });
 }
