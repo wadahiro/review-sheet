@@ -943,10 +943,18 @@ carries `update.bat` (and `update.sh`): it reads the folder it sits in and
 writes a `sheet.html` that carries it, and a link into the set then opens beside
 the sheet rather than in the browser. One file, no folder, no dragging.
 
-One `.bat`, with the PowerShell inline and readable: it is passed with
-`-Command`, which the execution policy does not govern — that policy applies to
-script *files*, so a machine that refuses a `.ps1` will still run this. The drop
-stays as the fallback regardless.
+One `.bat`, with the PowerShell inline and readable. Two corporate
+configurations would otherwise refuse it and both are avoided rather than
+hoped past: it is passed with `-Command`, which the **execution policy** does
+not govern (that policy applies to script *files*), and it uses **cmdlets only**
+— no `[IO.File]`, no `New-Object` — because a machine under WDAC or AppLocker
+runs PowerShell in **ConstrainedLanguage** mode, where .NET is refused outright.
+
+What is left that can still stop it is the environment, not the script: an EDR
+that treats `powershell -Command` from a `.bat` as a pattern to block, an
+AppLocker rule on `.bat` itself, or the mark-of-the-web on a file out of a
+downloaded zip. So the script says so when it fails, and names the way that
+needs no script at all — open `viewer.html`, drag the folder.
 
 The mode that let a recipient maintain the HTML itself was built and removed: a
 sheet with no model behind it has no per-cell review target, no origin and no

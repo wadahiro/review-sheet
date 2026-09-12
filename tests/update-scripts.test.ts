@@ -58,6 +58,42 @@ describe("what a generated set carries", () => {
 
   // A recipient in a corporate environment is entitled to read what they are
   // about to run. The .bat is the three lines that call the readable one.
+  // A locked-down machine runs PowerShell in ConstrainedLanguage mode, where
+  // .NET is refused outright — `[IO.File]::ReadAllText` and `New-Object` throw
+  // rather than run. That is the configuration this is most likely to meet and
+  // the one it would fail on, so what it may use is cmdlets and methods on
+  // strings. Asked of the COMMAND, not of the comments that explain the rule.
+  it("uses nothing a locked-down machine refuses", () => {
+    const ps = updateBat()
+      .split("\r\n")
+      .filter((l) => l.startsWith("set \"PS="))
+      .join("\n");
+    expect(ps).not.toContain("New-Object");
+    expect(ps).not.toMatch(/\[(?:IO|Text|Environment|Convert|Math|Reflection)\./);
+    expect(ps).not.toContain("Add-Type");
+    expect(ps).not.toContain("Invoke-Expression");
+    // …and what it uses instead.
+    expect(ps).toContain("Get-Content");
+    expect(ps).toContain("Set-Content");
+  });
+
+  // cmd reads a .bat in the machine's own code page, so a character outside
+  // ASCII is whatever that code page makes of it — a comment nobody can read on
+  // a Japanese Windows, which is exactly who gets this.
+  it("is ASCII, because cmd reads it in the machine's code page", () => {
+    expect([...updateBat()].filter((c) => c.charCodeAt(0) > 126)).toEqual([]);
+  });
+
+  // Every way this can be refused ends at the same place, and the way that
+  // needs no script is one line away. A recipient who is told nothing assumes
+  // the document is broken.
+  it("names the way that needs no script, when it fails", () => {
+    const bat = updateBat();
+    expect(bat).toContain("if errorlevel 1");
+    expect(bat).toContain("drag this folder");
+    expect(bat).toContain("Nothing has been changed");
+  });
+
   it("keeps the work readable, and out of the execution policy's way", () => {
     const bat = updateBat();
     // `-Command`, never `-File`: the policy governs script files, and a machine
