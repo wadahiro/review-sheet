@@ -3819,6 +3819,18 @@ is the product's and travels in the plan (`includes:`): httpd's
 `Include`/`IncludeOptional` resolved against its `ServerRoot`, which every
 project that wrote it out was copying from httpd's manual into a playbook.
 
+**What must never leave the node is the PRODUCT's knowledge too**, and it
+travels in the plan where the sheets bound that product. Keycloak's Admin API
+returns client secrets and LDAP bind credentials IN THE CLEAR — it is the
+partial-export endpoint that masks them, not this one — so a realm document has
+to be redacted before it travels, and WHICH fields carry a secret is the
+product's shape rather than a project's guess. A name missing from a project's
+own copy of that list is a credential in a delivered document, and nothing about
+the delivery looks wrong. `collect-plan` carries `redact: { fields, mask,
+masked }` (and `login_marks`, so a collector looks for exactly what the judge
+will ask about); APPLYING it stays on the node, which is the only place it can
+happen before the bytes leave.
+
 **The axis is the channel, not whoever collects.** Ansible is what reaches a
 host; `getenforce` reads the same whether Ansible, Salt or a person ran it, and
 this tool runs none of them. Which is why a channel declares what it NEEDS:

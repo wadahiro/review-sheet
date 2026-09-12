@@ -33,7 +33,7 @@ import { registerLogrotateRules } from "./channels/logrotate.js";
 import { registerSystemdRules } from "./channels/systemd.js";
 import { buildMismatch, rpmVersions, packagesToQuery } from "./channels/rpm.js";
 import { compiledInFor, injectedOptions, lineOfCompiledIn, includeSyntaxFor } from "./channels/httpd.js";
-import { effectiveConfig, isProductDefault, lineOfEffective } from "./channels/keycloak.js";
+import { effectiveConfig, isProductDefault, lineOfEffective, SECRET_FIELDS, REDACTED, MASKED, LOGIN_MARKS_LIST } from "./channels/keycloak.js";
 import type { TestItem, TestPlan } from "./testplan.js";
 import type { LangText } from "./types.js";
 import { listChannels, listFunctionalChannels, listProbeRules, registerChannel, commandChannel, getDocumentRouter, type Channel } from "./channel.js";
@@ -1036,6 +1036,14 @@ export type CollectPlan = {
   // …and every command a channel asked for. Not per environment: a channel
   // covers a row, and a row's environments are the sheet's.
   commands: string[];
+  // …and what a collector must remove before anything travels, where the
+  // sheets bind a product that answers with secrets in the clear. The list is
+  // the product's (see channels/keycloak.ts); applying it is the node's, which
+  // is the only place it can happen before the bytes leave.
+  redact?: { fields: string[]; mask: string; masked: string };
+  // …and the marks that make a page the login page, so a collector looks for
+  // exactly what the judge will ask about.
+  login_marks?: string[];
   // …and how to find the files a deployed file NAMES. "We set nothing, so the
   // default applies" is a claim about those too, and WHICH syntax names them is
   // the product's: httpd's `Include`/`IncludeOptional`, resolved against its
@@ -1054,7 +1062,10 @@ export const rpmQuery = (builds: { sheet: string; product: string; version: stri
 export function collectPlan(
   plan: TestPlan,
   builds?: { sheet: string; product: string; version: string }[],
-  defaults?: { file: string; command?: string; aside?: string }[]
+  defaults?: { file: string; command?: string; aside?: string }[],
+  // Which product plugins this project bound — what a collector must redact is
+  // the product's knowledge, and only the binding says which products are here.
+  products: string[] = []
 ): CollectPlan {
   const files: Record<string, Set<string>> = {};
   const commands = new Set<string>();
@@ -1080,6 +1091,9 @@ export function collectPlan(
   return {
     files: Object.fromEntries(Object.entries(files).map(([k, v]) => [k, [...v].sort()])),
     commands: [...commands].sort(),
+    ...(products.includes("keycloak")
+      ? { redact: { fields: SECRET_FIELDS, mask: REDACTED, masked: MASKED }, login_marks: LOGIN_MARKS_LIST }
+      : {}),
     includes: [...new Set(Object.values(files).flatMap((v) => [...v]))]
       .sort()
       .flatMap((f) => includeSyntaxFor(f).map((x) => ({ file: f, ...x }))),

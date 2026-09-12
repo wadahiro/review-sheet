@@ -120,11 +120,55 @@ type LdapProvider = {
 
 type Held = { login?: LoginPage[]; ldap?: LdapProvider[]; collected_at?: string };
 
+// ---------------------------------------------------------------------------
+// WHAT MUST NEVER LEAVE THE NODE, and the marks that make a page the login page.
+//
+// Both are facts about the PRODUCT, and both were being written out by hand in
+// every project that dumps a realm. The first is the one that matters: the
+// Admin API returns client secrets and LDAP bind credentials IN THE CLEAR (it
+// is the partial-export endpoint that masks them, not this one), so a realm
+// document has to be redacted before it travels — and WHICH fields carry a
+// secret is Keycloak's shape, not a project's guess. A name missing from a
+// project's own copy of this list is a credential in a delivered document, and
+// nothing about the delivery looks wrong.
+//
+// By NAME rather than by asking the sheet which rows are secret: this is the
+// node's last line and should hold for a field no sheet mentions. The sheet's
+// own `secret:` marking is narrower and is applied again later, where the
+// record is written.
+export const SECRET_FIELDS = [
+  "secret",
+  "bindCredential",
+  "privateKey",
+  "clientSecret",
+  "password",
+  "credentials",
+  "adminPassword",
+  "keyPassword",
+  "truststorePassword",
+  "keystorePassword",
+];
+
+// …and the mask the server itself understands: `testLDAPConnection` takes the
+// masked credential with a `componentId` beside it and uses the one it already
+// holds, so a connection can be tested without any secret travelling at all.
+export const MASKED = "**********";
+
+// What a collector should leave in place of a value it removed. Not the same
+// string as the mask above: one says "we took this out", the other is what the
+// product itself expects to be handed back.
+export const REDACTED = "(redacted on the node)";
+
+// The marks that make a page the LOGIN page rather than an error page wearing
+// the same theme — the same list `loginAnswer` judges against, so a collector
+// and the judge cannot disagree about what it looked for.
+export const LOGIN_MARKS_LIST = ["kc-form-login", 'name="username"', 'name="password"'];
+
 // What makes a page the LOGIN page rather than an error page wearing the same
 // theme: the product's own form id, and the two fields it asks for. A collector
 // reports which of them it found; this says which are meant to be there, so a
 // page missing one is named by the mark it is missing.
-const LOGIN_MARKS = ["kc-form-login", 'name="username"', 'name="password"'];
+const LOGIN_MARKS = LOGIN_MARKS_LIST;
 
 const missingMarks = (found: string[] | undefined): string[] =>
   LOGIN_MARKS.filter((m) => !(found ?? []).includes(m));

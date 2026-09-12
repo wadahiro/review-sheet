@@ -210,3 +210,26 @@ describe("an item with no row behind it, answered by a command", () => {
     expect(collectPlan(fplan(CHECK)).commands).toEqual(["chronyc tracking"]);
   });
 });
+
+// WHAT MUST NEVER LEAVE THE NODE is the product's knowledge, and a collector
+// cannot apply it without being told.
+describe("what a collector must remove before anything travels", () => {
+  it("is carried by the plan where the sheets bound the product, and not otherwise", () => {
+    const p = planOf([item("x", "1")]);
+    const bare = collectPlan(p, [], [], []);
+    expect(bare.redact).toBeUndefined();
+    expect(bare.login_marks).toBeUndefined();
+
+    const bound = collectPlan(p, [], [], ["keycloak"]);
+    // The fields the Admin API returns in the clear — a name missing from a
+    // project's own copy is a credential in a delivered document.
+    expect(bound.redact?.fields).toContain("bindCredential");
+    expect(bound.redact?.fields).toContain("clientSecret");
+    expect(bound.redact?.mask).toBe("(redacted on the node)");
+    // …and the mask the SERVER understands, which is a different string: one
+    // says "we took this out", the other is what the product expects back.
+    expect(bound.redact?.masked).toBe("**********");
+    // …and the marks the judge will ask about, so a collector looks for those.
+    expect(bound.login_marks).toEqual(["kc-form-login", 'name="username"', 'name="password"']);
+  });
+});

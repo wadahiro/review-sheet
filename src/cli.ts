@@ -570,7 +570,10 @@ program
       const model = JSON.parse(readFileSync(opts.input, "utf-8")) as ParameterSheetInput;
       registerModelChannels(model);
       const { plan } = buildTestPlan(model);
-      const out = collectPlan(plan, model.builds, model.defaults_checked_by);
+      const out = collectPlan(plan, model.builds, model.defaults_checked_by, [
+        ...(model.functional_channels ?? []).map((c) => c.channel),
+        ...(model.functional_rules ?? []).map((r) => r.rule),
+      ]);
       const text = JSON.stringify(out, null, 2);
       if (opts.output === undefined) console.log(text);
       else {
