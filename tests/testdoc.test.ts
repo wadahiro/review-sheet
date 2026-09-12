@@ -108,11 +108,53 @@ describe("the tables a document is given", () => {
     expect(b["test:items"]).toContain("実施日時: — ／ 対象ホスト: — （未実施）");
   });
 
-  it("carries the verdict, the day, how it was checked and where to look again", () => {
+  it("carries the verdict, how it was checked and where to look again", () => {
     const b = renderTestDoc(plan(), results(), "server");
-    expect(b["test:items"]).toContain("| OK | 2026-09-07 | デプロイ済みファイル | web01 /etc/httpd/conf/httpd.conf:12 |");
+    expect(b["test:items"]).toContain("| OK | デプロイ済みファイル | web01 /etc/httpd/conf/httpd.conf:12 |");
     expect(b["test:items"]).toContain("NG");
     expect(b["test:items"]).toContain("未実施");
+  });
+
+  // The heading of every section already says when the run was and which hosts
+  // it reached. Repeating that date down a thousand rows says nothing new — and
+  // this record is committed and read as a diff, so a re-run that found exactly
+  // the same answers used to rewrite every row of it.
+  it("does not repeat the run's own date on every row", () => {
+    const b = renderTestDoc(plan(), results(), "server");
+    expect(b["test:items"]).toContain("実施日時: 2026-09-07T07:36:49Z");
+    expect(b["test:items"].split("2026-09-07").length - 1).toBe(1);
+    expect(b["test:items"]).not.toContain("| 実施日 |");
+  });
+
+  // The property all of the above is for, stated directly: the record is
+  // committed and reviewed as a diff, so a run that found the same answers on a
+  // different day must produce the same document but for the line that says
+  // when it ran.
+  it("differs only in the heading when a later run finds the same answers", () => {
+    const first = renderTestDoc(plan(), results(), "server")["test:items"];
+    const later = results();
+    later.runs = { local: { at: "2026-10-01T09:00:00Z", hosts: ["web01", "web02"] } };
+    const second = renderTestDoc(plan(), later, "server")["test:items"];
+    const differing = first
+      .split("\n")
+      .map((l, i) => [l, second.split("\n")[i]] as const)
+      .filter(([a, b]) => a !== b);
+    expect(differing.map(([a]) => a)).toEqual([
+      "実施日時: 2026-09-07T07:36:49Z ／ 対象ホスト: web01, web02",
+    ]);
+  });
+
+  // …and says it where the row knows something the heading does not: an answer
+  // carried over from an earlier day, which is the whole reason the column
+  // exists.
+  it("says the day of an answer the run did not produce", () => {
+    const older = results();
+    older.results[2] = { ...older.results[2], at: "2026-08-30T01:00:00Z" };
+    const b = renderTestDoc(plan(), older, "server");
+    expect(b["test:items"]).toContain("| 実施日 |");
+    expect(b["test:items"]).toContain("2026-08-30");
+    // Only that one: every other row was answered by this run.
+    expect(b["test:items"].split("2026-08-30").length - 1).toBe(1);
   });
 
   // A record that says "not run" and keeps the reason to itself is the shape a

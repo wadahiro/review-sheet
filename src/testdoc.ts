@@ -186,8 +186,33 @@ const evidenceOf = (
   carried: NonNullable<TestResults["evidence"]>
 ): string => cell(evidenceCell(r, carried)).replace(/\\\|/g, "|");
 
-const dayOf = (r: TestResult | undefined, run: { at?: string } | undefined): string =>
-  (r?.at ?? run?.at ?? "").slice(0, 10);
+// WHEN this row got the answer it shows — said only where the section's own
+// heading does not already say it.
+//
+// The heading carries the run (`実施日時: … ／ 対象ホスト: …`), and almost every
+// row of a section was answered by that run. Repeating its date down a thousand
+// rows says nothing the reader did not just read, and it is not free: the
+// record is committed and reviewed as a diff, and a re-run that found exactly
+// the same answers rewrote every row of it. The document stopped being
+// reviewable on the axis it exists for.
+//
+// So this answers the exception — an answer carrying a timestamp of its own
+// from a different day, which is the only case where the row knows something
+// the heading does not.
+const dayOf = (r: TestResult | undefined, run: { at?: string } | undefined): string => {
+  const mine = (r?.at ?? "").slice(0, 10);
+  return mine === "" || mine === (run?.at ?? "").slice(0, 10) ? "" : mine;
+};
+
+// …and a column no row of this section filled is not written at all, the same
+// rule the sheet's own projection follows. An empty column in a 成績書 reads as
+// a record nobody completed; an absent one reads as the heading having answered
+// it, which is what happened.
+function dropEmpty(header: string[], rows: string[][], at: number): { header: string[]; rows: string[][] } {
+  if (rows.some((r) => (r[at] ?? "") !== "")) return { header, rows };
+  const without = <T>(xs: T[]): T[] => xs.filter((_, i) => i !== at);
+  return { header: without(header), rows: rows.map(without) };
+}
 
 // The item is the SETTING, and nothing else. It used to carry what to expect of
 // it as a sentence — "`Listen` が設定どおりであること" — and that put the same
@@ -417,10 +442,10 @@ export function renderTestDoc(
             r?.status === "not_run" ? cell(r.reason) : "",
           ];
         });
-      sections.push(
-        table([t.no, t.subject, t.item, t.expected, t.decider, t.verdict, t.ran, t.how, t.evidence, t.note], rows),
-        ""
-      );
+      {
+        const shape = dropEmpty([t.no, t.subject, t.item, t.expected, t.decider, t.verdict, t.ran, t.how, t.evidence, t.note], rows, 6);
+        sections.push(table(shape.header, shape.rows), "");
+      }
     }
 
     // …and this environment's functional items, last, as one more sub-heading.
@@ -448,7 +473,10 @@ export function renderTestDoc(
           f.intrusive && (a === undefined || a.status === "not_run") ? t.consentNeeded : cell(a?.reason),
         ];
       });
-      sections.push(table([t.no, t.item, t.verdict, t.ran, t.how, t.evidence, t.note], rows), "");
+      {
+        const shape = dropEmpty([t.no, t.item, t.verdict, t.ran, t.how, t.evidence, t.note], rows, 3);
+        sections.push(table(shape.header, shape.rows), "");
+      }
     }
   }
   blocks["test:items"] = sections.join("\n").trimEnd();
