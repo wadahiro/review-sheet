@@ -58,7 +58,7 @@ beforeEach(() => {
   host = document.createElement("div");
   document.body.appendChild(host);
   const payload = { metadata: SHEET.metadata, versions: [{ version: "current", sheets: SHEET.sheets }] };
-  render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+  render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
 });
 afterEach(() => {
   render(null, host);
@@ -186,7 +186,7 @@ describe("an address marker that is not the file's", () => {
     render(null, host);
     h2 = document.createElement("div");
     document.body.appendChild(h2);
-    render(h(Root, { payload: { metadata: XML.metadata, versions: [{ version: "current", sheets: XML.sheets }] }, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), h2);
+    render(h(Root, { payload: { metadata: XML.metadata, versions: [{ version: "current", sheets: XML.sheets }] }, reviewEnabled: true, initialLang: "ja", server: false }), h2);
   });
   afterEach(() => {
     render(null, h2);

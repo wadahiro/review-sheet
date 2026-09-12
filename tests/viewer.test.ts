@@ -106,7 +106,7 @@ function mount(reviews: ReviewDocument["reviews"] = []): HTMLElement {
     const payload = JSON.stringify(reviews);
     for (const k of storageKeys()) localStorage.setItem(k, payload);
   }
-  render(h(Root, { payload: PAYLOAD, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+  render(h(Root, { payload: PAYLOAD, reviewEnabled: true, initialLang: "ja", server: false }), host);
   return host;
 }
 
@@ -230,7 +230,7 @@ describe("viewer: compare two versions", () => {
       h(Root, {
         payload: { metadata: { title: "t" }, versions: [at("4"), at("16")] },
         reviewEnabled: true,
-        editEnabled: false,
+       
         initialLang: "ja",
         server: false,
       }),
@@ -385,7 +385,7 @@ describe("viewer: category label vs identity", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: PAYLOAD_L, reviewEnabled: true, editEnabled: false, initialLang: lang, server: false }), host);
+    render(h(Root, { payload: PAYLOAD_L, reviewEnabled: true, initialLang: lang, server: false }), host);
     return host;
   }
 
@@ -581,7 +581,7 @@ describe("viewer: anchor ids for non-ASCII names", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: PAYLOAD, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: PAYLOAD, reviewEnabled: true, initialLang: "ja", server: false }), host);
     return host;
   }
 
@@ -648,7 +648,7 @@ describe("viewer: sheet label", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: PAYLOAD_S, reviewEnabled: true, editEnabled: false, initialLang: lang, server: false }), host);
+    render(h(Root, { payload: PAYLOAD_S, reviewEnabled: true, initialLang: lang, server: false }), host);
     return host;
   }
   // `[data-sheet-idx]` excludes the overview tab, which is a .rs-tab too but is
@@ -681,7 +681,7 @@ describe("viewer: sheet label", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
     const bare = { metadata: { title: "t" }, versions: [{ version: "current", sheets: [{ name: "aws infrastructure", categories: LABELLED_SHEET.sheets[0].categories }] }] };
-    render(h(Root, { payload: bare, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: bare, reviewEnabled: true, initialLang: "ja", server: false }), host);
     expect(tabs(host)).toEqual(["aws infrastructure"]);
   });
 
@@ -724,7 +724,7 @@ describe("viewer: sheet groups", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     return host;
   }
   const groupTabs = (host: HTMLElement): string[] =>
@@ -754,7 +754,7 @@ describe("viewer: sheet groups", () => {
     location.hash = "";
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: payloadOf(GROUPED), reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: payloadOf(GROUPED), reviewEnabled: true, initialLang: "ja", server: false }), host);
     expect(host.querySelector(".rs-subtabs")).toBeNull();
   });
 
@@ -870,7 +870,7 @@ describe("viewer: filtering which environments are shown", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     return host;
   }
   const headers = (host: HTMLElement): string[] =>
@@ -937,7 +937,7 @@ describe("viewer: the column filter follows the table's order", () => {
     location.hash = "#2"; // the second sheet: local, staging, production
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     const btn = [...host.querySelectorAll("button")].find((b) => /絞り込み/.test(b.textContent ?? ""));
     (btn as HTMLElement).click();
     await Promise.resolve();
@@ -996,7 +996,7 @@ describe("viewer: components side by side", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     const toggle = host.querySelector(".rs-compare-toggle input") as HTMLInputElement;
     if (!toggle) throw new Error("side-by-side toggle not offered");
     toggle.click();
@@ -1033,7 +1033,7 @@ describe("viewer: components side by side", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: one, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: one, reviewEnabled: true, initialLang: "ja", server: false }), host);
     expect(host.querySelector(".rs-compare-toggle")).toBeNull();
   });
 });
@@ -1064,7 +1064,7 @@ describe("viewer: cell sub-lines stack", () => {
         },
       ],
     };
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
     await Promise.resolve();
     const sublines = host.querySelectorAll(".rs-pivot .rs-key-subline");
@@ -1097,7 +1097,7 @@ describe("viewer: the side-by-side view keeps its bearings", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
     await Promise.resolve();
     return host;
@@ -1155,7 +1155,7 @@ describe("viewer: the side-by-side view keeps the stacked view's structure", () 
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
     await Promise.resolve();
     return host;
@@ -1212,7 +1212,7 @@ describe("viewer: the outline names what is being compared", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     if (pivot) {
       (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
       await Promise.resolve();
@@ -1283,7 +1283,7 @@ describe("viewer: side by side aligns the environments across a row", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
     await Promise.resolve();
     const row = [...host.querySelectorAll(".rs-pivot tbody tr")].find(
@@ -1362,7 +1362,7 @@ function mountArtifact(): HTMLElement {
   openSheetTab();
   const host = document.createElement("div");
   document.body.appendChild(host);
-  render(h(Root, { payload: WITH_ARTIFACT, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+  render(h(Root, { payload: WITH_ARTIFACT, reviewEnabled: true, initialLang: "ja", server: false }), host);
   return host;
 }
 
@@ -1556,7 +1556,7 @@ describe("artifact panel", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: WITH_OBSERVED, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: WITH_OBSERVED, reviewEnabled: true, initialLang: "ja", server: false }), host);
     const chip = host.querySelector(".rs-artifact-chip") as HTMLElement | null;
     expect(chip).not.toBeNull();
     chip!.click();
@@ -1583,7 +1583,7 @@ describe("artifact panel", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: TWO_COMPONENTS, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: TWO_COMPONENTS, reviewEnabled: true, initialLang: "ja", server: false }), host);
     const rows = [...host.querySelectorAll("tbody tr")].filter(
       (r) => r.querySelector(".rs-col-key code")?.textContent === "enabled"
     );
@@ -1597,7 +1597,7 @@ describe("artifact panel", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: PATH_COMPONENTS, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: PATH_COMPONENTS, reviewEnabled: true, initialLang: "ja", server: false }), host);
     const rows = [...host.querySelectorAll("tbody tr")].filter(
       (r) => r.querySelector(".rs-col-key code")?.textContent === "rotate"
     );
@@ -1641,7 +1641,7 @@ describe("artifact panel", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     expect(rowFor(host, "hostname").querySelector(".rs-artifact-chip")).not.toBeNull();
   });
 
@@ -1728,7 +1728,7 @@ describe("artifact panel", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: TWO_FILES_SAME_COMPONENT, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: TWO_FILES_SAME_COMPONENT, reviewEnabled: true, initialLang: "ja", server: false }), host);
 
     (rowFor(host, "instance_type").querySelector(".rs-artifact-chip") as HTMLElement).click();
     await Promise.resolve();
@@ -1751,7 +1751,7 @@ describe("artifact panel", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: WITH_SOURCE_ARTIFACT, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: WITH_SOURCE_ARTIFACT, reviewEnabled: true, initialLang: "ja", server: false }), host);
 
     (rowFor(host, "instance_type").querySelector(".rs-artifact-chip") as HTMLElement).click();
     await Promise.resolve();
@@ -1822,7 +1822,7 @@ function mountBaseline(): HTMLElement {
   openSheetTab();
   const host = document.createElement("div");
   document.body.appendChild(host);
-  render(h(Root, { payload: WITH_BASELINE, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+  render(h(Root, { payload: WITH_BASELINE, reviewEnabled: true, initialLang: "ja", server: false }), host);
   return host;
 }
 
@@ -1931,7 +1931,7 @@ describe("viewer: the default under the value", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: doc(params) as never, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: doc(params) as never, reviewEnabled: true, initialLang: "ja", server: false }), host);
     // An unset row is hidden by default, and the cases below that use one are
     // exactly the cases about what such a row says when it has no value.
     if ((params[0] as { origin?: string }).origin === "default") await showUnsetRows(host);
@@ -2009,7 +2009,7 @@ describe("viewer: versions as columns", () => {
       h(Root, {
         payload: { metadata: { title: "t" }, versions: [at("19.0.2", "4", "ldapsOnly"), at("26.7.0", "4", "always")] },
         reviewEnabled: true,
-        editEnabled: false,
+       
         initialLang: "ja",
         server: false,
       } as never),
@@ -2080,7 +2080,7 @@ describe("viewer: a sheet that is always side by side", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: doc(mode) as never, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: doc(mode) as never, reviewEnabled: true, initialLang: "ja", server: false }), host);
     return host;
   }
 
@@ -2149,7 +2149,7 @@ describe("option labels", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: PAYLOAD_O, reviewEnabled: true, editEnabled: false, initialLang: lang, server: false }), host);
+    render(h(Root, { payload: PAYLOAD_O, reviewEnabled: true, initialLang: lang, server: false }), host);
     return host;
   }
 
@@ -2228,7 +2228,7 @@ describe("a sheet that is always pivoted", () => {
       h(Root, {
         payload: { metadata: ALWAYS.metadata, versions: [{ version: "current", sheets: ALWAYS.sheets }] },
         reviewEnabled: true,
-        editEnabled: false,
+       
         initialLang: "en",
         server: false,
       }),
@@ -2276,7 +2276,7 @@ describe("viewer: a row with no category survives the side-by-side view", () => 
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     (host.querySelector(".rs-compare-toggle input") as HTMLInputElement).click();
     await Promise.resolve();
     return host;
@@ -2345,7 +2345,7 @@ describe("viewer: a document sheet", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     return host;
   }
 
@@ -2429,7 +2429,7 @@ describe("viewer: two documents with the same heading", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     return host;
   }
 
@@ -2476,7 +2476,7 @@ describe("sub-headings inside a file's table", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     return host;
   }
 
@@ -2544,7 +2544,7 @@ describe("a group holding rows from more than one file", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
     return host;
   }
 
@@ -2583,7 +2583,7 @@ describe("what a presence row shows in its value cell", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload, reviewEnabled: true, editEnabled: false, initialLang: lang, server: false }), host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: lang, server: false }), host);
     return host;
   }
   const valueCell = (host: HTMLElement, key: string): string =>
@@ -2666,7 +2666,7 @@ describe("viewer: an environment the row is not in", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: doc(extra) as never, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: doc(extra) as never, reviewEnabled: true, initialLang: "ja", server: false }), host);
     return host;
   };
 
@@ -2738,7 +2738,7 @@ describe("viewer: showing where a value is written", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
     render(
-      h(Root, { payload: doc as never, reviewEnabled: true, editEnabled: false, showSources: sources, initialLang: "ja", server: false }),
+      h(Root, { payload: doc as never, reviewEnabled: true, showSources: sources, initialLang: "ja", server: false }),
       host
     );
     return host;
@@ -2799,7 +2799,7 @@ describe("viewer: a category headed by the file it deploys", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: doc(label) as never, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: doc(label) as never, reviewEnabled: true, initialLang: "ja", server: false }), host);
     return host;
   };
 
@@ -2819,417 +2819,10 @@ describe("viewer: a category headed by the file it deploys", () => {
   });
 });
 
-// A paragraph written into a hand-maintained sheet: the case that was reported
-// as "## Test / aaaa is invisible", in the mode that replaced the one it was
-// reported against. It has to be on the page AND in the outline, since both are
-// built from the same text.
-// A hand-maintained document holds no findings, so the controls that exist to
-// show them — "show comments", "only rows with a comment" — are controls over
-// something that cannot be there. The filter menu itself stays: hiding the rows
-// nobody set is what makes a 1500-row sheet readable, and that is not reviewing.
-describe("the filters a hand-maintained document offers", () => {
-  const md = ["# os", "", "## SELinux", "", "| 設定項目 | デフォルト値 | 設定値 |", "| --- | --- | --- |", "| `state` |  | enforcing |", "| `unset` | 0 |  |", ""].join("\n");
-  const payload = {
-    metadata: { title: "t", version: "current" },
-    versions: [
-      {
-        version: "current",
-        sheets: [{ name: "os", instances: [], categories: [], document: { html: "", markdown: md, mode: "sheet" } }],
-      },
-    ],
-  };
 
-  const menuHost = async (review: boolean): Promise<HTMLElement> => {
-    openSheetTab();
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    render(h(Root, { payload: payload as never, reviewEnabled: review, editEnabled: true, initialLang: "ja", server: false }), host);
-    await waitForEffects();
-    const btn = [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes(getMessages("ja").filterMenu));
-    (btn as HTMLElement)?.click();
-    await waitForEffects();
-    return host;
-  };
-  const menuText = async (review: boolean): Promise<string> => (await menuHost(review)).textContent ?? "";
 
-  // The export hands a REVIEW back. A hand-maintained document saves itself and
-  // `apply -r sheet.html` reads it, so a review.json beside it is a second,
-  // lesser copy of what the file already carries — and one that reads as an
-  // alternative to saving, which is how work gets lost.
-  it("offers no review export", async () => {
-    const text = await menuText(false);
-    expect(text).not.toContain(getMessages("ja").exportReview);
-  });
 
-  // One editor: the document itself. There is nothing else to edit here — the
-  // page IS the text. Found by what it SAYS it is rather than by a visible
-  // word: the button is the icon alone, the way every heading's own is.
-  it("offers the document as the thing to edit", async () => {
-    const host = await menuHost(false);
-    const edit = [...host.querySelectorAll("button")].filter(
-      (b) => b.getAttribute("aria-label") === getMessages("ja").docEdit
-    );
-    expect(edit.length).toBeGreaterThan(0);
-  });
 
-  // The toggle re-resolves prose the MODEL carries in both languages. A
-  // hand-maintained document carries text, rendered once in the language it was
-  // generated in, so the switch would move the buttons and leave every
-  // description where it was.
-  it("offers no language switch", async () => {
-    openSheetTab();
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
-    await waitForEffects();
-    expect(host.querySelector(".rs-lang-switch")).toBeNull();
-  });
-
-  it("offers the unset-row filter and no comment filter", async () => {
-    const text = await menuText(false);
-    expect(text).toContain(getMessages("ja").showDefaults(1));
-    expect(text).not.toContain(getMessages("ja").showCommentsToggle);
-    expect(text).not.toContain(getMessages("ja").showCommentedOnly);
-  });
-
-  // …and a document that CAN hold findings still has them.
-  it("keeps them where findings are possible", async () => {
-    const text = await menuText(true);
-    expect(text).toContain(getMessages("ja").showCommentsToggle);
-  });
-});
-
-// An environment added through the control, end to end: the document gains a
-// column, the page shows it, and the toggle that hides environment columns
-// knows about it — the piece that used to need a regeneration.
-// The document's VALUE columns — what the model calls its instances, and what
-// the filter has always called columns. The set belongs to the document; using
-// one is the sheet's own business.
-describe("the value columns of a hand-maintained document", () => {
-  const md = [
-    "# os",
-    "",
-    "## SELinux",
-    "",
-    "| 設定項目 | デフォルト値 | staging | production |",
-    "| --- | --- | --- | --- |",
-    "| `state` |  | enforcing | enforcing |",
-    "",
-  ].join("\n");
-  // A second sheet on the same axis, and a third with none of its own.
-  const other = md.replace("# os", "# app").replace("## SELinux", "## Tuning").replace("`state`", "`workers`");
-  const flat = ["# doc", "", "## c", "", "| 設定項目 | デフォルト値 | 設定値 |", "| --- | --- | --- |", "| `k` |  | 1 |", ""].join("\n");
-  const payload = {
-    metadata: { title: "t", version: "current" },
-    versions: [
-      {
-        version: "current",
-        sheets: [
-          { name: "os", instances: ["staging", "production"], categories: [], document: { html: "", markdown: md, mode: "sheet" } },
-          { name: "app", instances: ["staging", "production"], categories: [], document: { html: "", markdown: other, mode: "sheet" } },
-          { name: "doc", instances: [], categories: [], document: { html: "", markdown: flat, mode: "sheet" } },
-        ],
-      },
-    ],
-  };
-
-  const mountDoc = async (): Promise<HTMLElement> => {
-    openSheetTab();
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    window.alert = () => {};
-    window.confirm = () => true;
-    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
-    await waitForEffects();
-    return host;
-  };
-
-  const headers = (host: HTMLElement): (string | null)[] =>
-    [...host.querySelectorAll("th")].map((e) => (e.querySelector("span") ?? e).textContent);
-
-  // Through the settings menu, which is where a document's own settings live.
-  const openToolbar = async (host: HTMLElement): Promise<void> => {
-    const gear = [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").trim() === getMessages("ja").settingsMenu);
-    (gear as HTMLElement).click();
-    await waitForEffects();
-    const item = [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").trim() === getMessages("ja").envManage);
-    (item as HTMLElement).click();
-    await waitForEffects();
-  };
-  const openSheet = async (host: HTMLElement): Promise<void> => {
-    ([...host.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === getMessages("ja").envSheetManage) as HTMLElement).click();
-    await waitForEffects();
-  };
-
-  // Defining an environment says the document HAS one. It says nothing about
-  // which sheets carry a column for it — there is nothing to put in a column
-  // nobody asked for.
-  it("adds a name to the document, and no column to any table", async () => {
-    const host = await mountDoc();
-    await openToolbar(host);
-    const input = host.querySelector(".rs-env-add input") as HTMLInputElement;
-    input.value = "dr";
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    await waitForEffects();
-    ([...host.querySelectorAll("button")].find((b) => (b.textContent ?? "") === getMessages("ja").envAdd) as HTMLElement).click();
-    await waitForEffects();
-    expect(headers(host)).not.toContain("dr");
-    // …and it is on the list, used nowhere. (The dialog is still open: adding
-    // an environment is not the end of what somebody came here to do.)
-    expect(host.querySelector(".rs-env-table")?.textContent).toContain("dr");
-    // Nothing uses it, so it can be taken out again; the ones in use cannot.
-    const buttons = [...host.querySelectorAll(".rs-env-table button")].filter(
-      (b) => (b.textContent ?? "") === getMessages("ja").envRemove
-    ) as HTMLButtonElement[];
-    expect(buttons.map((b) => b.disabled)).toEqual([true, true, false]);
-  });
-
-  // Whether a sheet carries the column is the SHEET's, from its own heading.
-  it("gives the column to the sheet that asks for it, and to no other", async () => {
-    const host = await mountDoc();
-    await openToolbar(host);
-    const input = host.querySelector(".rs-env-add input") as HTMLInputElement;
-    input.value = "dr";
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    await waitForEffects();
-    ([...host.querySelectorAll("button")].find((b) => (b.textContent ?? "") === getMessages("ja").envAdd) as HTMLElement).click();
-    await waitForEffects();
-
-    await openSheet(host);
-    const boxes = [...host.querySelectorAll(".rs-env-sheet-row input")] as HTMLInputElement[];
-    expect(boxes.map((b) => b.checked)).toEqual([true, true, false]);
-    boxes[2].click();
-    await waitForEffects();
-    expect(headers(host)).toEqual(["設定項目", "デフォルト値", "staging", "production", "dr"]);
-
-    // The other sheet is untouched.
-    const tabs = [...(host.querySelector("nav")?.querySelectorAll("button") ?? [])];
-    (tabs.find((b) => (b.textContent ?? "").trim() === "app") as HTMLElement).click();
-    await waitForEffects();
-    expect(headers(host)).not.toContain("dr");
-  });
-
-  // Renaming is not optional per sheet: a column naming an environment that no
-  // longer exists is a document disagreeing with itself.
-  it("renames the column wherever it is", async () => {
-    const host = await mountDoc();
-    await openToolbar(host);
-    window.prompt = () => "stg";
-    ([...host.querySelectorAll(".rs-env-table button")].find((b) => (b.textContent ?? "") === getMessages("ja").envRename) as HTMLElement).click();
-    await waitForEffects();
-    expect(headers(host)).toContain("stg");
-    const tabs = [...(host.querySelector("nav")?.querySelectorAll("button") ?? [])];
-    (tabs.find((b) => (b.textContent ?? "").trim() === "app") as HTMLElement).click();
-    await waitForEffects();
-    expect(headers(host)).toContain("stg");
-  });
-});
-
-// The way back. A hand-maintained document holds no findings, so it has no
-// review menu — which is where "clear everything" used to live, leaving an
-// edit-only document with no way to undo a mistake at all.
-describe("discarding the edits of a hand-maintained document", () => {
-  const md = ["# os", "", "## SELinux", "", "| 設定項目 | デフォルト値 | 設定値 |", "| --- | --- | --- |", "| `state` |  | enforcing |", ""].join("\n");
-  const payload = {
-    metadata: { title: "t", version: "current" },
-    versions: [
-      {
-        version: "current",
-        sheets: [{ name: "os", instances: [], categories: [], document: { html: "", markdown: md, mode: "sheet" } }],
-      },
-    ],
-  };
-
-  it("returns the document to the text it was delivered with", async () => {
-    openSheetTab();
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    window.alert = () => {};
-    window.confirm = () => true;
-    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
-    await waitForEffects();
-
-    // Edit the document…
-    ([...host.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === getMessages("ja").docEdit) as HTMLElement).click();
-    await waitForEffects();
-    const area = host.querySelector("textarea") as HTMLTextAreaElement;
-    area.value = area.value.replace("enforcing", "permissive");
-    area.dispatchEvent(new Event("input", { bubbles: true }));
-    await waitForEffects();
-    ([...host.querySelectorAll(".rs-doc-modal .rs-btn-primary")].pop() as HTMLElement).click();
-    await waitForEffects();
-    expect(host.textContent).toContain("permissive");
-
-    // …and take it back.
-    const gear = [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").trim() === getMessages("ja").settingsMenu);
-    (gear as HTMLElement).click();
-    await waitForEffects();
-    ([...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").trim() === getMessages("ja").clearEditsMenu) as HTMLElement).click();
-    await waitForEffects();
-    expect(host.textContent).not.toContain("permissive");
-    expect(host.textContent).toContain("enforcing");
-  });
-});
-
-// Editing one part of a page that is one text: the reader points at the heading
-// they can see, and the editor opens THERE. Opening at the end — where focusing
-// a textarea leaves the caret — is the one place nobody meant to go.
-describe("editing a hand-maintained sheet from a heading", () => {
-  const md = [
-    "# os",
-    "",
-    "## SELinux",
-    "",
-    "| 設定項目 | デフォルト値 | 設定値 |",
-    "| --- | --- | --- |",
-    "| `state` |  | enforcing |",
-    "",
-    "## firewalld",
-    "",
-    "| 設定項目 | デフォルト値 | 設定値 |",
-    "| --- | --- | --- |",
-    "| `ssh` |  | true |",
-    // The SAME key as the section above: which one a reader pointed at is said
-    // by the heading over it, and by nothing else.
-    "| `state` |  | running |",
-    "",
-  ].join("\n");
-  const payload = {
-    metadata: { title: "t", version: "current" },
-    versions: [
-      {
-        version: "current",
-        sheets: [{ name: "os", instances: [], categories: [], document: { html: "", markdown: md, mode: "sheet" } }],
-      },
-    ],
-  };
-
-  const open = async (which: number): Promise<HTMLTextAreaElement> => {
-    openSheetTab();
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
-    await waitForEffects();
-    const buttons = [...host.querySelectorAll(".rs-category-header button")].filter(
-      (b) => b.getAttribute("aria-label") === getMessages("ja").docEdit
-    );
-    (buttons[which] as HTMLElement).click();
-    // The editor places its caret on a timer (it has to wait for the textarea
-    // to exist), so one pass is not always enough.
-    await waitForEffects();
-    await waitForEffects();
-    return host.querySelector("textarea") as HTMLTextAreaElement;
-  };
-
-  it("opens the editor at the heading that was clicked", async () => {
-    const area = await open(1);
-    expect(area.value.slice(area.selectionStart)).toStartWith("## firewalld");
-  });
-
-  // Opening at a ROW or a PARAGRAPH is the reader's own gesture — put the caret
-  // there and press `e` — and is covered in viewer-document-edit.test.ts, where
-  // a real markdown renderer is registered and the block-relative line numbers
-  // that path depends on are exercised. What stays here is the heading's own
-  // button, which needs no selection at all.
-  it("opens at the top when the whole sheet is what was asked for", async () => {
-    openSheetTab();
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
-    await waitForEffects();
-    const sheetButton = [...host.querySelectorAll(".rs-sheet-header button")].find(
-      (b) => b.getAttribute("aria-label") === getMessages("ja").docEdit
-    );
-    (sheetButton as HTMLElement).click();
-    await waitForEffects();
-    await waitForEffects();
-    const area = host.querySelector("textarea") as HTMLTextAreaElement;
-    expect(area.selectionStart).toBe(0);
-  });
-
-  // A sheet's editor is a table's editor: the notes a prose page carries are in
-  // the way of it, and the room it needs is nearly the whole window — a row is
-  // one long line, and every character that wraps is one the editor puts
-  // somewhere other than where the table has it.
-  it("is wide, and says nothing above the text", async () => {
-    const area = await open(0);
-    expect(area.className).toContain("rs-sheet-source");
-    expect(area.closest(".rs-doc-modal")?.className).toContain("rs-doc-modal-wide");
-    // …and the rule that widens it must OUT-SPECIFY `.rs-modal`, which sets a
-    // width of its own and is declared later in the sheet. Written as a single
-    // class it lost silently, and every one of these dialogs came out the
-    // default 34rem — which is exactly what "the editor is narrow" was.
-    expect(customStyles).toContain(".rs-modal.rs-doc-modal-wide {");
-    expect(customStyles).toContain(".rs-modal.rs-doc-modal {");
-    const wide = customStyles.slice(customStyles.indexOf(".rs-modal.rs-doc-modal-wide {"));
-    expect(wide.slice(0, wide.indexOf("}"))).toContain("width: 98vw");
-    // Nothing above the text: a standing explanation is read once and is in
-    // the way every time after that.
-    expect(area.closest(".rs-new-review")?.querySelector(".rs-edit-note")).toBeNull();
-  });
-});
-
-// Losing an edit that was never written anywhere is the worst thing this editor
-// can do, and the overlay is one click away from the text.
-describe("closing the editor with work in it", () => {
-  const md = ["# os", "", "## SELinux", "", "| 設定項目 | デフォルト値 | 設定値 |", "| --- | --- | --- |", "| `state` |  | enforcing |", ""].join("\n");
-  const payload = {
-    metadata: { title: "t", version: "current" },
-    versions: [
-      {
-        version: "current",
-        sheets: [{ name: "os", instances: [], categories: [], document: { html: "", markdown: md, mode: "sheet" } }],
-      },
-    ],
-  };
-
-  const openEditor = async (): Promise<HTMLElement> => {
-    openSheetTab();
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
-    await waitForEffects();
-    ([...host.querySelectorAll(".rs-sheet-header button")].find((b) => b.getAttribute("aria-label") === getMessages("ja").docEdit) as HTMLElement).click();
-    await waitForEffects();
-    return host;
-  };
-
-  const type = async (host: HTMLElement): Promise<void> => {
-    const area = host.querySelector("textarea") as HTMLTextAreaElement;
-    area.value = area.value.replace("enforcing", "permissive");
-    area.dispatchEvent(new Event("input", { bubbles: true }));
-    await waitForEffects();
-  };
-
-  it("asks before throwing the text away, and keeps it when the answer is no", async () => {
-    const host = await openEditor();
-    await type(host);
-    let asked = 0;
-    window.confirm = () => {
-      asked += 1;
-      return false;
-    };
-    (host.querySelector(".rs-overlay") as HTMLElement).click();
-    await waitForEffects();
-    expect(asked).toBe(1);
-    expect(host.querySelector("textarea")).not.toBeNull();
-    expect((host.querySelector("textarea") as HTMLTextAreaElement).value).toContain("permissive");
-  });
-
-  // …and closes without a word when there is nothing to lose.
-  it("closes silently when nothing was typed", async () => {
-    const host = await openEditor();
-    let asked = 0;
-    window.confirm = () => {
-      asked += 1;
-      return true;
-    };
-    (host.querySelector(".rs-overlay") as HTMLElement).click();
-    await waitForEffects();
-    expect(asked).toBe(0);
-    expect(host.querySelector("textarea")).toBeNull();
-  });
-});
 
 // The outline of a hand-maintained sheet: its own headings and rows, from the
 // same text the page renders. A PROSE document's outline is its headings, and a
@@ -3267,7 +2860,7 @@ describe("the outline of a hand-maintained sheet", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: payload as never, reviewEnabled: false, initialLang: "ja", server: false }), host);
     await waitForEffects();
     const outline = host.querySelector(".rs-outline-body")?.textContent ?? "";
     expect(outline).toContain("SELinux");
@@ -3291,7 +2884,7 @@ describe("a paragraph in a hand-maintained sheet", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: payload as never, reviewEnabled: false, initialLang: "ja", server: false }), host);
     await waitForEffects();
     expect(host.textContent).toContain("運用メモ: 本番のみ enforcing。");
     expect(host.textContent).toContain("enforcing");
@@ -3344,7 +2937,7 @@ describe("a hand-maintained sheet, compared side by side", () => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: payload as never, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: payload as never, reviewEnabled: false, initialLang: "ja", server: false }), host);
     await waitForEffects();
     const heads = [...host.querySelectorAll(".rs-pivot th")].map((e) => (e.textContent ?? "").trim());
     expect(heads).toEqual(["設定項目", "client-a", "client-b"]);
@@ -3357,53 +2950,6 @@ describe("a hand-maintained sheet, compared side by side", () => {
   });
 });
 
-// A document that may be edited says so: the heading's actions are always
-// there. Hidden until hover, the one thing such a document is for has no
-// visible entrance — and a touch screen has no hover at all.
-describe("the heading's actions in a document that may be edited", () => {
-  it("are always visible there, at full strength, and only on hover elsewhere", () => {
-    const css = customStyles;
-    expect(css).toContain(".rs-edit-on .rs-header-actions {");
-    const rule = css.slice(css.indexOf(".rs-edit-on .rs-header-actions {"));
-    // Full strength, not muted: a control at half strength reads as one that is
-    // not available yet.
-    expect(rule.slice(0, rule.indexOf("}"))).toContain("opacity: 1");
-    // The review-only document keeps the older reading: nothing until hover.
-    const base = css.slice(css.indexOf(".rs-header-actions {"));
-    expect(base.slice(0, base.indexOf("}"))).toContain("opacity: 0");
-  });
-
-  // …and at the right END of the heading, wherever the heading is. A heading is
-  // as long as its title, so an action placed after it lands at a different
-  // spot on every section and reads as part of the text — reported on the
-  // sheet's own title, whose actions sat right beside the words while the
-  // document's own headings carried theirs at the edge.
-  it("sit at the right end of the heading, not beside its words", () => {
-    const css = customStyles;
-    const rule = css.slice(css.indexOf(".rs-sheet-header .rs-header-actions,"));
-    expect(rule.slice(0, rule.indexOf("}"))).toContain("margin-left: auto");
-    // …which needs the heading to fill the row it is in, or there is no free
-    // space for that margin to take.
-    const head = css.slice(css.indexOf(".rs-sheet-header h2,"));
-    expect(head.slice(0, head.indexOf("}"))).toContain("flex: 1");
-  });
-
-  it("marks the document itself, so the rule has something to hang on", async () => {
-    openSheetTab();
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    render(h(Root, { payload: PAYLOAD, reviewEnabled: false, editEnabled: true, initialLang: "ja", server: false }), host);
-    await waitForEffects();
-    expect(host.querySelector(".rs-app")?.className).toContain("rs-edit-on");
-    document.body.innerHTML = "";
-
-    const host2 = document.createElement("div");
-    document.body.appendChild(host2);
-    render(h(Root, { payload: PAYLOAD, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host2);
-    await waitForEffects();
-    expect(host2.querySelector(".rs-app")?.className).not.toContain("rs-edit-on");
-  });
-});
 
 describe("a button that cannot act", () => {
   it("is styled as disabled, whatever kind of button it is", () => {

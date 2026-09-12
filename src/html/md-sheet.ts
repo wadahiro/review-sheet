@@ -19,7 +19,6 @@ export { rowIsUnset, visibleRows } from "../sheet-markdown.js";
 import { getMarkdownRenderer } from "./markdown-runtime.js";
 import { navAnchorId, paramAnchorId } from "./anchors.js";
 import { showCellTool, hideCellToolSoon } from "./cell-tool.js";
-import type { DocJump } from "./doc-jump.js";
 import type { Messages } from "./i18n.js";
 
 const html = htm.bind(h);
@@ -76,7 +75,6 @@ export type MarkdownSheetProps = {
   // reader points at what they can see, rather than scrolling a thousand lines
   // for it. WHERE is a line of the markdown, carried by the parse rather than
   // searched for afterwards (see DocumentModal).
-  onEditAt?: (jump: DocJump) => void;
   t: Messages;
 };
 
@@ -253,10 +251,6 @@ function MarkdownTable({
               hasReview: false,
               canCopy: true,
               reviewEnabled: false,
-              editEnabled: false,
-              hasEdit: false,
-              canDelete: false,
-              rowDeleted: false,
               scroller: (e.currentTarget as HTMLElement).closest(".rs-table-wrapper"),
             });
           return html`
@@ -327,7 +321,6 @@ export function MarkdownSheetBody({
   rowKeys,
   sheetName,
   artifact,
-  onEditAt,
   t,
 }: MarkdownSheetProps) {
   const renderProse = getMarkdownRenderer();
@@ -405,16 +398,6 @@ export function MarkdownSheetBody({
                 and reads as a bar somebody cut off. */ ""}
           <${Tag} data-rs-line=${section.line}>
             <span class="rs-cat-label">${section.path[section.path.length - 1]}</span>
-            ${onEditAt !== undefined && html`
-              <span class="rs-header-actions">
-                <button class="rs-head-tool" title=${t.docEditKey} aria-label=${t.docEdit}
-                        onClick=${() => onEditAt({ line: section.line })}>
-                  ${/* The icon alone, as the document's own headings carry it:
-                        one affordance, one look, wherever it sits. */ ""}
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                </button>
-              </span>
-            `}
           </${Tag}>
         </div>
         ${renderBlocks(section)}

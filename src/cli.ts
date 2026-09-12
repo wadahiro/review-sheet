@@ -14,7 +14,6 @@ import { listProbeRules } from "./channel.js";
 import { collectHost, reachWith } from "./collect.js";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, ArtifactPreview } from "./types.js";
 import { evidencePreviews } from "./evidence.js";
-import { extractReviewsFromHtml } from "./edits.js";
 import { computeApply } from "./apply.js";
 import { verifySources } from "./verify.js";
 import { diffSheets, type CategoryDiff, type DiffResult } from "./diff.js";
@@ -308,19 +307,10 @@ const ALLOWED_CAPS = ["review", "prompt"] as const;
 // "rendered from" line under a sheet's heading, the source line in a preview.
 // The source map itself stays in the document; apply and verify resolve every
 // change through it.
-// `-r` takes a review.json or the edited sheet HTML. Distinguished by content,
-// not by extension: a file renamed on the way back should still work.
+// `-r` takes a review.json — the findings a review pass produced, exported from
+// the viewer or written by hand.
 function readReviewSource(path: string): ReviewDocument {
-  const raw = readFileSync(path, "utf-8");
-  if (raw.trimStart().startsWith("<")) {
-    const reviews = extractReviewsFromHtml(raw);
-    if (reviews.length === 0) {
-      console.error(`Error: ${path} is an HTML document with no edits in it (was it generated with --allow edit?)`);
-      process.exit(1);
-    }
-    return validateReview({ schema_version: "2.0", created_at: new Date().toISOString(), reviews });
-  }
-  return validateReview(JSON.parse(raw));
+  return validateReview(JSON.parse(readFileSync(path, "utf-8")));
 }
 
 // `--allow a,b`. Returns undefined when the flag was not given at all, so the

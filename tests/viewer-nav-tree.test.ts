@@ -65,7 +65,7 @@ const mount = (input: ParameterSheetInput, hash = "#1"): HTMLElement => {
   location.hash = hash;
   const host = document.createElement("div");
   document.body.appendChild(host);
-  render(h(Root, { payload: payload(input) as never, reviewEnabled: true, editEnabled: false, initialLang: "ja", server: false }), host);
+  render(h(Root, { payload: payload(input) as never, reviewEnabled: true, initialLang: "ja", server: false }), host);
   return host;
 };
 

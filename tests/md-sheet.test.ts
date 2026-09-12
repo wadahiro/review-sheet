@@ -521,7 +521,7 @@ describe("what a value cell says about itself", () => {
     setCellToolSetter((c) => (shown = c));
     (cell as HTMLElement).dispatchEvent(new Event("mouseenter", { bubbles: false }));
     setCellToolSetter(null);
-    expect(shown).toMatchObject({ canCopy: true, effectiveValue: "on", reviewEnabled: false, editEnabled: false });
+    expect(shown).toMatchObject({ canCopy: true, effectiveValue: "on", reviewEnabled: false });
   });
 });
 

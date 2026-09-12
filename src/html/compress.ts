@@ -14,12 +14,6 @@
 // of text — and is still the right encoding: an HTML file is text, and the
 // alternatives (a binary blob beside the file, a fetch) each give up the one
 // property this output guarantees.
-//
-// NOT compressed: the review history (`sheet-reviews`). The CLI reads that back
-// by scanning the file — `extractReviewsFromHtml` in edits.ts, deliberately
-// without a DOM — and the viewer rewrites it on every save. It is small, it is
-// the one block a human may want to read in a text editor, and both of those
-// stop being true the moment it is bytes.
 export function toBase64Gzip(text: string): string {
   return Buffer.from(Bun.gzipSync(Buffer.from(text, "utf-8"), { level: 9 })).toString("base64");
 }

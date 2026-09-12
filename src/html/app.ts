@@ -22,14 +22,13 @@ import {
   type SaveRecord,
 } from "../prompt.js";
 import { buildDiffModel, rowKey, instKey, catKey, sheetKey, type DiffStatusMap } from "../diffview.js";
-import { documentEnvironments, ENVIRONMENTS_FIELD, applyEdits, editsForCell, isEdit, isEditableField, isDeleted, planFromEdits, promptItemsFromPlan, documentSource, documentAssets, DOCUMENT_FIELD, cellKey as editCellKey, targetKey, type EditedSheets } from "../edits.js";
+import { isEdit, targetKey } from "../edits.js";
 import { toMarkdownSheet, renderSheetMarkdown, parseSheetMarkdown } from "../sheet-markdown.js";
 import { getMarkdownRenderer } from "./markdown-runtime.js";
 import { EVIDENCE_SCHEME } from "../evidence.js";
 import { MarkdownSheetBody } from "./md-sheet.js";
 import { NavTree, chapterPath } from "./nav-tree.js";
 import { sectionize } from "./doc-sections.js";
-import { jumpFromSelection, type DocJump, type DocPoint } from "./doc-jump.js";
 import { navAnchorId, paramAnchorId, encodeIdPart } from "./anchors.js";
 import {
   showCellTool,
@@ -43,7 +42,6 @@ import {
 import { markdownToCategories, declaredInstances, withEnvironment, withoutEnvironment, renameEnvironment } from "../sheet-markdown.js";
 import { runMermaid } from "./mermaid-runtime.js";
 import { setShowSources, showSources } from "./display-config.js";
-import { withEmbeddedHistory, readEmbeddedHistory, suggestedFileName, type EmbeddedHistory } from "./save.js";
 import type { DiffStatus } from "../diff.js";
 import { pickLang, type OutOfScope, type Capabilities, type ArtifactPreview, PRESENCE_VALUE } from "../types.js";
 
@@ -342,46 +340,6 @@ let savedFileHandle: FileSystemFileHandle | null = null;
 type FileSystemWritable = { write: (data: string) => Promise<void>; close: () => Promise<void> };
 type FileSystemFileHandle = { createWritable: () => Promise<FileSystemWritable> };
 type SavePicker = (options: { suggestedName?: string; types?: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle>;
-
-// Two ways out, and the difference matters to the recipient. Chrome and Edge
-// can write back over the very file they opened, which is what "maintaining a
-// document" means. Everywhere else — and on any failure — it falls back to a
-// download, which leaves a dated copy beside the original. Never silently: a
-// save that quietly became a copy in the Downloads folder is a lost edit the
-// next time the original is opened.
-// Asked for FIRST, before the document is built. The picker needs the user's
-// gesture, and building a large document ahead of it is what made the page look
-// frozen: several hundred KB of string work ran before anything appeared on
-// screen. Nothing here touches the content.
-async function pickWriteTarget(fileName: string): Promise<FileSystemFileHandle | null> {
-  const picker = (window as unknown as { showSaveFilePicker?: SavePicker }).showSaveFilePicker;
-  if (!picker) return null; // download fallback
-  if (savedFileHandle) return savedFileHandle;
-  try {
-    return await picker({ suggestedName: fileName, types: [{ description: "HTML", accept: { "text/html": [".html"] } }] });
-  } catch {
-    // The user dismissed the picker. Not an error, and not a reason to fall
-    // through to a download they did not ask for.
-    throw new Error("cancelled");
-  }
-}
-
-async function writeDocument(html: string, fileName: string, handle: FileSystemFileHandle | null): Promise<void> {
-  if (handle) {
-    const writable = await handle.createWritable();
-    await writable.write(html);
-    await writable.close();
-    savedFileHandle = handle;
-    return;
-  }
-  const blob = new Blob([html], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = fileName;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 // Let the browser paint before starting synchronous work. Without this, a
 // "saving…" state set immediately before a long task never reaches the screen.
@@ -990,13 +948,6 @@ function splitHead(wrapper: HTMLElement): void {
   }, [html_]);
 
 
-  // Nothing else here opens the editor by itself. Every block the renderer
-  // produced says WHERE it is written (`data-rs-line`, markdown.ts) and `e`
-  // reads that off the reader's own selection (doc-jump.ts) — so a double click
-  // stays what a double click is, selecting a word, and `e` then opens the
-  // editor on exactly that word with it selected. Taking the gesture for the
-  // editor cost both: the word could not be selected, and the editor could only
-  // be told where, never what.
   // An evidence cell's link, delegated at the document root: the cells are
   // markdown the record wrote, so nothing here can attach a handler per cell
   // without re-rendering somebody's document.
@@ -1013,32 +964,6 @@ function splitHead(wrapper: HTMLElement): void {
   return html`
     <div class="rs-doc" ref=${body} onClick=${openEvidence} dangerouslySetInnerHTML=${{ __html: html_ }}></div>
   `;
-}
-
-// WHICH row is unsaved, and what kind of change it is waiting to carry — never
-// the value itself. This is a status notice, not a diff: the value is on the
-// row, one click away, and repeating it here only makes the list long enough
-// that nobody reads which rows are in it.
-//
-// The kind still has to be said. A struck-out row and a rewritten document
-// carry no `changes` at all, so a bare key told the reader that something had
-// happened to `db-url` and not what.
-function unsavedLabel(r: ReviewItem, t: Messages): VNode {
-  const where = [r.target.param ?? r.target.sheet, r.target.instance ? `(${r.target.instance})` : ""]
-    .filter(Boolean)
-    .join(" ");
-  const field = r.target.field ?? "value";
-  const kind =
-    r.deletes === true ? t.rowDelete
-    : r.deletes === false ? t.rowRestore
-    : field === DOCUMENT_FIELD ? t.docEditShort
-    : r.creates === true ? t.addRow
-    : field === "remarks" ? t.fieldRemarks
-    : undefined;
-  return html`
-    <code>${where}</code>
-    ${kind && html`<span class="rs-unsaved-kind">${kind}</span>`}
-  ` as VNode;
 }
 
 // A short, stable name for a pasted image. Content-addressed so the same
@@ -1064,236 +989,6 @@ const IMAGE_EXT: Record<string, string> = {
 };
 
 const extensionOf = (uri: string): string => IMAGE_EXT[/^data:([^;,]+)/.exec(uri)?.[1] ?? ""] ?? "png";
-
-// Editing the markdown a document sheet is rendered from. A plain source
-// editor, not a rich one: the file it came from is markdown, an edit that
-// travels back to it has to be markdown, and anything that renders while
-// typing would be a second renderer to keep honest.
-function DocumentModal({ sheet, current, original, jump, onSave, onClose, t }: {
-  sheet: string;
-  current: string;
-  original: string;
-  // Where to open, as a LINE of this text — see `DocJump` (md-sheet.ts). The
-  // page knows it: every block carries the line it was written on, so the jump
-  // is arithmetic rather than a search over prose, which is what it used to be
-  // and what kept landing on the wrong paragraph. Absent = the top, which is
-  // where a reader starts.
-  jump?: DocJump;
-  onSave: (review: ReviewItem) => void;
-  onClose: () => void;
-  t: Messages;
-}) {
-  const [text, setText] = useState(current);
-  const [pasted, setPasted] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
-  const ref = useRef<HTMLTextAreaElement>(null);
-
-  // Paste an image and it becomes part of the document.
-  //
-  // What goes into the markdown is a PATH — `images/<hash>.png`, the way the
-  // document already refers to the pictures beside it — and the bytes travel
-  // next to the text on the edit itself. Writing a data URI inline works
-  // equally well and reads terribly: a paragraph interrupted by 40 KB of
-  // base64 is unreadable in the editor and in the .md the change goes back to,
-  // and the markdown is exactly what a person is there to read.
-  //
-  // The name is content-addressed, so pasting one image twice references it
-  // once, and two edits that paste the same picture do not each carry a copy.
-  const handlePaste = useCallback((e: ClipboardEvent) => {
-    const items = [...(e.clipboardData?.items ?? [])];
-    const image = items.find((i) => i.kind === "file" && i.type.startsWith("image/"));
-    if (!image) return; // an ordinary text paste
-    const file = image.getAsFile();
-    if (!file) return;
-    e.preventDefault();
-    const el = ref.current;
-    const from = el?.selectionStart ?? text.length;
-    const to = el?.selectionEnd ?? from;
-    setBusy(true);
-    const reader = new FileReader();
-    reader.onerror = () => setBusy(false);
-    reader.onload = () => {
-      setBusy(false);
-      const uri = typeof reader.result === "string" ? reader.result : "";
-      if (!uri.startsWith("data:image/")) return;
-      const path = `images/${contentHash(uri)}.${extensionOf(uri)}`;
-      setPasted((prev) => ({ ...prev, [path]: uri }));
-      setText((prev) => prev.slice(0, from) + `![](${path})` + prev.slice(to));
-    };
-    reader.readAsDataURL(file);
-  }, [text]);
-
-  // Closing with work in it is the one way to lose an edit that was never
-  // written anywhere — the overlay is a click away from the text, and Escape is
-  // a keystroke away. So the way out asks first, and only when there is
-  // something to lose.
-  const requestClose = useCallback(() => {
-    if (text !== current && !confirm(t.editDiscardConfirm)) return;
-    onClose();
-  }, [text, current, onClose, t]);
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") requestClose(); };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [requestClose]);
-
-  // Opened at the top, or where somebody asked for — never at the end, which is
-  // where focusing a textarea leaves the caret and is the one place nobody
-  // meant to go.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const el = ref.current;
-      if (!el) return;
-      el.focus();
-      const value = el.value;
-      // The line is COUNTED, not searched for: the page said which line it was,
-      // and the only question left is where that line begins in this text. A
-      // line the text does not have (an edit that shortened it since the page
-      // was drawn) resolves to the top rather than to the end.
-      const startOfLine = (line: number): number => {
-        if (line <= 1) return 0;
-        let at = 0;
-        for (let n = 1; n < line; n++) {
-          const next = value.indexOf("\n", at);
-          if (next < 0) return 0;
-          at = next + 1;
-        }
-        return at;
-      };
-
-      // One end of the jump, resolved. `from` is where the run BEGINS (a
-      // landing), `to` where it ENDS (the far end of a selection).
-      const place = (p: DocPoint, dir: "from" | "to"): number => {
-        const lineStart = startOfLine(p.line);
-        const nl = value.indexOf("\n", lineStart);
-        const lineEnd = nl < 0 ? value.length : nl;
-        const line = value.slice(lineStart, lineEnd);
-        // How far the run may be looked for. A CELL when the page named one — a
-        // table row is one line and its columns are told apart by the pipes, so
-        // the reader who pointed at the third column gets the third column and
-        // not a word the first one happens to share with it. Otherwise the
-        // BLOCK: a paragraph wrapped over three lines is one block, and the
-        // sentence somebody pointed at is as likely to be on its second line as
-        // on its first.
-        let from = lineStart;
-        let to = lineEnd;
-        if (p.cell !== undefined) {
-          let pipes = 0;
-          for (let i = 0; i < line.length; i++) {
-            if (line[i] !== "|") continue;
-            pipes += 1;
-            if (pipes !== p.cell + 1) continue;
-            // Past the delimiter and the one space the renderer pads with, so
-            // the caret sits where the cell's own text begins.
-            from = lineStart + i + (line[i + 1] === " " ? 2 : 1);
-            const next = line.indexOf("|", i + 1);
-            to = next < 0 ? lineEnd : lineStart + next;
-            break;
-          }
-        } else {
-          const gap = /\n[ \t]*\n/.exec(value.slice(lineStart));
-          to = gap === null ? value.length : lineStart + gap.index;
-        }
-        if (p.text === undefined) return from;
-        // The run comes off the RENDERED page, so the source may spell it with
-        // markers the reader never saw (`\`db-password\``, `**強調**`) — it is
-        // shortened, from the end when it begins at the point and from the
-        // front when it ends there, until it is one the source does hold. It
-        // can only ever move inside what the page already named, so a run it
-        // does not find leaves the landing exactly where it was.
-        const scope = value.slice(from, to);
-        if (dir === "from") {
-          for (let end = p.text.length; end >= 3; end--) {
-            const found = scope.indexOf(p.text.slice(0, end));
-            if (found >= 0) return from + found;
-          }
-          return from;
-        }
-        for (let cut = 0; cut <= p.text.length - 3; cut++) {
-          const run = p.text.slice(cut);
-          const found = scope.indexOf(run);
-          if (found >= 0) return from + found + run.length;
-        }
-        return from;
-      };
-
-      const pos = jump === undefined ? 0 : place(jump, "from");
-      // …and the far end, when the reader had something selected. The editor
-      // opens with the same words highlighted — they selected them in order to
-      // change them, and retyping a selection is one keystroke.
-      const endPos = jump?.end === undefined ? pos : Math.max(pos, place(jump.end, "to"));
-      el.selectionStart = pos;
-      el.selectionEnd = endPos;
-      // A textarea does not scroll to its caret on its own: put the line near
-      // the top, by the height of the lines above it.
-      const above = value.slice(0, pos).split("\n").length - 1;
-      const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
-      el.scrollTop = Math.max(0, above * lineHeight - lineHeight);
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [sheet, jump?.line, jump?.cell, jump?.text, jump?.end?.line, jump?.end?.cell, jump?.end?.text]);
-
-  const handleSave = useCallback(() => {
-    if (text === current) {
-      alert(t.editUnchanged);
-      return;
-    }
-    onSave({
-      id: genId(),
-      target: { sheet, field: DOCUMENT_FIELD },
-      changes: [{ field: DOCUMENT_FIELD, current, suggested: text }],
-      status: "applied",
-      at: new Date().toISOString(),
-      // Only what this edit actually still references: a picture pasted and
-      // then deleted again should not be carried in the file forever.
-      ...(Object.keys(pasted).some((p) => text.includes(p))
-        ? { assets: Object.fromEntries(Object.entries(pasted).filter(([p]) => text.includes(p))) }
-        : {}),
-    });
-    onClose();
-  }, [text, current, pasted, sheet, onSave, onClose, t]);
-
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); handleSave(); }
-  }, [handleSave]);
-
-  return html`
-    <div class="rs-overlay" onClick=${(e: Event) => { if ((e.target as HTMLElement).classList.contains("rs-overlay")) requestClose(); }}>
-      <div class="rs-modal rs-doc-modal rs-doc-modal-wide" role="dialog" aria-label="${t.docEdit}">
-        <header>
-          <div>
-            <h4>${t.docEdit}</h4>
-            <div class="rs-modal-path">${sheet}</div>
-          </div>
-          <button class="rs-modal-close" onClick=${requestClose} aria-label="${t.shortcutClose}">\u00d7</button>
-        </header>
-        <div class="rs-new-review">
-          ${/* Nothing above the text. Standing explanations — that a pasted
-                picture is embedded, what the leading h1 is for — are read once
-                and then in the way of the thing somebody came here to edit,
-                every time. */ ""}
-          <div class="rs-form-row">
-            <textarea class="rs-doc-source rs-sheet-source" ref=${ref} value=${text} spellcheck=${false}
-                      onInput=${(e: Event) => setText((e.target as HTMLTextAreaElement).value)}
-                      onPaste=${handlePaste}
-                      onKeyDown=${handleKeyDown}></textarea>
-            ${busy && html`<p class="rs-doc-pasting">${t.docPasting}</p>`}
-          </div>
-          <div class="rs-modal-footer">
-            <span class="rs-modal-shortcuts">
-              <kbd>Ctrl</kbd>+<kbd>Enter</kbd> ${t.shortcutSave}\u3000<kbd>Esc</kbd> ${t.shortcutClose}
-            </span>
-            <div class="rs-modal-actions">
-              ${text !== original && html`<button class="rs-btn-danger" onClick=${() => setText(original)}>${t.docRevert}</button>`}
-              <button class="rs-btn-primary" onClick=${handleSave}>${t.editSave}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
 
 // The VALUE columns a hand-maintained document knows about.
 //
@@ -1525,7 +1220,7 @@ function MenuItem({ label, onClick, danger }: { label: string; onClick: () => vo
 // Reviewable cell component
 // ============================================================
 
-function ReviewableCell({ value, display, target, field, reviews, reviewEnabled, editEnabled, onOpenReview, onOpenEdit, className, isCode, badge, subline, unsetLabel, valueLabel, sharedRow, rowDeleted = false, onToggleDelete, t }: {
+function ReviewableCell({ value, display, target, field, reviews, reviewEnabled, onOpenReview, className, isCode, badge, subline, unsetLabel, valueLabel, sharedRow, t }: {
   value: string;
   // What to SHOW in place of `value`, when the two differ. The key cell of a
   // row inside a block shows only its own last segment — the blocks above it
@@ -1541,9 +1236,7 @@ function ReviewableCell({ value, display, target, field, reviews, reviewEnabled,
   field: string;
   reviews: ReviewItem[];
   reviewEnabled: boolean;
-  editEnabled: boolean;
   onOpenReview: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
-  onOpenEdit: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
   className?: string;
   isCode?: boolean;
   badge?: VNode | null;
@@ -1561,8 +1254,6 @@ function ReviewableCell({ value, display, target, field, reviews, reviewEnabled,
   // Passed straight through to the review modal (see CellToolCtx.sharedRow).
   sharedRow?: boolean;
   // True when this row is currently struck through.
-  rowDeleted?: boolean;
-  onToggleDelete?: (target: ReviewItem["target"], deleted: boolean) => void;
   t: Messages;
 }) {
   // A shared-scope review lives on the row target, so a shared row's cells match
@@ -1576,15 +1267,11 @@ function ReviewableCell({ value, display, target, field, reviews, reviewEnabled,
     if (k !== targetKey(target) && k !== altTargetKey) return false;
     return r.target.field === field;
   });
-  // Two different things live in `reviews`. A finding (`pending`) is a proposal
-  // and is drawn as "current -> suggested". An edit (`applied`) has already
-  // moved the value — `applyEdits` put it in `value` before this ever ran — so
-  // drawing it the same way would show the new value struck through against
-  // itself. It gets a marker instead, and its history is read from the dialog.
+  // A finding (`pending`) is a proposal and is drawn as "current -> suggested".
+  // An `applied` item is one apply already wrote into the file, so the value
+  // beside it is already the new one and there is nothing to draw over.
   const cellReviews = matching.filter((r) => !isEdit(r));
-  const cellEdits = matching.filter(isEdit);
   const hasReview = cellReviews.length > 0;
-  const hasEdit = cellEdits.length > 0;
   // Reflect suggested value from review on screen. A suggestion may be the empty
   // string (a proposal to DELETE/clear the value) — that is a real change, so
   // test for presence with `!== undefined`, not truthiness, and render the
@@ -1635,11 +1322,7 @@ function ReviewableCell({ value, display, target, field, reviews, reviewEnabled,
   // Copy is offered on any non-empty cell (every value is worth copying); the
   // suggest action only when review is enabled.
   const canCopy = value.length > 0;
-  const canEdit = editEnabled && isEditableField(field);
-  // Striking a row through is a statement about the ROW, so it is offered on
-  // the cell that IS the row's identity — its key — and nowhere else.
-  const canDelete = editEnabled && field === "key";
-  const showActions = canCopy || reviewEnabled || canEdit || canDelete;
+  const showActions = canCopy || reviewEnabled;
 
   // The primary gesture is to open the review dialog. Double-clicking the cell
   // does the same as the toolbar's "Suggest" — a big, familiar target (the
@@ -1647,11 +1330,6 @@ function ReviewableCell({ value, display, target, field, reviews, reviewEnabled,
   const openSuggest = (): void => {
     try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
     onOpenReview(target, field, effectiveValue, sharedRow);
-  };
-
-  const openEdit = (): void => {
-    try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
-    onOpenEdit(target, field, value, sharedRow);
   };
 
   // Report this cell to the single shared toolbar on hover (no per-cell toolbar,
@@ -1667,17 +1345,17 @@ function ReviewableCell({ value, display, target, field, reviews, reviewEnabled,
     const el = tdRef.current;
     if (!el) return;
     const scroller = el.closest(".rs-table-wrapper") as HTMLElement | null;
-    showCellTool({ rect: el.getBoundingClientRect(), target, field, effectiveValue, sharedRow, hasReview, canCopy, reviewEnabled, editEnabled: canEdit, hasEdit, canDelete, rowDeleted, scroller });
+    showCellTool({ rect: el.getBoundingClientRect(), target, field, effectiveValue, sharedRow, hasReview, canCopy, reviewEnabled, scroller });
   };
 
   return html`
     <td ref=${tdRef}
-        class=${`${className ?? ""} ${hasReview ? "rs-cell-has-review" : ""} ${hasEdit ? "rs-cell-edited" : ""}`}
-        onDblClick=${canEdit ? openEdit : reviewEnabled ? openSuggest : undefined}
+        class=${`${className ?? ""} ${hasReview ? "rs-cell-has-review" : ""}`}
+        onDblClick=${reviewEnabled ? openSuggest : undefined}
         onMouseEnter=${showActions ? reportHover : undefined}
         onMouseLeave=${showActions ? hideCellToolSoon : undefined}>
       <div class=${`rs-value-cell ${hasSubline ? "rs-value-cell-stacked" : ""}`}>
-        <span class="rs-cell-content">${displayValue}${hasEdit ? html`<span class="rs-edited-mark" title="${t.editedBadge}" aria-label="${t.editedBadge}">\u270e</span>` : null}${badge}</span>
+        <span class="rs-cell-content">${displayValue}${badge}</span>
         ${subline}
       </div>
     </td>
@@ -1686,10 +1364,8 @@ function ReviewableCell({ value, display, target, field, reviews, reviewEnabled,
 
 // The single shared toolbar host: reads the hovered-cell store and renders one
 // floating toolbar, portaled to <body> and clamped into the viewport.
-function CellToolbarHost({ onOpenReview, onOpenEdit, onToggleDelete, t }: {
+function CellToolbarHost({ onOpenReview, t }: {
   onOpenReview: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
-  onOpenEdit: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
-  onToggleDelete: (target: ReviewItem["target"], deleted: boolean) => void;
   t: Messages;
 }) {
   const [ctx, setCtx] = useState<CellToolCtx | null>(null);
@@ -1719,17 +1395,6 @@ function CellToolbarHost({ onOpenReview, onOpenEdit, onToggleDelete, t }: {
     hideCellToolNow();
   };
 
-  const openEdit = (): void => {
-    try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
-    onOpenEdit(ctx.target, ctx.field, ctx.effectiveValue, ctx.sharedRow);
-    hideCellToolNow();
-  };
-
-  const toggleDelete = (): void => {
-    onToggleDelete(ctx.target, !ctx.rowDeleted);
-    hideCellToolNow();
-  };
-
   return createPortal(
     html`
       <div class="rs-cell-toolbar" role="toolbar" aria-label="${t.cellActions}"
@@ -1746,29 +1411,6 @@ function CellToolbarHost({ onOpenReview, onOpenEdit, onToggleDelete, t }: {
                e.preventDefault();
              }
            }}>
-        ${ctx.canDelete && html`
-          <button class="rs-tool rs-tool-delete ${ctx.rowDeleted ? "rs-tool-on" : ""}"
-                  onClick=${toggleDelete}
-                  title="${ctx.rowDeleted ? t.rowRestoreTooltip : t.rowDeleteTooltip}"
-                  aria-label="${ctx.rowDeleted ? t.rowRestoreTooltip : t.rowDeleteTooltip}">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              ${ctx.rowDeleted
-                ? html`<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/>`
-                : html`<line x1="5" y1="12" x2="19" y2="12"/>`}
-            </svg>
-            <span class="rs-tool-label">${ctx.rowDeleted ? t.rowRestore : t.rowDelete}</span>
-          </button>
-        `}
-        ${ctx.canDelete && ctx.canCopy && html`<span class="rs-tool-sep" aria-hidden="true"></span>`}
-        ${ctx.editEnabled && html`
-          <button class="rs-tool rs-tool-edit ${ctx.hasEdit ? "rs-tool-on" : ""}"
-                  onClick=${openEdit}
-                  title="${t.editTooltip}" aria-label="${t.editTooltip}">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            <span class="rs-tool-label">${t.editValue}</span>
-          </button>
-        `}
-        ${ctx.editEnabled && ctx.reviewEnabled && html`<span class="rs-tool-sep" aria-hidden="true"></span>`}
         ${ctx.reviewEnabled && html`
           <button class="rs-tool rs-tool-suggest ${ctx.hasReview ? "rs-tool-on" : ""}"
                   onClick=${openSuggest}
@@ -1777,7 +1419,7 @@ function CellToolbarHost({ onOpenReview, onOpenEdit, onToggleDelete, t }: {
             <span class="rs-tool-label">${ctx.hasReview ? t.suggestEdit : t.suggest}</span>
           </button>
         `}
-        ${ctx.canCopy && (ctx.reviewEnabled || ctx.editEnabled) && html`<span class="rs-tool-sep" aria-hidden="true"></span>`}
+        ${ctx.canCopy && ctx.reviewEnabled && html`<span class="rs-tool-sep" aria-hidden="true"></span>`}
         ${ctx.canCopy && html`
           <button class="rs-tool rs-tool-copy" onClick=${(e: Event) => copyToClipboard(ctx.effectiveValue, e.currentTarget as HTMLElement)} title="${t.copyTooltip}" aria-label="${t.copyTooltip}">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -1887,7 +1529,7 @@ function saveOutlineOpen(open: boolean): void {
 // Parameter table component
 // ============================================================
 
-function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPath, depth, columns, reviews, reviewEnabled, editEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, hiddenInstances, categoryOutOfScope, onOpenReview, onOpenEdit, onToggleDelete, artifact, diff, t }: {
+function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, hiddenInstances, categoryOutOfScope, onOpenReview, artifact, diff, t }: {
   params: ParamData[];
   sheetName: string;
   // The sheet's declared review axis (see Sheet.instances).
@@ -1908,10 +1550,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   // for its own ancestry) — applies to a param that sets no `out_of_scope` of
   // its own (nearest-wins: a param-level flag overrides the category's).
   categoryOutOfScope?: OutOfScope;
-  editEnabled: boolean;
   onOpenReview: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
-  onOpenEdit: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
-  onToggleDelete: (target: ReviewItem["target"], deleted: boolean) => void;
   // The deployed-file panel, when this document has one: `idFor` says which
   // preview (if any) holds this row, `open` shows it there. A single prop
   // because the two halves are useless apart, and threading two through every
@@ -2333,8 +1972,8 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   const renderCell = (spec: CellSpec, cellKey: string) =>
     spec.kind === "review"
       ? html`<${ReviewableCell} key=${cellKey} value=${spec.value} target=${spec.target} field=${spec.field}
-          reviews=${reviews} reviewEnabled=${reviewEnabled} editEnabled=${editEnabled}
-          onOpenReview=${onOpenReview} onOpenEdit=${onOpenEdit}
+          reviews=${reviews} reviewEnabled=${reviewEnabled}
+          onOpenReview=${onOpenReview}
           className=${spec.className} isCode=${spec.isCode} copyable=${spec.copyable}
           unsetLabel=${spec.unsetLabel} valueLabel=${spec.valueLabel} display=${spec.display} sharedRow=${spec.sharedRow} t=${t} />`
       : html`<td key=${cellKey} class=${spec.className} style=${spec.style}>${spec.content}</td>`;
@@ -2545,9 +2184,8 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
         style=${depth > 0 ? `--rs-block-depth:${depth}` : undefined}
         title=${param.deleted ? t.rowDeletedTip : undefined}>
       <${ReviewableCell} value=${label ?? param.key} display=${label ? undefined : leaf} target=${baseTarget(param)} field="key"
-        reviews=${reviews} reviewEnabled=${reviewEnabled} editEnabled=${editEnabled}
-        rowDeleted=${param.deleted === true} onToggleDelete=${onToggleDelete}
-        onOpenReview=${onOpenReview} onOpenEdit=${onOpenEdit}
+        reviews=${reviews} reviewEnabled=${reviewEnabled}
+        onOpenReview=${onOpenReview}
         className="rs-col-key" isCode=${!label} t=${t} badge=${rowBadge} subline=${keySubline.length > 0 ? keySubline : null} />
       ${normalLines.map((line) => renderCell(line.cell(param), line.key))}
     </tr>
@@ -2741,7 +2379,7 @@ function categoryDefaultSummary(category: CategoryData): { count: number; allDef
   return { count, allDefault, noted };
 }
 
-function CategorySection({ category, sheetName, sheetInstances, sheetIndex, sheetFilePath, parentPath, depth, columns, reviews, reviewEnabled, editEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, hiddenInstances, headingExtra, inheritedOutOfScope, onOpenReview, onOpenEdit, onAddRow, onToggleDelete, artifact, diff, t }: {
+function CategorySection({ category, sheetName, sheetInstances, sheetIndex, sheetFilePath, parentPath, depth, columns, reviews, reviewEnabled, showComments, filterCommented, hideOutOfScope, showDefaults, hiddenInstances, headingExtra, inheritedOutOfScope, onOpenReview, artifact, diff, t }: {
   category: CategoryData;
   sheetName: string;
   sheetInstances?: string[];
@@ -2764,11 +2402,7 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
   // "Out of scope" marks a category AND its descendants, so this threads down
   // through nested categories; a category's own flag (nearest-wins) overrides it.
   inheritedOutOfScope?: OutOfScope;
-  editEnabled: boolean;
-  onAddRow: (category: ReviewItem["target"]) => void;
-  onToggleDelete: (target: ReviewItem["target"], deleted: boolean) => void;
   onOpenReview: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
-  onOpenEdit: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
   artifact?: ArtifactAccess;
   diff?: DiffStatusMap;
   t: Messages;
@@ -2814,16 +2448,6 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
               ? html`<span class="rs-cat-filepath">${category.file_path}</span>`
               : null;
           })()}
-          ${editEnabled && html`
-            <span class="rs-header-actions">
-              <button class="rs-head-tool rs-head-tool-add"
-                      onClick=${() => onAddRow(catTarget)}
-                      title="${t.addRowTooltip}" aria-label="${t.addRowTooltip}">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                <span class="rs-tool-label">${t.addRow}</span>
-              </button>
-            </span>
-          `}
           ${reviewEnabled && html`
             <span class="rs-header-actions ${catReviewCount > 0 ? "rs-has-comment" : ""}">
               <button class="rs-head-tool ${catReviewCount > 0 ? "rs-head-tool-on" : ""}"
@@ -2866,7 +2490,7 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
                        columns=${columns} reviews=${reviews} reviewEnabled=${reviewEnabled}
                        showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
                        categoryOutOfScope=${effOutOfScope}
-                       onOpenReview=${onOpenReview} onOpenEdit=${onOpenEdit} onToggleDelete=${onToggleDelete} editEnabled=${editEnabled} artifact=${artifact} diff=${diff} t=${t} />
+                       onOpenReview=${onOpenReview} artifact=${artifact} diff=${diff} t=${t} />
       `}
 
       ${category.categories?.map((sub) => html`
@@ -2875,7 +2499,7 @@ function CategorySection({ category, sheetName, sheetInstances, sheetIndex, shee
                             columns=${columns} reviews=${reviews} reviewEnabled=${reviewEnabled}
                             showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
                             inheritedOutOfScope=${effOutOfScope}
-                            onOpenReview=${onOpenReview} onOpenEdit=${onOpenEdit} onAddRow=${onAddRow} onToggleDelete=${onToggleDelete} editEnabled=${editEnabled} artifact=${artifact} diff=${diff}
+                            onOpenReview=${onOpenReview} artifact=${artifact} diff=${diff}
                             t=${t} />
       `)}
     </div>
@@ -3652,7 +3276,7 @@ function pivotTree(rows: PivotRow[]): PivotNode {
   return root;
 }
 
-function PivotView({ sheet, pivot, sheetIndex, hiddenInstances, showDefaults, reviews, reviewEnabled, editEnabled, onOpenReview, onOpenEdit, onLeave, t }: {
+function PivotView({ sheet, pivot, sheetIndex, hiddenInstances, showDefaults, reviews, reviewEnabled, onOpenReview, onLeave, t }: {
   sheet: SheetData["sheets"][number];
   // Supplied when the columns are not this sheet.s components — a version
   // comparison pivots a whole document, so its columns and rows are built
@@ -3664,9 +3288,7 @@ function PivotView({ sheet, pivot, sheetIndex, hiddenInstances, showDefaults, re
   showDefaults: boolean;
   reviews: ReviewItem[];
   reviewEnabled: boolean;
-  editEnabled: boolean;
   onOpenReview: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
-  onOpenEdit: (target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => void;
   t: Messages;
 }) {
   const { components, rows } = pivot ?? pivotSheet(sheet);
@@ -3775,8 +3397,8 @@ function PivotView({ sheet, pivot, sheetIndex, hiddenInstances, showDefaults, re
                   return html`<${ReviewableCell} key=${c.name}
                     value=${text}
                     target=${{ sheet: sheet.name, category: [c.name, ...row.path].join("/"), param: row.key }}
-                    field="value" reviews=${reviews} reviewEnabled=${reviewEnabled} editEnabled=${editEnabled}
-                    onOpenReview=${onOpenReview} onOpenEdit=${onOpenEdit}
+                    field="value" reviews=${reviews} reviewEnabled=${reviewEnabled}
+                    onOpenReview=${onOpenReview}
                     className="rs-col-value" isCode=${true} copyable=${text.length > 0}
                     subline=${[
                       ...(sub ?? []).map((line) => html`<span class="rs-key-subline"><code>${line}</code></span>` as VNode),
@@ -4013,7 +3635,7 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, dock, onD
   `;
 }
 
-function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnabled = true, lang, setLang, diff, reviewsOverride, versionPivot, server, applyEnabled, pristineHtml, embedded }: {
+function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, lang, setLang, diff, reviewsOverride, versionPivot, server, applyEnabled }: {
   data: SheetData;
   // A whole-document columnar comparison: rows keyed by sheet + path + key,
   // one column per VERSION. Supplied only while comparing, and rendered
@@ -4027,7 +3649,6 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   artifacts?: ArtifactPreview[];
   reviewEnabled: boolean;
   // Let the recipient change values and remarks in place (`--allow edit`).
-  editEnabled: boolean;
   // Offer the AI prompt at all (`--allow ...,prompt`). A judgement about the
   // AUDIENCE, not about the mode: in the usual flow the edited document goes
   // back to whoever built it and the prompt is produced there, by `apply`,
@@ -4047,50 +3668,13 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   // reading view either way, only gated here at the action-surface level.
   applyEnabled?: boolean;
   // See init(): the document as loaded, and the history it already carried.
-  pristineHtml?: string;
-  embedded?: EmbeddedHistory;
 }) {
   const t = useMemo(() => getMessages(lang), [lang]);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (document.documentElement.dataset.theme as 'light' | 'dark') ?? 'light');
-  // Read before the state below, because the key depends on which REVISION of
-  // this file is open — see getStorageKey.
-  const storageKey = getStorageKey(baseData, embedded?.saves ?? []);
-  // Two places hold history: the file itself (what was saved) and localStorage
-  // (what has been done since, in this browser). Both are append-only, so the
-  // union by id is the whole of it. Neither wins — losing an entry because the
-  // other copy was older is exactly the failure this must not have.
-  const [savedReviews, setReviews] = useState<ReviewItem[]>(() => {
-    const stored = loadReviews(storageKey);
-    const seen = new Set((embedded?.reviews ?? []).map((r) => r.id));
-    return [...(embedded?.reviews ?? []), ...stored.filter((r) => !seen.has(r.id))];
-  });
-  // How much of the above came from THIS BROWSER rather than from the file,
-  // counted once at mount and used only to say so when the document opens.
-  //
-  // Loading it is not a choice, and there is nowhere here to throw it away.
-  // Both were tried and both are worse: a discard button is an irreversible
-  // action sitting beside the safe one, and "restore later" lets two working
-  // states exist at once — put the work aside, edit, and now there are two sets
-  // of unsaved changes and a question about which one the file gets. One state,
-  // always loaded, and the document says where it came from.
-  const [restoredFromBrowser] = useState<number>(() => {
-    const inFile = new Set((embedded?.reviews ?? []).map((r) => r.id));
-    return loadReviews(storageKey).filter((r) => !inFile.has(r.id)).length;
-  });
-  // Said on open, where it happened. The overview carries the same fact
-  // permanently, but a document does not always open there and a reader who
-  // goes straight to a sheet would never learn that what they are looking at
-  // is not what the file holds.
-  const [notice, setNotice] = useState(() => (editEnabled ? restoredFromBrowser : 0));
-  // One entry per save: who, when, and why. The per-cell chain cannot hold a
-  // reason, and a reason is most of what anyone wants months later.
-  const [saves, setSaves] = useState<SaveRecord[]>(() => embedded?.saves ?? []);
-  // The key follows the file: after a save this document IS the new revision,
-  // and its buffer moves with it.
-  const liveStorageKey = getStorageKey(baseData, saves);
-  // Ids already written into the file. Anything else is unsaved work, and the
-  // file is the only place it can survive — hence the warning on close.
-  const [persistedIds, setPersistedIds] = useState<Set<string>>(() => new Set((embedded?.reviews ?? []).map((r) => r.id)));
+  // Findings live in THIS BROWSER and nowhere else: a generated sheet is a
+  // read-only file, so there is no second copy for the union to reconcile.
+  const storageKey = getStorageKey(baseData);
+  const [savedReviews, setReviews] = useState<ReviewItem[]>(() => loadReviews(storageKey));
   // Saved findings name the category their row was in when they were written.
   // A category is display structure — a product dictionary supplies most of
   // them, and an upgrade can move a setting to another screen — so they are
@@ -4103,29 +3687,17 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   const reviews = reviewsOverride ?? retargeted.reviews;
   const effReviewEnabled = diffMode ? false : reviewEnabled;
 
-  // Edits made in this document are laid over the sheets before
-  // anything else looks at them, so every downstream consumer — rendering,
-  // search, the outline, export — reads the CURRENT value with no special case.
-  // The original value is not lost: `editBaseline` holds it per edited cell.
-  // With no edits (or editing disabled) this is the same object, so an
-  // unedited document behaves exactly as it did before.
-  const edited = useMemo(
-    (): EditedSheets => (editEnabled && !diffMode ? applyEdits(baseData.sheets, reviews, lang) : { sheets: baseData.sheets, baseline: new Map<string, string>(), orphaned: [] }),
-    [editEnabled, diffMode, baseData, reviews, lang]
-  );
-  const editBaseline = edited.baseline;
-  // The environments this document knows about: what it was generated with,
-  // unless somebody has since said otherwise. One set for the whole document —
-  // which sheets USE which is a matter of what columns their tables have.
+  // The environments this document knows about. One set for the whole document
+  // — which sheets USE which is a matter of what columns their tables have.
   const environments = useMemo(() => {
     const seen: string[] = [];
     for (const s of baseData.sheets) for (const n of s.instances ?? []) if (!seen.includes(n)) seen.push(n);
-    return documentEnvironments(reviews, seen);
-  }, [baseData, reviews]);
+    return seen;
+  }, [baseData]);
 
   const data = useMemo<SheetData>(() => {
-    const base = edited.sheets === baseData.sheets ? baseData : { ...baseData, sheets: edited.sheets };
-    // A sheet handed over as markdown carries no categories — the text is the
+    const base = baseData;
+    // A sheet whose model is its markdown carries no categories — the text is the
     // model. They are DERIVED here, from that text, so everything that asks
     // "what rows does this sheet have" (the outline, the search palette, the
     // side-by-side comparison) keeps working with no second implementation and
@@ -4136,7 +3708,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
       ...base,
       sheets: base.sheets.map((s) => {
         if (s.document?.mode !== "sheet") return s;
-        const markdown = (editEnabled ? documentSource(reviews, s.name) : undefined) ?? s.document.markdown ?? "";
+        const markdown = s.document.markdown ?? "";
         // The environments the DOCUMENT declares. The model's list is what it
         // was generated with; the document is what it says now, and in this
         // mode the document is the model — an environment somebody added is an
@@ -4149,8 +3721,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
         return { ...s, instances: here, categories: markdownToCategories(markdown, environments, lang) };
       }),
     };
-  }, [baseData, edited, reviews, editEnabled, lang, environments]);
-  const effEditEnabled = editEnabled && !diffMode;
+  }, [baseData, lang, environments]);
   const hasMetadataInit = !!(data.metadata?.project || data.metadata?.version || data.metadata?.generated_at || data.metadata?.changelog?.length || data.metadata?.extra);
 
   // Restore tab index from URL hash (hash is 1-based)
@@ -4228,27 +3799,13 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   );
   const [pivoted, setPivoted] = useState<Set<string>>(() => new Set(alwaysPivoted));
   const [modalTarget, setModalTarget] = useState<{ target: ReviewItem["target"]; field: string; currentValue: string; sharedRow?: boolean } | null>(null);
-  const [editTarget, setEditTarget] = useState<{ target: ReviewItem["target"]; field: string; currentValue: string; sharedRow?: boolean } | null>(null);
-  const [addRowTarget, setAddRowTarget] = useState<ReviewItem["target"] | null>(null);
-  const [docTarget, setDocTarget] = useState<string | null>(null);
-  // The heading line the editor should open at, when it was opened from one.
-  const [docJump, setDocJump] = useState<DocJump | undefined>(undefined);
-  const [envTarget, setEnvTarget] = useState<string | null>(null);
-  const [saveOpen, setSaveOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [applyPanelOpen, setApplyPanelOpen] = useState(false);
   const [promptModalText, setPromptModalText] = useState<string | null>(null);
 
   useEffect(() => {
     if (diffMode) return; // never persist synthetic diff reviews
-    saveReviews(liveStorageKey, savedReviews);
-    // The revision just superseded keeps nothing: its buffer would otherwise
-    // sit in the browser forever, and reopening the older copy would offer
-    // work that has already gone into a newer file.
-    if (liveStorageKey !== storageKey) {
-      try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
-    }
-  }, [savedReviews, liveStorageKey, storageKey, diffMode]);
+    saveReviews(storageKey, savedReviews);
+  }, [savedReviews, storageKey, diffMode]);
 
 
   // Print what is on screen. An earlier version force-expanded every collapsed
@@ -4506,36 +4063,6 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // `e` opens the editor where the caret is, and keeps what is selected.
-  //
-  // The same landing a double click makes, from the keyboard — a reader with a
-  // sentence already selected has said both where and what, and the double
-  // click can only say where. Selecting the words and pressing one key is the
-  // shortest way to "change these": the editor opens with them highlighted, so
-  // typing replaces them.
-  //
-  // Only what the page can address (doc-jump.ts) reacts, so this is silent on a
-  // sheet that is not a document, and never while an overlay or a field has the
-  // keystroke — where `e` is a letter somebody is typing.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.isComposing || e.keyCode === 229) return;
-      if (e.key !== "e" && e.key !== "E") return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (!effEditEnabled || docTarget !== null || paletteOpen) return;
-      const target = e.target as HTMLElement | null;
-      if (typeof target?.closest === "function" && target.closest("input, textarea, select, [contenteditable]")) return;
-      const sheet = data.sheets[activeSheet];
-      if (sheet?.document === undefined) return;
-      const jump = jumpFromSelection(null);
-      if (jump === null) return;
-      e.preventDefault();
-      setDocJump(jump);
-      setDocTarget(sheet.name);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [effEditEnabled, docTarget, paletteOpen, data, activeSheet]);
 
   // Scroll-spy: highlight the last category scrolled past a reference line near
   // the top. Unlike a fixed top band, this still resolves at the very bottom of
@@ -4661,76 +4188,6 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
     );
   }, [baseData]);
 
-  // --- Saving the document itself (editing a generated document) ---
-
-  const unsaved = useMemo(
-    () => (effEditEnabled ? reviews.filter((r) => !persistedIds.has(r.id)) : []),
-    [effEditEnabled, reviews, persistedIds]
-  );
-
-  // The file is the only store. A tab closed with edits in localStorage and not
-  // in the file looks fine until the file is opened somewhere else.
-  useEffect(() => {
-    if (unsaved.length === 0) return;
-    const warn = (e: BeforeUnloadEvent): string => {
-      e.preventDefault();
-      // Browsers show their own wording; the string is required by older ones.
-      e.returnValue = t.saveUnsaved(unsaved.length);
-      return e.returnValue;
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [unsaved.length, t]);
-
-  // Opening the dialog does no work at all, so it appears at once however large
-  // the document is. Everything expensive happens after the user has confirmed.
-  const openSave = useCallback(() => {
-    if (pristineHtml === undefined) return;
-    if (unsaved.length === 0) {
-      alert(t.saveNoChanges);
-      return;
-    }
-    setSaveOpen(true);
-  }, [pristineHtml, unsaved.length, t]);
-
-  const handleSaveDocument = useCallback(async (by: string, comment: string) => {
-    if (pristineHtml === undefined || saving) return;
-    try { localStorage.setItem(EDITOR_NAME_KEY, by); } catch { /* ignore */ }
-
-    const fileName = suggestedFileName(location.href, "review-sheet.html");
-    // The picker is asked for BEFORE the document is built: it needs the user's
-    // gesture, and it is the one part that must not wait behind string work.
-    let handle: FileSystemFileHandle | null;
-    try {
-      handle = await pickWriteTarget(fileName);
-    } catch (err) {
-      if (err instanceof Error && err.message === "cancelled") return;
-      alert(t.saveFailed(err instanceof Error ? err.message : String(err)));
-      return;
-    }
-
-    setSaving(true);
-    await paint(); // so "saving…" is on screen before the work starts
-
-    const unsavedIds = new Set(unsaved.map((r) => r.id));
-    const stamped = reviews.map((r) => (unsavedIds.has(r.id) && !r.by && by ? { ...r, by } : r));
-    const record: SaveRecord = { id: genId().replace(/^rev_/, "sav_"), at: new Date().toISOString(), by: by || undefined, comment: comment || undefined, changes: unsaved.length };
-    const nextSaves = [...saves, record];
-
-    try {
-      await writeDocument(withEmbeddedHistory(pristineHtml, { reviews: stamped, saves: nextSaves }), fileName, handle);
-    } catch (err) {
-      setSaving(false);
-      alert(t.saveFailed(err instanceof Error ? err.message : String(err)));
-      return;
-    }
-    setReviews(stamped);
-    setSaves(nextSaves);
-    setPersistedIds(new Set(stamped.map((r) => r.id)));
-    setSaving(false);
-    setSaveOpen(false);
-  }, [pristineHtml, saving, unsaved, reviews, saves, t]);
-
   const handleExport = useCallback(() => {
     const doc: ReviewDocument = {
       schema_version: "2.0",
@@ -4786,35 +4243,14 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   // source map. Without that the two would describe the same change
   // differently, and the browser's version would be the wrong one.
   //
-  // The still-`pending` items go WITH it. Edit mode used to have none — every
-  // item it produced was an edit — and a markdown edit changed that: what the
-  // edit model cannot carry (a description, a moved row, prose about the sheet)
-  // becomes a pending item precisely so somebody can act on it, and the plan is
-  // built from applied items alone, so building the prompt from the plan ALONE
-  // dropped exactly the part that needed a reader.
-  const promptReviews = useMemo(
-    () => (effEditEnabled
-      ? [
-          ...promptItemsFromPlan(planFromEdits(reviews), { added: HELD_REASON_ADDED_ROW, struck: HELD_REASON_STRUCK_ROW, document: HELD_REASON_DOCUMENT }, baseData.sheets),
-          ...reviews.filter((r) => !isEdit(r)),
-        ]
-      : reviews),
-    [effEditEnabled, reviews, baseData]
-  );
-
-  // The pending items in an edit-mode document: everything a markdown edit
-  // could not carry. Read from `reviews` rather than from `promptReviews`,
-  // which has already been folded into prompt shape.
-  const heldRequests = useMemo(() => reviews.filter((r) => !isEdit(r)), [reviews]);
-
   const handleCopyPrompt = useCallback(() => {
-    const text = buildPromptText(promptReviews, baseData);
+    const text = buildPromptText(reviews, baseData);
     if (!text) {
-      alert(effEditEnabled ? t.noEditsToApply : t.noPendingReviews);
+      alert(t.noPendingReviews);
       return;
     }
     setPromptModalText(text);
-  }, [promptReviews, baseData, t]);
+  }, [reviews, baseData, t]);
 
   const handleClearAll = useCallback(() => {
     if (reviews.length === 0) return;
@@ -4825,79 +4261,6 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
 
   const openReview = useCallback((target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => {
     setModalTarget({ target, field, currentValue, sharedRow });
-  }, []);
-
-  const openEdit = useCallback((target: ReviewItem["target"], field: string, currentValue: string, sharedRow?: boolean) => {
-    setEditTarget({ target, field, currentValue, sharedRow });
-  }, []);
-
-  const openAddRow = useCallback((category: ReviewItem["target"]) => {
-    setAddRowTarget(category);
-  }, []);
-
-  // Both directions are appended. Striking a row out and putting it back are
-  // two decisions months apart, and the second is not a correction of the
-  // first — unlike an undone typo, which is why that one deletes its entry.
-  const handleToggleDelete = useCallback((target: ReviewItem["target"], deleted: boolean) => {
-    const { instance: _dropped, field: _f, ...row } = target;
-    setReviews((prev) => [...prev, { id: genId(), target: row, status: "applied", deletes: deleted, at: new Date().toISOString() }]);
-  }, []);
-
-  // An edit is APPENDED. Unlike a review finding, which is one per cell and is
-  // rewritten in place, each edit is its own item — that is what makes the
-  // history a history.
-  const handleSaveEdit = useCallback((edit: ReviewItem) => {
-    setReviews((prev) => [...prev, edit]);
-  }, []);
-
-  // A column added, renamed or removed: an ordinary document edit, because that
-  // is what it is — the tool typed the text nobody would type by hand.
-  const handleSheetMarkdown = useCallback((edits: { sheet: string; markdown: string }[]) => {
-    const at = new Date().toISOString();
-    const items: ReviewItem[] = [];
-    for (const { sheet, markdown } of edits) {
-      const current = documentSource(reviews, sheet) ?? baseData.sheets.find((s) => s.name === sheet)?.document?.markdown ?? "";
-      if (markdown === current) continue;
-      items.push({
-        id: genId(),
-        target: { sheet, field: DOCUMENT_FIELD },
-        changes: [{ field: DOCUMENT_FIELD, current, suggested: markdown }],
-        status: "applied",
-        at,
-      } as ReviewItem);
-    }
-    if (items.length > 0) setReviews((prev) => [...prev, ...items]);
-  }, [reviews, baseData]);
-
-  // The document's environment set, and whatever tables had to follow it. The
-  // set is an entry about the DOCUMENT — no sheet in particular — and the
-  // tables are ordinary document edits, so both travel, save and undo like
-  // everything else here.
-  const handleSaveEnvironments = useCallback(
-    (names: string[], edits: { sheet: string; markdown: string }[]) => {
-      const at = new Date().toISOString();
-      if (names.join(", ") !== environments.join(", ")) {
-        setReviews((prev) => [
-          ...prev,
-          {
-            id: genId(),
-            target: { sheet: "", field: ENVIRONMENTS_FIELD },
-            changes: [{ field: ENVIRONMENTS_FIELD, current: environments.join(", "), suggested: names.join(", ") }],
-            status: "applied",
-            at,
-          } as ReviewItem,
-        ]);
-      }
-      handleSheetMarkdown(edits);
-    },
-    [environments, handleSheetMarkdown]
-  );
-
-  // Undo removes the most recent entry outright rather than appending an
-  // inverse one. A mistyped value is not a decision worth recording, and a
-  // history full of corrections stops being readable. Anything older stays.
-  const handleUndoEdit = useCallback((id: string) => {
-    setReviews((prev) => prev.filter((r) => r.id !== id));
   }, []);
 
   const title = data.metadata?.title ?? t.defaultTitle;
@@ -5002,7 +4365,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
   const OVERVIEW_TAB = -1;
 
   return html`
-    <div class=${`rs-app ${outlineOpen ? "rs-outline-open" : ""} ${bookNav ? "rs-book" : ""} ${artifactTarget ? (dockNow === "below" ? "rs-with-evidence" : "rs-with-artifact") : ""} ${effEditEnabled ? "rs-edit-on" : ""}`}>
+    <div class=${`rs-app ${outlineOpen ? "rs-outline-open" : ""} ${bookNav ? "rs-book" : ""} ${artifactTarget ? (dockNow === "below" ? "rs-with-evidence" : "rs-with-artifact") : ""}`}>
       <nav class=${`rs-sheet-tabs ${(data.groups?.length ?? 0) > 0 ? "rs-sheet-tabs-grouped" : ""}`} role="tablist">
         <div class="rs-tabs-nav">
           <button class=${`rs-toolbar-btn ${outlineOpen ? "rs-toolbar-btn-active" : ""}`} onClick=${() => setOutlineOpen(!outlineOpen)}
@@ -5141,26 +4504,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                 alternative to saving, which is how work gets lost. What is left
                 here is the prompt, for whoever maintains the sheet without a
                 CLI. */ ""}
-          ${/* What this document IS, rather than what is on screen: its own
-                settings. A menu because there will be more of them, and because
-                a setting is not something a reader reaches for often enough to
-                spend a button on. */ ""}
-          ${effEditEnabled && markdownSheets && html`
-            <${ToolbarMenu} label=${t.settingsMenu}
-                            icon=${html`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.2.61.76 1.03 1.4 1.05H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>` as VNode}>
-              <${MenuItem} label=${t.envManage} onClick=${() => setEnvTarget("*")} />
-              ${/* Back to what was handed over. The way out of an edit made by
-                    mistake, and the one thing an edit-only document had no way
-                    to do at all — its clear-all lived in the review menu, which
-                    a document that holds no findings does not have. */ ""}
-              ${reviews.length > 0 && html`
-                <div class="rs-menu-divider"></div>
-                <${MenuItem} label=${t.clearEditsMenu} danger=${true}
-                             onClick=${() => { if (confirm(t.confirmClearEdits(reviews.length))) setReviews([]); }} />
-              `}
-            <//>
-          `}
-          ${effEditEnabled && promptEnabled && html`
+          ${promptEnabled && html`
             <button class="rs-toolbar-btn rs-toolbar-btn-labelled" onClick=${handleCopyPrompt} title=${t.aiPromptCopy}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
               <span class="rs-btn-label">${t.aiPromptCopy}</span>
@@ -5194,23 +4538,6 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
               ${lang === "ja" ? "EN" : "JA"}
             </button>
           `}
-          ${/* Last, always: the one action with consequences, in the slot a
-                dialog puts its primary button in. It sat between the action
-                menus and the display toggles — grouped with neither, and in a
-                place that moved as those appeared and disappeared. */ ""}
-          ${effEditEnabled && pristineHtml !== undefined && html`
-            <span class="rs-tabs-sep"></span>
-            ${/* The word collapses on a narrow window like every other button
-                  label; the COUNT does not. It is the one thing on the bar
-                  saying this document is holding work the file does not have,
-                  and it went with the label. */ ""}
-            <button class=${`rs-toolbar-btn rs-toolbar-btn-labelled ${unsaved.length > 0 ? "rs-toolbar-btn-primary" : ""}`}
-                    onClick=${openSave} title=${`${t.saveTooltip}${unsaved.length > 0 ? ` \u2014 ${t.saveCount(unsaved.length)}` : ""}`}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              <span class="rs-btn-label">${t.saveDocument}</span>
-              ${unsaved.length > 0 && html`<span class="rs-btn-count">(${unsaved.length})</span>`}
-            </button>
-          `}
         </div>
         ${/* Not in a book document: this row is the current chapter's sheets,
               flat, with no numbers, no hierarchy and no filter — a subset of
@@ -5224,15 +4551,6 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
       </nav>
 
       <main class="rs-main">
-        ${/* A row somebody added, whose category a later version of the document
-              no longer has. It is still in the history and still in the saved
-              file; it just has nowhere to render. Said out loud rather than
-              left to be discovered by its absence. */ ""}
-        ${edited.orphaned.length > 0 && html`
-          <div class="rs-orphan-notice">${t.orphanedRows(edited.orphaned.length)}
-            <span class="rs-orphan-keys">${edited.orphaned.map((o) => o.target.param).join(", ")}</span>
-          </div>
-        `}
         ${activeSheet === OVERVIEW_TAB && hasMetadata && html`
           <section class="rs-overview">
             <h1>${title}</h1>
@@ -5278,59 +4596,6 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
               </div>
             `}
 
-            ${/* What has happened to this system since the sheet was built.
-                  Beside the generated document's own changelog, not folded into
-                  it: one is the history of the DOCUMENT, the other of the
-                  installation it describes, and they have different authors. */ ""}
-            ${effEditEnabled && saves.length > 0 && html`
-              <div class="rs-changelog-section">
-                <h2>${t.editLog}</h2>
-                <table class="rs-changelog-table">
-                  <thead><tr><th>${t.editLogWhen}</th><th>${t.editLogWho}</th><th></th><th>${t.editLogWhat}</th></tr></thead>
-                  <tbody>
-                    ${[...saves].reverse().map((rec, i) => html`
-                      <tr key=${`${rec.at}-${i}`}>
-                        <td>${formatTimestamp(rec.at)}</td>
-                        <td>${rec.by || html`<span class="rs-edit-when">${t.editAnonymous}</span>`}</td>
-                        <td>${t.editLogChanges(rec.changes)}</td>
-                        <td>${rec.comment || ""}</td>
-                      </tr>
-                    `)}
-                  </tbody>
-                </table>
-              </div>
-            `}
-
-            ${/* What somebody asked for that this document cannot carry as an
-                  edit — a description, a moved row, a sheet that does not
-                  exist yet. It lands here because the alert that announced it
-                  is gone the moment it is dismissed, the cell affordances that
-                  would show a finding belong to review mode, and a request
-                  whose only trace is the prompt export is a request nobody
-                  reading the document can see. */ ""}
-            ${effEditEnabled && heldRequests.length > 0 && html`
-              <div class="rs-changelog-section">
-                <h2>${t.mdHeldList}</h2>
-                <p class="rs-edit-note">${t.mdHeldNote}</p>
-                <table class="rs-changelog-table">
-                  <thead><tr><th>${t.mdHeldTarget}</th><th>${t.mdHeldWhat}</th></tr></thead>
-                  <tbody>
-                    ${heldRequests.map((r, i) => html`
-                      <tr key=${r.id ?? i}>
-                        <td>${targetLabel(r.target)}</td>
-                        <td>
-                          ${(r.changes ?? []).map((c) => html`
-                            <div key=${c.field}><code>${c.field}</code>: ${c.current || "\u2205"} \u2192 ${c.suggested || "\u2205"}</div>
-                          `)}
-                          ${r.comment && html`<div class="rs-edit-when">${r.comment}</div>`}
-                        </td>
-                      </tr>
-                    `)}
-                  </tbody>
-                </table>
-              </div>
-            `}
-
             <div class="rs-overview-sheets">
               <h2>${t.sheetList}</h2>
               ${(data.groups?.length ?? 0) > 0
@@ -5366,8 +4631,8 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
             <div class="rs-sheet-header"><h1>${versionPivot.components.map((c) => c.name).join("  ↔  ")}</h1></div>
             <${PivotView} sheet=${{ name: "", categories: [] }} pivot=${versionPivot} sheetIndex=${0}
                           hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
-                          reviews=${[]} reviewEnabled=${false} editEnabled=${false}
-                          onOpenReview=${() => {}} onOpenEdit=${() => {}} t=${t} />
+                          reviews=${[]} reviewEnabled=${false}
+                          onOpenReview=${() => {}} t=${t} />
           </section>
         `}
 
@@ -5388,19 +4653,6 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                 <h2 ...${sheet.document === undefined ? {} : { "data-rs-line": 1 }}>
                   <span class=${diff?.get(sheetKey(sheet.name)) === "removed" ? "rs-diff-strike" : ""}>${sheet.display ?? sheet.name}</span>
                   ${diff && diffBadge(diff.get(sheetKey(sheet.name)))}
-                  ${/* A document sheet's own action. In the heading, at the
-                        right end, because that is where a sheet's actions
-                        already are — the comment button below has sat there
-                        since before this existed. */ ""}
-                  ${effEditEnabled && sheet.document && html`
-                    <span class="rs-header-actions">
-                      <button class=${`rs-head-tool ${documentSource(reviews, sheet.name) !== undefined ? "rs-head-tool-on" : ""}`}
-                              onClick=${() => setDocTarget(sheet.name)}
-                              title="${t.docEditKey}" aria-label="${t.docEdit}">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                      </button>
-                    </span>
-                  `}
                   ${/* A hand-maintained sheet has no category heading to hang
                         the side-by-side switch on, so it lives in the sheet's
                         own heading — the comparison is about the whole sheet
@@ -5414,17 +4666,6 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                                           else next.add(sheet.name);
                                           return next;
                                         })} />
-                    </span>
-                  `}
-                  ${/* Which of the document's value columns this sheet has.
-                        The set is the document's; using one is the sheet's. */ ""}
-                  ${effEditEnabled && sheet.document?.mode === "sheet" && html`
-                    <span class="rs-header-actions">
-                      <button class="rs-head-tool" onClick=${() => setEnvTarget(sheet.name)}
-                              title="${t.envSheetManage}" aria-label="${t.envSheetManage}">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
-                        <span class="rs-tool-label">${t.envSheetManageShort}</span>
-                      </button>
                     </span>
                   `}
                   ${effReviewEnabled && html`
@@ -5454,30 +4695,25 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
               ${sheet.document?.mode === "sheet" && pivoted.has(sheet.name)
                 ? html`<${PivotView} sheet=${sheet}
                                      sheetIndex=${idx} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
-                                     reviews=${[]} reviewEnabled=${false} editEnabled=${false}
-                                     onOpenReview=${() => {}} onOpenEdit=${() => {}}
+                                     reviews=${[]} reviewEnabled=${false}
+                                     onOpenReview=${() => {}}
                                      onLeave=${alwaysPivoted.has(sheet.name) ? undefined : () => setPivoted((prev) => { const next = new Set(prev); next.delete(sheet.name); return next; })} t=${t} />`
                 : sheet.document?.mode === "sheet"
                 ? html`<${MarkdownSheetBody}
-                          markdown=${(effEditEnabled ? documentSource(reviews, sheet.name) : undefined) ?? sheet.document.markdown ?? ""}
+                          markdown=${sheet.document.markdown ?? ""}
                           instances=${sheet.instances ?? []} lang=${lang} sheetIndex=${idx}
                           hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
                           rowKeys=${sheet.document.row_keys} sheetName=${sheet.name} artifact=${artifactAccess}
-                          onEditAt=${effEditEnabled
-                            ? (jump: DocJump) => { setDocJump(jump); setDocTarget(sheet.name); }
-                            : undefined} t=${t} />`
+                          t=${t} />`
                 : sheet.document
-                ? html`<${DocumentBody} sheet=${sheet} reviews=${reviews} editEnabled=${effEditEnabled}
-                                        onEditAt=${effEditEnabled
-                                          ? (jump: DocJump) => { setDocJump(jump); setDocTarget(sheet.name); }
-                                          : undefined}
+                ? html`<${DocumentBody} sheet=${sheet}
                                         onEvidence=${(artifacts ?? []).some((a) => a.nature === "observed")
                                           ? (id: string, line?: number) => setArtifactTarget({ id, line })
                                           : undefined} t=${t} />`
                 : pivoted.has(sheet.name)
                 ? html`<${PivotView} sheet=${sheet} sheetIndex=${idx} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
-                                     reviews=${reviews} reviewEnabled=${effReviewEnabled} editEnabled=${effEditEnabled}
-                                     onOpenReview=${openReview} onOpenEdit=${openEdit}
+                                     reviews=${reviews} reviewEnabled=${effReviewEnabled}
+                                     onOpenReview=${openReview}
                                      onLeave=${alwaysPivoted.has(sheet.name) ? undefined : () => setPivoted((prev) => { const next = new Set(prev); next.delete(sheet.name); return next; })} t=${t} />`
                 : sheet.categories.map((cat) => html`
                 <${CategorySection} key=${cat.name} category=${cat} sheetName=${sheet.name} sheetInstances=${sheet.instances} sheetIndex=${idx} hiddenInstances=${hiddenInstances}
@@ -5486,9 +4722,9 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                                                                onToggle=${() => setPivoted((prev) => new Set(prev).add(sheet.name))} />` as VNode
                                       : null}
                                     sheetFilePath=${sheet.file_path} parentPath="" depth=${1}
-                                    columns=${data.columns} reviews=${reviews} reviewEnabled=${effReviewEnabled} editEnabled=${effEditEnabled}
+                                    columns=${data.columns} reviews=${reviews} reviewEnabled=${effReviewEnabled}
                                     showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
-                                    onOpenReview=${openReview} onOpenEdit=${openEdit} onAddRow=${openAddRow} onToggleDelete=${handleToggleDelete} artifact=${artifactAccess} diff=${diff}
+                                    onOpenReview=${openReview} artifact=${artifactAccess} diff=${diff}
                                     t=${t} />
               `)}
             </section>
@@ -5527,49 +4763,6 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                        showDefaults=${showDefaults} onToggleDefaults=${() => setShowDefaults((v) => !v)} t=${t} />
       `}
 
-      ${envTarget !== null && (() => {
-        // Every hand-maintained sheet, with the text it says NOW: the control
-        // works across the document, and a reader deciding about an axis should
-        // see the whole of it.
-        const sheets = data.sheets
-          .filter((s) => s.document?.mode === "sheet")
-          .map((s) => ({
-            name: s.name,
-            display: s.display ?? s.name,
-            markdown: (documentSource(reviews, s.name) ?? s.document?.markdown) ?? "",
-            instances: s.instances ?? [],
-          }));
-        if (sheets.length === 0) return null;
-        if (envTarget !== "*") {
-          const here = sheets.find((s) => s.name === envTarget);
-          if (here === undefined) return null;
-          return html`
-            <${SheetEnvironmentModal} sheet=${here.display} environments=${environments} markdown=${here.markdown}
-                                      onSave=${(next: string) => handleSheetMarkdown([{ sheet: here.name, markdown: next }])}
-                                      onClose=${() => setEnvTarget(null)} t=${t} />
-          `;
-        }
-        return html`
-          <${EnvironmentModal} environments=${environments} sheets=${sheets} onSave=${handleSaveEnvironments}
-                               onClose=${() => setEnvTarget(null)} t=${t} />
-        `;
-      })()}
-      ${docTarget !== null && (() => {
-        const sheet = baseData.sheets.find((s) => s.name === docTarget);
-        const original = sheet?.document?.markdown;
-        // A document built before the source was carried has nothing to edit.
-        // Said, rather than opening an empty editor that would replace the
-        // whole document with whatever is typed into it.
-        if (original === undefined) return html`<${PromptModal} text=${t.docNoSource} fromEdits=${true} onClose=${() => setDocTarget(null)} t=${t} />`;
-        return html`
-          <${DocumentModal} sheet=${docTarget} original=${original}
-                            current=${documentSource(reviews, docTarget) ?? original}
-                            jump=${docJump}
-                            onSave=${handleSaveEdit}
-                            onClose=${() => { setDocTarget(null); setDocJump(undefined); }} t=${t} />
-        `;
-      })()}
-
       ${modalTarget && html`
         <${ReviewModal} target=${modalTarget.target} field=${modalTarget.field}
                         currentValue=${modalTarget.currentValue} sharedRow=${modalTarget.sharedRow} reviews=${reviews}
@@ -5582,7 +4775,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
       `}
 
       ${promptModalText !== null && html`
-        <${PromptModal} text=${promptModalText} fromEdits=${effEditEnabled} onClose=${() => setPromptModalText(null)} t=${t} />
+        <${PromptModal} text=${promptModalText} fromEdits=${false} onClose=${() => setPromptModalText(null)} t=${t} />
       `}
 
       ${artifactTarget && html`
@@ -5592,15 +4785,7 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
                           onJumpRow=${jumpToRow} t=${t} />
       `}
 
-      ${notice > 0 && html`
-        <div class="rs-toast" role="status" onClick=${() => setNotice(0)}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
-          <span>${t.restoredToast(notice)}</span>
-          <button class="rs-toast-close" onClick=${() => setNotice(0)} aria-label="${t.shortcutClose}">\u00d7</button>
-        </div>
-      `}
-
-      <${CellToolbarHost} onOpenReview=${openReview} onOpenEdit=${openEdit} onToggleDelete=${handleToggleDelete} t=${t} />
+      <${CellToolbarHost} onOpenReview=${openReview} t=${t} />
     </div>
   `;
 }
@@ -5712,7 +4897,7 @@ function diffBadge(status: DiffStatus | undefined) {
 // Root (version switching + diff) and entry point
 // ============================================================
 
-function Root({ payload, reviewEnabled, editEnabled, promptEnabled = true, showSources: sources = true, initialLang, server, pristineHtml, embedded }: { payload: Payload; reviewEnabled: boolean; editEnabled: boolean; promptEnabled?: boolean; showSources?: boolean; initialLang: Lang; server: boolean; pristineHtml?: string; embedded?: EmbeddedHistory }) {
+function Root({ payload, reviewEnabled, promptEnabled = true, showSources: sources = true, initialLang, server }: { payload: Payload; reviewEnabled: boolean; promptEnabled?: boolean; showSources?: boolean; initialLang: Lang; server: boolean }) {
   // Applied here rather than in an effect: it decides what the FIRST render
   // draws, and an effect runs after it.
   setShowSources(sources);
@@ -5782,8 +4967,7 @@ function Root({ payload, reviewEnabled, editEnabled, promptEnabled = true, showS
         onFrom=${setFromId} onTo=${setToId} diffSummary=${diffModel?.summary}
         changedOnly=${changedOnly} onChangedOnly=${setChangedOnly}
         columnar=${columnar} onColumnar=${setColumnar} t=${t} />`}
-      <${App} data=${data} artifacts=${shown.artifacts} reviewEnabled=${reviewEnabled} editEnabled=${editEnabled} promptEnabled=${promptEnabled} lang=${lang} setLang=${setLang}
-        pristineHtml=${pristineHtml} embedded=${embedded}
+      <${App} data=${data} artifacts=${shown.artifacts} reviewEnabled=${reviewEnabled} promptEnabled=${promptEnabled} lang=${lang} setLang=${setLang}
         diff=${diffModel?.status} reviewsOverride=${diffModel?.reviews} versionPivot=${versionPivot}
         server=${server} applyEnabled=${applyEnabled} />
     </div>
@@ -5802,24 +4986,7 @@ function init() {
 
   const configEl = document.getElementById("sheet-config");
   const config = configEl ? JSON.parse(configEl.textContent ?? "{}") : {};
-  // The document exactly as it was generated/last saved. Saving is this string
-  // with one block swapped, so a saved file is the same document — not a
-  // serialization of whatever the DOM had become.
-  //
-  // Taken from the bootstrap, which captured it BEFORE inflating anything into
-  // the page (see html/compress.ts): by the time this runs the DOM also holds
-  // an inflated <style> and an inflated data block, and serializing it here
-  // wrote both those and the compressed blocks they came from into the saved
-  // file. The fallback is for a document with no bootstrap at all — one built
-  // before compression, and every test that renders `Root` directly.
-  const pristineHtml =
-    (window as unknown as { __rsPristine?: string }).__rsPristine ??
-    "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
-  const embedded = readEmbeddedHistory(document);
   const reviewEnabled = config.review !== false;
-  // Editing is opt-in at generation time (`--allow edit`): a generated sheet is
-  // read-only unless someone said otherwise.
-  const editEnabled = config.edit === true;
   // Off only when the author said so (`--allow` without `prompt`): a document
   // built before this switch existed still offers it.
   const promptEnabled = config.prompt !== false;
@@ -5831,8 +4998,8 @@ function init() {
 
   const appEl = document.getElementById("app");
   if (!appEl) return;
-  render(html`<${Root} payload=${payload} reviewEnabled=${reviewEnabled} editEnabled=${editEnabled} initialLang=${lang} server=${serverMode}
-                       promptEnabled=${promptEnabled} showSources=${showSources} pristineHtml=${pristineHtml} embedded=${embedded} />`, appEl);
+  render(html`<${Root} payload=${payload} reviewEnabled=${reviewEnabled} initialLang=${lang} server=${serverMode}
+                       promptEnabled=${promptEnabled} showSources=${showSources} />`, appEl);
 }
 
 if (typeof document !== "undefined") {

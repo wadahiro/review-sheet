@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 // What the bar holds, left to right, by what each control SAYS it is.
-const order = (opts: { review: boolean; edit: boolean }): string[] => {
+const order = (opts: { review: boolean }): string[] => {
   location.hash = "#1";
   const host = document.createElement("div");
   document.body.appendChild(host);
@@ -46,11 +46,8 @@ const order = (opts: { review: boolean; edit: boolean }): string[] => {
     h(Root, {
       payload: PAYLOAD as never,
       reviewEnabled: opts.review,
-      editEnabled: opts.edit,
       initialLang: "ja",
       server: false,
-      pristineHtml: "<!DOCTYPE html><html><body><div id=\"app\"></div></body></html>",
-      embedded: { reviews: [], saves: [] },
     }),
     host
   );
@@ -62,19 +59,19 @@ const order = (opts: { review: boolean; edit: boolean }): string[] => {
 };
 
 describe("the toolbar's order", () => {
-  it("reads: what to show, then what to do, then how it looks, then save", () => {
-    const seen = order({ review: false, edit: true });
+  it("reads: what to show, then what to do, then how it looks", () => {
+    const seen = order({ review: false });
     // Filters keep the fixed slot (they carry a count); search sits beside them.
     expect(seen.indexOf(t.filterMenu)).toBeLessThan(seen.indexOf(t.navSearchTip.split(" —")[0]));
-    // Save is last of all, after the display toggles.
-    expect(seen[seen.length - 1]).toBe(t.saveTooltip.split(" —")[0]);
-    expect(seen.indexOf(t.themeToggle)).toBeLessThan(seen.length - 1);
+    // How it LOOKS comes last: the theme and the language are about the page,
+    // not about the document, and they sit after everything that is.
+    expect(seen.indexOf(t.navSearchTip.split(" —")[0])).toBeLessThan(seen.indexOf(t.themeToggle));
     // …and the groups are separated, not merely ordered.
-    expect(seen.filter((x) => x === "|").length).toBeGreaterThanOrEqual(2);
+    expect(seen.filter((x) => x === "|").length).toBeGreaterThanOrEqual(1);
   });
 
   it("keeps the reading tools first in a review document too", () => {
-    const seen = order({ review: true, edit: false });
+    const seen = order({ review: true });
     expect(seen.indexOf(t.filterMenu)).toBeLessThan(seen.indexOf(t.navSearchTip.split(" —")[0]));
     expect(seen.indexOf(t.navSearchTip.split(" —")[0])).toBeLessThan(seen.indexOf(t.themeToggle));
   });

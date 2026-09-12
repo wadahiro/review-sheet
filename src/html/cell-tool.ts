@@ -16,14 +16,6 @@ export type CellToolCtx = {
   hasReview: boolean;
   canCopy: boolean;
   reviewEnabled: boolean;
-  // Editing is offered only on the two fields the recipient owns (value,
-  // remarks) — see EDITABLE_FIELDS.
-  editEnabled: boolean;
-  hasEdit: boolean;
-  // Row-level: offered on the key cell only. `rowDeleted` flips the action
-  // between striking the row through and putting it back.
-  canDelete: boolean;
-  rowDeleted: boolean;
   // The cell's horizontal scroll container, so wheel/swipe over the (fixed,
   // overlaying) toolbar can be forwarded to the table beneath it.
   scroller: HTMLElement | null;
