@@ -2,12 +2,11 @@
 
 import { Command } from "commander";
 import { readFileSync, writeFileSync, readdirSync, mkdirSync } from "fs";
-import { createHash } from "crypto";
 import { resolve, relative, join, dirname, basename } from "path";
 import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { langFallbacks, localizeVersions } from "./localize.js";
-import { toMarkdownSet, href } from "./md-set.js";
+import { toMarkdownSet, href, modelStamp, stampOf } from "./md-set.js";
 import type { ParamData } from "./prompt.js";
 import { validateInput, validateReview, validateResults, validateObservation, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
@@ -376,7 +375,7 @@ function writeMarkdownSet(
   // Identifies the MODEL, not this rendering: the same model written twice in
   // two languages is the same model, and a stamp that moved with the rendering
   // could not say whether the configuration had changed underneath.
-  const stamp = createHash("sha256").update(JSON.stringify(input)).digest("hex").slice(0, 16);
+  const stamp = modelStamp(input);
 
   const link = (file: string, line: number | undefined, fromDir: string): string => {
     const rel = relative(fromDir, file).split("\\").join("/");
@@ -1588,10 +1587,40 @@ program
   .option("--quiet", "Only print problems (warn/error), not every ok line", false)
   .option("--parsers-dir <dir>", "Directory of custom parser plugins")
   .option("--annotation-marker <marker>", "In-source annotation marker (default: @rs)")
-  .action(async (opts: { input: string; quiet: boolean; parsersDir?: string; annotationMarker?: string }) => {
+  .option("--md <dir>", "Also check that a committed markdown set (generate --format md) still describes this model")
+  .action(async (opts: { input: string; quiet: boolean; parsersDir?: string; annotationMarker?: string; md?: string }) => {
     try {
       await loadCustomParsers(opts.parsersDir);
       const input = validateInput(JSON.parse(readFileSync(opts.input, "utf-8")));
+
+      // A markdown set is committed and read for months. Nothing about it says
+      // it has stopped describing the configuration — a value moved in a file
+      // and the sheet regenerated for HTML leaves the markdown looking exactly
+      // as correct as it did the day it was written. So the index carries which
+      // model it came from, and this is where that is held to.
+      //
+      // Both sides must be the SAME model: a set written for one delivery's
+      // environments is a different set from one written for all of them, and
+      // this says so rather than pretending otherwise.
+      if (opts.md !== undefined) {
+        const index = join(opts.md, "README.md");
+        let text: string | null = null;
+        try { text = readFileSync(index, "utf-8"); } catch { text = null; }
+        if (text === null) {
+          console.error(`Error: ${index} is not there — --md takes the directory a markdown set was written to`);
+          process.exit(1);
+        }
+        const was = stampOf(text);
+        const now = modelStamp(input);
+        if (was === undefined) {
+          console.error(`Warning: ${index} carries no model stamp — it predates the check, or its header was replaced. Regenerate to stamp it.`);
+        } else if (was !== now) {
+          console.error(`Error: ${opts.md}/ was written from model ${was}; this one is ${now}. Regenerate the set (generate --format md).`);
+          process.exit(1);
+        } else if (!opts.quiet) {
+          console.log(`OK   ${opts.md}/ describes this model (${now})`);
+        }
+      }
 
       const readFile = (path: string): string | null => {
         try {

@@ -8,7 +8,7 @@
 // exists to prevent, and it fails silently.
 
 import { describe, it, expect, afterAll } from "bun:test";
-import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync } from "fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, dirname, resolve as resolvePath } from "path";
 import { toMarkdownSet, slug } from "../src/md-set";
@@ -154,5 +154,56 @@ describe("every address in a generated set resolves", () => {
     }
     expect(checked).toBeGreaterThan(50);
     expect(broken).toEqual([]);
+  });
+});
+
+// A committed markdown set is read for months, and nothing about it says it has
+// stopped describing the configuration: a value moves in a file, the sheet is
+// regenerated for the HTML, and the markdown goes on looking exactly as correct
+// as the day it was written.
+describe("a committed set that no longer describes the model", () => {
+  const project = resolvePath(import.meta.dir, "fixtures", "projects", "ansible-keycloak");
+  const cli = resolvePath(import.meta.dir, "..", "src", "cli.ts");
+  const set = join(work, "stale");
+
+  const run = (...args: string[]): { code: number | null; out: string } => {
+    const r = Bun.spawnSync(["bun", "run", cli, ...args], { cwd: project });
+    return { code: r.exitCode, out: r.stdout.toString() + r.stderr.toString() };
+  };
+  const write = (text: string): void => writeFileSync(join(set, "README.md"), text, "utf-8");
+
+  it("passes while the set is the model's own", () => {
+    expect(run("generate", "-i", "input.json", "--format", "md", "-o", set).code).toBe(0);
+    const r = run("verify", "-i", "input.json", "--md", set);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("describes this model");
+  });
+
+  it("fails, naming both models, once they are not the same one", () => {
+    run("generate", "-i", "input.json", "--format", "md", "-o", set);
+    const readme = readFileSync(join(set, "README.md"), "utf-8");
+    write(readme.replace(/model [0-9a-f]+/, "model deadbeefdeadbeef"));
+    const r = run("verify", "-i", "input.json", "--md", set);
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("deadbeefdeadbeef");
+    expect(r.out).toContain("generate --format md");
+  });
+
+  // Not an error: a set written before the stamp existed is not wrong, it is
+  // unanswerable — and saying which is the difference between a check somebody
+  // acts on and one they learn to pass.
+  it("warns rather than fails when the index carries no stamp", () => {
+    run("generate", "-i", "input.json", "--format", "md", "-o", set);
+    const readme = readFileSync(join(set, "README.md"), "utf-8");
+    write(readme.replace(/<!--[\s\S]*?-->\n\n/, ""));
+    const r = run("verify", "-i", "input.json", "--md", set);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("no model stamp");
+  });
+
+  it("says so when the directory holds no set at all", () => {
+    const r = run("verify", "-i", "input.json", "--md", join(work, "nothing-here"));
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("is not there");
   });
 });

@@ -17,6 +17,7 @@
 
 import type { SheetData, ParamData } from "./prompt.js";
 import type { Lang } from "./html/i18n.js";
+import { createHash } from "crypto";
 import { sheetToMarkdown } from "./sheet-markdown.js";
 
 export type MarkdownFile = { path: string; text: string };
@@ -156,4 +157,26 @@ function index(data: SheetData, paths: Map<string, string>, lang: Lang, stamp: s
   for (const s of data.sheets) if (s.group === undefined) out.push(`- ${link(s)}`);
   out.push("");
   return out.join("\n");
+}
+
+// Which model a written-out set came from.
+//
+// Not a hash of the FILES: those are what is being judged, and a set somebody
+// hand-edited must still be recognisable as having come from this model — the
+// question `verify` asks is "does the committed markdown still describe the
+// model beside it", and the answer has to survive a typo fixed in a remark.
+//
+// Recomputed, never stored twice: `generate` writes it into the index and
+// `verify` computes it again from the model it is given. Which means the two
+// must be given the SAME model — a set written for one delivery's environments
+// is a different set from one written for all of them, and says so.
+export function modelStamp(model: unknown): string {
+  return createHash("sha256").update(JSON.stringify(model)).digest("hex").slice(0, 16);
+}
+
+// The stamp a written-out index carries, or undefined for a set that predates
+// it — or one whose index somebody replaced. Read by scanning, because the
+// index is markdown and this is a comment in it.
+export function stampOf(indexText: string): string | undefined {
+  return /<!--\s*review-sheet:model\s+([0-9a-f]+)\s*-->/.exec(indexText)?.[1];
 }

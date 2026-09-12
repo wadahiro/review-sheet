@@ -23,8 +23,9 @@ bun test                    # run all tests
 bun run typecheck           # tsc --noEmit over src/ AND tests/ (tsconfig.json alone excludes tests/)
 bun run src/cli.ts import -f <conf>... -o <file>  # draft a model (with source maps) from config files
 bun run src/cli.ts generate -i <file>... -o <file>  # generate HTML (multiple inputs = version history, ordered by date)
+bun run src/cli.ts generate -i <file> --format md -o <dir>  # the same model as a markdown SET: one file per sheet, chapter tree as directories
 bun run src/cli.ts validate -i <file>            # validate a model / review / dictionary / overlay (JSON or YAML)
-bun run src/cli.ts verify -i <input>             # verify source maps resolve in the real config files
+bun run src/cli.ts verify -i <input>             # verify source maps resolve in the real config files (--md <dir>: and that a committed markdown set still describes this model)
 bun run src/cli.ts apply -i <input> -r <review.json>  # apply reviewed value changes (dry-run; --write to commit)
 bun run src/cli.ts serve -i <input>              # localhost UI (127.0.0.1) that applies edits directly to local files
 bun run docs                  # regenerate per-format docs (run after editing parser meta)
