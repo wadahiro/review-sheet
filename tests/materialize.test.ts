@@ -1464,6 +1464,66 @@ params:
       ["opened_a", "unit-a"],
     ]);
     const { materializeWarnings } = assembleSheetsWithReport(s, hostOpts());
-    expect(materializeWarnings.join("\n")).toContain("both inside components and outside");
+    const w = materializeWarnings.join("\n");
+    expect(w).toContain("AND rows belonging to no component");
+    // The scopes are NAMED: "rows on both sides" is not something an author can
+    // act on without knowing which side holds what.
+    expect(w).toContain("unit-a");
+  });
+});
+
+// The mixed-scope question only exists on a sheet that actually splits.
+//
+// A single component is collapsed away on output — a sheet covering one
+// component IS that component — and assemble-spec synthesises one named after
+// the sheet for any recipe that declares none. So on a one-component sheet the
+// two answers produce the IDENTICAL document, and warning about the choice is
+// noise. Measured on a real project: the check fired on such a sheet, and
+// silencing it left the built model byte-identical.
+describe("a sheet with one component", () => {
+  const HOST_DICT = `
+product: hostthing
+version: "1"
+provenance: extracted
+coverage: full
+parameters:
+  opened_a: { description: { en: a }, default: "off" }
+  opened_b: { description: { en: b }, default: "off" }
+`;
+  const files: Record<string, string> = {
+    "project.yml": `
+layout: categories
+params:
+  wal_level: { category: Tuning }
+  opened_a: { category: Firewall }
+  opened_b: { category: Firewall }
+`,
+    "meta/demodb@1.yml": DICT_YAML,
+    "meta/hostthing@1.yml": HOST_DICT,
+  };
+  const read = (p: string): string | null => files[p] ?? null;
+
+  it("does not ask which side an unscoped dictionary belongs to", () => {
+    // The host dictionary's rows sit on BOTH sides — the state that would be
+    // reported as undecidable on a sheet with two components — but there is
+    // only one component here, so the two answers produce the same document.
+    const si = sheetInputs(["wal_level", "opened_a", "opened_b"]);
+    si[0]!.componentOf = new Map([
+      ["wal_level", "the only one"],
+      ["opened_a", "the only one"],
+    ]);
+    const { materializeWarnings } = assembleSheetsWithReport(
+      si,
+      opts({
+        readFile: read,
+        dictionaries: {
+          db: [
+            { product: "demodb", version: "1", key_prefix: "db_" },
+            { product: "hostthing", version: "1", materialize: true },
+          ],
+        },
+      })
+    );
+    expect(materializeWarnings).toEqual([]);
   });
 });

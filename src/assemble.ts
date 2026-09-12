@@ -2746,21 +2746,37 @@ export function assembleSheetsWithReport(
       // rows ALREADY bound to this dictionary sit either inside components or
       // outside every one of them. Outside means the thing it describes is not
       // one of the components, so its unset keys are not either.
-      const scopes = scopesBoundTo(draftBindings, dictBinding);
+      // Only ever a question on a sheet with MORE THAN ONE component, which is
+      // exactly when `expansions` splits. A single component is collapsed away
+      // on output (a sheet covering one component IS that component), and
+      // `assemble-spec` synthesises one named after the sheet for any recipe
+      // that declares none — so "inside vs outside" there is an artifact of that
+      // fallback, not a fact about the dictionary. Checked before this guard was
+      // added, it fired on a one-component sheet where the two answers produce
+      // the identical document.
+      const split = componentKeysByName.size > 1;
+      const scopes = split ? scopesBoundTo(draftBindings, dictBinding) : new Set<string>();
       const outside = scopes.has(NO_COMPONENT);
       const inside = [...scopes].some((c) => c !== NO_COMPONENT);
       // Mixed is a question only the author can settle, and this file never
       // settles one silently — same stance as an ambiguous bind.
       if (outside && inside) {
+        // Naming the scopes, because "rows on both sides" is not something an
+        // author can act on without knowing WHICH side holds what — and the
+        // component-less side is usually a handful of rows that turn out not to
+        // belong to the sheet's subject at all.
+        const inNames = [...scopes].filter((c) => c !== NO_COMPONENT).sort();
         materializeWarnings.push(
-          `sheet "${si.name}": ${dictBinding.product}@${dictBinding.version} has rows both inside components and outside every one, ` +
-            `so which of them its unset keys belong to is not decidable here — scope it with \`component:\`. Expanding per component, as before.`
+          `sheet "${si.name}": ${dictBinding.product}@${dictBinding.version} has rows inside ${inNames.length} component(s) ` +
+            `(${inNames.slice(0, 4).join(", ")}${inNames.length > 4 ? ", …" : ""}) AND rows belonging to no component, ` +
+            `so which of them its unset keys belong to is not decidable here — scope it with \`component:\`. ` +
+            `Expanding per component, as before.`
         );
       }
       // Nothing bound yet says nothing either way, so the old behaviour stands
       // — but it is not silent: a ledger appearing under every component is a
       // large thing to discover by reading the sheet.
-      if (scopes.size === 0 && componentKeysByName.size > 1 && dictBinding.component === undefined) {
+      if (split && scopes.size === 0 && dictBinding.component === undefined) {
         materializeWarnings.push(
           `sheet "${si.name}": ${dictBinding.product}@${dictBinding.version} materializes but no row of this sheet binds to it, ` +
             `so its ledger is expanded under every component. Scope it with \`component:\` if it describes only one.`
