@@ -101,6 +101,11 @@ async function loadPluginModules(
       continue;
     }
     for (const f of files) {
+      // A TEST beside a plugin is not a plugin. Loading it here imports a test
+      // runner outside a test run, which fails in a way that reads as the
+      // plugin being broken — and the natural place to put a plugin's tests is
+      // next to the plugin.
+      if (/\.(test|spec)\./.test(f)) continue;
       // `.mjs` too: it is the extension a project reaches for when the rest of
       // its scripts are ESM, and a plugin directory whose files are all skipped
       // looked exactly like one that registered nothing.
