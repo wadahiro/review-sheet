@@ -172,3 +172,62 @@ describe("a Jinja expression is one word", () => {
     expect(shellIndex("#!/bin/sh\nx --opt {{ oops\n").map((e) => e.value)).toEqual(["{{"]);
   });
 });
+
+// The short options of a command whose arity is known.
+//
+// A short option is skipped everywhere else because `-rf` cannot be told apart
+// from a bundle without knowing the command — which is the opening, not the
+// end. A provisioning script states real security posture in exactly this
+// syntax: measured on one real script, the mode of the directory holding a
+// database credential and the umask its files are written under were both
+// invisible to the review while the `--region` beside them was a row.
+describe("short options of a named command", () => {
+  it("reads the ones that take a value, keyed with the command", () => {
+    const out = shellIndex("install -d -m 0750 -o keycloak -g keycloak /run/keycloak/vault\n");
+    expect(out.map((e) => [e.key, e.value])).toEqual([
+      ["install -m", "0750"],
+      ["install -o", "keycloak"],
+      ["install -g", "keycloak"],
+    ]);
+  });
+
+  // `-d` takes none, and the word after it is another option.
+  it("leaves a bare short flag alone", () => {
+    expect(shellIndex("mkdir -p -m 0700 /x\n").map((e) => e.key)).toEqual(["mkdir -m"]);
+  });
+
+  // The whole reason the table exists: without the command there is no arity.
+  it("says nothing about a command it does not know", () => {
+    expect(shellIndex("rm -rf /tmp/junk\ntar -f out.tar /x\n")).toEqual([]);
+  });
+
+  // A command whose sole operand IS the value — the `bareFlag` case one layer
+  // up. The shape it appears in glues the separator to the word, because a
+  // separator is only a token of its own when whitespace puts it there.
+  it("reads an operand-valued command, without the separator", () => {
+    expect(shellIndex("( umask 0177; printf 'x' > /run/x )\n").map((e) => [e.key, e.value])).toEqual([["umask", "0177"]]);
+  });
+
+  it("keeps a quoted operand exactly as written", () => {
+    expect(shellIndex("umask '0177'\n").map((e) => e.value)).toEqual(["'0177'"]);
+  });
+
+  // The separator glues on outside the quotes, and a `;` inside them never
+  // reaches the strip at all — the token then ends in a quote, not in `;`.
+  it("strips the separator from a quoted operand but not from inside it", () => {
+    expect(shellIndex("( umask '0177'; x )\n").map((e) => e.value)).toEqual(["'0177'"]);
+    expect(shellIndex("umask '0177;'\n").map((e) => e.value)).toEqual(["'0177;'"]);
+  });
+
+  // Two commands on one script would otherwise both be `-m`.
+  it("does not confuse two commands' short options", () => {
+    const out = shellIndex("install -m 0750 /a\nmkdir -m 0700 /b\n");
+    expect(out.map((e) => e.key)).toEqual(["install -m", "mkdir -m"]);
+  });
+
+  // chmod/chown are deliberately absent: their operands are a mode AND a path,
+  // and which one is "the value" is a modelling decision this does not make.
+  it("still says nothing about chown", () => {
+    expect(shellIndex("chown keycloak:keycloak /run/keycloak/vault/x\n")).toEqual([]);
+  });
+});

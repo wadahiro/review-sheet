@@ -69,6 +69,36 @@ function tokenize(line: string, base: number): Token[] {
 
 // Tokens that end one statement and begin another, so the next word is again a
 // position where `NAME=value` means an assignment rather than an argument.
+// The commands whose SHORT options carry reviewable state, and which of those
+// options take a value.
+//
+// The module doc above says a short option "cannot be told apart from a bundle
+// (`-rf`) without knowing the command" — which is the opening, not the end:
+// once the command is named, its arity is known and the ambiguity is gone. So
+// this is a table, not a rule, and it is deliberately short. It exists because
+// a provisioning script states real security posture in exactly this syntax and
+// nothing was reading it: measured on one real script, the mode of the
+// directory holding a database credential (`install -d -m 0750`) and the umask
+// its files are written under were both invisible to the review while the
+// `--region` beside them was a row.
+//
+// Keyed WITH the command (`install -m`), unlike a long option, because the
+// command is the only reason the option can be read at all — and because `-m`
+// alone, on a sheet, says nothing.
+const SHORT_OPTION_VALUES: Record<string, readonly string[]> = {
+  install: ["-m", "-o", "-g"],
+  mkdir: ["-m"],
+  useradd: ["-u", "-g", "-G", "-d", "-s"],
+  groupadd: ["-g"],
+};
+
+// Commands whose SOLE operand is the value — the `bareFlag` case one layer up:
+// the statement says the thing by naming it and the value is the only word
+// after it. `umask 0177` is the one that matters here; `chmod`/`chown` are
+// deliberately absent, because their operands are a mode AND a path and which
+// is "the value" is a modelling decision this scanner does not make.
+const OPERAND_VALUE = new Set(["umask"]);
+
 const SEPARATORS = new Set(["|", "||", "&&", ";", "&", "(", ")", "{", "}", "!", "then", "do", "else"]);
 const ASSIGN_PREFIX = new Set(["export", "local", "readonly", "declare", "typeset"]);
 
@@ -138,15 +168,41 @@ export function shellIndex(content: string): ShellEntry[] {
     const scanned = continuesNext ? line.slice(0, line.lastIndexOf("\\")) : line;
     const tokens = tokenize(scanned, lineStart);
     let statementStart = !continued;
+    // Which command the options being read belong to (see SHORT_OPTION_VALUES).
+    let command: string | undefined;
     continued = continuesNext;
     for (let t = 0; t < tokens.length; t++) {
       const tok = tokens[t];
-      if (SEPARATORS.has(tok.text)) { statementStart = true; continue; }
+      if (SEPARATORS.has(tok.text)) { statementStart = true; command = undefined; continue; }
       if (statementStart && ASSIGN_PREFIX.has(tok.text)) continue; // still a statement start
 
       if (statementStart) {
         const m = ASSIGNMENT.exec(tok.text);
         statementStart = false;
+        if (!m) {
+          // The command word, kept so a short option below can be read against
+          // it. Reset at every separator, like `statementStart` itself.
+          command = tok.text;
+          if (OPERAND_VALUE.has(command)) {
+            const operand = tokens[t + 1];
+            const v = operand && isValueLike(operand) ? unwrapValue(operand.text) : undefined;
+            // `( umask 0177; printf … )` is the shape this appears in, and the
+            // tokenizer keeps `0177;` as one word — a separator is only a token
+            // of its own when whitespace puts it there.
+            //
+            // No quoting test is needed, and an earlier one here was wrong: a
+            // `;` INSIDE the quotes (`'0177;'`) leaves the token ending in a
+            // quote, so it never reaches this at all, while `'0177';` ends in
+            // the separator and should lose it exactly as the bare form does.
+            const bare = v !== undefined && v.text.endsWith(";");
+            const text = bare ? v!.text.slice(0, -1) : v?.text;
+            if (v && text !== undefined && text !== "") {
+              const end = operand!.end - v.trimmedRight - (bare ? 1 : 0);
+              raw.push({ key: command, value: text, line: i + 1, range: [operand!.start, end], category: "Options" });
+              t++;
+            }
+          }
+        }
         if (m) {
           const v = unwrapValue(m[2]);
           if (v) {
@@ -165,6 +221,17 @@ export function shellIndex(content: string): ShellEntry[] {
           raw.push({ key: inline[1], value: v.text, line: i + 1, range: [valueStart, valueStart + v.text.length], category: "Options" });
         }
         continue;
+      }
+      // …and the short options of a command whose arity is known.
+      const shorts = command === undefined ? undefined : SHORT_OPTION_VALUES[command];
+      if (shorts?.includes(tok.text) && isValueLike(tokens[t + 1])) {
+        const next = tokens[t + 1];
+        const v = unwrapValue(next.text);
+        if (v) {
+          raw.push({ key: `${command} ${tok.text}`, value: v.text, line: i + 1, range: [next.start, next.end - v.trimmedRight], category: "Options" });
+          t++;
+          continue;
+        }
       }
       if (LONG_FLAG.test(tok.text) && isValueLike(tokens[t + 1])) {
         const next = tokens[t + 1];
