@@ -7,6 +7,7 @@ import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { langFallbacks, localizeVersions } from "./localize.js";
 import { toMarkdownSet, href, modelStamp, stampOf, slug } from "./md-set.js";
+import { zipOf } from "./zip.js";
 import type { ParamData } from "./prompt.js";
 import { validateInput, validateReview, validateResults, validateObservation, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
@@ -494,25 +495,37 @@ async function writeMarkdownSet(
       : {}),
   });
 
-  for (const f of files) {
-    const at = join(outDir, f.path);
-    mkdirSync(dirname(at), { recursive: true });
-    writeFileSync(at, f.text.endsWith("\n") ? f.text : `${f.text}\n`, "utf-8");
-  }
-
   // …and the page that reads it. Written from the SAME model, so it opens on
   // the set as delivered without being given anything — and it takes a dropped
   // folder, which is the only way a recipient with no toolchain can look at
   // what they have since edited. Reviewing is off in it: what it shows then is
   // the folder, and the rows are no longer the model's.
   const viewer = await generateHtml(input, { review: false, prompt: false, sources, lang, markdownRuntime: true });
-  writeFileSync(join(outDir, "viewer.html"), viewer, "utf-8");
+  const whole = [
+    ...files.map((f) => ({ path: f.path, text: f.text.endsWith("\n") ? f.text : `${f.text}\n` })),
+    { path: "viewer.html", text: viewer },
+  ];
+
+  // The DIRECTORY is the primary form and an archive is the envelope, chosen by
+  // the name the output was given. A project that can receive a folder should
+  // get one: the tree is what a repository diffs, and an archive holding a
+  // `.html` is what a corporate mail gateway most often refuses.
+  if (outDir.endsWith(".zip")) {
+    mkdirSync(dirname(outDir), { recursive: true });
+    writeFileSync(outDir, zipOf(whole));
+  } else {
+    for (const f of whole) {
+      const at = join(outDir, f.path);
+      mkdirSync(dirname(at), { recursive: true });
+      writeFileSync(at, f.text, "utf-8");
+    }
+  }
   // Never silent about a sheet that did not land where its chapter says: a set
   // whose index and whose files disagree is the failure this is for.
   for (const p of problems) console.error(`Warning: ${p}`);
   const carried = files.length - 1 - data.sheets.length;
   console.error(
-    `Generated: ${files.length + 1} file(s) under ${outDir}/ (model ${stamp})` +
+    `Generated: ${files.length + 1} file(s) ${outDir.endsWith(".zip") ? `in ${outDir}` : `under ${outDir}/`} (model ${stamp})` +
       ` — ${data.sheets.length} sheet(s), ${carried} carried document(s), and viewer.html`
   );
 }

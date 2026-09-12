@@ -910,6 +910,11 @@ review-sheet generate -i input.json --format md -o sheet/
 review-sheet verify   -i input.json --md sheet/     # …and in CI
 ```
 
+`-o` takes a `.zip` instead, for a hand-over where the set has to arrive as one
+thing and be checked as a unit. The directory stays the primary form: it is what
+a repository diffs, and an archive holding a `.html` is what a corporate mail
+gateway most often refuses.
+
 **A project that does not** gets the folder. `--format md` writes a `viewer.html`
 beside the set: it opens on the sheet as delivered, and a folder dropped onto it
 replaces what is shown with what the folder says — which is how a recipient with
