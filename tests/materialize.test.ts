@@ -1357,3 +1357,113 @@ describe("the file layout, sub-headed by the dictionary's groups", () => {
     files["p.yml"] = `sheets:\n  db:\n    layout: file+categories\n    params: {}\n`;
   });
 });
+
+// WHOSE ledger an unscoped dictionary is.
+//
+// A sheet's components are sometimes instances of what the dictionary describes
+// (two databases, each with its own unset options) and sometimes unrelated
+// FILES with a host-wide setting beside them. Expanding into every component is
+// right for the first and a false claim in the second: measured on a real
+// sheet, a firewall's two undeclared openings arrived twelve times over, one
+// copy filed under a systemd unit, which says nothing true about that unit.
+//
+// Nothing new is declared to tell them apart. The rows ALREADY bound to the
+// dictionary sit either inside components or outside every one of them, and
+// that is the answer.
+describe("an unscoped dictionary's scope", () => {
+  const HOST_DICT = `
+product: hostthing
+version: "1"
+provenance: extracted
+coverage: full
+parameters:
+  opened_a:
+    description: { en: One of the host's own switches }
+    default: "off"
+  opened_b:
+    description: { en: Another }
+    default: "off"
+`;
+  const hostFiles: Record<string, string> = {
+    "project.yml": `
+layout: categories
+params:
+  wal_level: { category: Tuning }
+  other_file_key: { category: Tuning }
+  opened_a: { category: Firewall }
+  opened_b: { category: Firewall }
+`,
+    "meta/demodb@1.yml": DICT_YAML,
+    "meta/hostthing@1.yml": HOST_DICT,
+  };
+  const readHost = (p: string): string | null => hostFiles[p] ?? null;
+
+  // Two file components, plus one row of the host dictionary belonging to
+  // neither — the shape of an OS sheet.
+  const si = (): SheetInputs[] => {
+    const s = sheetInputs(["wal_level", "other_file_key", "opened_a"]);
+    s[0]!.componentOf = new Map([
+      ["wal_level", "unit-a"],
+      ["other_file_key", "unit-b"],
+    ]);
+    return s;
+  };
+  const hostOpts = (): AssembleOpts =>
+    opts({
+      readFile: readHost,
+      dictionaries: {
+        db: [
+          { product: "demodb", version: "1", key_prefix: "db_" },
+          { product: "hostthing", version: "1", materialize: true },
+        ],
+      },
+    });
+
+  const pathsOf = (input: ParameterSheetInput, key: string): string[][] => {
+    const out: string[][] = [];
+    const walk = (cats: Category[] | undefined, trail: string[]): void => {
+      for (const c of cats ?? []) {
+        for (const p of c.params ?? []) if (p.key === key) out.push([...trail, c.name]);
+        walk(c.categories, [...trail, c.name]);
+      }
+    };
+    walk(input.sheets[0]!.categories, []);
+    return out;
+  };
+
+  it("materializes ONCE when its own rows belong to no component", () => {
+    const paths = pathsOf(assembleSheets(si(), hostOpts()), "opened_b");
+    expect(paths).toHaveLength(1);
+    // …and outside every component, where its sibling already is.
+    expect(paths[0]!).not.toContain("unit-a");
+    expect(paths[0]!).not.toContain("unit-b");
+  });
+
+  it("still expands per component when its rows live inside them", () => {
+    const s = sheetInputs(["wal_level", "other_file_key"]);
+    s[0]!.componentOf = new Map([
+      ["wal_level", "unit-a"],
+      ["other_file_key", "unit-b"],
+    ]);
+    // demodb's rows ARE inside the components, so its ledger is per component.
+    const input = assembleSheets(s, opts({ readFile: readHost }));
+    const paths = pathsOf(input, "work_mem");
+    expect(paths.length).toBeGreaterThan(1);
+    expect(paths.some((p) => p.includes("unit-a"))).toBe(true);
+    expect(paths.some((p) => p.includes("unit-b"))).toBe(true);
+  });
+
+  it("says so rather than choosing when the rows are on both sides", () => {
+    // Two rows of the SAME dictionary, one inside a component and one outside:
+    // which of them the unset keys belong to is not something this can read off
+    // the sheet, so it says so instead of picking.
+    const s = sheetInputs(["wal_level", "other_file_key", "opened_a", "opened_b"]);
+    s[0]!.componentOf = new Map([
+      ["wal_level", "unit-a"],
+      ["other_file_key", "unit-b"],
+      ["opened_a", "unit-a"],
+    ]);
+    const { materializeWarnings } = assembleSheetsWithReport(s, hostOpts());
+    expect(materializeWarnings.join("\n")).toContain("both inside components and outside");
+  });
+});

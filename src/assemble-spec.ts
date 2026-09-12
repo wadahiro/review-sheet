@@ -83,6 +83,7 @@ export function assembleFromSpecWithReport(
   uiReports: UiReport[];
   binding: BindingReport;
   categoryWarnings: string[];
+  materializeWarnings: string[];
   // Advice about a sheet's layout — see assembleSheetsWithReport.
   layoutNotes: string[];
   // The `channels:` entries the bindings produced, and the ones they could not

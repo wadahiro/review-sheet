@@ -1191,7 +1191,7 @@ async function runSpecImport(opts: {
     // just as well, and a committed input.json shouldn't bake in a local
     // filesystem layout. This means verify/apply must be run from the same CWD
     // used for `import --spec`, same as every other path this CLI records.
-    const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, layoutNotes, derivedChannels, derivedDocuments, derivedDefaults } = assembleFromSpecWithReport(spec, {
+    const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, materializeWarnings, layoutNotes, derivedChannels, derivedDocuments, derivedDefaults } = assembleFromSpecWithReport(spec, {
       readFile,
       listDir,
       readBinary,
@@ -1278,6 +1278,7 @@ async function runSpecImport(opts: {
     // Advice, printed before the warnings: it is about the shape of what was
     // just built, not about something being wrong with it.
     for (const n of layoutNotes) console.error(`Note: ${n}`);
+    for (const w of materializeWarnings) console.error(`Warning: ${w}`);
     if (categoryWarnings.length > 0) {
       for (const w of categoryWarnings) console.error(`Warning: ${w}`);
     }
