@@ -605,13 +605,14 @@ program
         opts.plan === undefined ? buildTestPlan(model).plan : (JSON.parse(readFileSync(opts.plan, "utf-8")) as TestPlan);
       const observations = opts.observations.map((f) => validateObservation(JSON.parse(readFileSync(f, "utf-8"))));
       const lang = opts.lang === "en" ? "en" : "ja";
-      const outcome = judgeFiles(plan, observations, { lang, documents: model.documents, idFields: model.id_fields, builds: model.builds, rpmCommand: rpmQuery(model.builds), defaultsCheckedBy: model.defaults_checked_by });
+      const substitute = (model.documents ?? []).find((d) => d.substitute !== undefined)?.substitute;
+      const outcome = judgeFiles(plan, observations, { lang, documents: model.documents, idFields: model.id_fields, builds: model.builds, rpmCommand: rpmQuery(model.builds), defaultsCheckedBy: model.defaults_checked_by, notChecked: model.not_checked, substitute });
       const functional = judgeFunctional(plan, observations, { lang });
       const mine: TestResults = {
         runs: runsFrom(observations),
         results: outcome.results,
         functional: functional.answers,
-        evidence: [...evidenceFrom(observations, plan, model.documents, model.defaults_checked_by ?? []), ...functional.evidence],
+        evidence: [...evidenceFrom(observations, plan, model.documents, model.defaults_checked_by ?? [], { command: rpmQuery(model.builds), sheet: (model.builds ?? [])[0]?.sheet }), ...functional.evidence],
       };
 
       // The project's own channels win. A row whose product reports its own
@@ -663,7 +664,7 @@ program
         notChecked: model.not_checked,
         // The placeholder this project's importer resolves, as its own
         // `documents:` already declares it.
-        substitute: (model.documents ?? []).find((d) => d.substitute !== undefined)?.substitute,
+        substitute,
       });
       mine.results = [...mine.results, ...rest];
       writeFileSync(opts.output, JSON.stringify(mine, null, 2));

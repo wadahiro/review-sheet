@@ -313,6 +313,46 @@ export function runsFrom(observations: Observation[]): Record<string, { at?: str
   return out;
 }
 
+// The project's own statement about a row nothing here checks — see
+// `answerTheRest`'s options. Built once per run because `carried` counts
+// across the whole plan.
+function notCheckedFor(
+  plan: TestPlan,
+  rules: { sheet?: string; keys?: string[]; carried?: boolean; reason: string }[],
+  substitute: string | undefined,
+  t: JudgeWords
+): (item: TestItem) => string | undefined {
+  const carriedBy = (item: TestItem): number => {
+    if (substitute === undefined || item.file !== undefined || item.address !== undefined) return 0;
+    // The declared pattern with its capture group replaced by this row's key:
+    // `\$\(env:([A-Za-z_]\w*)\)` becomes `\$\(env:SSO_HOST\)`. The group is the
+    // first UNESCAPED `(...)` — the pattern's own `\(` is a literal paren the
+    // importer writes, not the name it captures.
+    const wrapped = substitute.replace(/(?<!\\)\((?!\?)[^)]*\)/, item.target.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const re = new RegExp(wrapped);
+    return plan.items.filter(
+      (x) =>
+        x.target.instance === item.target.instance &&
+        x.target.sheet === item.target.sheet &&
+        typeof x.expected === "string" &&
+        re.test(x.expected)
+    ).length;
+  };
+  return (item) => {
+    for (const rule of rules) {
+      if (rule.sheet !== undefined && rule.sheet !== item.target.sheet) continue;
+      if (rule.keys !== undefined && !rule.keys.includes(item.target.key)) continue;
+      if (rule.carried === true) {
+        const n = carriedBy(item);
+        if (n === 0) continue;
+        return `${rule.reason}${t.carriedBy(n)}`;
+      }
+      return rule.reason;
+    }
+    return undefined;
+  };
+}
+
 export type JudgeOutcome = {
   results: TestResult[];
   evidence: NonNullable<TestResults["evidence"]>;
@@ -427,6 +467,8 @@ export function judgeFiles(
     builds?: { sheet: string; product: string; version: string }[];
     rpmCommand?: string;
     defaultsCheckedBy?: { product: "httpd" | "keycloak"; file: string; command?: string; aside?: string }[];
+    notChecked?: { sheet?: string; keys?: string[]; carried?: boolean; reason: string }[];
+    substitute?: string;
   } = {}
 ): JudgeOutcome {
   const t = JUDGE_WORDS[opts.lang ?? "ja"];
@@ -464,7 +506,22 @@ export function judgeFiles(
   };
 
   const channels = listChannels();
+  // WHAT THIS PROCESS DOES NOT CHECK, asked FIRST. It is a statement about the
+  // process, so it outranks every channel — including one that would otherwise
+  // answer the row and be wrong about it: a row this project builds other
+  // values from is not a field the product has, and a document asked for it
+  // says "not there", which is true and misleading.
+  const notChecked = notCheckedFor(plan, opts.notChecked ?? [], opts.substitute, t);
   for (const item of plan.items) {
+    const stated = notChecked(item);
+    if (stated !== undefined) {
+      out.results.push({
+        target: { sheet: item.target.sheet, path: item.target.path, key: item.target.key, instance: item.target.instance },
+        status: "not_run",
+        reason: stated,
+      });
+      continue;
+    }
     // A CHANNEL first, where one claims the row: it is the stronger witness by
     // construction — a file says what was written, a channel says what the host
     // or the product is doing — and it is the only one that can answer a row no
@@ -886,7 +943,11 @@ export function evidenceFrom(
   observations: Observation[],
   plan: TestPlan,
   templates: DocumentTemplate[] = [],
-  defaults: { file: string; command?: string }[] = []
+  defaults: { file: string; command?: string }[] = [],
+  // A command nothing else can trace to a sheet — the build check asks `rpm -q`
+  // on behalf of whichever sheets pinned a package, and a document filed
+  // nowhere is one a reader of those rows cannot open from them.
+  also?: { command?: string; sheet?: string }
 ): NonNullable<TestResults["evidence"]> {
   const sheetOf = new Map<string, string>();
   for (const i of plan.items) if (i.file !== undefined && !sheetOf.has(i.file)) sheetOf.set(i.file, i.target.sheet);
@@ -903,6 +964,9 @@ export function evidenceFrom(
   for (const d of defaults) {
     const sheet = sheetOf.get(d.file);
     if (d.command !== undefined && sheet !== undefined && !sheetOfCommand.has(d.command)) sheetOfCommand.set(d.command, sheet);
+  }
+  if (also?.command !== undefined && also.sheet !== undefined && !sheetOfCommand.has(also.command)) {
+    sheetOfCommand.set(also.command, also.sheet);
   }
   const out: NonNullable<TestResults["evidence"]> = [];
   const seen = new Set<string>();
@@ -1088,39 +1152,12 @@ export function answerTheRest(
   const key = (x: { sheet: string; path?: string[]; key: string; instance: string }): string =>
     [x.sheet, (x.path ?? []).join("\u0001"), x.key, x.instance].join("\u0000");
   const seen = new Set(results.map((r) => key(r.target)));
-  // How many OTHER items carry this one's value — the row is an input of the
-  // project's, and what it is worth is judged inside every item built from it.
-  // Counted through the placeholder the sheet declares, so this is a reading of
-  // the model rather than a guess about the strings.
-  const carriedBy = (item: TestItem): number => {
-    if (opts.substitute === undefined || item.file !== undefined || item.address !== undefined) return 0;
-    const wrapped = opts.substitute.replace(/\(\[[^\]]*\][^)]*\)/, item.target.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-    const re = new RegExp(wrapped);
-    return plan.items.filter(
-      (x) =>
-        x.target.instance === item.target.instance &&
-        x.target.sheet === item.target.sheet &&
-        typeof x.expected === "string" &&
-        re.test(x.expected)
-    ).length;
-  };
+  const stated = notCheckedFor(plan, opts.notChecked ?? [], opts.substitute, t);
   const out: TestResult[] = [];
   for (const item of plan.items) {
     if (seen.has(key(item.target))) continue;
     seen.add(key(item.target));
-    let reason = collected.has(item.target.instance) ? t.unreached : t.notCollected;
-    for (const rule of opts.notChecked ?? []) {
-      if (rule.sheet !== undefined && rule.sheet !== item.target.sheet) continue;
-      if (rule.keys !== undefined && !rule.keys.includes(item.target.key)) continue;
-      if (rule.carried === true) {
-        const n = carriedBy(item);
-        if (n === 0) continue;
-        reason = `${rule.reason}${t.carriedBy(n)}`;
-      } else {
-        reason = rule.reason;
-      }
-      break;
-    }
+    const reason = stated(item) ?? (collected.has(item.target.instance) ? t.unreached : t.notCollected);
     out.push({
       target: { sheet: item.target.sheet, path: item.target.path, key: item.target.key, instance: item.target.instance },
       status: "not_run",

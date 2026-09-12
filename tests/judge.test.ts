@@ -483,6 +483,29 @@ describe("a row this process does not check", () => {
     expect(got[1]!.reason).not.toContain("この案件の入力");
   });
 
+  // …and it outranks a channel that WOULD answer the row. A document asked for
+  // a field the product does not have says "not there", which is true and
+  // misleading: the row is this project's input, not a product field.
+  it("is stated before any channel answers the row", () => {
+    const doc = {
+      environment: "stg",
+      collected_at: "X",
+      hosts: { web01: { files: {}, documents: [{ sheet: "s", format: "json" as const, how: "GET /x", text: "{}" }] } },
+    };
+    const rows = [item({ key: "HOSTNAME", expected: "h", file: undefined }), item({ key: "url", expected: "https://$(env:HOSTNAME)/x", file: undefined })];
+    const got = judgeFiles(planOf(rows), [doc], {
+      at: "X",
+      lang: "ja",
+      notChecked: [{ carried: true, reason: "この案件の入力であって製品のフィールドではない" }],
+      substitute: "\\$\\(env:([A-Za-z_][A-Za-z0-9_]*)\\)",
+    });
+    const hostname = got.results.find((r) => r.target.key === "HOSTNAME")!;
+    expect(hostname.status).toBe("not_run");
+    expect(hostname.reason).toContain("この案件の入力であって");
+    // …while the row that carries it is still answered by the document.
+    expect(got.results.find((r) => r.target.key === "url")!.status).toBe("fail");
+  });
+
   it("falls back to the tool's own words when no rule matches", () => {
     const got = say([item({ key: "x", expected: "1", file: undefined })], { lang: "ja", notChecked: [{ sheet: "other", reason: "…" }] });
     expect(got[0]!.reason).toContain("チャネルも宣言されていない");
