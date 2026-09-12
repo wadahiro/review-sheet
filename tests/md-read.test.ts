@@ -8,7 +8,7 @@
 import { describe, it, expect } from "bun:test";
 import { readFileSync } from "fs";
 import { join, resolve as resolvePath } from "path";
-import { readMarkdownSet, orderOf, type SetFile } from "../src/md-read";
+import { readMarkdownSet, orderOf, rebase, type SetFile } from "../src/md-read";
 import { toMarkdownSet } from "../src/md-set";
 import type { SheetData } from "../src/prompt";
 
@@ -89,6 +89,41 @@ describe("reading a folder back as a document", () => {
   it("says what it cannot answer rather than guessing", () => {
     expect(readMarkdownSet([]).problems.join(" ")).toContain("holds no sheet");
     expect(readMarkdownSet(set().slice(1)).problems.join(" ")).toContain("their order is not");
+  });
+
+  // The viewer is ONE page for the whole set, so an address written relative to
+  // a sheet resolves against the viewer — off by the sheet's own depth, and
+  // silently: the link is there, it looks right, and it opens nothing.
+  it("rebases a page's links on the set, so the viewer resolves them", () => {
+    const deep: SetFile[] = [
+      { path: "README.md", text: "# d\n\n- [x](%E8%A9%B3%E7%B4%B0%E8%A8%AD%E8%A8%88/a/x.md)\n" },
+      {
+        path: "詳細設計/a/x.md",
+        text: "# x\n\n- [conf](../../../roles/x/templates/y.j2#L4)\n- [art](artifacts/etc/y)\n- [web](https://e/x)\n- [abs](/a/b)\n",
+      },
+    ];
+    const page = readMarkdownSet(deep).sheets[0]!.document.markdown;
+    // Two directories deep, three levels up: one climb is left, and it is the
+    // one that leaves the set for the repository the addresses point into.
+    expect(page).toContain("](../roles/x/templates/y.j2#L4)");
+    expect(page).toContain("](%E8%A9%B3%E7%B4%B0%E8%A8%AD%E8%A8%88/a/artifacts/etc/y)");
+    // A scheme, a root-relative path and a bare fragment are already absolute
+    // against something that is not this page.
+    expect(page).toContain("](https://e/x)");
+    expect(page).toContain("](/a/b)");
+  });
+
+  it("leaves a page at the top level alone", () => {
+    expect(rebase("[a](b/c.md)", "")).toBe("[a](b/c.md)");
+  });
+
+  // A set written INSIDE the repository it describes is the ordinary case, and
+  // its addresses point at the real configuration — which is above the set. A
+  // climb with nothing left to pop is kept; swallowing it turned every source
+  // link into a path inside the set, pointing at nothing.
+  it("keeps a climb that leaves the set", () => {
+    expect(rebase("[a](../../../x/y.j2)", "詳細設計/OS")).toBe("[a](../x/y.j2)");
+    expect(rebase("[a](../../../../x)", "a/b")).toBe("[a](../../x)");
   });
 
   it("follows only the links that name a page of the set", () => {

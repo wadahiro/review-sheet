@@ -36,6 +36,40 @@ export type ReadSet = {
 
 const INDEX = "README.md";
 
+// A page's links, rebased on the SET rather than on the page.
+//
+// Every address a sheet carries is written relative to the file it is in, which
+// is what makes the markdown navigable in a plain reader. The viewer is one
+// page for the whole set, so those addresses resolve against IT — off by
+// exactly the sheet's own depth, and silently: the link is there, it looks
+// right, and it opens nothing. Measured on a real set: every source link in
+// every sheet below the top level.
+//
+// Rewritten on the way in, not at render: this is the step that knows where
+// each page was, and the text is not written back anywhere.
+export function rebase(markdown: string, dir: string): string {
+  if (dir === "") return markdown;
+  return markdown.replace(/\]\(([^)]+)\)/g, (whole, href: string) => {
+    // A scheme, a root-relative path and a bare fragment are already absolute
+    // against something that is not this page.
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith("/") || href.startsWith("#")) return whole;
+    const [path = "", frag = ""] = href.split(/(#.*)$/);
+    const parts = `${dir}/${decodeURI(path)}`.split("/");
+    const out: string[] = [];
+    for (const seg of parts) {
+      if (seg === "" || seg === ".") continue;
+      // A `..` with nothing left to pop CLIMBS OUT of the set, and is kept.
+      // A set written inside the repository it describes is the ordinary case
+      // — the addresses point at the real configuration, which is above it —
+      // and swallowing the climb turned every one of them into a path inside
+      // the set, pointing at nothing.
+      if (seg === ".." && out.length > 0 && out[out.length - 1] !== "..") out.pop();
+      else out.push(seg);
+    }
+    return `](${encodeURI(out.join("/")).replace(/\(/g, "%28").replace(/\)/g, "%29")}${frag})`;
+  });
+}
+
 // The title a page carries, which is what the reader has been calling this
 // sheet — and the file name is only a filesystem's version of it. A page with
 // no title at all is named by its file, which is the last thing left.
@@ -108,7 +142,7 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
     const name = f.path.replace(/\.md$/, "");
     if (named.has(name)) problems.push(`two files are at ${f.path}`);
     named.add(name);
-    const markdown = f.text;
+    const markdown = rebase(f.text, dirs.join("/"));
     sheets.push({
       name,
       display,
