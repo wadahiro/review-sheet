@@ -8,7 +8,7 @@ import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { langFallbacks, localizeVersions } from "./localize.js";
 import { toMarkdownSet, href, modelStamp, stampOf, slug } from "./md-set.js";
 import { zipOf } from "./zip.js";
-import { updateBat, updatePs1, updateSh } from "./update-scripts.js";
+import { updateBat, updateSh } from "./update-scripts.js";
 import type { ParamData } from "./prompt.js";
 import { validateInput, validateReview, validateResults, validateObservation, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
@@ -514,7 +514,6 @@ async function writeMarkdownSet(
     // edit. The drop stays: a machine whose execution policy is set by Group
     // Policy will refuse to run either of these.
     { path: "update.bat", text: updateBat() },
-    { path: "update.ps1", text: updatePs1() },
     { path: "update.sh", text: updateSh() },
   ];
 

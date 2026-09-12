@@ -941,9 +941,12 @@ than editing the sheet and hoping somebody applies it.
 Dragging the folder is a gesture to repeat after every edit, so the set also
 carries `update.bat` (and `update.sh`): it reads the folder it sits in and
 writes a `sheet.html` that carries it, and a link into the set then opens beside
-the sheet rather than in the browser. One file, no folder, no dragging. The drop
-stays as the fallback — a machine whose execution policy is set by Group Policy
-will refuse to run either script.
+the sheet rather than in the browser. One file, no folder, no dragging.
+
+One `.bat`, with the PowerShell inline and readable: it is passed with
+`-Command`, which the execution policy does not govern — that policy applies to
+script *files*, so a machine that refuses a `.ps1` will still run this. The drop
+stays as the fallback regardless.
 
 The mode that let a recipient maintain the HTML itself was built and removed: a
 sheet with no model behind it has no per-cell review target, no origin and no

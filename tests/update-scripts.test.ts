@@ -16,7 +16,7 @@ import { describe, it, expect, afterAll } from "bun:test";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve as resolvePath } from "path";
-import { UPDATE_MARKER_OPEN, updateBat, updatePs1, updateSh } from "../src/update-scripts";
+import { UPDATE_MARKER_OPEN, updateBat, updateSh } from "../src/update-scripts";
 
 const work = mkdtempSync(join(tmpdir(), "review-sheet-update-"));
 afterAll(() => rmSync(work, { recursive: true, force: true }));
@@ -36,27 +36,41 @@ const generated = (): string => {
 describe("what a generated set carries", () => {
   it("writes the scripts beside the viewer", () => {
     const at = generated();
-    for (const f of ["update.bat", "update.ps1", "update.sh", "viewer.html"]) {
+    for (const f of ["update.bat", "update.sh", "viewer.html"]) {
       expect(existsSync(join(at, f)), f).toBe(true);
     }
+    // One file per platform. The `.ps1` it used to call is gone: `-File` is
+    // what the execution policy governs, so splitting them was solving a
+    // problem the split had created.
+    expect(existsSync(join(at, "update.ps1"))).toBe(false);
   });
 
   // The page and the scripts have to agree on one string. They are written by
   // the same module for that reason; this is the check that they still are.
   it("leaves the page a block for the scripts to fill", () => {
     expect(readFileSync(join(generated(), "viewer.html"), "utf-8")).toContain(UPDATE_MARKER_OPEN);
-    expect(updatePs1()).toContain(UPDATE_MARKER_OPEN);
-    // The shell one writes it as a python literal, so the id is what survives
-    // verbatim; that the string it builds is the right one is what "running it"
-    // below actually proves.
+    // Both look for the block by its ID rather than by the whole opening tag —
+    // an attribute written in another order would otherwise be a tag neither
+    // recognises.
+    expect(updateBat()).toContain("sheet-md-set");
     expect(updateSh()).toContain("sheet-md-set");
   });
 
   // A recipient in a corporate environment is entitled to read what they are
   // about to run. The .bat is the three lines that call the readable one.
-  it("keeps the work in a script the recipient can read", () => {
-    expect(updateBat().split("\r\n").filter((l) => l !== "" && !l.startsWith("rem")).length).toBeLessThan(5);
-    expect(updateBat()).toContain("update.ps1");
+  it("keeps the work readable, and out of the execution policy's way", () => {
+    const bat = updateBat();
+    // `-Command`, never `-File`: the policy governs script files, and a machine
+    // that refuses one will still run this. Asked of the INVOCATION — `-File`
+    // is also Get-ChildItem's "files only", which is not what is meant.
+    const call = bat.split("\r\n").find((l) => l.startsWith("powershell "))!;
+    expect(call).toContain("-Command");
+    expect(call).not.toContain("-File");
+    expect(bat).not.toContain("ExecutionPolicy");
+    // Not an encoded one-liner, which is what a corporate reader is trained to
+    // refuse: no line of it is longer than a screen.
+    expect(Math.max(...bat.split("\r\n").map((l) => l.length))).toBeLessThan(140);
+    expect(bat).not.toContain("EncodedCommand");
   });
 });
 
