@@ -41,6 +41,8 @@ import {
 } from "./cell-tool.js";
 import { markdownToCategories, declaredInstances, withEnvironment, withoutEnvironment, renameEnvironment } from "../sheet-markdown.js";
 import { runMermaid } from "./mermaid-runtime.js";
+import { filesFromDrop } from "./drop-set.js";
+import { readMarkdownSet } from "../md-read.js";
 import { setShowSources, showSources } from "./display-config.js";
 import type { DiffStatus } from "../diff.js";
 import { pickLang, type OutOfScope, type Capabilities, type ArtifactPreview, PRESENCE_VALUE } from "../types.js";
@@ -4584,7 +4586,7 @@ function diffBadge(status: DiffStatus | undefined) {
 // Root (version switching + diff) and entry point
 // ============================================================
 
-function Root({ payload, reviewEnabled, promptEnabled = true, showSources: sources = true, initialLang, server }: { payload: Payload; reviewEnabled: boolean; promptEnabled?: boolean; showSources?: boolean; initialLang: Lang; server: boolean }) {
+function Root({ payload, reviewEnabled, promptEnabled = true, showSources: sources = true, initialLang, server, dropped }: { payload: Payload; reviewEnabled: boolean; promptEnabled?: boolean; showSources?: boolean; initialLang: Lang; server: boolean; dropped?: string }) {
   // Applied here rather than in an effect: it decides what the FIRST render
   // draws, and an effect runs after it.
   setShowSources(sources);
@@ -4651,6 +4653,11 @@ function Root({ payload, reviewEnabled, promptEnabled = true, showSources: sourc
 
   return html`
     <div class="rs-root">
+      ${/* What is on screen is the folder somebody dropped, not what this file
+            was built from. Said permanently rather than as a message that goes
+            away: the two look identical, and a reader who arrives at a sheet
+            without having done the dropping has no other way to know. */ ""}
+      ${dropped !== undefined && html`<div class="rs-dropped-bar" role="status">${dropped}</div>`}
       ${versions.length > 1 && html`<${VersionBar} versions=${versions} activeId=${activeId} compare=${compare}
         fromId=${fromId} toId=${toId} onSelect=${setActiveId} onToggleCompare=${() => setCompare((c) => !c)}
         onFrom=${setFromId} onTo=${setToId} diffSummary=${diffModel?.summary}
@@ -4687,8 +4694,55 @@ function init() {
 
   const appEl = document.getElementById("app");
   if (!appEl) return;
-  render(html`<${Root} payload=${payload} reviewEnabled=${reviewEnabled} initialLang=${lang} server=${serverMode}
-                       promptEnabled=${promptEnabled} showSources=${showSources} />`, appEl);
+  const draw = (p: Payload, dropped?: string): void => {
+    render(
+      html`<${Root} payload=${p} reviewEnabled=${dropped === undefined && reviewEnabled} initialLang=${lang}
+                    server=${dropped === undefined && serverMode} promptEnabled=${dropped === undefined && promptEnabled}
+                    showSources=${showSources} dropped=${dropped} />`,
+      appEl
+    );
+  };
+  draw(payload);
+
+  // A folder of markdown, dropped, replaces what is on screen.
+  //
+  // This is the whole of the no-toolchain half of the delivery: the recipient
+  // edits the markdown (or has an assistant edit it) and then has to be able to
+  // LOOK at it, and nothing in their hands can regenerate this page. What they
+  // see afterwards is the FOLDER, and the page says so — a document silently
+  // showing something other than what it was built from is the failure this is
+  // most able to cause.
+  //
+  // Reviewing is off in that state, and so is the prompt and the server: those
+  // act on the model the file was built from, and the rows on screen are no
+  // longer it.
+  document.addEventListener("dragover", (e) => {
+    if ([...(e.dataTransfer?.items ?? [])].some((i) => i.kind === "file")) e.preventDefault();
+  });
+  document.addEventListener("drop", (e) => {
+    const dt = e.dataTransfer;
+    if (dt === null || ![...dt.items].some((i) => i.kind === "file")) return;
+    e.preventDefault();
+    void filesFromDrop(dt).then((files) => {
+      if (files.length === 0) {
+        alert(getMessages(lang).dropNoSheets);
+        return;
+      }
+      const read = readMarkdownSet(files, lang);
+      if (read.sheets.length === 0) {
+        alert(getMessages(lang).dropNoSheets);
+        return;
+      }
+      if (read.problems.length > 0) console.warn(read.problems.join("\n"));
+      draw(
+        {
+          metadata: { ...payload.metadata, ...read.metadata },
+          versions: [{ version: "current", sheets: read.sheets as never, groups: read.groups as never }],
+        } as Payload,
+        getMessages(lang).droppedFolder(read.sheets.length)
+      );
+    });
+  });
 }
 
 if (typeof document !== "undefined") {

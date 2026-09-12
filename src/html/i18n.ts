@@ -44,6 +44,11 @@ type Messages = {
   navExpand: string;
   navNoMatch: string;
   navOutlineTip: string;
+  // A folder of markdown, dropped on the page. The banner is what stops the
+  // document from silently showing something other than what it was built
+  // from — see app.ts's drop handler.
+  dropNoSheets: string;
+  droppedFolder: (sheets: number) => string;
   navSearchTip: string;
   navSearchPlaceholder: string;
   navNoResults: string;
@@ -255,6 +260,8 @@ const ja: Messages = {
   navExpand: "開く",
   navNoMatch: "該当する文書がありません",
   navOutlineTip: "目次を表示/非表示",
+  dropNoSheets: "この中にシートの Markdown が見つかりませんでした。generate --format md が書き出したフォルダを入れてください。",
+  droppedFolder: (sheets: number) => `表示中: 落とされたフォルダ（${sheets} シート）。このファイル自身の内容ではありません`,
   navSearchTip: "検索 — 見出し・設定項目・コメント (Cmd/Ctrl+K)",
   navSearchPlaceholder: "見出し・設定項目・コメントを検索…",
   navNoResults: "該当する見出しがありません",
@@ -415,6 +422,8 @@ const en: Messages = {
   navExpand: "Expand",
   navNoMatch: "No document matches",
   navOutlineTip: "Toggle outline",
+  dropNoSheets: "No sheet markdown in there. Drop the folder that `generate --format md` wrote.",
+  droppedFolder: (sheets: number) => `Showing a dropped folder (${sheets} sheets) — not what this file was built from`,
   navSearchTip: "Search — headings, parameters, comments (Cmd/Ctrl+K)",
   navSearchPlaceholder: "Search headings, parameters, comments…",
   navNoResults: "No matching headings",

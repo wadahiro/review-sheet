@@ -127,8 +127,11 @@ export async function generateHtml(
   // The renderer travels only where it can be used: a document sheet whose
   // markdown IS the page, which the viewer lays out itself. A prose document
   // is already rendered into `html` at build time and needs nothing.
+  // …or because this page is a VIEWER: one written beside a markdown set, which
+  // a reader drops a folder onto. Every page of such a folder is markdown, so
+  // the renderer has to be aboard before any of it arrives.
   const rendersMarkdown =
-    data.versions.some((v) => v.sheets.some((s) => s.document?.mode === "sheet"));
+    options?.markdownRuntime === true || data.versions.some((v) => v.sheets.some((s) => s.document?.mode === "sheet"));
   // A diagram, unlike a heading or a paragraph, is NOT already rendered in a
   // read-only copy: the build leaves the diagram's source in the page because
   // it has no browser to draw it with, so the page draws it. That makes this

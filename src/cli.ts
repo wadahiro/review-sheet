@@ -431,12 +431,12 @@ function carriedDocuments(
 // The stamp goes in the index and says which model this set was written from.
 // `verify` reads it back to say whether the committed markdown still describes
 // the model beside it.
-function writeMarkdownSet(
+async function writeMarkdownSet(
   input: ParameterSheetInput | VersionedSheetInput,
   outDir: string,
   lang: "ja" | "en",
   sources: boolean
-): void {
+): Promise<void> {
   // A markdown set is a SNAPSHOT, so it is written from the current version —
   // the newest one, which is what `assembleVersions` puts last. The comparison
   // a version history is for lives in the HTML.
@@ -499,13 +499,21 @@ function writeMarkdownSet(
     mkdirSync(dirname(at), { recursive: true });
     writeFileSync(at, f.text.endsWith("\n") ? f.text : `${f.text}\n`, "utf-8");
   }
+
+  // …and the page that reads it. Written from the SAME model, so it opens on
+  // the set as delivered without being given anything — and it takes a dropped
+  // folder, which is the only way a recipient with no toolchain can look at
+  // what they have since edited. Reviewing is off in it: what it shows then is
+  // the folder, and the rows are no longer the model's.
+  const viewer = await generateHtml(input, { review: false, prompt: false, sources, lang, markdownRuntime: true });
+  writeFileSync(join(outDir, "viewer.html"), viewer, "utf-8");
   // Never silent about a sheet that did not land where its chapter says: a set
   // whose index and whose files disagree is the failure this is for.
   for (const p of problems) console.error(`Warning: ${p}`);
   const carried = files.length - 1 - data.sheets.length;
   console.error(
-    `Generated: ${files.length} file(s) under ${outDir}/ (model ${stamp})` +
-      (carried > 0 ? ` — ${data.sheets.length} sheet(s) and ${carried} carried document(s)` : "")
+    `Generated: ${files.length + 1} file(s) under ${outDir}/ (model ${stamp})` +
+      ` — ${data.sheets.length} sheet(s), ${carried} carried document(s), and viewer.html`
   );
 }
 
@@ -631,7 +639,7 @@ program
       }
       if (opts.format === "md") {
         if (opts.output === undefined) throw new Error("--format md writes a SET of files, so it needs a directory: -o <dir>");
-        writeMarkdownSet(input, opts.output, lang, opts.sources);
+        await writeMarkdownSet(input, opts.output, lang, opts.sources);
         return;
       }
       if (opts.format !== "html") throw new Error(`--format takes html or md, not ${opts.format}`);

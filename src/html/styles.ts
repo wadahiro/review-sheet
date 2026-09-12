@@ -416,6 +416,21 @@ code {
    Layout
    ============================================================ */
 
+/* The page is showing a folder somebody dropped, not what this file was built
+   from. Above everything and sticky, because the two look identical and a
+   reader who arrives at a sheet without having done the dropping has no other
+   way to know. */
+.rs-dropped-bar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  color: var(--rs-text);
+  background: var(--rs-unset-bg, #fff6d8);
+  border-bottom: 1px solid var(--rs-warning, #f59e0b);
+}
+
 .rs-app {
   min-height: 100vh;
 }

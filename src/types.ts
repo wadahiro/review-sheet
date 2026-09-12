@@ -1038,6 +1038,11 @@ export type GenerateOptions = {
   // `review-sheet serve` backend (POST /api/apply, /api/verify) to apply
   // reviewed changes directly to local files instead of exporting review.json.
   server?: boolean;
+  // Carry the markdown renderer whatever this document holds. For a VIEWER
+  // written beside a markdown set: the pages it will be given are markdown and
+  // none of them is in the file, so the usual "does this document need it" test
+  // answers no and the prose of every dropped page would arrive unrendered.
+  markdownRuntime?: boolean;
   // Offer the AI prompt (the change requests, ready to hand to an assistant).
   // Separate from the mode because it is a judgement about the AUDIENCE:
   // whoever maintains a sheet may have no use for it, or no wish to be
