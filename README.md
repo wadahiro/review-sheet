@@ -938,6 +938,13 @@ Every row carries the address it is written at, as a link — so a reader, or th
 assistant they hand the file to, follows it to the configuration file rather
 than editing the sheet and hoping somebody applies it.
 
+Dragging the folder is a gesture to repeat after every edit, so the set also
+carries `update.bat` (and `update.sh`): it reads the folder it sits in and
+writes a `sheet.html` that carries it, and a link into the set then opens beside
+the sheet rather than in the browser. One file, no folder, no dragging. The drop
+stays as the fallback — a machine whose execution policy is set by Group Policy
+will refuse to run either script.
+
 The mode that let a recipient maintain the HTML itself was built and removed: a
 sheet with no model behind it has no per-cell review target, no origin and no
 dictionary, and `apply` could only guess where its text belonged.

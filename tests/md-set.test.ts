@@ -157,6 +157,7 @@ describe("the index", () => {
   it("says what to do with the folder, before the contents", () => {
     const readme = toMarkdownSet(doc(), "ja").files[0]!.text;
     expect(readme).toContain("直すのはこのフォルダの `.md`");
+    expect(readme).toContain("update.bat");
     expect(readme).toContain("viewer.html");
     expect(readme.indexOf("この文書の使い方")).toBeLessThan(readme.indexOf("## 目次"));
   });

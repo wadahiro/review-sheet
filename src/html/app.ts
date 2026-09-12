@@ -42,7 +42,7 @@ import {
 import { markdownToCategories, declaredInstances, withEnvironment, withoutEnvironment, renameEnvironment } from "../sheet-markdown.js";
 import { runMermaid } from "./mermaid-runtime.js";
 import { filesFromDrop } from "./drop-set.js";
-import { readMarkdownSet } from "../md-read.js";
+import { readMarkdownSet, documentPreviews } from "../md-read.js";
 import { setShowSources, showSources } from "./display-config.js";
 import type { DiffStatus } from "../diff.js";
 import { pickLang, type OutOfScope, type Capabilities, type ArtifactPreview, PRESENCE_VALUE } from "../types.js";
@@ -4243,7 +4243,26 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
         </div>
       </nav>
 
-      <main class="rs-main">
+      ${/* A link into the set, opened HERE rather than by the browser.
+            Every address a sheet carries is a path in the folder, and while the
+            folder is beside the page the browser resolves it — which stops the
+            moment the page is somewhere else, which is the whole point of a
+            page that carries the set with it. So a link naming something this
+            document HAS opens the panel; one naming something it does not is
+            left to the browser, which is right in the folder and honest
+            outside it. */ ""}
+      <main class="rs-main" onClick=${(e: MouseEvent) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        const a = (e.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+        const raw = a?.getAttribute("href");
+        if (raw === null || raw === undefined || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("#")) return;
+        const [path = "", frag = ""] = decodeURI(raw).split("#");
+        const hit = (artifacts ?? []).find((x) => x.id === path);
+        if (hit === undefined) return;
+        e.preventDefault();
+        const line = /^L(\d+)$/.exec(frag);
+        setArtifactTarget({ id: hit.id, ...(line === null ? {} : { line: Number(line[1]) }) });
+      }}>
         ${activeSheet === OVERVIEW_TAB && hasMetadata && html`
           <section class="rs-overview">
             <h1>${title}</h1>
@@ -4701,7 +4720,38 @@ function init() {
       appEl
     );
   };
-  draw(payload);
+  // A set the page CARRIES. `update.bat` (written beside a generated set) reads
+  // the folder and splices it in here, so the document opens on the current
+  // text without anybody dragging anything — which is the friction the drop
+  // below exists to answer and does not remove.
+  //
+  // The same code path as the drop, fed from a block instead of a folder: two
+  // ways in, one reading, so a page cannot show one thing when dropped and
+  // another when opened.
+  const carried = document.getElementById("sheet-md-set");
+  const carriedText = (carried?.textContent ?? "").trim();
+  if (carriedText !== "" && carriedText !== "null") {
+    const files = JSON.parse(carriedText) as { path: string; text: string }[];
+    const read = readMarkdownSet(files, lang);
+    if (read.problems.length > 0) console.warn(read.problems.join("\n"));
+    if (read.sheets.length > 0) {
+      draw({
+        metadata: { ...payload.metadata, ...read.metadata },
+        versions: [
+          {
+            version: "current",
+            sheets: read.sheets as never,
+            groups: read.groups as never,
+            artifacts: documentPreviews(read.documents),
+          },
+        ],
+      } as Payload);
+    } else {
+      draw(payload);
+    }
+  } else {
+    draw(payload);
+  }
 
   // A folder of markdown, dropped, replaces what is on screen.
   //
@@ -4736,7 +4786,14 @@ function init() {
       draw(
         {
           metadata: { ...payload.metadata, ...read.metadata },
-          versions: [{ version: "current", sheets: read.sheets as never, groups: read.groups as never }],
+          versions: [
+            {
+              version: "current",
+              sheets: read.sheets as never,
+              groups: read.groups as never,
+              artifacts: documentPreviews(read.documents),
+            },
+          ],
         } as Payload,
         getMessages(lang).droppedFolder(read.sheets.length)
       );

@@ -232,16 +232,18 @@ function index(
           "## この文書の使い方",
           "",
           "- **直すのはこのフォルダの `.md`** です。AI に「この表のこの値を直して」と頼めます。",
-          "- **読むのは `viewer.html`** です。開いて、このフォルダをウィンドウにドラッグすると最新が表示されます。",
-          "- `viewer.html` 自身を編集しても意味がありません。次にフォルダを読ませた時点で消えます。",
+          "- **直したら `update.bat` をダブルクリック**してください（Windows 以外は `update.sh`）。`sheet.html` が作られ、それを開けば最新が表示されます。",
+          "- うまくいかないときは **`viewer.html` を開いて、このフォルダをウィンドウにドラッグ**しても同じものが見られます。",
+          "- `viewer.html` や `sheet.html` 自身を編集しても意味がありません。次に作り直した時点で消えます。",
           "",
         ]
       : [
           "## How to use this",
           "",
           "- **Edit the `.md` files in this folder.** You can ask an assistant to change a value in a table.",
-          "- **Read it with `viewer.html`.** Open it and drag this folder onto the window to see the current text.",
-          "- Editing `viewer.html` itself does nothing: the next folder you give it replaces what it shows.",
+          "- **Then double-click `update.bat`** (`update.sh` if you are not on Windows). It writes `sheet.html`; open that to see the current text.",
+          "- If it will not run, **open `viewer.html` and drag this folder onto the window** for the same thing.",
+          "- Editing `viewer.html` or `sheet.html` does nothing: the next rebuild replaces what they show.",
           "",
         ])
   );

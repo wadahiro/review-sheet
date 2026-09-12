@@ -43,10 +43,11 @@ const readAll = (e: Entry): Promise<Entry[]> =>
 async function walk(entry: Entry, at: string, out: DroppedFile[]): Promise<void> {
   const here = at === "" ? entry.name : `${at}/${entry.name}`;
   if (entry.isFile) {
-    // Only the markdown is read. The artifacts and the evidence beside it are
-    // opened by following a link, which the browser does itself — reading them
-    // here would put a megabyte of configuration into memory for nothing.
-    if (!here.endsWith(".md")) return;
+    // The whole folder except the page itself: the sheets, and the artifacts
+    // and evidence they link to. Those are read as well because a page that
+    // EMBEDS the set has to be able to open them — a link into the folder
+    // resolves by itself only while the folder is beside the page.
+    if (here.endsWith(".html")) return;
     out.push({ path: here, text: await (await readFile(entry)).text() });
     return;
   }
@@ -78,7 +79,7 @@ export async function filesFromDrop(dt: DataTransfer): Promise<DroppedFile[]> {
 
   // No entry API — a plain multi-file drop. The names are all there is.
   for (const f of [...dt.files]) {
-    if (!f.name.endsWith(".md")) continue;
+    if (f.name.endsWith(".html")) continue;
     out.push({ path: f.name, text: await f.text() });
   }
   return out;

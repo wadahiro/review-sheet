@@ -8,6 +8,7 @@ import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { langFallbacks, localizeVersions } from "./localize.js";
 import { toMarkdownSet, href, modelStamp, stampOf, slug } from "./md-set.js";
 import { zipOf } from "./zip.js";
+import { updateBat, updatePs1, updateSh } from "./update-scripts.js";
 import type { ParamData } from "./prompt.js";
 import { validateInput, validateReview, validateResults, validateObservation, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
@@ -508,6 +509,13 @@ async function writeMarkdownSet(
   const whole = [
     ...files.map((f) => ({ path: f.path, text: f.text.endsWith("\n") ? f.text : `${f.text}\n` })),
     { path: "viewer.html", text: viewer },
+    // …and the two scripts that put the folder back INTO the page, so the
+    // ordinary act is a double-click rather than a drag repeated after every
+    // edit. The drop stays: a machine whose execution policy is set by Group
+    // Policy will refuse to run either of these.
+    { path: "update.bat", text: updateBat() },
+    { path: "update.ps1", text: updatePs1() },
+    { path: "update.sh", text: updateSh() },
   ];
 
   // The DIRECTORY is the primary form and an archive is the envelope, chosen by

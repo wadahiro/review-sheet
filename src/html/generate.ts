@@ -158,6 +158,9 @@ export async function generateHtml(
 <script type="application/json" id="sheet-config">
 ${configJson}
 </script>
+${options?.markdownRuntime === true ? `<script type="application/json" id="sheet-md-set">
+null
+</script>` : ""}
 <script type="application/gzip-base64" id="sheet-style-gz">
 ${toBase64Gzip(customStyles)}
 </script>

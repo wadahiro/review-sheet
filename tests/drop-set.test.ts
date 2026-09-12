@@ -62,12 +62,14 @@ describe("reading a dropped folder", () => {
     expect(files.map((f) => f.path).sort()).toEqual(["README.md", "詳細設計/HTTPD.md", "詳細設計/OS.md"]);
   });
 
-  // Only the markdown. The artifacts and the evidence beside it are opened by
-  // following a link, which the browser does itself — reading them here would
-  // put a megabyte of configuration into memory for nothing.
-  it("reads the markdown and leaves everything else alone", async () => {
-    const files = await filesFromDrop(dropOf([entryOf("sheet", set)]));
+  // The sheets AND what they link to, because a page that embeds the set has to
+  // be able to open those — a link into the folder resolves by itself only
+  // while the folder is beside the page. The page itself is not read: it is
+  // what is doing the reading.
+  it("reads the whole folder except the page itself", async () => {
+    const files = await filesFromDrop(dropOf([entryOf("sheet", { ...set, "artifacts": { "etc/x": "x" } })]));
     expect(files.some((f) => f.path.endsWith(".html"))).toBe(false);
+    expect(files.map((f) => f.path)).toContain("artifacts/etc/x");
   });
 
   // A reader hands back a batch at a time and has to be asked again. Reading
@@ -87,7 +89,7 @@ describe("reading a dropped folder", () => {
   // No entry API at all — a plain multi-file drop. The names are all there is,
   // which is a flat document rather than nothing.
   it("falls back to the names when there are no entries", async () => {
-    const files = await filesFromDrop(dropOf([], [new File(["# a"], "a.md"), new File(["x"], "b.png")]));
-    expect(files.map((f) => f.path)).toEqual(["a.md"]);
+    const files = await filesFromDrop(dropOf([], [new File(["# a"], "a.md"), new File(["x"], "b.txt"), new File(["<p>"], "c.html")]));
+    expect(files.map((f) => f.path)).toEqual(["a.md", "b.txt"]);
   });
 });

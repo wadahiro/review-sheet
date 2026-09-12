@@ -17,6 +17,7 @@
 
 import { markdownToCategories, declaredInstances } from "./sheet-markdown.js";
 import type { Lang } from "./html/i18n.js";
+import type { ArtifactPreview } from "./types.js";
 
 export type SetFile = { path: string; text: string };
 
@@ -31,6 +32,11 @@ export type ReadSet = {
     categories: unknown[];
     document: { html: ""; markdown: string; mode: "sheet" };
   }[];
+  // Everything in the folder that is not a sheet: the rendered artifacts, the
+  // authored sources, the collected evidence. Carried so a page that embeds the
+  // set can OPEN them — a link into the folder resolves by itself while the
+  // folder is there, and stops the moment the document is somewhere else.
+  documents: { path: string; text: string }[];
   problems: string[];
 };
 
@@ -167,6 +173,36 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
     metadata: { ...(index === undefined ? {} : { title: titleOf(index.text, INDEX) }) },
     groups: prune(groups),
     sheets,
+    documents: files.filter((f) => !f.path.endsWith(".md")).map((f) => ({ path: f.path, text: f.text })),
     problems,
   };
+}
+
+// The carried files, as documents the panel can show.
+//
+// WHICH kind each is, is read off the directory it is in — `artifacts`,
+// `sources`, `evidence` — which is the same thing that put it there
+// (`md-set.ts`). A file in none of them is still shown; what is unknown is only
+// the sentence in the panel's header.
+export function documentPreviews(documents: { path: string; text: string }[]): ArtifactPreview[] {
+  return documents.map((d) => {
+    const segs = d.path.split("/");
+    const kind = segs.find((s) => s === "artifacts" || s === "sources" || s === "evidence");
+    const under = kind === undefined ? [] : segs.slice(segs.indexOf(kind) + 1);
+    // An evidence path names the environment and the host before the file.
+    const observed =
+      kind === "evidence" && under.length >= 2
+        ? { host: under[1]!, at: "", instance: under[0]! }
+        : undefined;
+    return {
+      // The PATH is the id, because that is what a link names — the panel is
+      // opened by matching one against the other.
+      id: d.path,
+      sheet: "",
+      source_file: under.length > 0 ? under.join("/") : d.path,
+      nature: kind === "sources" ? ("source" as const) : kind === "evidence" ? ("observed" as const) : ("artifact" as const),
+      ...(observed === undefined ? {} : { observed: { host: observed.host, at: observed.at }, instances: [observed.instance] }),
+      lines: d.text.replace(/\n$/, "").split("\n").map((text) => ({ text, kind: "verbatim" as const })),
+    };
+  });
 }
