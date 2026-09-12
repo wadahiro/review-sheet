@@ -8,7 +8,7 @@ import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { langFallbacks, localizeVersions } from "./localize.js";
 import { toMarkdownSet, href, modelStamp, stampOf, slug } from "./md-set.js";
 import { zipOf } from "./zip.js";
-import { updateBat, updateSh } from "./update-scripts.js";
+import { SET_DIR } from "./set-block.js";
 import type { ParamData } from "./prompt.js";
 import { validateInput, validateReview, validateResults, validateObservation, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
@@ -471,7 +471,11 @@ async function writeMarkdownSet(
     ...(sources
       ? {
           source: (sheetPath: string) => {
-            const fromDir = join(outDir, dirname(sheetPath));
+            // Where the page will LAND, not where the projection names it: the
+            // set sits one level down, in the folder the reader drags, and an
+            // address computed from the projection's own path is off by exactly
+            // that level — silently, since the link is still a link.
+            const fromDir = join(outDir, SET_DIR, dirname(sheetPath));
             return (row: ParamData) => {
               // One address, or one per environment where they differ — which
               // for a per-environment row is the ordinary case, since that is
@@ -506,15 +510,14 @@ async function writeMarkdownSet(
   // what they have since edited. Reviewing is off in it: what it shows then is
   // the folder, and the rows are no longer the model's.
   const viewer = await generateHtml(input, { review: false, prompt: false, sources, lang, markdownRuntime: true });
+  // TWO things at the top, with one role each: the file you open, and the
+  // folder you drag. The document used to sit beside the page, so the thing to
+  // drag was the folder containing the page you were looking at — which works
+  // and reads as a riddle. `SET_DIR` is a role, not a chapter, which is why it
+  // is named in neither language.
   const whole = [
-    ...files.map((f) => ({ path: f.path, text: f.text.endsWith("\n") ? f.text : `${f.text}\n` })),
+    ...files.map((f) => ({ path: `${SET_DIR}/${f.path}`, text: f.text.endsWith("\n") ? f.text : `${f.text}\n` })),
     { path: "viewer.html", text: viewer },
-    // …and the two scripts that put the folder back INTO the page, so the
-    // ordinary act is a double-click rather than a drag repeated after every
-    // edit. The drop stays: a machine whose execution policy is set by Group
-    // Policy will refuse to run either of these.
-    { path: "update.bat", text: updateBat() },
-    { path: "update.sh", text: updateSh() },
   ];
 
   // The DIRECTORY is the primary form and an archive is the envelope, chosen by
@@ -534,10 +537,10 @@ async function writeMarkdownSet(
   // Never silent about a sheet that did not land where its chapter says: a set
   // whose index and whose files disagree is the failure this is for.
   for (const p of problems) console.error(`Warning: ${p}`);
-  const carried = files.length - 1 - data.sheets.length;
+  const carriedCount = files.length - 1 - data.sheets.length;
   console.error(
-    `Generated: ${files.length + 1} file(s) ${outDir.endsWith(".zip") ? `in ${outDir}` : `under ${outDir}/`} (model ${stamp})` +
-      ` — ${data.sheets.length} sheet(s), ${carried} carried document(s), and viewer.html`
+    `Generated: ${whole.length} file(s) ${outDir.endsWith(".zip") ? `in ${outDir}` : `under ${outDir}/`} (model ${stamp})` +
+      ` — ${data.sheets.length} sheet(s) and ${carriedCount} carried document(s) under ${SET_DIR}/, plus viewer.html`
   );
 }
 
@@ -1716,11 +1719,21 @@ program
       // environments is a different set from one written for all of them, and
       // this says so rather than pretending otherwise.
       if (opts.md !== undefined) {
-        const index = join(opts.md, "README.md");
+        // The delivery, or the set inside it: a reader who points at either
+        // means the same thing, and being told "that is not a set" about the
+        // directory the set is in is a riddle rather than a check.
+        const candidates = [join(opts.md, SET_DIR, "README.md"), join(opts.md, "README.md")];
+        let index = candidates[0]!;
         let text: string | null = null;
-        try { text = readFileSync(index, "utf-8"); } catch { text = null; }
+        for (const c of candidates) {
+          try {
+            text = readFileSync(c, "utf-8");
+            index = c;
+            break;
+          } catch { /* the other one, then */ }
+        }
         if (text === null) {
-          console.error(`Error: ${index} is not there — --md takes the directory a markdown set was written to`);
+          console.error(`Error: no set under ${opts.md}/ — --md takes the directory generate --format md wrote`);
           process.exit(1);
         }
         const was = stampOf(text);

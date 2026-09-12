@@ -4,6 +4,7 @@ import type { ParameterSheetInput, VersionedSheetInput, SheetVersion, GenerateOp
 import { customStyles } from "./styles.js";
 import { toBase64Gzip, BOOTSTRAP } from "./compress.js";
 import { localizeVersions } from "../localize.js";
+import { SET_BLOCK_OPEN } from "../set-block.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -158,7 +159,7 @@ export async function generateHtml(
 <script type="application/json" id="sheet-config">
 ${configJson}
 </script>
-${options?.markdownRuntime === true ? `<script type="application/json" id="sheet-md-set">
+${options?.markdownRuntime === true ? `${SET_BLOCK_OPEN}
 null
 </script>` : ""}
 <script type="application/gzip-base64" id="sheet-style-gz">

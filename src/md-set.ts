@@ -232,8 +232,9 @@ function index(
           "## この文書の使い方",
           "",
           "- **直すのはこのフォルダの `.md`** です。AI に「この表のこの値を直して」と頼めます。",
-          "- **直したら `update.bat` をダブルクリック**してください（Windows 以外は `update.sh`）。`sheet.html` が作られ、それを開けば最新が表示されます。",
-          "- うまくいかないときは **`viewer.html` を開いて、このフォルダをウィンドウにドラッグ**しても同じものが見られます。",
+          "- **読むのは `viewer.html`** です。ダブルクリックで開きます。",
+          "- **`.md` を直したら、`sheet` フォルダをそのウィンドウにドラッグ**してください。直した内容が表示されます。",
+          "- そのあと **「1ファイルで保存」** を押すと `sheet.html` が1枚できます。以後はそれを開くだけで、ドラッグは要りません。",
           "- `viewer.html` や `sheet.html` 自身を編集しても意味がありません。次に作り直した時点で消えます。",
           "",
         ]
@@ -241,8 +242,9 @@ function index(
           "## How to use this",
           "",
           "- **Edit the `.md` files in this folder.** You can ask an assistant to change a value in a table.",
-          "- **Then double-click `update.bat`** (`update.sh` if you are not on Windows). It writes `sheet.html`; open that to see the current text.",
-          "- If it will not run, **open `viewer.html` and drag this folder onto the window** for the same thing.",
+          "- **Read it with `viewer.html`.** Double-click to open it.",
+          "- **When you have edited the `.md`, drag the `sheet` folder onto that window.** It shows what you changed.",
+          "- Then press **Save as one file** for a single `sheet.html`. Open that from then on — no folder, no dragging.",
           "- Editing `viewer.html` or `sheet.html` does nothing: the next rebuild replaces what they show.",
           "",
         ])

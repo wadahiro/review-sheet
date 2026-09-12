@@ -12,6 +12,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync, w
 import { tmpdir } from "os";
 import { join, dirname, resolve as resolvePath } from "path";
 import { toMarkdownSet, slug } from "../src/md-set";
+import { SET_DIR } from "../src/set-block";
 import type { SheetData } from "../src/prompt";
 
 const work = mkdtempSync(join(tmpdir(), "review-sheet-md-set-"));
@@ -157,7 +158,7 @@ describe("the index", () => {
   it("says what to do with the folder, before the contents", () => {
     const readme = toMarkdownSet(doc(), "ja").files[0]!.text;
     expect(readme).toContain("直すのはこのフォルダの `.md`");
-    expect(readme).toContain("update.bat");
+    expect(readme).toContain("1ファイルで保存");
     expect(readme).toContain("viewer.html");
     expect(readme.indexOf("この文書の使い方")).toBeLessThan(readme.indexOf("## 目次"));
   });
@@ -238,7 +239,7 @@ describe("a committed set that no longer describes the model", () => {
     const r = Bun.spawnSync(["bun", "run", cli, ...args], { cwd: project });
     return { code: r.exitCode, out: r.stdout.toString() + r.stderr.toString() };
   };
-  const write = (text: string): void => writeFileSync(join(set, "README.md"), text, "utf-8");
+  const write = (text: string): void => writeFileSync(join(set, SET_DIR, "README.md"), text, "utf-8");
 
   it("passes while the set is the model's own", () => {
     expect(run("generate", "-i", "input.json", "--format", "md", "-o", set).code).toBe(0);
@@ -249,7 +250,7 @@ describe("a committed set that no longer describes the model", () => {
 
   it("fails, naming both models, once they are not the same one", () => {
     run("generate", "-i", "input.json", "--format", "md", "-o", set);
-    const readme = readFileSync(join(set, "README.md"), "utf-8");
+    const readme = readFileSync(join(set, SET_DIR, "README.md"), "utf-8");
     write(readme.replace(/model [0-9a-f]+/, "model deadbeefdeadbeef"));
     const r = run("verify", "-i", "input.json", "--md", set);
     expect(r.code).not.toBe(0);
@@ -262,7 +263,7 @@ describe("a committed set that no longer describes the model", () => {
   // acts on and one they learn to pass.
   it("warns rather than fails when the index carries no stamp", () => {
     run("generate", "-i", "input.json", "--format", "md", "-o", set);
-    const readme = readFileSync(join(set, "README.md"), "utf-8");
+    const readme = readFileSync(join(set, SET_DIR, "README.md"), "utf-8");
     write(readme.replace(/<!--[\s\S]*?-->\n\n/, ""));
     const r = run("verify", "-i", "input.json", "--md", set);
     expect(r.code).toBe(0);
@@ -276,7 +277,7 @@ describe("a committed set that no longer describes the model", () => {
   it("narrows the same way a delivery was narrowed", () => {
     const narrowed = join(work, "delivery");
     expect(run("generate", "-i", "input.json", "--instances", "production", "--format", "md", "-o", narrowed).code).toBe(0);
-    expect(readFileSync(join(narrowed, "README.md"), "utf-8")).toContain("instances=production");
+    expect(readFileSync(join(narrowed, SET_DIR, "README.md"), "utf-8")).toContain("instances=production");
     const r = run("verify", "-i", "input.json", "--md", narrowed);
     expect(r.code).toBe(0);
     expect(r.out).toContain("(production)");
@@ -285,6 +286,6 @@ describe("a committed set that no longer describes the model", () => {
   it("says so when the directory holds no set at all", () => {
     const r = run("verify", "-i", "input.json", "--md", join(work, "nothing-here"));
     expect(r.code).not.toBe(0);
-    expect(r.out).toContain("is not there");
+    expect(r.out).toContain("no set under");
   });
 });

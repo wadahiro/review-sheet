@@ -43,6 +43,7 @@ import { markdownToCategories, declaredInstances, withEnvironment, withoutEnviro
 import { runMermaid } from "./mermaid-runtime.js";
 import { filesFromDrop } from "./drop-set.js";
 import { readMarkdownSet, documentPreviews } from "../md-read.js";
+import { SET_BLOCK_ID, setBlockJson, spliceSetBlock } from "../set-block.js";
 import { setShowSources, showSources } from "./display-config.js";
 import type { DiffStatus } from "../diff.js";
 import { pickLang, type OutOfScope, type Capabilities, type ArtifactPreview, PRESENCE_VALUE } from "../types.js";
@@ -3347,7 +3348,7 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, dock, onD
   `;
 }
 
-function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, lang, diff, reviewsOverride, versionPivot, server, applyEnabled }: {
+function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, lang, diff, reviewsOverride, versionPivot, server, applyEnabled, onSaveSingle }: {
   data: SheetData;
   // A whole-document columnar comparison: rows keyed by sheet + path + key,
   // one column per VERSION. Supplied only while comparing, and rendered
@@ -3359,6 +3360,9 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // version, like `columns` — a template that changed between two revisions
   // must not be redrawn under the older document.
   artifacts?: ArtifactPreview[];
+  // Write what is on screen into a copy of this page. Present only when the
+  // page is holding a set — there is nothing to write out otherwise.
+  onSaveSingle?: () => void;
   reviewEnabled: boolean;
   // Let the recipient change values and remarks in place (`--allow edit`).
   // Offer the AI prompt at all (`--allow ...,prompt`). A judgement about the
@@ -4218,6 +4222,20 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
               <span class="rs-btn-label">${t.aiPromptCopy}</span>
             </button>
           `}
+          ${/* One file, with the folder inside it. Last of the ACTIONS,
+                because it is the one with a file at the end of it — and it is
+                only here when the page is holding a folder to write. The point
+                is that the next reading needs no folder and no gesture: a
+                document that has to be assembled before it can be read is one
+                nobody assembles. */ ""}
+          ${onSaveSingle !== undefined && html`
+            <span class="rs-tabs-sep"></span>
+            <button class="rs-toolbar-btn rs-toolbar-btn-labelled" onClick=${onSaveSingle}
+                    title=${t.saveSingleTip} aria-label=${t.saveSingleTip}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              <span class="rs-btn-label">${t.saveSingle}</span>
+            </button>
+          `}
           ${/* How the document LOOKS, which is nobody's work and everybody's
                 preference: at the edge, past the actions, before the one
                 button with consequences. */ ""}
@@ -4605,7 +4623,7 @@ function diffBadge(status: DiffStatus | undefined) {
 // Root (version switching + diff) and entry point
 // ============================================================
 
-function Root({ payload, reviewEnabled, promptEnabled = true, showSources: sources = true, initialLang, server, dropped }: { payload: Payload; reviewEnabled: boolean; promptEnabled?: boolean; showSources?: boolean; initialLang: Lang; server: boolean; dropped?: string }) {
+function Root({ payload, reviewEnabled, promptEnabled = true, showSources: sources = true, initialLang, server, dropped, onSaveSingle }: { payload: Payload; reviewEnabled: boolean; promptEnabled?: boolean; showSources?: boolean; initialLang: Lang; server: boolean; dropped?: string; onSaveSingle?: () => void }) {
   // Applied here rather than in an effect: it decides what the FIRST render
   // draws, and an effect runs after it.
   setShowSources(sources);
@@ -4683,7 +4701,7 @@ function Root({ payload, reviewEnabled, promptEnabled = true, showSources: sourc
         columnar=${columnar} onColumnar=${setColumnar} t=${t} />`}
       <${App} data=${data} artifacts=${shown.artifacts} reviewEnabled=${reviewEnabled} promptEnabled=${promptEnabled} lang=${lang}
         diff=${diffModel?.status} reviewsOverride=${diffModel?.reviews} versionPivot=${versionPivot}
-        server=${server} applyEnabled=${applyEnabled} />
+        server=${server} applyEnabled=${applyEnabled} onSaveSingle=${onSaveSingle} />
     </div>
   `;
 }
@@ -4712,11 +4730,42 @@ function init() {
 
   const appEl = document.getElementById("app");
   if (!appEl) return;
+  // The set on screen, when the page is showing one — and the one thing that
+  // can be written back out. A document that can carry a folder has to be able
+  // to be GIVEN one and keep it: otherwise the recipient drags the same folder
+  // onto the same page after every edit, forever.
+  let held: { path: string; text: string }[] | null = null;
+
+  const saveSingle = (): void => {
+    if (held === null) return;
+    const pristine =
+      (window as unknown as { __rsPristine?: string }).__rsPristine ??
+      `<!DOCTYPE html>\n${document.documentElement.outerHTML}`;
+    let out: string;
+    try {
+      out = spliceSetBlock(pristine, setBlockJson(held));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([out], { type: "text/html" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sheet.html";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoked on the next task, not now: the download reads the blob after the
+    // click returns, and revoking it here cancels it in some browsers.
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  };
+
   const draw = (p: Payload, dropped?: string): void => {
     render(
       html`<${Root} payload=${p} reviewEnabled=${dropped === undefined && reviewEnabled} initialLang=${lang}
                     server=${dropped === undefined && serverMode} promptEnabled=${dropped === undefined && promptEnabled}
-                    showSources=${showSources} dropped=${dropped} />`,
+                    showSources=${showSources} dropped=${dropped}
+                    onSaveSingle=${held === null ? undefined : saveSingle} />`,
       appEl
     );
   };
@@ -4728,10 +4777,11 @@ function init() {
   // The same code path as the drop, fed from a block instead of a folder: two
   // ways in, one reading, so a page cannot show one thing when dropped and
   // another when opened.
-  const carried = document.getElementById("sheet-md-set");
+  const carried = document.getElementById(SET_BLOCK_ID);
   const carriedText = (carried?.textContent ?? "").trim();
   if (carriedText !== "" && carriedText !== "null") {
     const files = JSON.parse(carriedText) as { path: string; text: string }[];
+    held = files;
     const read = readMarkdownSet(files, lang);
     if (read.problems.length > 0) console.warn(read.problems.join("\n"));
     if (read.sheets.length > 0) {
@@ -4782,6 +4832,7 @@ function init() {
         alert(getMessages(lang).dropNoSheets);
         return;
       }
+      held = files;
       if (read.problems.length > 0) console.warn(read.problems.join("\n"));
       draw(
         {
