@@ -3083,7 +3083,6 @@ export function assembleSheetsWithReport(
   const assembled: ParameterSheetInput = {
     ...(metadata ? { metadata } : {}),
     ...(declaredGroups.length > 0 ? { groups: declaredGroups } : {}),
-    ...(projectMeta.nav ? { nav: projectMeta.nav } : {}),
     ...(projectMeta.numbering === undefined ? {} : { numbering: projectMeta.numbering }),
     ...(underKeyColumns.size > 0 ? { columns: [...underKeyColumns.values()] } : {}),
     ...(opts.capabilities ? { capabilities: opts.capabilities } : {}),

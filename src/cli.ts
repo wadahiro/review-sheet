@@ -436,7 +436,10 @@ async function writeMarkdownSet(
   input: ParameterSheetInput | VersionedSheetInput,
   outDir: string,
   lang: "ja" | "en",
-  sources: boolean
+  sources: boolean,
+  // Which environments this set covers, when it covers some of them. Written
+  // into the index so `verify --md` can narrow the same way.
+  narrowed: string[] | undefined
 ): Promise<void> {
   // A markdown set is a SNAPSHOT, so it is written from the current version —
   // the newest one, which is what `assembleVersions` puts last. The comparison
@@ -462,6 +465,7 @@ async function writeMarkdownSet(
 
   const { files, problems } = toMarkdownSet(data, lang, {
     stamp,
+    ...(narrowed === undefined ? {} : { instances: narrowed }),
     documents: carriedDocuments(previews, instances),
     ...(sources
       ? {
@@ -652,7 +656,7 @@ program
       }
       if (opts.format === "md") {
         if (opts.output === undefined) throw new Error("--format md writes a SET of files, so it needs a directory: -o <dir>");
-        await writeMarkdownSet(input, opts.output, lang, opts.sources);
+        await writeMarkdownSet(input, opts.output, lang, opts.sources, opts.instances);
         return;
       }
       if (opts.format !== "html") throw new Error(`--format takes html or md, not ${opts.format}`);
@@ -1713,14 +1717,25 @@ program
           process.exit(1);
         }
         const was = stampOf(text);
-        const now = modelStamp(input);
         if (was === undefined) {
           console.error(`Warning: ${index} carries no model stamp — it predates the check, or its header was replaced. Regenerate to stamp it.`);
-        } else if (was !== now) {
-          console.error(`Error: ${opts.md}/ was written from model ${was}; this one is ${now}. Regenerate the set (generate --format md).`);
-          process.exit(1);
-        } else if (!opts.quiet) {
-          console.log(`OK   ${opts.md}/ describes this model (${now})`);
+        } else {
+          // A delivery covers some environments and was stamped over THAT
+          // model. Narrowed the same way here, from what the set itself
+          // records, so the reader does not have to remember which flags built
+          // it — and so a set that is perfectly current is not called stale.
+          const same =
+            was.instances === undefined || instancesOf(input).length === 0
+              ? input
+              : restrictInstances(input, was.instances).input;
+          const now = modelStamp(same);
+          const covers = was.instances === undefined ? "" : ` (${was.instances.join(", ")})`;
+          if (was.stamp !== now) {
+            console.error(`Error: ${opts.md}/ was written from model ${was.stamp}${covers}; this one is ${now}. Regenerate the set (generate --format md).`);
+            process.exit(1);
+          } else if (!opts.quiet) {
+            console.log(`OK   ${opts.md}/ describes this model (${now})${covers}`);
+          }
         }
       }
 

@@ -634,7 +634,10 @@ value moves in a file, the HTML is regenerated, and the markdown goes on looking
 exactly as correct as the day it was written. The set's index carries which
 model it came from; this holds it to that, and fails when they are not the same
 one. A set written before the stamp existed warns rather than fails — not being
-able to answer is not the same as being wrong.
+able to answer is not the same as being wrong. A delivery narrowed with
+`--instances` records what it covers, and this narrows the same way before
+comparing: the set says which environments it is, so nobody has to remember
+which flags built it.
 
 ### `apply` — review.json → config edits
 

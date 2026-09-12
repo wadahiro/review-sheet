@@ -60,13 +60,6 @@
         "$ref": "#/$defs/sheetGroup"
       }
     },
-    "nav": {
-      "type": "string",
-      "enum": [
-        "tabs",
-        "book"
-      ]
-    },
     "numbering": {
       "type": "boolean"
     },

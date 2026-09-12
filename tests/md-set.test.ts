@@ -268,6 +268,19 @@ describe("a committed set that no longer describes the model", () => {
     expect(r.out).toContain("no model stamp");
   });
 
+  // A DELIVERY covers some environments and is stamped over that model. Handed
+  // the whole one, the check would compute a different hash and call a set that
+  // is perfectly current stale — so the set records what it was narrowed to and
+  // the check narrows the same way.
+  it("narrows the same way a delivery was narrowed", () => {
+    const narrowed = join(work, "delivery");
+    expect(run("generate", "-i", "input.json", "--instances", "production", "--format", "md", "-o", narrowed).code).toBe(0);
+    expect(readFileSync(join(narrowed, "README.md"), "utf-8")).toContain("instances=production");
+    const r = run("verify", "-i", "input.json", "--md", narrowed);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("(production)");
+  });
+
   it("says so when the directory holds no set at all", () => {
     const r = run("verify", "-i", "input.json", "--md", join(work, "nothing-here"));
     expect(r.code).not.toBe(0);

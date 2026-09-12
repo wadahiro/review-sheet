@@ -31,6 +31,12 @@ export type MarkdownSetOptions = {
   // nowhere else: it identifies the set, and a stamp on every file is a stamp
   // to forget on one of them.
   stamp?: string;
+  // …and which environments it was narrowed to, when it was. A delivery covers
+  // some of them and is stamped over THAT model, so `verify --md` handed the
+  // whole one computes a different hash and reports a set that is perfectly
+  // current as stale. Recorded so it can narrow the same way instead of the
+  // reader having to remember which flags built the set.
+  instances?: string[];
   // The documents a sheet's rows are ABOUT, carried into the set as files: the
   // rendered artifact, the authored source it came from, the bytes a host was
   // found holding. Written where the caller says and listed under the sheet
@@ -156,7 +162,7 @@ export function toMarkdownSet(
 
   const paths = new Map(placed.map((p, i) => [p.sheet.name, sheets[i]!.path]));
   return {
-    files: [{ path: "README.md", text: index(data, paths, lang, opts.stamp) }, ...sheets, ...documents],
+    files: [{ path: "README.md", text: index(data, paths, lang, opts.stamp, opts.instances) }, ...sheets, ...documents],
     problems,
   };
 }
@@ -189,10 +195,16 @@ function withDocuments(
 // This is where the ORDER lives, which is why the files carry no numbers. A
 // reader opens this first and an assistant is pointed at it; both then follow a
 // link rather than guessing which file a chapter is.
-function index(data: SheetData, paths: Map<string, string>, lang: Lang, stamp: string | undefined): string {
+function index(
+  data: SheetData,
+  paths: Map<string, string>,
+  lang: Lang,
+  stamp: string | undefined,
+  narrowed: string[] | undefined
+): string {
   const title = data.metadata?.title ?? (lang === "ja" ? "パラメータシート" : "Parameter sheet");
   const out: string[] = [];
-  if (stamp !== undefined) out.push(`<!-- review-sheet:model ${stamp} -->`, "");
+  if (stamp !== undefined) out.push(`<!-- review-sheet:model ${stamp}${narrowed === undefined || narrowed.length === 0 ? "" : ` instances=${narrowed.join(",")}`} -->`, "");
   out.push(`# ${title}`, "");
 
   const meta = data.metadata;
@@ -270,6 +282,8 @@ export function modelStamp(model: unknown): string {
 // The stamp a written-out index carries, or undefined for a set that predates
 // it — or one whose index somebody replaced. Read by scanning, because the
 // index is markdown and this is a comment in it.
-export function stampOf(indexText: string): string | undefined {
-  return /<!--\s*review-sheet:model\s+([0-9a-f]+)\s*-->/.exec(indexText)?.[1];
+export function stampOf(indexText: string): { stamp: string; instances?: string[] } | undefined {
+  const m = /<!--\s*review-sheet:model\s+([0-9a-f]+)(?:\s+instances=([^\s>-]+))?\s*-->/.exec(indexText);
+  if (m === null) return undefined;
+  return { stamp: m[1]!, ...(m[2] === undefined ? {} : { instances: m[2].split(",") }) };
 }

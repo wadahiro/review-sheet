@@ -138,9 +138,7 @@ export type SheetData = {
   columns?: { field: string; header: string; header_lang?: LangText; width?: string; align?: string; className?: string; render?: string; place?: "trailing" | "under_key" }[];
   // A chapter, and the chapters inside it (types.ts's SheetGroup).
   groups?: SheetGroupData[];
-  // How the document is read, and whether its chapters are numbered — see
-  // types.ts. Only the viewer reads these.
-  nav?: "tabs" | "book";
+  // Whether this version's chapters are numbered — see types.ts.
   numbering?: boolean;
   sheets: {
     // Identity — see types.ts's Sheet. `label`/`display` are the display text.

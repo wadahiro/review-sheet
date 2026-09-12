@@ -4492,8 +4492,8 @@ type SheetVersion = {
   note?: string;
   columns?: SheetData["columns"];
   groups?: SheetData["groups"];
-  // How this snapshot is read — carried per version like `groups` (types.ts).
-  nav?: SheetData["nav"];
+  // Whether this snapshot's chapters are numbered — carried per version like
+  // `groups` (types.ts).
   numbering?: SheetData["numbering"];
   sheets: SheetData["sheets"];
   artifacts?: ArtifactPreview[];
@@ -4646,7 +4646,6 @@ function Root({ payload, reviewEnabled, promptEnabled = true, showSources: sourc
     metadata: { ...payload.metadata, version: shown.version, generated_at: shown.date },
     columns: localizeColumns(shown.columns, lang),
     groups: localizeGroups(shown.groups, lang),
-    ...(shown.nav ? { nav: shown.nav } : {}),
     ...(shown.numbering === undefined ? {} : { numbering: shown.numbering }),
     sheets: diffModel ? diffModel.sheets : shownSheets,
   }), [shown, payload.metadata, diffModel, shownSheets, lang]);

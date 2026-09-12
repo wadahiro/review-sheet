@@ -177,11 +177,6 @@ export type ProjectMetaDoc = {
   // this) is the horizontal strip: right for a handful of sheets. `book` is a
   // document SET — requirements, design, build, test — read as chapters, with
   // a tree beside the text instead of a strip above it.
-  //
-  // Declared here rather than in build.yml for the reason `categories:` and
-  // `under_key:` are: it is a fact about how the document is read, not about
-  // where its data comes from.
-  nav?: "tabs" | "book";
   // Chapter numbers (1.2.3), on by default in `book` — a document set is cited
   // by chapter, and a set without numbers reads as unfinished. Off for the
   // projects that never number, so nobody has to look at a number they will not
@@ -247,6 +242,17 @@ function checkLayout(name: string, s: Partial<ProjectMetaSheetDoc> | undefined, 
   }
 }
 
+// A document is read ONE way now — the chapter tree — so `nav:` decides
+// nothing. A declaration that decides nothing is exactly what this project
+// refuses to leave silent: it reads as a setting somebody is relying on.
+function checkNav(doc: unknown, path: string): void {
+  if ((doc as { nav?: unknown }).nav !== undefined) {
+    console.warn(
+      `${path}: nav: no longer does anything — the chapter tree is the document's only navigation. Remove it.`
+    );
+  }
+}
+
 export function loadProjectMeta(path: string, readFile: (path: string) => string | null): ProjectMetaDoc {
   const content = readFile(path);
   if (content === null) throw new Error("project metadata not found: " + path);
@@ -284,21 +290,21 @@ export function loadProjectMeta(path: string, readFile: (path: string) => string
     // rather than dropped: a declaration this loader silently discarded would be
     // a line the author wrote, the build read, and nobody honoured.
     checkGroupNames(doc, path);
+    checkNav(doc, path);
     return {
       sheets,
       ...(doc.groups ? { groups: doc.groups } : {}),
       ...(doc.layout ? { layout: doc.layout } : {}),
-      ...(doc.nav ? { nav: doc.nav } : {}),
-      ...(doc.numbering === undefined ? {} : { numbering: doc.numbering }),
+        ...(doc.numbering === undefined ? {} : { numbering: doc.numbering }),
     };
   }
   checkCategoryPaths(doc.params, "param ", path);
   checkLayout("(top level)", doc as Partial<ProjectMetaSheetDoc>, path);
   checkGroupNames(doc, path);
+  checkNav(doc, path);
   return {
     params: doc.params ?? {},
     ...(doc.groups ? { groups: doc.groups } : {}),
-    ...(doc.nav ? { nav: doc.nav } : {}),
     ...(doc.numbering === undefined ? {} : { numbering: doc.numbering }),
     ...(doc.categories ? { categories: doc.categories } : {}),
     ...(doc.under_key ? { under_key: doc.under_key } : {}),
