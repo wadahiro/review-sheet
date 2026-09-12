@@ -251,6 +251,48 @@ export function listProductAddresses(): ProductAddress[] {
   return [...addresses];
 }
 
+// How a product is asked to report its OWN effective configuration — the third
+// half-a-declaration that was never the project's.
+//
+// `defaults_checked_by:` says which product, which deployed file, and the
+// command that makes it answer. The product and the file the build already
+// knows: a sheet carrying a deployed `file_path` and binding exactly one
+// product IS that pairing. Only the command had to be written down, and
+// `httpd -V` is how httpd states its compiled-in defaults everywhere.
+//
+// `command` is a FUNCTION of the config file's path, not a string, because a
+// product installed under a prefix carries its own tooling there
+// (`/opt/keycloak/conf/keycloak.conf` -> `/opt/keycloak/bin/kc.sh`) while one
+// on PATH ignores the argument entirely. That relation is the product's
+// distribution layout — exactly the kind of fact this registry is for — and a
+// template with a placeholder would have to invent a vocabulary for "two
+// directories up" that only one product would ever use.
+//
+// `aside:` is deliberately NOT derivable and stays the project's: the second
+// file httpd reads (`/etc/sysconfig/httpd`) is the DISTRIBUTION's doing, and a
+// dictionary pinned to an upstream version (`httpd@2.4.62`, unlike an NVR like
+// `systemd@252-67.el9_8.4`) does not say which distribution this is.
+export type ProductDefaults = {
+  product: "httpd" | "keycloak";
+  command: (configFile: string) => string;
+};
+
+const defaultsBy = sharedRegistry<ProductDefaults>("review-sheet.product-defaults.v1");
+
+export function registerProductDefaults(d: ProductDefaults): void {
+  const i = defaultsBy.findIndex((x) => x.product === d.product);
+  if (i >= 0) defaultsBy[i] = d;
+  else defaultsBy.push(d);
+}
+
+export function getProductDefaults(product: string): ProductDefaults | undefined {
+  return defaultsBy.find((d) => d.product === product);
+}
+
+export function listProductDefaults(): ProductDefaults[] {
+  return [...defaultsBy];
+}
+
 const lineOf = (text: string, re: RegExp): number | undefined => {
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) if (re.test(lines[i]!)) return i + 1;

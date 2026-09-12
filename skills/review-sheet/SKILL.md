@@ -3548,12 +3548,20 @@ routinely do, and both are the product's knowledge:
 defaults_checked_by:
   - product: httpd
     file: /etc/httpd/conf/httpd.conf
-    command: httpd -V              # the BINARY's compiled-in defaults
     aside: /etc/sysconfig/httpd    # a file beside it that injects options
-  - product: keycloak
-    file: /opt/keycloak/conf/keycloak.conf
-    command: /opt/keycloak/bin/kc.sh show-config   # what it is USING, and from where
 ```
+
+**You no longer write the command.** Which files you want cross-checked is
+yours — turning this on is a decision about what you test, so nothing is ever
+invented for you — but how a product is asked to answer for itself is the
+product's, and the build supplies it. Keycloak's is built from where the config
+file is (`<home>/conf/keycloak.conf` -> `<home>/bin/kc.sh`), since a product
+installed under a prefix carries its own tooling there; httpd's ignores the path
+and asks the binary on PATH. State a `command:` of your own and it is left alone.
+
+`aside:` never derives, which is why it is the one thing still spelled out
+above: the second file httpd reads is the DISTRIBUTION's doing, and a dictionary
+pinned to an upstream version cannot say which distribution you are on.
 
 A distribution's build routinely differs from the manual a dictionary was
 written from — `PidFile` is the usual one — and a `-C "Directive value"` in

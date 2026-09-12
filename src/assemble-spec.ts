@@ -14,8 +14,8 @@
 // recorded in the model's source maps.
 
 import { resolve as resolvePath } from "node:path";
-import { deriveChannels, deriveDocuments, type DerivedChannels, type DerivedDocuments } from "./derive-wiring.js";
-import { getProductRead, getProductAddress } from "./channel.js";
+import { deriveChannels, deriveDocuments, deriveDefaultsCheckedBy, type DerivedChannels, type DerivedDocuments, type DerivedDefaults } from "./derive-wiring.js";
+import { getProductRead, getProductAddress, getProductDefaults } from "./channel.js";
 import "./channels/reads.js";
 import type { DictionaryBinding } from "./metadata.js";
 import {
@@ -91,6 +91,8 @@ export function assembleFromSpecWithReport(
   derivedChannels: DerivedChannels;
   // The `documents:` addresses the bindings supplied — see derive-wiring.ts.
   derivedDocuments: DerivedDocuments;
+  // The `defaults_checked_by:` the sheets' own deployed paths supplied.
+  derivedDefaults: DerivedDefaults;
 } {
   const resolvePathOpt = opts.resolve ?? ((p: string): string => resolvePath(opts.specDir, p));
 
@@ -292,7 +294,14 @@ export function assembleFromSpecWithReport(
       d.address === undefined && fill.has(d.sheet) ? { ...d, address: fill.get(d.sheet)! } : d
     );
   }
-  return { ...assembled, derivedChannels, derivedDocuments };
+  // …and the command that makes a product answer for its own defaults. This one
+  // only COMPLETES entries the project declared — see derive-wiring.ts for why
+  // it must never invent one.
+  const derivedDefaults = deriveDefaultsCheckedBy(spec.defaults_checked_by, getProductDefaults);
+  if (derivedDefaults.entries.length > 0) {
+    assembled.input.defaults_checked_by = derivedDefaults.entries;
+  }
+  return { ...assembled, derivedChannels, derivedDocuments, derivedDefaults };
 }
 
 export function assembleFromSpec(spec: BuildSpec, opts: SpecAssembleOpts): ParameterSheetInput {

@@ -8,7 +8,7 @@
 // must refuse to guess rather than answer wrongly.
 
 import { describe, it, expect } from "bun:test";
-import { deriveChannels, deriveDocuments } from "../src/derive-wiring";
+import { deriveChannels, deriveDocuments, deriveDefaultsCheckedBy } from "../src/derive-wiring";
 import type { BindReportRow } from "../src/assemble";
 import type { ProductRead } from "../src/channel";
 
@@ -181,5 +181,59 @@ describe("deriving a document address from a binding", () => {
     );
     expect(out.addresses).toHaveLength(0);
     expect(out.unresolved[0]!.reason).toContain("address rows differently");
+  });
+});
+
+// The third passenger, and the narrowest: only the COMMAND of an entry the
+// project declared. A first version paired every sheet carrying a deployed path
+// with its bound product and emitted entries whole — which grew one on two
+// shipped examples that had never asked for the check, changing what those
+// projects test. The tests below pin the narrower contract.
+describe("completing a defaults_checked_by entry", () => {
+  const recipes: Record<string, { product: "httpd" | "keycloak"; command: (f: string) => string }> = {
+    httpd: { product: "httpd", command: () => "httpd -V" },
+    keycloak: {
+      product: "keycloak",
+      command: (f) => {
+        const conf = f.slice(0, f.lastIndexOf("/"));
+        return `${conf.slice(0, conf.lastIndexOf("/"))}/bin/kc.sh show-config`;
+      },
+    },
+  };
+  const recipeFor = (p: string): { product: "httpd" | "keycloak"; command: (f: string) => string } | undefined => recipes[p];
+
+  it("supplies the command the product answers with", () => {
+    const out = deriveDefaultsCheckedBy([{ product: "httpd", file: "/etc/httpd/conf/httpd.conf" }], recipeFor);
+    expect(out.entries).toEqual([{ product: "httpd", file: "/etc/httpd/conf/httpd.conf", command: "httpd -V" }]);
+  });
+
+  // A product installed under a prefix carries its own tooling there, which is
+  // why the recipe is a function of the path rather than a fixed string.
+  it("builds the command from where the product is installed", () => {
+    const out = deriveDefaultsCheckedBy([{ product: "keycloak", file: "/srv/kc/conf/keycloak.conf" }], recipeFor);
+    expect(out.entries[0]!.command).toBe("/srv/kc/bin/kc.sh show-config");
+  });
+
+  it("keeps the aside the project stated, which never derives", () => {
+    const out = deriveDefaultsCheckedBy(
+      [{ product: "httpd", file: "/etc/httpd/conf/httpd.conf", aside: "/etc/sysconfig/httpd" }],
+      recipeFor
+    );
+    expect(out.entries[0]!.aside).toBe("/etc/sysconfig/httpd");
+    expect(out.entries[0]!.command).toBe("httpd -V");
+  });
+
+  it("leaves an entry that states its own command untouched", () => {
+    const declared = [{ product: "httpd" as const, file: "/etc/httpd/conf/httpd.conf", command: "mine" }];
+    const out = deriveDefaultsCheckedBy(declared, recipeFor);
+    expect(out.entries).toEqual(declared);
+    expect(out.derived).toHaveLength(0);
+  });
+
+  // The whole point of the narrowing: nothing appears for a project that did
+  // not ask, however derivable it would have been.
+  it("invents no entry at all", () => {
+    expect(deriveDefaultsCheckedBy(undefined, recipeFor).entries).toEqual([]);
+    expect(deriveDefaultsCheckedBy([], recipeFor).entries).toEqual([]);
   });
 });

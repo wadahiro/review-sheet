@@ -1191,7 +1191,7 @@ async function runSpecImport(opts: {
     // just as well, and a committed input.json shouldn't bake in a local
     // filesystem layout. This means verify/apply must be run from the same CWD
     // used for `import --spec`, same as every other path this CLI records.
-    const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, layoutNotes, derivedChannels, derivedDocuments } = assembleFromSpecWithReport(spec, {
+    const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, layoutNotes, derivedChannels, derivedDocuments, derivedDefaults } = assembleFromSpecWithReport(spec, {
       readFile,
       listDir,
       readBinary,
@@ -1310,6 +1310,9 @@ async function runSpecImport(opts: {
           (d.keys.length > 4 ? `, +${d.keys.length - 4} more` : "") +
           " (derived from the binding — no declaration needed)"
       );
+    }
+    for (const d of derivedDefaults.derived) {
+      console.error(`defaults: ${d.file} <- ${d.product} — \`${d.command}\` (command supplied; the entry is the spec's)`);
     }
     for (const d of derivedDocuments.addresses) {
       console.error(`document: ${d.sheet} — rows sit at \`${d.address}\` (derived from the binding — no declaration needed)`);

@@ -10,7 +10,7 @@
 // Each is keyed by the dictionary product a sheet binds. See `ProductRead` in
 // channel.ts for why these live in code and not in the dictionary YAML.
 
-import { registerProductRead, registerProductAddress } from "../channel.js";
+import { registerProductRead, registerProductAddress, registerProductDefaults } from "../channel.js";
 
 // `getenforce` prints the mode and nothing else — the output IS the value.
 // Lowercased because the file states it lowercase (`SELINUX=enforcing`) and the
@@ -54,3 +54,24 @@ registerProductAddress({ product: "keycloak-client", address: "clients[clientId=
 // A user-federation row carries its own structural address, because a store and
 // its mappers are nested and the row's key alone does not say which store.
 registerProductAddress({ product: "keycloak-ldap", address: "{address}" });
+
+// ---------------------------------------------------------------------------
+// How a product is asked what it is actually using. See `ProductDefaults`.
+
+// `httpd -V` prints the compiled-in defaults of the binary on PATH. The config
+// file's location tells you nothing about where that binary is, so it is
+// ignored — this is the case the signature exists to leave alone.
+registerProductDefaults({ product: "httpd", command: () => "httpd -V" });
+
+// Keycloak ships its own CLI inside the distribution, so where the config file
+// is says where the tool is: `<home>/conf/keycloak.conf` -> `<home>/bin/kc.sh`.
+// Derived from the path rather than assumed at /opt/keycloak, which is a
+// convention rather than a rule.
+registerProductDefaults({
+  product: "keycloak",
+  command: (configFile) => {
+    const conf = configFile.slice(0, configFile.lastIndexOf("/"));
+    const home = conf.slice(0, conf.lastIndexOf("/"));
+    return `${home}/bin/kc.sh show-config`;
+  },
+});

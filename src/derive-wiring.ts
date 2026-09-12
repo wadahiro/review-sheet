@@ -202,3 +202,51 @@ export function deriveDocuments(
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// The `command` of a `defaults_checked_by:` entry.
+//
+// Narrower than the two above, deliberately. An entry says a product, the
+// deployed file whose "we set nothing, so the default applies" rows it governs,
+// and the command that makes the product answer for itself. Only the last
+// derives, and the entry itself is NEVER invented.
+//
+// That limit was found by the test suite rather than reasoned out: a first
+// version paired every sheet carrying a deployed `file_path` with its one bound
+// product and emitted the entry whole, which grew one on two shipped examples
+// that had never declared it. The two cases are not alike. A derived CHANNEL
+// answers a row that had no answer at all; this is an EXTRA cross-check on rows
+// the file already answers, and switching it on unasked adds a command to every
+// collection and can turn a passing row into a failing one — a project's test
+// changing character because it upgraded the tool.
+//
+// So a project states which files it wants cross-checked, and never has to know
+// how. `aside:` — the second file the DISTRIBUTION makes the product read — was
+// never derivable anyway: a dictionary pinned to an upstream version
+// (`httpd@2.4.62`, unlike an NVR like `systemd@252-67.el9_8.4`) cannot say
+// which distribution this is.
+
+export type DefaultsEntry = { product: "httpd" | "keycloak"; file: string; command?: string; aside?: string };
+
+export type DerivedDefaults = {
+  entries: DefaultsEntry[];
+  derived: { file: string; product: string; command: string }[];
+};
+
+export function deriveDefaultsCheckedBy(
+  declared: readonly DefaultsEntry[] | undefined,
+  recipeFor: (product: string) => { product: "httpd" | "keycloak"; command: (f: string) => string } | undefined
+): DerivedDefaults {
+  const out: DerivedDefaults = { entries: [], derived: [] };
+  for (const d of declared ?? []) {
+    const recipe = d.command === undefined ? recipeFor(d.product) : undefined;
+    if (recipe === undefined) {
+      out.entries.push(d);
+      continue;
+    }
+    const command = recipe.command(d.file);
+    out.entries.push({ ...d, command });
+    out.derived.push({ file: d.file, product: d.product, command });
+  }
+  return out;
+}
