@@ -208,6 +208,34 @@ function index(data: SheetData, paths: Map<string, string>, lang: Lang, stamp: s
     out.push("");
   }
 
+  // What to do with this folder, before anything else in it.
+  //
+  // The recipient of a set like this has no toolchain and did not ask for one.
+  // If it is not obvious in three lines what to edit, what to read it with, and
+  // what NOT to touch, the folder loses to the spreadsheet it replaced — not on
+  // any argument about formats, but because nobody could tell what it was for.
+  out.push(
+    ...(lang === "ja"
+      ? [
+          "## この文書の使い方",
+          "",
+          "- **直すのはこのフォルダの `.md`** です。AI に「この表のこの値を直して」と頼めます。",
+          "- **読むのは `viewer.html`** です。開いて、このフォルダをウィンドウにドラッグすると最新が表示されます。",
+          "- `viewer.html` 自身を編集しても意味がありません。次にフォルダを読ませた時点で消えます。",
+          "",
+        ]
+      : [
+          "## How to use this",
+          "",
+          "- **Edit the `.md` files in this folder.** You can ask an assistant to change a value in a table.",
+          "- **Read it with `viewer.html`.** Open it and drag this folder onto the window to see the current text.",
+          "- Editing `viewer.html` itself does nothing: the next folder you give it replaces what it shows.",
+          "",
+        ])
+  );
+
+  out.push(lang === "ja" ? "## 目次" : "## Contents", "");
+
   const link = (s: SheetData["sheets"][number]): string =>
     `[${s.display ?? s.name}](${href(paths.get(s.name) ?? "")})`;
 

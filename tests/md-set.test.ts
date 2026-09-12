@@ -150,6 +150,17 @@ describe("the documents a sheet carries", () => {
 });
 
 describe("the index", () => {
+  // The recipient has no toolchain and did not ask for one. If it is not
+  // obvious in three lines what to edit, what to read it with and what not to
+  // touch, the folder loses to the spreadsheet it replaced — not on any
+  // argument about formats, but because nobody could tell what it was for.
+  it("says what to do with the folder, before the contents", () => {
+    const readme = toMarkdownSet(doc(), "ja").files[0]!.text;
+    expect(readme).toContain("直すのはこのフォルダの `.md`");
+    expect(readme).toContain("viewer.html");
+    expect(readme.indexOf("この文書の使い方")).toBeLessThan(readme.indexOf("## 目次"));
+  });
+
   it("lists the chapters in the order the document declares, as links", () => {
     const { files } = toMarkdownSet(doc(), "ja");
     const readme = files[0]!.text;
