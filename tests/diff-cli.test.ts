@@ -160,3 +160,71 @@ describe("diff --cross-category", () => {
     expect(run.stderr).toContain("1 key(s) filed in several categories");
   });
 });
+
+// A comparison that matched NOTHING is a mis-run, not a result.
+//
+// `diff` pairs categories by name and parameters within them, so two models
+// that file the same settings differently report every row twice — as removed
+// and as added — and nothing as unchanged. Measured on one real pair: 1,553
+// added, 21 removed, 0 unchanged, which the flags turn into 6 changed and 12
+// unchanged. The flags already existed; what was missing is that a run without
+// them looks like an answer, and a project read its own useless output as a
+// fact about the tool and gave up a capability over it.
+describe("a diff where nothing matched", () => {
+  const differently = (name: string, cat: string): string => {
+    const f = join(work, `${name}.json`);
+    writeFileSync(
+      f,
+      JSON.stringify({
+        metadata: { project: "p", version: "1", generated_at: "2026-01-01T00:00:00Z" },
+        sheets: [{ name: "s", categories: [{ name: cat, params: [{ key: "k", value: "v" }] }] }],
+      })
+    );
+    return f;
+  };
+
+  it("says which flag would have helped", () => {
+    const a = differently("a", "By file");
+    const b = differently("b", "By product group");
+    const proc = Bun.spawnSync(["bun", "run", cli, "diff", "-i", a, "-i", b]);
+    const err = proc.stderr.toString();
+    expect(err).toContain("0 unchanged");
+    expect(err).toContain("nothing matched");
+    expect(err).toContain("--cross-category");
+  });
+
+  it("stays quiet once the flags are given", () => {
+    const a = differently("c", "By file");
+    const b = differently("d", "By product group");
+    const proc = Bun.spawnSync(["bun", "run", cli, "diff", "-i", a, "-i", b, "--equivalence", "--cross-category", "--sheet-presence"]);
+    expect(proc.stderr.toString()).not.toContain("nothing matched");
+  });
+
+  // A comparison with NOTHING on either side is not a mis-run — there was
+  // simply nothing to compare, and unchanged is 0 for that reason too.
+  it("says nothing when there was nothing to compare at all", () => {
+    const empty = join(work, "empty.json");
+    writeFileSync(
+      empty,
+      JSON.stringify({
+        metadata: { project: "p", version: "1", generated_at: "2026-01-01T00:00:00Z" },
+        sheets: [{ name: "s", categories: [{ name: "c", params: [] }] }],
+      })
+    );
+    const proc = Bun.spawnSync(["bun", "run", cli, "diff", "-i", empty, "-i", empty]);
+    expect(proc.stderr.toString()).toContain("0 unchanged");
+    expect(proc.stderr.toString()).not.toContain("nothing matched");
+  });
+
+  // Only the flags NOT given are offered — a hint that repeats what the caller
+  // already passed reads as if it had not worked.
+  it("names only the flags that are missing", () => {
+    const a = differently("f", "By file");
+    const b = differently("g", "By product group");
+    const proc = Bun.spawnSync(["bun", "run", cli, "diff", "-i", a, "-i", b, "--sheet-presence"]);
+    const err = proc.stderr.toString();
+    expect(err).toContain("nothing matched");
+    expect(err).toContain("--cross-category");
+    expect(err).not.toContain("--sheet-presence (");
+  });
+});

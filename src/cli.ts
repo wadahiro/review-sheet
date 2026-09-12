@@ -2176,6 +2176,32 @@ program
       if (crossCategory && result.ambiguousKeys.length > 0)
         summaryLine += ` (${result.ambiguousKeys.length} key(s) filed in several categories, not joined — see stdout)`;
       console.error(summaryLine);
+      // A comparison that matched NOTHING is not a result, it is a mis-run.
+      //
+      // `diff` pairs categories by name and then parameters within them, so two
+      // models that file the same settings differently — one sheet keyed by the
+      // deployed file, the other by the product's own groups — report every row
+      // twice, as removed and as added, and nothing as unchanged. Measured on
+      // one real pair: 1,553 added, 21 removed, 0 unchanged, which the flags
+      // below turn into 6 changed and 12 unchanged.
+      //
+      // The flags already existed. What was missing is that a run without them
+      // looks like an answer, and a project read its own useless output as a
+      // fact about the tool and gave up a capability over it. So the summary
+      // says what would have helped, and only when the shape says so.
+      if (unchanged === 0 && added + removed > 0) {
+        const missing = [
+          crossCategory ? undefined : "--cross-category (two forms of one product share their settings, not their structure)",
+          excludeDefaultOrigin ? undefined : "--exclude-default-origin (one side enumerates the product's defaults and the other does not)",
+          sheetPresence ? undefined : "--sheet-presence (a sheet on one side only, reported once instead of per row)",
+        ].filter((x): x is string => x !== undefined);
+        if (missing.length > 0) {
+          console.error(
+            `Note: nothing matched — every row is reported as removed or added. That is what a comparison between differently ` +
+              `STRUCTURED models looks like, not a system that changed. Try:\n  ${missing.join("\n  ")}`
+          );
+        }
+      }
     } catch (e) {
       console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
       process.exit(1);
