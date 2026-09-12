@@ -20,7 +20,6 @@ import {
   type CategoryData,
   type ParamData,
   type ReviewItem,
-  type SaveRecord,
 } from "../prompt.js";
 import { buildDiffModel, rowKey, instKey, catKey, sheetKey, type DiffStatusMap } from "../diffview.js";
 import { isEdit, targetKey } from "../edits.js";
@@ -217,14 +216,13 @@ export function navStateKey(data: SheetData): string {
   return "review-sheet:" + [data.metadata?.project ?? "", data.metadata?.version ?? "", data.metadata?.title ?? ""].join(":");
 }
 
-export function getStorageKey(data: SheetData, saves: SaveRecord[] = []): string {
+export function getStorageKey(data: SheetData): string {
   const parts = [
     data.metadata?.project ?? "",
     data.metadata?.version ?? "",
     data.metadata?.generated_at ?? "",
   ];
-  const rev = saves[saves.length - 1]?.id;
-  return "review-sheet:" + parts.join(":") + (rev ? `:${rev}` : "");
+  return "review-sheet:" + parts.join(":");
 }
 
 
@@ -4076,7 +4074,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
 
   return html`
     <div class=${`rs-app ${outlineOpen ? "rs-outline-open" : ""} rs-book ${artifactTarget ? (dockNow === "below" ? "rs-with-evidence" : "rs-with-artifact") : ""}`}>
-      <nav class=${`rs-sheet-tabs ${(data.groups?.length ?? 0) > 0 ? "rs-sheet-tabs-grouped" : ""}`} role="tablist">
+      <nav class="rs-sheet-tabs" aria-label=${t.navOutline}>
         <div class="rs-tabs-nav">
           <button class=${`rs-toolbar-btn ${outlineOpen ? "rs-toolbar-btn-active" : ""}`} onClick=${() => setOutlineOpen(!outlineOpen)}
                   title=${t.navOutlineTip} aria-label=${t.navOutlineTip} aria-pressed=${outlineOpen}>

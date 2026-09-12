@@ -1007,26 +1007,6 @@ export type ReviewItem = {
   assets?: Record<string, string>;
 };
 
-// One save of the document, by whoever was maintaining it.
-//
-// The per-cell history answers "why is this value what it is" — but only for
-// someone who already suspects that cell. This answers "what has happened to
-// this system", which is the question asked months later, and it is the only
-// place a REASON can live: a timestamp cannot carry one.
-export type SaveRecord = {
-  // Identifies this REVISION of the file, and through it the browser buffer
-  // that belongs to it. Unsaved work lives in localStorage until the file is
-  // written, keyed by the document — and every copy of one generated document
-  // has identical metadata, so without this two copies share one buffer: edit
-  // one without saving, open the other, and the first one's work is sitting in
-  // it ready to be saved into the wrong file.
-  id?: string;
-  at: string;            // ISO 8601, from the editor's own clock
-  by?: string;           // self-declared; blank is allowed
-  comment?: string;      // why, in the author's words
-  changes: number;       // how many entries this save added
-};
-
 export type ReviewTarget = {
   sheet: string;
   category?: string;

@@ -26,7 +26,6 @@ review-sheet import   -f conf1 -f conf2 -o input.json  # draft a model (with sou
 review-sheet import   --spec review-sheet/build.yml   # build it from a declarative spec (recipes + enrichment)
 review-sheet generate -i input.json -o sheet.html   # build the HTML sheet
 review-sheet generate -i input.json --readonly -o sheet.html  # read-only copy
-review-sheet generate -i input.json --allow edit -o sheet.html  # maintainable copy: edit values/remarks, add rows, strike rows out (review OR edit, not both)
 review-sheet generate -i input.json --no-sources -o sheet.html  # hide WHERE each value is written (see below)
 review-sheet apply    -i input.json -r returned.html --emit-prompt  # the edited HTML is the review file; applies what a source map proves, prompts for the rest
 review-sheet validate -i input.json                 # a model
@@ -1166,13 +1165,11 @@ apply and verify resolve every change through it, and the path the settings LAND
 on stays too — that is what the sheet is about. A document that must not name
 the repository at all is a different question, and this is not it.
 
-A document sheet generated with `--allow edit` can be edited in the browser, as
-markdown. Its source and its images are carried alongside the rendered html for
-that (an image is a data URI in the html, not in the markdown), and the sheet
-records `source_file` so an edit knows which `.md` it belongs to. Pasting an
-image embeds it: the markdown gets a content-addressed path, the bytes ride on
-the edit, and `apply` emits both the new text and the image files to write. The
-renderer is ~45 KB and travels only in a file that has an editable document.
+A document sheet whose markdown IS the page (`document.mode: "sheet"`) is laid
+out by the viewer as the sheet's own tables, so it carries its markdown source
+beside the rendered html and the renderer travels with it — ~45 KB, and only in
+a file that needs it. A prose document is rendered at build time into `html` and
+needs neither.
 
 #### `recipe: terraform-plan`
 
