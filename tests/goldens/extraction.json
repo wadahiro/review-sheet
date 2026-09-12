@@ -822,6 +822,12 @@
     "sha": "05e27035dfe69cae"
   },
   {
+    "file": "tests/fixtures/dockerfile/Dockerfile",
+    "parser": "dockerfile",
+    "count": 16,
+    "sha": "689c8c1fb98f55c3"
+  },
+  {
     "file": "tests/fixtures/hierarchical.json",
     "parser": "json",
     "count": 173,

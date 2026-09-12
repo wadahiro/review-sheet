@@ -1963,6 +1963,7 @@ required for `space`, which has no dedicated extension).
 | `crontab` | One row per line: a job verbatim, or a `NAME=value` assignment. | [details](formats/crontab.md) |
 | `jinja2` | Templates (.j2): base-format structure + the {{ variable }} behind each value (extraction aid). | [details](formats/jinja2.md) |
 | `logrotate` | `/path/*.log { … }` blocks: flags, `name args`, and script bodies. | [details](formats/logrotate.md) |
+| `dockerfile` | The instructions that decide something a reviewer signs — the base image, the environment, the ports, the user, what it runs. | [details](formats/dockerfile.md) |
 | `haproxy` | Sections and directives; named sections + repeated directive by 1st arg. | [details](formats/haproxy.md) |
 | `httpd` | Apache directives and <Tag> containers by label; repeats indexed. | [details](formats/httpd.md) |
 | `nginx` | Directives and {} blocks; labeled blocks by label; repeats indexed. | [details](formats/nginx.md) |
@@ -3818,6 +3819,24 @@ role leaves, and writes the observation out. WHICH syntax names further files
 is the product's and travels in the plan (`includes:`): httpd's
 `Include`/`IncludeOptional` resolved against its `ServerRoot`, which every
 project that wrote it out was copying from httpd's manual into a playbook.
+
+**A container project is the same four stages, and the tool already has them.**
+What a project AUTHORED (a Dockerfile, a task-definition template, a kustomize
+overlay) is read by a parser; what it RENDERS to (`docker inspect` of the built
+image, `ecspresso render`, `kustomize build`) is the `snapshot` recipe; what is
+LIVE (`docker inspect` of the container, `describe-task-definition`, `kubectl
+get -o json`) is a document in the observation; and whether it has drifted is a
+probe rule. The split that matters most is the one `sources:` already makes for
+Terraform — what this build decided versus what the base image, the platform or
+the API's own defaulting filled in — because a live container or a k8s object
+answers with hundreds of fields nobody chose.
+
+`src/parsers/dockerfile.ts` reads the first stage (the instructions that decide
+something a reader signs, keyed the way a reviewer names them: `ENV
+KC_DB=postgres` is the row `KC_DB`), and `src/channels/docker.ts` the third —
+`Config.Env` is an array of `K=V` strings, so a row named `KC_DB` is at no
+address a structural path reaches until that array is turned into a map, and
+`ExposedPorts` carries its value in the KEY.
 
 **What must never leave the node is the PRODUCT's knowledge too**, and it
 travels in the plan where the sheets bound that product. Keycloak's Admin API

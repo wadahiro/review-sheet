@@ -133,6 +133,7 @@ Supported formats (inferred per file extension, or forced with `--format`):
 | `crontab` | /etc/crontab, /etc/cron.d/*, cron.d/*.j2 | One row per line: a job verbatim, or a `NAME=value` assignment. |
 | `jinja2` | *.j2 | Templates (.j2): base-format structure + the {{ variable }} behind each value (extraction aid). |
 | `logrotate` | /etc/logrotate.conf, /etc/logrotate.d/*, logrotate-*.j2 | `/path/*.log { … }` blocks: flags, `name args`, and script bodies. |
+| `dockerfile` | Dockerfile, Containerfile (any suffix), *.dockerfile | The instructions that decide something a reviewer signs — the base image, the environment, the ports, the user, what it runs. |
 | `haproxy` | haproxy.cfg *.cfg (content-detected) | Sections and directives; named sections + repeated directive by 1st arg. |
 | `httpd` | httpd.conf .htaccess conf.d/*.conf *.conf (content-detected) | Apache directives and <Tag> containers by label; repeats indexed. |
 | `nginx` | nginx.conf *.conf (content-detected) | Directives and {} blocks; labeled blocks by label; repeats indexed. |

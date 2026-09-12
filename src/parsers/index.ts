@@ -8,6 +8,7 @@ import "./toml.js";
 import "./logrotate.js";
 import "./crontab.js";
 import "./systemd.js";
+import "./dockerfile.js";
 import "./shell.js";
 import "./nginx.js";
 import "./httpd.js";
