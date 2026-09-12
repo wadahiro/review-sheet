@@ -615,6 +615,30 @@ function scopesBoundTo(bindings: SheetBindings, dict: { product: string; version
   return out;
 }
 
+// The one category this dictionary's already-bound rows share, if they share
+// one. Read off the project's own `category:` declarations, because that is
+// where a row's home is decided — and only ever consulted for a dictionary that
+// states no grouping, so a product's own arrangement always wins.
+function homeCategoryOf(
+  bindings: SheetBindings,
+  dict: { product: string; version?: string },
+  projectMeta: ProjectMetaDoc,
+  sheet: string
+): string[] | undefined {
+  const cats = new Set<string>();
+  for (const [scope, byKey] of bindings) {
+    for (const [key, b] of byKey) {
+      if (b.product !== dict.product) continue;
+      const c = paramForRow(projectMeta, sheet, scope === NO_COMPONENT ? undefined : scope, key)?.category;
+      // A row with no category, or one declared as a list or as `null`, gives
+      // no single answer — and half an answer is worse than none here.
+      if (typeof c !== "string") return undefined;
+      cats.add(c);
+    }
+  }
+  return cats.size === 1 ? [...cats] : undefined;
+}
+
 function setBinding(bindings: SheetBindings, component: string | undefined, key: string, value: Binding): void {
   const scope = component ?? NO_COMPONENT;
   const byKey = bindings.get(scope) ?? new Map<string, Binding>();
@@ -1324,15 +1348,31 @@ function materializeDrafts(
   // their own `is.binary.attribute`, and that is where a reviewer would set
   // one — a single row filed under the mapper TYPE is a decision nobody can
   // act on, because there is no such object to configure.
-  nested?: { under: string; members: { id: string; unit: string }[] }
+  nested?: { under: string; members: { id: string; unit: string }[] },
+  // Where this dictionary's OWN rows already sit, when they agree on one
+  // category and the dictionary states no grouping of its own. A product with
+  // no arrangement to state (firewalld's services are a flat list of names)
+  // otherwise sends every unset key to UNCATEGORIZED, away from the rows it
+  // belongs beside — which is not wrong, just unhelpful, and the sheet already
+  // answers it.
+  homeCategory?: string[]
 ): { drafts: Draft[]; report: MaterializeReport; bindings: Map<string, Binding> } {
   // binding.materialize is truthy whenever this is called (see the caller in
   // assembleSheetsWithReport) — `true` means "expand everything", an object
   // narrows via groups/defaultsCategory (see DictionaryMaterialize above).
   const opt = binding.materialize === true ? {} : binding.materialize!;
+  // Whether this dictionary has an arrangement of its own AT ALL — asked of the
+  // whole document, never per entry. A dictionary that groups most of its
+  // entries and happens to miss one is still stating an arrangement, and
+  // sending that one entry somewhere else would file it away from its own
+  // siblings; only a product with nothing to say (firewalld's services are a
+  // flat list of names) hands the question to the sheet. Caught by a fixture
+  // whose dictionary groups all but one entry.
 
   const dirs = opts.metadataDirs ?? [];
   const found = findDictionary(binding.product, binding.version, dirs, opts.readFile);
+  // Whether this dictionary groups anything at all (see the note at `opt`).
+  const dictStatesNoGrouping = Object.values(found?.parameters ?? {}).every((e) => e.group === undefined);
   // The other door into a dictionary. materialize reads `default` to give a row
   // its value, so an unresolved per-variant map would land in the sheet as
   // "[object Object]" — resolved here for the same reason and by the same rule.
@@ -1520,7 +1560,12 @@ function materializeDrafts(
     // Two levels: a single parent ("the project sets nothing here") holding a
     // subcategory per dictionary group — see fileDrafts and Draft's comment
     // for why this is a path rather than one name.
-    out.push({ key, param, fallbackCategoryPath: groupPath(entry.group), component });
+    out.push({
+      key,
+      param,
+      fallbackCategoryPath: dictStatesNoGrouping && homeCategory !== undefined ? homeCategory : groupPath(entry.group),
+      component,
+    });
     bindings.set(key, {
       product: binding.product,
       version: binding.version,
@@ -2786,7 +2831,16 @@ export function assembleSheetsWithReport(
       const targets: [string | undefined, Set<string> | undefined][] = hostWide ? [[undefined, undefined]] : expansions;
       for (const [component, componentKeys] of targets) {
         if (dictBinding.component !== undefined && dictBinding.component !== component) continue;
-        const materialized = materializeDrafts(si.name, draftBindings, dictBinding, opts, component, componentKeys, component === undefined ? undefined : si.nestedMembers?.get(component));
+        const materialized = materializeDrafts(
+          si.name,
+          draftBindings,
+          dictBinding,
+          opts,
+          component,
+          componentKeys,
+          component === undefined ? undefined : si.nestedMembers?.get(component),
+          homeCategoryOf(draftBindings, dictBinding, projectMeta, si.name)
+        );
         drafts.push(...materialized.drafts);
         materializeReports.push(materialized.report);
         for (const [k, v] of materialized.bindings) setBinding(sheetBindings, component, k, v);

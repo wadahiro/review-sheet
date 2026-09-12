@@ -1527,3 +1527,90 @@ params:
     expect(materializeWarnings).toEqual([]);
   });
 });
+
+// Where an unset key goes when the product has no arrangement of its own.
+//
+// A dictionary's `group` decides it — but some products have nothing to group
+// BY: firewalld's services are a flat list of names, so every unset one landed
+// under UNCATEGORIZED, away from the rows it belongs beside. The sheet already
+// answers it: the dictionary's own rows sit somewhere, and that is the home.
+describe("a dictionary that groups nothing", () => {
+  const FLAT = `
+product: flatthing
+version: "1"
+provenance: extracted
+coverage: full
+parameters:
+  opened_a: { description: { en: a }, default: "off" }
+  opened_b: { description: { en: b }, default: "off" }
+  opened_c: { description: { en: c }, default: "off" }
+`;
+  const build = (projectYaml: string, set: string[] = ["opened_a"]): ParameterSheetInput => {
+    const files: Record<string, string> = {
+      "project.yml": projectYaml,
+      "meta/demodb@1.yml": DICT_YAML,
+      "meta/flatthing@1.yml": FLAT,
+    };
+    return assembleSheets(
+      sheetInputs(set),
+      opts({
+        readFile: (p: string): string | null => files[p] ?? null,
+        dictionaries: { db: [{ product: "flatthing", version: "1", materialize: true }] },
+      })
+    );
+  };
+  const pathOf = (input: ParameterSheetInput, key: string): string => {
+    let found = "";
+    const walk = (cats: Category[] | undefined, trail: string[]): void => {
+      for (const c of cats ?? []) {
+        for (const p of c.params ?? []) if (p.key === key) found = [...trail, c.name].join(" > ");
+        walk(c.categories, [...trail, c.name]);
+      }
+    };
+    walk(input.sheets[0]!.categories, []);
+    return found;
+  };
+
+  it("files an unset key beside the rows the binding already has", () => {
+    const input = build(`
+layout: categories
+params:
+  opened_a: { category: Firewall }
+`);
+    expect(pathOf(input, "opened_a")).toBe("Firewall");
+    expect(pathOf(input, "opened_b")).toBe("Firewall");
+  });
+
+  // A bound row the project never categorised lands in UNCATEGORIZED itself
+  // (nothing else can say where it goes), so answering for the unset ones would
+  // split one dictionary's rows across two places on the strength of a partial
+  // agreement. It declines instead.
+  it("declines when one of its own rows was never categorised", () => {
+    const input = build(
+      `
+layout: categories
+params:
+  opened_a: { category: Firewall }
+`,
+      ["opened_a", "opened_b"]
+    );
+    expect(pathOf(input, "opened_c")).toContain("Uncategorized");
+  });
+
+  // Half an answer is worse than none: if THIS dictionary's own rows disagree
+  // about where they live, nothing here can say where an unset one belongs.
+  // (Rows of a DIFFERENT dictionary never count — the first version of this
+  // test used one and passed for the wrong reason.)
+  it("says nothing when its own rows disagree", () => {
+    const input = build(
+      `
+layout: categories
+params:
+  opened_a: { category: Firewall }
+  opened_b: { category: Tuning }
+`,
+      ["opened_a", "opened_b"]
+    );
+    expect(pathOf(input, "opened_c")).toContain("Uncategorized");
+  });
+});
