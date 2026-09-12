@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from "bun:test";
 import { computeApply } from "../src/apply";
-import { applyEdits, planFromEdits, promptItemsFromPlan } from "../src/edits";
+import { planFromEdits, promptItemsFromPlan } from "../src/edits";
 import { assembleSheets } from "../src/assemble";
 import { getRecipe } from "../src/recipe";
 import "../src/recipes/index.js";
@@ -119,44 +119,6 @@ const strike = (id: string, param: string, deletes: boolean, at: string): Review
   deletes,
   at,
 });
-const rowsOf = (sheets: ReturnType<typeof applyEdits>["sheets"]) =>
-  Object.fromEntries((sheets[0].categories![0].params ?? []).map((p) => [p.key, p.deleted === true]));
-
-describe("deleting a block", () => {
-  // One decision, one entry. Writing an entry per descendant would make
-  // restoring the block a multi-item undo and would allow half-restored states
-  // nobody decided.
-  it("strikes everything inside it, without an entry per row", () => {
-    const r = applyEdits(sheet().sheets, [strike("e1", `Directory["/var/www"]`, true, "2026-01-01T00:00:00Z")], "en");
-    expect(rowsOf(r.sheets)).toEqual({ [`Directory["/var/www"]`]: true, [`Directory["/var/www"].AllowOverride`]: true });
-  });
-
-  it("puts them all back in one action", () => {
-    const r = applyEdits(
-      sheet().sheets,
-      [strike("e1", `Directory["/var/www"]`, true, "2026-01-01T00:00:00Z"), strike("e2", `Directory["/var/www"]`, false, "2026-01-02T00:00:00Z")],
-      "en"
-    );
-    expect(rowsOf(r.sheets)).toEqual({ [`Directory["/var/www"]`]: false, [`Directory["/var/www"].AllowOverride`]: false });
-  });
-
-  // A child struck on its own merits keeps that state when the block comes
-  // back: its entry is its own, and the block's restoration was not a statement
-  // about it.
-  it("leaves a row struck on its own merits struck when the block returns", () => {
-    const r = applyEdits(
-      sheet().sheets,
-      [
-        strike("e0", `Directory["/var/www"].AllowOverride`, true, "2026-01-01T00:00:00Z"),
-        strike("e1", `Directory["/var/www"]`, true, "2026-01-02T00:00:00Z"),
-        strike("e2", `Directory["/var/www"]`, false, "2026-01-03T00:00:00Z"),
-      ],
-      "en"
-    );
-    expect(rowsOf(r.sheets)).toEqual({ [`Directory["/var/www"]`]: false, [`Directory["/var/www"].AllowOverride`]: true });
-  });
-});
-
 describe("the prompt for a struck block", () => {
   const REASONS = { added: "A", struck: "S", document: "D" };
 

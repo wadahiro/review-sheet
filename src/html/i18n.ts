@@ -133,7 +133,6 @@ type Messages = {
   aiPromptTitle: string;
   aiPromptHint: string;
   aiPromptHintEdits: string;
-  noEditsToApply: string;
   confirmClearAll: (count: number) => string;
   // Tooltips
   copyTooltip: string;
@@ -141,85 +140,19 @@ type Messages = {
   cellActions: string;
   suggest: string;
   suggestEdit: string;
-  // Editing a delivered document (`--allow edit`)
-  editValue: string;
-  editTooltip: string;
-  editTitle: string;
-  editOriginal: string;
-  editHistory: string;
-  editNewValue: string;
-  editSave: string;
-  editUnchanged: string;
-  editDiscardConfirm: string;
-  editedBadge: string;
-  editAnonymous: string;
-  editSharedNote: string;
-  editSplitNote: string;
-  editUndo: string;
-  editConfirmUndo: string;
-  docEdit: string;
-  // How to open it without reaching for the button: the keystroke, said where
-  // the button is, because a shortcut nobody is told about is one nobody uses.
-  docEditKey: string;
-  docEditShort: string;
-  docRevert: string;
-  docPasting: string;
-  docNoSource: string;
-  mdHeldList: string;
-  mdHeldNote: string;
-  mdHeldTarget: string;
-  mdHeldWhat: string;
   envManage: string;
   envAdd: string;
   envName: string;
   envRemove: string;
-  envRemoveConfirm: (name: string) => string;
   envRename: string;
   envRemoveUnusedConfirm: (name: string) => string;
   envInUse: string;
-  settingsMenu: string;
-  clearEditsMenu: string;
-  confirmClearEdits: (count: number) => string;
   envSheetManage: string;
-  envSheetManageShort: string;
   envRemoveFromSheetConfirm: (name: string) => string;
   envNoneDefined: string;
-  editMenu: (n: number) => string;
-  restoredToast: (n: number) => string;
-  saveDocument: string;
-  saveTooltip: string;
-  saveUnsaved: (n: number) => string;
-  saveBy: string;
-  saveComment: string;
-  saveCommentPlaceholder: string;
-  saveOptional: string;
-  saveCount: (n: number) => string;
-  saveInProgress: string;
-  editLog: string;
-  editLogWhen: string;
-  editLogWho: string;
-  editLogWhat: string;
-  editLogChanges: (n: number) => string;
-  saveNamePrompt: string;
-  saveNoChanges: string;
-  saveFailed: (message: string) => string;
-  saveOverwrite: string;
-  saveDownload: string;
-  addRow: string;
-  addRowTooltip: string;
-  addRowTitle: string;
-  addRowKey: string;
-  addRowKeyRequired: string;
-  addRowDuplicate: (key: string) => string;
-  addRowSave: string;
-  rowDelete: string;
-  rowRestore: string;
-  rowDeleteTooltip: string;
-  rowRestoreTooltip: string;
   rowDeletedTip: string;
   originAdded: string;
   originAddedTip: string;
-  orphanedRows: (n: number) => string;
   comment: string;
   copyLabel: string;
   commentOnCategory: string;
@@ -393,89 +326,25 @@ const ja: Messages = {
   aiPromptTitle: "AIプロンプト",
   aiPromptHint: "未反映のレビューから生成したプロンプトです。必要なら編集してコピーし、AIに渡してください。",
   aiPromptHintEdits: "このシート上での変更を、設定ファイルに反映するためのプロンプトです。必要なら編集してコピーし、AIに渡してください。",
-  noEditsToApply: "設定ファイルに反映する変更がありません",
   confirmClearAll: (count) => `全${count}件のレビューを削除しますか？`,
   copyTooltip: "値をコピー",
   reviewTooltip: "値を提案・コメント（ダブルクリックでも開く）",
   cellActions: "セル操作",
   suggest: "提案",
   suggestEdit: "提案を編集",
-  editValue: "編集",
-  editTooltip: "値を変更する（履歴に残ります）",
-  editTitle: "値の変更",
-  editOriginal: "元の値",
-  editHistory: "変更履歴",
-  editNewValue: "新しい値",
-  editSave: "変更する",
-  editUnchanged: "値が変わっていません",
-  editDiscardConfirm: "編集中の内容が保存されずに失われます。閉じますか？",
-  editedBadge: "元の値から変更されています",
-  editAnonymous: "記入者未設定",
-  editSharedNote: "この値は全環境で共有されています。変更はすべての環境に及びます。",
-  editSplitNote: "この環境だけ変更すると、行が環境ごとに分かれます。変更しなかった環境は共通の定義のままです（この環境には対応する設定行がまだありません）。",
-  editUndo: "この変更を取り消す",
-  editConfirmUndo: "直近の変更を取り消しますか？（履歴からも消えます）",
-  docEdit: "この文書を編集",
-  docEditKey: "この文書を編集（本文を選択して e キーでも開きます）",
-  docEditShort: "編集",
-  docRevert: "元の内容に戻す",
-  docPasting: "画像を埋め込んでいます…",
-  docNoSource: "この文書は Markdown の原文を持っていません（編集を有効にする前に生成されたものです）。編集するには生成し直してください。",
-  mdHeldList: "反映依頼",
-  mdHeldNote: "このシートの編集としては反映できない変更です。AI プロンプトに含まれます。",
-  mdHeldTarget: "対象",
-  mdHeldWhat: "内容",
   envManage: "値の列を編集",
   envAdd: "列を追加",
   envName: "列名",
   envRemove: "削除",
-  envRemoveConfirm: (name) => `「${name}」の列を、すべての表から削除します。書かれている値も消えます。よろしいですか？`,
   envRename: "変更",
   envRemoveUnusedConfirm: (name) => `列「${name}」を一覧から削除します。よろしいですか？`,
   envInUse: "この列を使っているシートがあります。各シート見出しの「列」から外してから削除してください。",
-  settingsMenu: "設定",
-  clearEditsMenu: "編集をすべて取り消す…",
-  confirmClearEdits: (count) => `この文書の編集 ${count} 件をすべて取り消し、納品時の内容に戻しますか？（保存するまでファイルは変わりません）`,
   envSheetManage: "このシートで使う列",
-  envSheetManageShort: "列",
   envRemoveFromSheetConfirm: (name) => `このシートのすべての表から「${name}」の列を削除します。書かれている値も消えます。よろしいですか？`,
   envNoneDefined: "値の列がまだ定義されていません。ツールバーの設定から追加してください。",
-  editMenu: (n) => `変更 (${n})`,
-  restoredToast: (n) => `前回このブラウザで作業した、保存されていない変更 ${n} 件を読み込みました`,
-  saveDocument: "保存",
-  saveTooltip: "編集を含めてこのHTMLを書き出す",
-  saveUnsaved: (n) => `未保存の変更が ${n} 件あります。閉じると失われます。`,
-  saveBy: "記入者",
-  saveComment: "変更の理由",
-  saveCommentPlaceholder: "例: 接続数の上限に達したため引き上げ（案件 #123）",
-  saveOptional: "任意",
-  saveCount: (n) => `未保存の変更 ${n} 件`,
-  saveInProgress: "保存中…",
-  editLog: "変更の記録",
-  editLogWhen: "日時",
-  editLogWho: "記入者",
-  editLogWhat: "理由",
-  editLogChanges: (n) => `${n} 件`,
-  saveNamePrompt: "変更の記入者名（履歴に残ります。空欄でも保存できます）",
-  saveNoChanges: "保存していない変更はありません",
-  saveFailed: (message) => `保存できませんでした: ${message}`,
-  saveOverwrite: "上書き保存",
-  saveDownload: "別名で保存（ダウンロード）",
-  addRow: "行を追加",
-  addRowTooltip: "このカテゴリに行を追加する（設定ファイルには反映されません）",
-  addRowTitle: "行の追加",
-  addRowKey: "パラメータ名",
-  addRowKeyRequired: "パラメータ名を入力してください",
-  addRowDuplicate: (key) => `${key} はこのカテゴリに既にあります`,
-  addRowSave: "追加する",
-  rowDelete: "行を消す",
-  rowRestore: "行を戻す",
-  rowDeleteTooltip: "この行に取り消し線を引く（行は残り、いつでも戻せます）",
-  rowRestoreTooltip: "取り消し線を外して元に戻す",
   rowDeletedTip: "この設定はもう使われていないとされた行です。記録として残しています。",
   originAdded: "追加",
   originAddedTip: "この文書で追加された行です。設定ファイルには対応する記述がありません。",
-  orphanedRows: (n) => `追加した行 ${n} 件の置き場所（カテゴリ）が、この版には存在しません。表示されていません。`,
   comment: "コメント",
   copyLabel: "コピー",
   commentOnCategory: "カテゴリにコメント",
@@ -622,89 +491,25 @@ const en: Messages = {
   aiPromptTitle: "AI prompt",
   aiPromptHint: "Generated from the pending reviews. Edit if needed, then copy and hand to an AI.",
   aiPromptHintEdits: "For putting the changes made in this sheet into the config files. Edit if needed, then copy and hand to an AI.",
-  noEditsToApply: "No changes to put into the config files",
   confirmClearAll: (count) => `Delete all ${count} review(s)?`,
   copyTooltip: "Copy value",
   reviewTooltip: "Suggest a value · comment (or double-click)",
   cellActions: "Cell actions",
   suggest: "Suggest",
   suggestEdit: "Edit suggestion",
-  editValue: "Edit",
-  editTooltip: "Change this value (kept in the history)",
-  editTitle: "Change value",
-  editOriginal: "Original",
-  editHistory: "History",
-  editNewValue: "New value",
-  editSave: "Change",
-  editUnchanged: "The value has not changed",
-  editDiscardConfirm: "You have unsaved changes here. Close and lose them?",
-  editedBadge: "Changed from the original",
-  editAnonymous: "no name recorded",
-  editSharedNote: "This value is shared by every environment; changing it changes all of them.",
-  editSplitNote: "Changing only this environment splits the row: the others keep the shared definition, and this one has no config line behind it yet.",
-  editUndo: "Undo this change",
-  editConfirmUndo: "Undo the most recent change? It is removed from the history too.",
-  docEdit: "Edit this document",
-  docEditKey: "Edit this document (or select some text and press e)",
-  docEditShort: "Edit",
-  docRevert: "Restore the original",
-  docPasting: "Embedding the image…",
-  docNoSource: "This document carries no markdown source (it was built before editing was enabled). Regenerate it to edit.",
-  mdHeldList: "Requests",
-  mdHeldNote: "Changes this sheet cannot carry as edits. They travel in the AI prompt.",
-  mdHeldTarget: "Target",
-  mdHeldWhat: "What",
   envManage: "Edit value columns",
   envAdd: "Add a column",
   envName: "Column name",
   envRemove: "Remove",
-  envRemoveConfirm: (name) => `Remove the "${name}" column from every table. The values written in it go too. Continue?`,
   envRename: "Rename",
   envRemoveUnusedConfirm: (name) => `Remove the "${name}" column from the list. Continue?`,
   envInUse: "Sheets still carry this column. Remove it from them first, from each sheet's heading.",
-  settingsMenu: "Settings",
-  clearEditsMenu: "Discard all edits…",
-  confirmClearEdits: (count) => `Discard all ${count} edit(s) and return this document to the text it was delivered with? (The file itself changes only when you save.)`,
   envSheetManage: "Columns on this sheet",
-  envSheetManageShort: "Columns",
   envRemoveFromSheetConfirm: (name) => `Remove the "${name}" column from every table on this sheet. The values written in it go too. Continue?`,
   envNoneDefined: "No value columns are defined yet. Add one from the toolbar settings.",
-  editMenu: (n) => `Changes (${n})`,
-  restoredToast: (n) => `Loaded ${n} unsaved change${n === 1 ? "" : "s"} from a previous session in this browser`,
-  saveDocument: "Save",
-  saveTooltip: "Write this HTML back out, edits included",
-  saveUnsaved: (n) => `${n} unsaved change${n === 1 ? "" : "s"}. Closing now loses them.`,
-  saveBy: "Your name",
-  saveComment: "Why",
-  saveCommentPlaceholder: "e.g. raised after hitting the connection limit (ticket #123)",
-  saveOptional: "optional",
-  saveCount: (n) => `${n} unsaved change${n === 1 ? "" : "s"}`,
-  saveInProgress: "Saving…",
-  editLog: "Change log",
-  editLogWhen: "When",
-  editLogWho: "By",
-  editLogWhat: "Why",
-  editLogChanges: (n) => `${n}`,
-  saveNamePrompt: "Your name, for the history (you can leave this blank)",
-  saveNoChanges: "Nothing to save",
-  saveFailed: (message) => `Could not save: ${message}`,
-  saveOverwrite: "Save over this file",
-  saveDownload: "Save a copy (download)",
-  addRow: "Add row",
-  addRowTooltip: "Add a row to this category (nothing is written to the config files)",
-  addRowTitle: "Add a row",
-  addRowKey: "Parameter name",
-  addRowKeyRequired: "Enter a parameter name",
-  addRowDuplicate: (key) => `${key} is already in this category`,
-  addRowSave: "Add",
-  rowDelete: "Strike out",
-  rowRestore: "Restore",
-  rowDeleteTooltip: "Strike this row through (it stays, and can be restored)",
-  rowRestoreTooltip: "Remove the strike-through and restore the row",
   rowDeletedTip: "Marked as no longer set. Kept on the sheet as a record.",
   originAdded: "Added",
   originAddedTip: "Written in this document. No config file has a line for it.",
-  orphanedRows: (n) => `${n} added row${n === 1 ? " has" : "s have"} no category in this version and ${n === 1 ? "is" : "are"} not shown.`,
   comment: "Comment",
   copyLabel: "Copy",
   commentOnCategory: "Comment on category",
