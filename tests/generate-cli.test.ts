@@ -100,30 +100,6 @@ describe("generate capability flags", () => {
   });
 });
 
-// A document handed over for hand maintenance has no cell to comment on: there
-// is no model behind it, so nothing carries a review target, and a finding
-// written against one would have nowhere to live. What its reader wants to say,
-// they write in the text.
-describe("a document handed over as markdown", () => {
-  it("is editable and offers no review affordance", () => {
-    expect(caps("--full-edit")).toMatchObject({ review: false, edit: true });
-  });
-
-  // …even when the permission set says otherwise: `--allow review` names a
-  // capability this document cannot have, and editing is what it IS.
-  it("stays that way even when review is asked for by name", () => {
-    expect(caps("--full-edit", "--allow", "review")).toMatchObject({ review: false, edit: true });
-  });
-
-  // The prompt is what carries the edited document to whoever applies it, so it
-  // survives review being off — unlike an ordinary sheet, where a prompt with
-  // neither review nor editing behind it would describe a button that cannot
-  // produce anything.
-  it("keeps the prompt", () => {
-    expect(caps("--full-edit")).toMatchObject({ prompt: true });
-  });
-});
-
 // The previewed files are a LENS on the deployed file as it was AT GENERATION.
 // A document maintained by hand keeps its values current and the preview does
 // not, so a delivery that will be edited for a long time may prefer to carry no
@@ -242,17 +218,6 @@ describe("generate --instances", () => {
     const bad = deliver("--instances", "stagng");
     expect(bad.code).not.toBe(0);
     expect(bad.stderr).toContain("this document has local, staging");
-  });
-
-  // The hand-maintained projection is written from the model at generate time,
-  // so it follows — pinned because that markdown IS the deliverable in that
-  // mode, and a column nobody delivered would be a column somebody fills in.
-  it("carries into the markdown a hand-maintained delivery is made of", () => {
-    const some = deliver("--full-edit", "--instances", "staging");
-    expect(some.payload).toContain("staging");
-    expect(some.payload).not.toContain("dev.internal.example");
-    const heads = /\| 設定項目 \|[^\\]*/.exec(some.payload)?.[0] ?? "";
-    expect(heads).not.toContain("local");
   });
 });
 

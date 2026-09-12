@@ -3,7 +3,7 @@
 // A LEAF: it imports nothing of this package, so anything may use it. That is
 // the whole reason it is its own file — the prompt builder, the apply core and
 // the CLI all need to state "what changed in this text", and the alternative
-// (prompt.ts reaching into the full-edit machinery, which reaches back into
+// (prompt.ts reaching into the markdown machinery, which reaches back into
 // edits.ts, which imports prompt.ts) is a cycle.
 //
 // Its own implementation rather than a dependency: this is the one place the

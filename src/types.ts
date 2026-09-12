@@ -381,8 +381,8 @@ export type Sheet = {
 };
 
 export type SheetDocument = {
-  // How the markdown is READ. "prose" (the default, and every document sheet
-  // before full-edit mode existed) is a page somebody wrote: rendered as
+  // How the markdown is READ. "prose" (the default) is a page somebody
+  // wrote: rendered as
   // markdown, `html` carrying the render. "sheet" says this markdown IS a
   // parameter sheet — its tables are the sheet's tables and the viewer lays
   // them out as such, so a delivered document looks like the sheet it replaced

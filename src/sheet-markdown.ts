@@ -22,6 +22,7 @@
 // it requires that nothing a person writes is thrown away.
 
 import type { SheetData, CategoryData, ParamData } from "./prompt.js";
+import type { Sheet } from "./types.js";
 import { pickLang } from "./types.js";
 import type { Lang } from "./html/i18n.js";
 
@@ -125,8 +126,8 @@ const lang = (v: unknown, l: Lang): string => {
   return cell(picked ?? "");
 };
 
-// How the projection is written when the markdown IS the sheet (full-edit mode)
-// rather than an editing surface over a model that is still there.
+// How the projection is written when the markdown IS what a reader holds —
+// a handed-over sheet — rather than a listing beside the model it came from.
 export type ProjectionOptions = {
   // A row inside a block is written under it, indented, and named by its own
   // leaf — the parent/child display a paper parameter sheet has always had, and
@@ -817,4 +818,17 @@ export function parseSheetMarkdown(text: string, instances: string[], l: Lang = 
   }
   flushProse();
   return doc;
+}
+
+// One sheet's rows, as the text. Written with the options a handed-over
+// document needs: the parent/child indent a paper sheet has, and an empty value
+// cell for a row nobody set (see `ProjectionOptions`).
+//
+// The one entry point that takes a model sheet and returns text — everything
+// above it is the projection in pieces, and a caller that assembles them itself
+// would be deciding those two options again, differently.
+export function sheetToMarkdown(sheet: Sheet, lang: Lang): string {
+  return renderSheetMarkdown(
+    toMarkdownSheet(sheet as unknown as SheetData["sheets"][number], lang, { indent: true, markUnset: true })
+  );
 }

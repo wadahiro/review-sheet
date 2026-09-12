@@ -2,7 +2,7 @@
 // out.
 //
 // The difference from `DocumentBody` (markdown rendered as a page) is the whole
-// point of full-edit mode: what the recipient maintains is text, but what they
+// point: what a recipient holds is text, but what they
 // LOOK AT should be the parameter sheet they were given — the same columns in
 // the same order, the same code face on a key, the same indent under a block.
 // A markdown renderer produces a markdown table; this produces the sheet's.
@@ -437,8 +437,8 @@ export function MarkdownSheetBody({
 const rowKey = (address: string): string => address.slice(address.indexOf(" ") + 1);
 
 // Every row's address: the heading path it is under, and the chain of names
-// that leads to it. The same address `full-edit-apply.ts` computes over the
-// model, which is what lets a document row find the row it was written from.
+// that leads to it — which is what lets a document row find the row it was
+// written from.
 export function rowAddresses(rows: { indent: number; cells: string[] }[], path: string[]): string[] {
   const ancestors: string[] = [];
   return rows.map((row) => {

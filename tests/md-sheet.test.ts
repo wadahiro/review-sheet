@@ -21,7 +21,7 @@ import {
   renameEnvironment,
 } from "../src/sheet-markdown";
 import { navAnchorId, paramAnchorId } from "../src/html/anchors";
-import { sheetToMarkdown, toFullEditInput } from "../src/full-edit";
+import { sheetToMarkdown } from "../src/sheet-markdown";
 import { getMessages } from "../src/html/i18n";
 import { setCellToolSetter } from "../src/html/cell-tool";
 import { customStyles } from "../src/html/styles";
@@ -530,41 +530,6 @@ describe("a cell is inline markdown, and nothing else", () => {
     expect(inlineMarkdown("`a<b>`")).toBe("<code>a&lt;b&gt;</code>");
     expect(inlineMarkdown("<script>")).toBe("&lt;script&gt;");
     expect(inlineMarkdown("**強調**")).toBe("<strong>強調</strong>");
-  });
-});
-
-describe("what full-edit mode hands over", () => {
-  it("turns every sheet with rows into markdown, and leaves a document sheet alone", () => {
-    const input = {
-      metadata: { title: "t" },
-      sheets: [
-        SHEET as never,
-        { name: "doc", categories: [], document: { html: "<p>x</p>", markdown: "# doc" } },
-      ],
-    } as unknown as ParameterSheetInput;
-    const out = toFullEditInput(input, "ja");
-    expect(out.sheets[0].document?.mode).toBe("sheet");
-    expect(out.sheets[0].categories).toEqual([]);
-    expect(out.sheets[0].document?.markdown).toContain("`Unit`");
-    // A page that was already prose stays prose.
-    expect(out.sheets[1].document?.mode).toBeUndefined();
-  });
-});
-
-describe("which column is which", () => {
-  it("finds the value columns by name, whatever precedes them", () => {
-    const shape = tableShape(["設定項目", "説明", "デフォルト値", "staging", "production", "備考"], ["staging", "production"]);
-    expect(shape).toEqual({ key: 0, description: 1, default: 2, values: [3, 4], rest: [5] });
-  });
-
-  it("reads a table with no description column", () => {
-    const shape = tableShape(["設定項目", "デフォルト値", "staging"], ["staging"]);
-    expect(shape).toMatchObject({ description: -1, default: 1, values: [2] });
-  });
-
-  it("is unset when every value cell is empty", () => {
-    expect(rowIsUnset(["k", "d", "0", "", ""], [3, 4])).toBe(true);
-    expect(rowIsUnset(["k", "d", "0", "", "1"], [3, 4])).toBe(false);
   });
 });
 

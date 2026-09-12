@@ -5432,9 +5432,9 @@ function App({ data: baseData, artifacts, reviewEnabled, editEnabled, promptEnab
             // what it finds among exactly those (the product default moved
             // under a value nobody set). Reviewing is what diff mode disables;
             // deciding which rows are on screen is not reviewing.
-            // …and in a full-edit document, where reviewing is off by
-            // definition: hiding the rows nobody set is what makes a 1500-row
-            // sheet readable, and it is not a review affordance.
+            // …and in a markdown-backed sheet, where reviewing may be off:
+            // hiding the rows nobody set is what makes a 1500-row sheet
+            // readable, and it is not a review affordance.
             (effReviewEnabled || diffMode || markdownSheets) && html`
             <${ToolbarMenu} label=${activeFilters > 0 ? t.filterMenuCount(activeFilters) : t.filterMenu}
                             active=${activeFilters > 0}
