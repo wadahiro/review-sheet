@@ -4281,9 +4281,12 @@ tr.rs-jump-flash th {
 /* The affordance on a row: a chip in the key cell.
    The markdown projection writes the same affordance as an ordinary LINK,
    because that is what a set handed to somebody with no page has to be — and a
-   link in a key cell is never anything else. Styled here rather than given a
-   class of its own, so the two readings of one document cannot drift apart in
-   the one place the reader compares them. */
+   link in a key cell is never anything else: the modelled sheet's own key cell
+   renders a code span, its sublines and this button, and no anchor at all. If
+   one is ever added there, it will come out as a pill until this says which
+   links it meant. Styled here rather than given a class of its own, so the two
+   readings of one document cannot drift apart in the one place the reader
+   compares them. */
 .rs-col-key a,
 .rs-artifact-chip {
   font: inherit;

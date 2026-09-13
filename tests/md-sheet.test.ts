@@ -525,6 +525,90 @@ describe("what a value cell says about itself", () => {
   });
 });
 
+// The link a delivered set writes under a row's key, as the page reads it.
+//
+// It shares the cell with the row's IDENTITY, which is the whole hazard: every
+// reader of that cell has to split it first, and the copy button is the one
+// that shows up in a reviewer's clipboard rather than in a diff.
+describe("the address under a row's key", () => {
+  const md = [
+    "# os",
+    "",
+    "## httpd.conf",
+    "",
+    "| 設定項目 | デフォルト値 | staging | production |",
+    "| --- | --- | --- | --- |",
+    "| `Listen`<br>[プレビュー](artifacts/staging/httpd.conf#L34) |  | 80 | 8080 |",
+    "",
+  ].join("\n");
+
+  const mount = (): HTMLElement => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(
+      h(MarkdownSheetBody, {
+        markdown: md,
+        instances: ["staging", "production"],
+        lang: "ja",
+        sheetIndex: 0,
+        hiddenInstances: new Set<string>(),
+        showDefaults: true,
+        t: getMessages("ja"),
+      }),
+      host
+    );
+    return host;
+  };
+
+  it("shows the key and, under it, a link to the file", () => {
+    const cell = mount().querySelector("td.rs-col-key")!;
+    expect(cell.querySelector("code")!.textContent).toBe("Listen");
+    const a = cell.querySelector("a")!;
+    expect(a.textContent).toBe("プレビュー");
+    // Relative, and left to the page's own delegated handler to open — the
+    // address only reaches the panel if it is still there to be compared.
+    expect(a.getAttribute("href")).toBe("artifacts/staging/httpd.conf#L34");
+  });
+
+  // What the cell SAYS is the key. A copied key with a markdown link stuck to
+  // the end of it is not a key.
+  it("offers the key to be copied, and not the address with it", () => {
+    const cell = mount().querySelector("td.rs-col-key")! as HTMLElement;
+    let shown: unknown = null;
+    setCellToolSetter((c) => (shown = c));
+    cell.dispatchEvent(new Event("mouseenter", { bubbles: false }));
+    setCellToolSetter(null);
+    expect(shown).toMatchObject({ effectiveValue: "Listen" });
+  });
+
+  // The row is the row the model wrote, whatever is under its key — the
+  // document's anchors and its change set are both built from this name.
+  it("names the row by its key alone", () => {
+    expect(mount().querySelector("tr.rs-param-row")!.id).toBe(paramAnchorId(0, "httpd.conf", "Listen"));
+  });
+
+  // A cell somebody typed into, so the address no longer stands alone. It is
+  // not an address any more and is not read as one — the whole cell is the
+  // key, which is what a document nobody generated has always meant.
+  it("reads a cell with writing after the link as all key", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(
+      h(MarkdownSheetBody, {
+        markdown: md.replace("#L34)", "#L34) など"),
+        instances: ["staging", "production"],
+        lang: "ja",
+        sheetIndex: 0,
+        hiddenInstances: new Set<string>(),
+        showDefaults: true,
+        t: getMessages("ja"),
+      }),
+      host
+    );
+    expect(host.querySelectorAll("tr.rs-param-row")).toHaveLength(1);
+  });
+});
+
 describe("a cell is inline markdown, and nothing else", () => {
   it("renders a code span and escapes the rest", () => {
     expect(inlineMarkdown("`a<b>`")).toBe("<code>a&lt;b&gt;</code>");

@@ -226,7 +226,13 @@ function MarkdownTable({
     return html`
       <tr key=${n} class="rs-param-row" id=${paramAnchorId(sheetIndex, path.join("/"), rowKey(address))}>
         ${columns.map((c) => {
-          const text = plain(row.cells[c.at] ?? "");
+          // The key cell carries the row's identity AND, under it, the way into
+          // the file the row is a line of — so what the cell SAYS is the key
+          // alone. Split before it is read, exactly as the address above is:
+          // this is what the copy button yields, and a copied key with a
+          // markdown link stuck to the end of it is not a key.
+          const raw = row.cells[c.at] ?? "";
+          const text = plain(c.cls === "rs-col-key" ? splitKeyCell(raw).key : raw);
           // The three statements the sheet's own value cells make, read off the
           // text: nothing is set here, it is set to what the default already
           // says, or it is a value of this project's own.

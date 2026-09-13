@@ -551,7 +551,13 @@ function splitCells(line: string): string[] {
 // Anchored on the closing backtick, which is what the key is always written
 // inside: a cell that does not end in a complete link after one is left whole,
 // so a hand-written key holding brackets is still just a key.
-const PREVIEW_LINK = /`(?:<br\s*\/?>\[[^\]]*\]\(([^)]*)\))\s*$/i;
+//
+// The break between the two is a `<br>` in the TEXT and a newline once the cell
+// has been through `unescapeCell` — which `parseMarkdownBlocks` does on the way
+// in, so the viewer reads the second form and the change set reads the first.
+// Both are the same cell, so both are matched here; a splitter that knew only
+// the written form failed silently in exactly one of its two callers.
+const PREVIEW_LINK = /`(?:(?:<br\s*\/?>|\r?\n)\[[^\]]*\]\(([^)]*)\))\s*$/i;
 
 export function splitKeyCell(cell: string): { key: string; preview?: string } {
   const m = PREVIEW_LINK.exec(cell);
