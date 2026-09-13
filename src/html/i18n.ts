@@ -50,6 +50,8 @@ type Messages = {
   saveSingle: string;
   saveSingleTip: string;
   dropNoSheets: string;
+  // What the browser said when it refused to read the dropped folder.
+  dropFailed: (reason: string) => string;
   droppedFolder: (sheets: number) => string;
   navSearchTip: string;
   navSearchPlaceholder: string;
@@ -265,6 +267,9 @@ const ja: Messages = {
   saveSingle: "1ファイルで保存",
   saveSingleTip: "このフォルダごと1枚のHTMLに書き出す。次からはそれを開くだけで、ドラッグは要りません",
   dropNoSheets: "この中にシートの Markdown が見つかりませんでした。generate --format md が書き出したフォルダを入れてください。",
+  dropFailed: (reason) =>
+    `フォルダを読み取れませんでした（${reason}）。\n\n` +
+    "ブラウザがこのフォルダの読み取りを拒否しています。zip を展開したフォルダで試すか、別のブラウザで開いてみてください。",
   droppedFolder: (sheets: number) => `表示中: 落とされたフォルダ（${sheets} シート）。このファイル自身の内容ではありません`,
   navSearchTip: "検索 — 見出し・設定項目・コメント (Cmd/Ctrl+K)",
   navSearchPlaceholder: "見出し・設定項目・コメントを検索…",
@@ -429,6 +434,9 @@ const en: Messages = {
   saveSingle: "Save as one file",
   saveSingleTip: "Write this folder into one HTML. Open that from then on — no folder, no dragging",
   dropNoSheets: "No sheet markdown in there. Drop the folder that `generate --format md` wrote.",
+  dropFailed: (reason) =>
+    `The folder could not be read (${reason}).\n\n` +
+    "The browser refused to read it. Try the folder from the unzipped archive, or open this page in another browser.",
   droppedFolder: (sheets: number) => `Showing a dropped folder (${sheets} sheets) — not what this file was built from`,
   navSearchTip: "Search — headings, parameters, comments (Cmd/Ctrl+K)",
   navSearchPlaceholder: "Search headings, parameters, comments…",

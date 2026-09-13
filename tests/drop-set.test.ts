@@ -93,3 +93,55 @@ describe("reading a dropped folder", () => {
     expect(files.map((f) => f.path)).toEqual(["a.md", "b.txt"]);
   });
 });
+
+// A failure has to say WHICH file, and reach the caller at all.
+//
+// The entry API rejects with a bare DOMException naming nothing, and the drop
+// handler had no catch — so a refusal surfaced as an unhandled promise in a
+// devtools tab and as NOTHING on the page. The reader drags the folder, it does
+// not move, and the only thing that knows why is somewhere they are not looking.
+describe("a folder the browser refuses", () => {
+  const failing = (name: string, err: Error): unknown => ({
+    isFile: true,
+    isDirectory: false,
+    name,
+    file: (_cb: (f: File) => void, no: (e: unknown) => void) => no(err),
+  });
+
+  it("names the file it could not read", async () => {
+    const bad = new Error("A URI supplied to the API was malformed");
+    bad.name = "EncodingError";
+    const dir = {
+      isFile: false,
+      isDirectory: true,
+      name: "sheet",
+      createReader: () => {
+        let done = false;
+        return {
+          readEntries: (cb: (es: unknown[]) => void) => {
+            // Marked BEFORE the callback: the walk asks again from inside it,
+            // and a flag set afterwards never gets there.
+            const first = !done;
+            done = true;
+            cb(first ? [failing("Keycloak (レルム).md", bad)] : []);
+          },
+        };
+      },
+    };
+    const drop = { items: [{ kind: "file", webkitGetAsEntry: () => dir }], files: [] } as unknown as DataTransfer;
+    await expect(filesFromDrop(drop)).rejects.toThrow(/Keycloak \(レルム\)\.md: EncodingError/);
+  });
+
+  it("names the directory it could not list", async () => {
+    const bad = new Error("refused");
+    bad.name = "SecurityError";
+    const dir = {
+      isFile: false,
+      isDirectory: true,
+      name: "詳細設計",
+      createReader: () => ({ readEntries: (_cb: unknown, no: (e: unknown) => void) => no(bad) }),
+    };
+    const drop = { items: [{ kind: "file", webkitGetAsEntry: () => dir }], files: [] } as unknown as DataTransfer;
+    await expect(filesFromDrop(drop)).rejects.toThrow(/詳細設計\/: SecurityError/);
+  });
+});

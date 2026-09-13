@@ -4823,7 +4823,18 @@ function init() {
     const dt = e.dataTransfer;
     if (dt === null || ![...dt.items].some((i) => i.kind === "file")) return;
     e.preventDefault();
-    void filesFromDrop(dt).then((files) => {
+    // A rejection here used to surface as an unhandled promise in the console
+    // and as NOTHING on screen: the reader drags a folder, the page does not
+    // move, and the only thing that knows why is a devtools tab they are not
+    // looking at. Reported on the page, naming the browser's own message —
+    // this is the one gesture the whole markdown delivery rests on, and it runs
+    // under `file://`, where the entry API has its own reasons to refuse.
+    void filesFromDrop(dt)
+      .catch((err: unknown) => {
+        alert(getMessages(lang).dropFailed(err instanceof Error ? `${err.name}: ${err.message}` : String(err)));
+        return [] as Awaited<ReturnType<typeof filesFromDrop>>;
+      })
+      .then((files) => {
       if (files.length === 0) {
         alert(getMessages(lang).dropNoSheets);
         return;

@@ -22,7 +22,18 @@ type Entry = {
   createReader: () => { readEntries: (cb: (es: Entry[]) => void, err: (e: unknown) => void) => void };
 };
 
-const readFile = (e: Entry): Promise<File> => new Promise((ok, no) => e.file(ok, no));
+// The entry API rejects with a bare DOMException that names nothing, so a
+// failure reads as "EncodingError" and the reader is left guessing which of
+// fifty-nine files the browser refused — or whether it refused all of them.
+// The path is attached here, where it is known.
+const readFile = (e: Entry, at: string): Promise<File> =>
+  new Promise((ok, no) =>
+    e.file(ok, (err: unknown) => {
+      const name = err instanceof Error ? err.name : "Error";
+      const message = err instanceof Error ? err.message : String(err);
+      no(new Error(`${at}: ${name}: ${message}`));
+    })
+  );
 
 // A directory reader hands back a BATCH and has to be asked again until it
 // hands back none — a hundred entries at a time in Chrome. Reading once looks
@@ -36,7 +47,10 @@ const readAll = (e: Entry): Promise<Entry[]> =>
         if (es.length === 0) return ok(out);
         out.push(...es);
         step();
-      }, no);
+      }, (err: unknown) => {
+        const name = err instanceof Error ? err.name : "Error";
+        no(new Error(`${e.name}/: ${name}: ${err instanceof Error ? err.message : String(err)}`));
+      });
     step();
   });
 
@@ -48,7 +62,7 @@ async function walk(entry: Entry, at: string, out: DroppedFile[]): Promise<void>
     // EMBEDS the set has to be able to open them — a link into the folder
     // resolves by itself only while the folder is beside the page.
     if (here.endsWith(".html")) return;
-    out.push({ path: here, text: await (await readFile(entry)).text() });
+    out.push({ path: here, text: await (await readFile(entry, here)).text() });
     return;
   }
   if (!entry.isDirectory) return;
