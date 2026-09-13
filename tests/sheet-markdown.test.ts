@@ -12,7 +12,7 @@
 // behaviour, in cases small enough to read.
 
 import { describe, it, expect } from "bun:test";
-import { toMarkdownSheet, renderSheetMarkdown, parseSheetMarkdown } from "../src/sheet-markdown";
+import { toMarkdownSheet, renderSheetMarkdown, parseSheetMarkdown, splitKeyCell, tableShape, declaredInstances } from "../src/sheet-markdown";
 import type { SheetData } from "../src/prompt";
 
 const sheetOf = (extra: Record<string, unknown> = {}): SheetData["sheets"][number] =>
@@ -133,6 +133,64 @@ describe("a sheet as markdown", () => {
     const { doc, back } = roundTrip(padded);
     expect(doc.sections[0].rows[0].description).toBe("説明");
     expect(back.sections[0].rows[0].description).toBe("説明");
+  });
+});
+
+// The way into the file a row is a line of, written under the row's key.
+//
+// It shares a cell with the identity, which is the whole hazard: an address
+// left stuck to the key would make every row a row the model does not have, and
+// a change set that reports an untouched sheet rewritten is one nobody reads.
+describe("the address under a row's key", () => {
+  const withPreview = (dest: (key: string) => string | undefined) =>
+    renderSheetMarkdown(toMarkdownSheet(sheetOf(), "ja", { preview: (p) => dest(p.key) }));
+
+  it("writes one word, the same on every row, and the address behind it", () => {
+    const text = withPreview((k) => (k === "Listen" ? "artifacts/httpd.conf#L12" : undefined));
+    expect(text).toContain("`Listen`<br>[プレビュー](artifacts/httpd.conf#L12)");
+    // A row no file has a line for gets nothing rather than an address that
+    // opens nothing — the rule the sheet's own affordance already follows.
+    expect(text).toContain("`ServerTokens` |");
+  });
+
+  it("adds no column: the table is the one a set without addresses has", () => {
+    const heads = (text: string): string[] => text.split("\n").find((l) => l.startsWith("| 設定項目"))!.split("|").map((h) => h.trim());
+    expect(heads(withPreview(() => "artifacts/x#L1"))).toEqual(heads(renderSheetMarkdown(toMarkdownSheet(sheetOf(), "ja"))));
+  });
+
+  it("round-trips: the key read back is the key, not the key and its address", () => {
+    const doc = toMarkdownSheet(sheetOf(), "ja", { preview: () => "artifacts/httpd.conf#L12" });
+    const text = renderSheetMarkdown(doc);
+    const back = parseSheetMarkdown(text, doc.instances);
+    expect(back.sections[0].rows.map((r) => r.key)).toEqual(["Listen", "ServerTokens"]);
+  });
+
+  it("leaves a key that merely looks like one whole", () => {
+    // Anchored on the closing backtick and a COMPLETE link after it. A key
+    // holding brackets of its own is still just a key.
+    expect(splitKeyCell("`attributes[\"a.b\"]`")).toEqual({ key: '`attributes["a.b"]`' });
+    expect(splitKeyCell("`k`<br>[プレビュー](a/b#L3)")).toEqual({ key: "`k`", preview: "a/b#L3" });
+    expect(splitKeyCell("`k`<br>[プレビュー](a/b")).toEqual({ key: "`k`<br>[プレビュー](a/b" });
+  });
+
+  // A header this projection wrote once and writes no more.
+  //
+  // A document's environments are read off its own headers, and a header this
+  // projection cannot place is taken for an environment — so a retired one
+  // forgotten here would give every already-delivered set an axis nobody
+  // declared, on the next reading of it, from a change that was only ever about
+  // what to stop writing.
+  it("still recognises the column it used to write", () => {
+    const delivered = [
+      "| 設定項目 | 説明 | デフォルト値 | staging | production | 定義場所 |",
+      "| --- | --- | --- | --- | --- | --- |",
+      "| `Listen` | p | 80 | 80 | 8080 | [main.yml:3](../main.yml#L3) |",
+      "",
+    ].join("\n");
+    expect(declaredInstances(delivered)).toEqual(["staging", "production"]);
+    const shape = tableShape(delivered.split("\n")[0].split("|").slice(1, -1).map((h) => h.trim()), [], "ja");
+    expect(shape.values).toEqual([3, 4]);
+    expect(shape.rest).toEqual([5]);
   });
 });
 

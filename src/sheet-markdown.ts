@@ -50,12 +50,18 @@ export type MarkdownRow = {
   default: string;
   description: string;
   remarks: string;
-  // WHERE the value is written, as the text a reader follows — a relative link
-  // to the real configuration file, or nothing. Written by the CALLER
-  // (`ProjectionOptions.source`), because how far it is from this document to
+  // The way into the file this row is a LINE OF: a relative address, with the
+  // line as its fragment, or nothing. Written by the CALLER
+  // (`ProjectionOptions.preview`), because how far it is from this document to
   // that file is a fact about where the document was put, which the projection
-  // does not know. Last column, so a table without it is the same table.
-  source?: string;
+  // does not know — and the projection turns it into the link, so the words on
+  // it are the same on every row of every document.
+  //
+  // It rides in the KEY cell rather than a column of its own. A column is a
+  // question asked of every row, and this is not one: it is the same affordance
+  // the sheet's own viewer puts under a row's key, and putting it anywhere else
+  // would make the two readings of one document look like two documents.
+  preview?: string;
 };
 
 // A heading and the rows under it. The heading path IS the category path, so
@@ -151,13 +157,18 @@ export type ProjectionOptions = {
   // it is what makes "hide the rows nobody set" a rule about the TEXT — which
   // is all a document has once the model is gone.
   markUnset?: boolean;
-  // The address column, as a function of the row: the caller decides what a
-  // link from THIS document to that file looks like, and returning undefined
-  // leaves the column out. This is the half of the projection that makes a
-  // handed-over markdown set navigable — a reader (or the AI they hand it to)
-  // follows the link to the line and edits the configuration, rather than
-  // editing the sheet and hoping somebody applies it.
-  source?: (p: ParamData) => string | undefined;
+  // Where the file this row is a line of sits, relative to THIS document, with
+  // the line as a `#L<n>` fragment — or undefined for a row no file has a line
+  // for, which gets nothing rather than an address that opens nothing. The
+  // category path comes with it because which of a sheet's files a row belongs
+  // to is answered by its outermost category (`artifact-index.ts`).
+  //
+  // This is the half of the projection that makes a handed-over set navigable:
+  // the reader, or the assistant they hand it to, opens the deployed file at
+  // the line and sees the setting in its own context — the `{% if %}` around
+  // it, the block it is in — which is what a value on its own cannot be judged
+  // against.
+  preview?: (p: ParamData, categoryPath: string[]) => string | undefined;
 };
 
 const INDENT = "  ";
@@ -174,7 +185,7 @@ function leafKey(p: ParamData): string {
 
 const unset = (p: ParamData): boolean => p.origin === "default" || p.origin === "baseline";
 
-function rowOf(p: ParamData, instances: string[], l: Lang, opts: ProjectionOptions = {}): MarkdownRow {
+function rowOf(p: ParamData, instances: string[], l: Lang, path: string[], opts: ProjectionOptions = {}): MarkdownRow {
   const values: Record<string, string> = {};
   const shared = !(p.instances && p.instances.length > 0);
   const cols = instances.length > 0 ? instances : [""];
@@ -198,7 +209,7 @@ function rowOf(p: ParamData, instances: string[], l: Lang, opts: ProjectionOptio
     default: cell(applies ?? ""),
     description: lang(p.description, l),
     remarks: lang(p.remarks, l),
-    ...(opts.source === undefined ? {} : { source: cell(opts.source(p) ?? "") }),
+    ...(opts.preview === undefined ? {} : { preview: cell(opts.preview(p, path) ?? "") }),
   };
 }
 
@@ -213,9 +224,9 @@ function rowOf(p: ParamData, instances: string[], l: Lang, opts: ProjectionOptio
 //
 // They are not rows: no value, no description, nothing keyed by them. They
 // appear and disappear with their contents, here as on the sheet.
-function rowsOf(params: ParamData[], instances: string[], l: Lang, opts: ProjectionOptions): MarkdownRow[] {
+function rowsOf(params: ParamData[], instances: string[], l: Lang, path: string[], opts: ProjectionOptions): MarkdownRow[] {
   const out: MarkdownRow[] = [];
-  if (opts.indent !== true) return params.map((p) => rowOf(p, instances, l, opts));
+  if (opts.indent !== true) return params.map((p) => rowOf(p, instances, l, path, opts));
   const cols = instances.length > 0 ? instances : [""];
   const blank = Object.fromEntries(cols.map((c) => [c, ""]));
   const drawn = new Set<string>();
@@ -238,7 +249,7 @@ function rowsOf(params: ParamData[], instances: string[], l: Lang, opts: Project
       });
     });
     if (p.container !== undefined) drawn.add(p.key);
-    out.push(rowOf(p, instances, l, opts));
+    out.push(rowOf(p, instances, l, path, opts));
   }
   return out;
 }
@@ -264,7 +275,7 @@ export function toMarkdownSheet(
       // reading the document back cannot recover which level it was on.
       sections.push({
         path: here,
-        rows: rowsOf(c.params ?? [], instances, l, opts),
+        rows: rowsOf(c.params ?? [], instances, l, here, opts),
         // The section's own paragraph, which is editable prose like a remark —
         // so it round-trips through this document rather than reading as
         // something the reviewer just wrote.
@@ -290,19 +301,43 @@ function valueColumns(doc: MarkdownSheet): string[] {
 // (see `parseSheetMarkdown`), so a reviewer may rename a column, translate the
 // row, or leave it as it is, and the document still reads.
 const HEAD_BY_LANG = {
-  ja: { key: "設定項目", value: "設定値", default: "デフォルト値", description: "説明", remarks: "備考", source: "定義場所" },
-  en: { key: "Parameter", value: "Value", default: "Default", description: "Description", remarks: "Remarks", source: "Written in" },
+  ja: { key: "設定項目", value: "設定値", default: "デフォルト値", description: "説明", remarks: "備考" },
+  en: { key: "Parameter", value: "Value", default: "Default", description: "Description", remarks: "Remarks" },
 } as const;
+
+// A header this projection USED to write and never writes again.
+//
+// Recognised for as long as documents carrying it exist. A column whose header
+// this document cannot place is read as an ENVIRONMENT (`tableShape`), so
+// forgetting one would turn every already-delivered set's retired column into a
+// bogus environment on the next reading — the document would grow an axis
+// nobody declared, from a change that was only ever about what to stop writing.
+//
+// 定義場所 / "Written in" was where the value is written in the REPOSITORY. It
+// is gone because neither reader used it: the recipient has no repository for
+// the link to resolve in, and whoever does has the AI prompt, which groups
+// every change by `## File:` already. What a row points at now is the file the
+// value LANDS in, which is what the sheet is about.
+const RETIRED_HEADS: readonly string[] = ["定義場所", "Written in"];
+
+// The one word the address wears, on every row of every sheet.
+//
+// Uniform, deliberately, and not the file name: the file is named by the
+// heading the rows sit under, and a row-by-row `httpd.conf:34` asks the reader
+// to work out what it is each time — directly after a column of repository
+// addresses was removed, which is the reading it would invite. One word learnt
+// once is the whole affordance. The same word the viewer's own button carries
+// (`i18n.ts`'s `artifactTitle`), because they are the same thing.
+const PREVIEW_BY_LANG = { ja: "プレビュー", en: "Preview" } as const;
 
 // The columns, in the order the SHEET puts them — key, description, default,
 // then one per environment, then remarks (`leadingLines` in html/app.ts). Not an
 // order of this projection's own: a reader who has the sheet in front of them
 // and the same sheet as markdown must not have to re-learn where to look.
-type MarkdownColumns = { description: boolean; remarks: boolean; source: boolean };
+type MarkdownColumns = { description: boolean; remarks: boolean };
 const columnsOf = (doc: MarkdownSheet): MarkdownColumns => ({
   description: doc.sections.some((s) => s.rows.some((r) => r.description !== "")),
   remarks: doc.sections.some((s) => s.rows.some((r) => r.remarks !== "")),
-  source: doc.sections.some((s) => s.rows.some((r) => (r.source ?? "") !== "")),
 });
 
 // Which columns of a document are environments.
@@ -415,6 +450,7 @@ function editTables(
 
 export function renderSheetMarkdown(doc: MarkdownSheet): string {
   const HEAD = HEAD_BY_LANG[doc.lang] ?? HEAD_BY_LANG.ja;
+  const PREVIEW = PREVIEW_BY_LANG[doc.lang] ?? PREVIEW_BY_LANG.ja;
   const cols = valueColumns(doc);
   // A column nobody on this sheet has anything for is not written at all — the
   // sheet itself drops them (`descPresent`/`remarksPresent`), and a document
@@ -438,7 +474,6 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
       HEAD.default,
       ...cols.map((c) => c || HEAD.value),
       ...(shown.remarks ? [HEAD.remarks] : []),
-      ...(shown.source ? [HEAD.source] : []),
     ];
     out.push(`| ${header.join(" | ")} |`);
     out.push(`| ${header.map(() => "---").join(" | ")} |`);
@@ -446,17 +481,21 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
       // The indent goes OUTSIDE the code span: inside it, it is text — and the
       // whole point is that a person can add or remove it with the space bar.
       const indent = /^ */.exec(row.key)![0];
+      // The address goes UNDER the key, in the same cell — the place the
+      // sheet's own viewer puts it. NOT escaped as a cell: this is a link, and
+      // escaping it would put the brackets on the page instead of the address
+      // behind them. A `|` in a path would end the cell, so the one character a
+      // table cannot hold is the one thing removed.
+      const address =
+        (row.preview ?? "") === ""
+          ? ""
+          : `<br>[${PREVIEW}](${(row.preview ?? "").replace(/\|/g, "\\|")})`;
       const cells = [
-        `${indent}\`${escapeCell(row.key.slice(indent.length))}\``,
+        `${indent}\`${escapeCell(row.key.slice(indent.length))}\`${address}`,
         ...(shown.description ? [escapeCell(row.description)] : []),
         escapeCell(row.default),
         ...cols.map((c) => escapeCell(row.values[c] ?? "")),
         ...(shown.remarks ? [escapeCell(row.remarks)] : []),
-        // NOT escaped as a cell: this is a markdown link the caller composed,
-        // and escaping it would put the brackets on the page instead of the
-        // address behind them. A `|` in a path would break the row — so the
-        // one character a table cannot hold is the one thing removed.
-        ...(shown.source ? [(row.source ?? "").replace(/\|/g, "\\|")] : []),
       ];
       out.push(`| ${cells.join(" | ")} |`);
     }
@@ -500,9 +539,30 @@ function splitCells(line: string): string[] {
   return cells.map((c, i) => (i === 0 ? c.replace(/^ /, "").replace(/\s+$/, "") : c.trim()));
 }
 
+// A key cell holds two things: the row's identity, and — where this document
+// carries the file the row is a line of — the way into it (`MarkdownRow.preview`).
+//
+// Split before EITHER is read. The key is the row's identity, so an address
+// left stuck to it would make every row a row the model does not have, and the
+// change set would report the whole sheet rewritten. Every reader of the cell
+// goes through here, including the viewer's (`html/md-sheet.ts`), so there is
+// one answer to "what is this row called" rather than one per reader.
+//
+// Anchored on the closing backtick, which is what the key is always written
+// inside: a cell that does not end in a complete link after one is left whole,
+// so a hand-written key holding brackets is still just a key.
+const PREVIEW_LINK = /`(?:<br\s*\/?>\[[^\]]*\]\(([^)]*)\))\s*$/i;
+
+export function splitKeyCell(cell: string): { key: string; preview?: string } {
+  const m = PREVIEW_LINK.exec(cell);
+  if (m === null) return { key: cell };
+  return { key: `${cell.slice(0, m.index)}\``, preview: m[1] };
+}
+
 const stripKey = (cell: string): string => {
   const indent = /^ */.exec(cell)![0];
-  return indent + unescapeCell(cell.slice(indent.length).trim().replace(/^`(.*)`$/s, "$1"));
+  const { key } = splitKeyCell(cell.slice(indent.length).trim());
+  return indent + unescapeCell(key.replace(/^`(.*)`$/s, "$1"));
 };
 
 // A row nobody has set: every value cell empty, the default column carrying
@@ -578,7 +638,7 @@ export function markdownToCategories(text: string, instances: string[], l: Lang 
     // exists.
     const shown = visibleRows(block.rows, shape.values, false);
     for (const [n, row] of block.rows.entries()) {
-      const name = (row.cells[0] ?? "").trim().replace(/^`(.*)`$/s, "$1").trim();
+      const name = splitKeyCell((row.cells[0] ?? "").trim()).key.replace(/^`(.*)`$/s, "$1").trim();
       chain.length = Math.min(row.indent, chain.length);
       chain[row.indent] = name;
       const values = shape.values.map((n) => (row.cells[n] ?? "").trim());
@@ -699,7 +759,9 @@ export type TableShape = { key: 0; description: number; default: number; values:
 // are how a column added beside the values is told from a column added after
 // them: everything in the value block that is not one of these is a value.
 const DOC_HEADS: ReadonlySet<string> = new Set<string>(
-  [...Object.values(HEAD_BY_LANG.ja), ...Object.values(HEAD_BY_LANG.en)].filter((h) => h !== HEAD_BY_LANG.ja.value && h !== HEAD_BY_LANG.en.value)
+  [...Object.values(HEAD_BY_LANG.ja), ...Object.values(HEAD_BY_LANG.en), ...RETIRED_HEADS].filter(
+    (h) => h !== HEAD_BY_LANG.ja.value && h !== HEAD_BY_LANG.en.value
+  )
 );
 
 // Which columns of ONE table are environments.
@@ -857,13 +919,13 @@ export function parseSheetMarkdown(text: string, instances: string[], l: Lang = 
 export function sheetToMarkdown(
   sheet: Sheet,
   lang: Lang,
-  source?: (p: ParamData) => string | undefined,
+  preview?: (p: ParamData, categoryPath: string[]) => string | undefined,
   title?: string
 ): string {
   const doc = toMarkdownSheet(sheet as unknown as SheetData["sheets"][number], lang, {
     indent: true,
     markUnset: true,
-    ...(source === undefined ? {} : { source }),
+    ...(preview === undefined ? {} : { preview }),
   });
   return renderSheetMarkdown(title === undefined || title === doc.sheet ? doc : { ...doc, title });
 }

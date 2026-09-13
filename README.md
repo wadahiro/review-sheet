@@ -13,8 +13,8 @@ collected into an AI prompt instead.
 - Two shapes, one model. **HTML** for reading and reviewing: one self-contained
   file, no server, no runtime dependencies. **Markdown** (`--format md`) for
   handing over: one file per sheet, the chapter tree as directories, every row
-  linked to the line it is written at — the shape a recipient maintains with an
-  assistant, and the one a repository diffs.
+  linked to the line of the deployed file it is written on — the shape a
+  recipient maintains with an assistant, and the one a repository diffs.
 - Reviewers propose values and leave comments, then export their feedback as
   `review.json`.
 - `apply` writes the approved value changes back to your config files, verified
@@ -934,9 +934,14 @@ sheet/
   詳細設計/SSO サーバ/evidence/…         what a host was found holding
 ```
 
-Every row carries the address it is written at, as a link — so a reader, or the
-assistant they hand the file to, follows it to the configuration file rather
-than editing the sheet and hoping somebody applies it.
+Under its key, every row that has one carries a **プレビュー** link to the file
+it is a line of, at that line — the same affordance the HTML puts there, and the
+reason the files travel with the sheet. A value is judged by what surrounds it:
+the `<IfModule>` it sits in, the `{% if %}` that decides whether it is there at
+all. The link opens the deployed file, never the repository line the value is
+written on — a recipient has no checkout for that to resolve in, and whoever
+does has `review-sheet` itself, whose AI prompt already groups every change by
+the file to edit.
 
 A delivery is TWO things with one role each — `viewer.html`, which you open,
 and `sheet/`, which you drag onto it once you have edited something. Dragging is

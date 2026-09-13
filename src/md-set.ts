@@ -23,10 +23,17 @@ import { sheetToMarkdown } from "./sheet-markdown.js";
 export type MarkdownFile = { path: string; text: string };
 
 export type MarkdownSetOptions = {
-  // The address column: where each row is written, as a link from the file the
-  // row is in. Given the sheet's own path so the caller does the relative
-  // arithmetic once per sheet; omit it and no document carries the column.
-  source?: (sheetPath: string) => ((p: ParamData) => string | undefined) | undefined;
+  // The way into the file each row is a LINE OF, as an address relative to the
+  // sheet the row is in. Given the SHEET, not its path: which of a sheet's
+  // files a row belongs to is answered per sheet and per category
+  // (`artifact-index.ts`), and the documents this set carries are already
+  // written relative to the sheet's own directory — so there is no relative
+  // arithmetic left for the caller to do, only the lookup.
+  //
+  // Omit it and no row carries an address.
+  preview?: (
+    sheet: SheetData["sheets"][number]
+  ) => ((p: ParamData, categoryPath: string[]) => string | undefined) | undefined;
   // What the model was when this set was written. Carried in the INDEX and
   // nowhere else: it identifies the set, and a stamp on every file is a stamp
   // to forget on one of them.
@@ -136,7 +143,7 @@ export function toMarkdownSet(
       problems.push(`"${sheet.name}" and "${clash}" both spell ${path} — the second is written as ${finalPath}`);
     }
     taken.set(path, sheet.name);
-    const body = sheetToMarkdown(sheet as never, lang, opts.source?.(finalPath), sheet.display ?? sheet.name);
+    const body = sheetToMarkdown(sheet as never, lang, opts.preview?.(sheet), sheet.display ?? sheet.name);
     const mine = (opts.documents ?? []).filter((d) => d.sheet === sheet.name);
     sheets.push({ path: finalPath, text: withDocuments(body, finalPath, mine, lang) });
     const under = dir.join("/");

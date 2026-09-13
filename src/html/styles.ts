@@ -4278,7 +4278,13 @@ tr.rs-jump-flash th {
   color: var(--rs-accent-border);
 }
 
-/* The affordance on a row: a chip in the key cell. */
+/* The affordance on a row: a chip in the key cell.
+   The markdown projection writes the same affordance as an ordinary LINK,
+   because that is what a set handed to somebody with no page has to be — and a
+   link in a key cell is never anything else. Styled here rather than given a
+   class of its own, so the two readings of one document cannot drift apart in
+   the one place the reader compares them. */
+.rs-col-key a,
 .rs-artifact-chip {
   font: inherit;
   font-size: 0.68rem;
@@ -4290,6 +4296,13 @@ tr.rs-jump-flash th {
   cursor: pointer;
 }
 
+.rs-col-key a {
+  text-decoration: none;
+  display: inline-block;
+  margin-top: 2px;
+}
+
+.rs-col-key a:hover,
 .rs-artifact-chip:hover {
   border-color: var(--rs-primary);
   color: var(--rs-primary);
@@ -4592,6 +4605,7 @@ tr.rs-jump-flash th {
 /* Print is the sheet, full stop. */
 @media print {
   .rs-artifact-panel,
+  .rs-col-key a,
   .rs-artifact-chip {
     display: none !important;
   }

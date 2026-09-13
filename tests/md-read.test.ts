@@ -6,9 +6,11 @@
 // which turns a folder into the shape it renders.
 
 import { describe, it, expect } from "bun:test";
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync, mkdtempSync } from "fs";
+import { tmpdir } from "os";
+import { SET_DIR } from "../src/set-block";
 import { join, resolve as resolvePath } from "path";
-import { readMarkdownSet, orderOf, rebase, type SetFile } from "../src/md-read";
+import { readMarkdownSet, orderOf, rebase, documentPreviews, type SetFile } from "../src/md-read";
 import { toMarkdownSet } from "../src/md-set";
 import type { SheetData } from "../src/prompt";
 
@@ -156,5 +158,52 @@ describe("a generated set, read back", () => {
       (c.params?.length ?? 0) + (c.categories ?? []).reduce((n: number, x) => n + rows(x as never), 0);
     const total = back.sheets.reduce((n, s) => n + (s.categories as never[]).reduce((m, c) => m + rows(c), 0), 0);
     expect(total).toBeGreaterThan(100);
+  });
+});
+
+// The link under a row's key, from the other end.
+//
+// A set is written with the addresses relative to the sheet they are in, and
+// the viewer is ONE page for the whole set — so the address only reaches the
+// panel if rebasing it lands on exactly the string a carried document is
+// identified by. Equality IS the mechanism (`app.ts`'s delegated link handler
+// compares the href against every preview's id), so nothing about it degrades
+// gracefully: a path off by one level, or a fragment lost on the way, is a link
+// that is there, looks right, and opens nothing.
+describe("a row's link, after the folder is read back", () => {
+  const project = resolvePath(import.meta.dir, "fixtures", "projects", "ansible-basic");
+  const out = join(mkdtempSync(join(tmpdir(), "review-sheet-md-read-")), "set");
+
+  it("resolves to a document the page is holding, at a line of it", () => {
+    const cli = resolvePath(import.meta.dir, "..", "src", "cli.ts");
+    const r = Bun.spawnSync(["bun", "run", cli, "generate", "-i", "input.json", "--format", "md", "-o", out], {
+      cwd: project,
+    });
+    expect(r.exitCode, r.stderr.toString().slice(0, 500)).toBe(0);
+
+    // What a drop hands the page: every file under the set, by its path within
+    // it (`drop-set.ts`), sheets and carried documents alike.
+    const root = join(out, SET_DIR);
+    const walk = (at: string, prefix: string): SetFile[] =>
+      readdirSync(at, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory()
+          ? walk(join(at, e.name), prefix === "" ? e.name : `${prefix}/${e.name}`)
+          : [{ path: prefix === "" ? e.name : `${prefix}/${e.name}`, text: readFileSync(join(at, e.name), "utf-8") }]
+      );
+    const read = readMarkdownSet(walk(root, ""));
+    const ids = new Set(documentPreviews(read.documents).map((a) => a.id));
+    expect(ids.size).toBeGreaterThan(1);
+
+    let checked = 0;
+    for (const sheet of read.sheets) {
+      const text = (sheet.document as { markdown: string }).markdown;
+      for (const [, address] of text.matchAll(/`<br>\[[^\]]+\]\(([^)]+)\)/g)) {
+        const [path = "", frag = ""] = decodeURI(address!).split("#");
+        expect(ids, `${sheet.name}: ${address}`).toContain(path);
+        expect(frag, `${sheet.name}: ${address}`).toMatch(/^L\d+$/);
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(10);
   });
 });

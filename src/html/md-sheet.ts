@@ -14,7 +14,7 @@
 import { h, type VNode } from "preact";
 import { useState, useEffect, useRef } from "preact/hooks";
 import htm from "htm";
-import { parseMarkdownBlocks, tableShape, rowIsUnset, visibleRows, type MarkdownBlock } from "../sheet-markdown.js";
+import { parseMarkdownBlocks, tableShape, rowIsUnset, visibleRows, splitKeyCell, type MarkdownBlock } from "../sheet-markdown.js";
 export { rowIsUnset, visibleRows } from "../sheet-markdown.js";
 import { getMarkdownRenderer } from "./markdown-runtime.js";
 import { navAnchorId, paramAnchorId } from "./anchors.js";
@@ -425,7 +425,7 @@ const rowKey = (address: string): string => address.slice(address.indexOf(" ") +
 export function rowAddresses(rows: { indent: number; cells: string[] }[], path: string[]): string[] {
   const ancestors: string[] = [];
   return rows.map((row) => {
-    const name = (row.cells[0] ?? "").trim().replace(/^`(.*)`$/s, "$1").trim();
+    const name = splitKeyCell((row.cells[0] ?? "").trim()).key.replace(/^`(.*)`$/s, "$1").trim();
     ancestors.length = Math.min(row.indent, ancestors.length);
     const chain = [...ancestors, name];
     ancestors[row.indent] = name;

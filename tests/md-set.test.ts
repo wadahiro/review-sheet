@@ -12,6 +12,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync, w
 import { tmpdir } from "os";
 import { join, dirname, resolve as resolvePath } from "path";
 import { toMarkdownSet, slug } from "../src/md-set";
+import { addressOf, type CarriedDocument } from "../src/md-documents";
 import { SET_DIR } from "../src/set-block";
 import type { SheetData } from "../src/prompt";
 
@@ -184,6 +185,36 @@ describe("the index", () => {
 
 // The whole point of the address column, checked the only way it can be: over a
 // real project, by opening what every link points at.
+// Which copy of a file a row's link names, when the file differs by environment.
+describe("the address under a row's key", () => {
+  const doc = (path: string, at: Record<string, number>): CarriedDocument =>
+    ({ path, text: "", sheet: "s", label: path, lineOf: (k: string) => at[k] }) as CarriedDocument;
+
+  it("names the line, in the copy it resolved to", () => {
+    expect(addressOf([doc("artifacts/staging/x.conf", { Listen: 12 })], "Listen")).toBe("artifacts/staging/x.conf#L12");
+  });
+
+  // The case a single copy cannot answer: a `{% if %}` line one environment
+  // renders and another does not. The line is not written into the copy that
+  // does not render it — the file on disk has no such line — so a link built
+  // from that copy alone opens the file at the top and shows the reader
+  // nothing. Measured on a real delivery: three rows, one of them the
+  // `<LocationMatch>` the admin console sits behind.
+  it("falls through to a copy that renders the line", () => {
+    const staging = doc("artifacts/staging/httpd.conf", {});
+    const production = doc("artifacts/production/httpd.conf", { LocationMatch: 392 });
+    expect(addressOf([staging, production], "LocationMatch")).toBe("artifacts/production/httpd.conf#L392");
+  });
+
+  // A branch no environment takes. There is no line anywhere to send anyone
+  // to, so the file is named and nothing is claimed about where in it.
+  it("names the file alone where no copy renders the row", () => {
+    expect(addressOf([doc("artifacts/staging/s.sh", {}), doc("artifacts/production/s.sh", {})], "AWS_ACCESS_KEY_ID")).toBe(
+      "artifacts/staging/s.sh"
+    );
+  });
+});
+
 describe("every address in a generated set resolves", () => {
   const project = resolvePath(import.meta.dir, "fixtures", "projects", "ansible-keycloak");
   const out = join(work, "set");
@@ -215,14 +246,53 @@ describe("every address in a generated set resolves", () => {
         if (/^[a-z][a-z0-9+.-]*:/.test(raw) || raw.startsWith("/")) continue;
         const href = decodeURI(raw.split("#")[0]!);
         checked += 1;
-        // A sheet link is relative to the set; a source link climbs out of it
-        // and is relative to the project the set was generated in. Both are
-        // resolved the same way — from the file the link is written in.
+        // Every address this set carries now points INSIDE it — a sheet, a
+        // chapter, or the deployed file a row is a line of — so all of them
+        // resolve from the file the link is written in. The one kind that used
+        // to climb out (the repository line a value is written on) is gone; it
+        // was dead in the hands of the recipient this set is for.
         if (!existsSync(join(dirname(f), href))) broken.push(`${f} -> ${href}`);
       }
     }
     expect(checked).toBeGreaterThan(50);
     expect(broken).toEqual([]);
+  });
+
+  // The link under a row's key, end to end: it names a file this set really
+  // carries, and the line it names is the line that holds the value.
+  //
+  // Both halves matter and only the second can be wrong quietly. A link to a
+  // file that is not there fails the check above; a link to the WRONG LINE of
+  // the right file opens, scrolls, and shows the reader a different setting.
+  it("points at the line of the carried file that holds the value", () => {
+    const cli = resolvePath(import.meta.dir, "..", "src", "cli.ts");
+    const r = Bun.spawnSync(["bun", "run", cli, "generate", "-i", "input.json", "--format", "md", "-o", out], {
+      cwd: project,
+    });
+    expect(r.exitCode, r.stderr.toString().slice(0, 500)).toBe(0);
+
+    const sheetFile = join(out, SET_DIR, "keycloak configuration.md");
+    const text = readFileSync(sheetFile, "utf-8");
+    // One word on every row that has one — never the file name, which the
+    // heading above the rows already says.
+    const links = [...text.matchAll(/\| `([^`]+)`<br>\[([^\]]+)\]\(([^)]+)\)/g)];
+    expect(links.length).toBeGreaterThan(5);
+    expect(new Set(links.map((m) => m[2]))).toEqual(new Set(["プレビュー"]));
+
+    let checked = 0;
+    for (const [, key, , dest] of links) {
+      const [path = "", frag = ""] = decodeURI(dest!).split("#");
+      const at = /^L(\d+)$/.exec(frag);
+      expect(at, `${key}: no line in ${dest}`).not.toBeNull();
+      const lines = readFileSync(join(dirname(sheetFile), path), "utf-8").split("\n");
+      // The line is 1-based and the key is written on it. Read off the file the
+      // link points at rather than off the model, because the file is what the
+      // reader opens — and it is not the preview line for line (a line this
+      // environment does not render is not written out at all).
+      expect(lines[Number(at![1]) - 1], `${key} -> ${dest}`).toContain(key);
+      checked += 1;
+    }
+    expect(checked).toBeGreaterThan(5);
   });
 });
 
@@ -230,6 +300,50 @@ describe("every address in a generated set resolves", () => {
 // stopped describing the configuration: a value moves in a file, the sheet is
 // regenerated for the HTML, and the markdown goes on looking exactly as correct
 // as the day it was written.
+// One sheet, two different files. The ordinary Ansible shape — a rendered
+// template beside a committed `files/` fragment — and the case a link cannot
+// get away with being approximately right about.
+//
+// Their previews share an id (neither producer passes `previewId` a file
+// discriminator), which the viewer survives: it opens the id and the reader
+// gets tabs. A link into a delivered set has to name ONE file on disk, so
+// resolving a row by id picked whichever preview came first and sent every row
+// of the template to the fragment — with no line at all, since the fragment has
+// no line for them. Resolved by the PREVIEW instead (`artifact-index.ts`).
+describe("a sheet whose rows are spread over two files", () => {
+  const project = resolvePath(import.meta.dir, "fixtures", "projects", "ansible-basic");
+  const out = join(work, "two-files");
+
+  it("sends each row to the file that actually holds its line", () => {
+    const cli = resolvePath(import.meta.dir, "..", "src", "cli.ts");
+    const r = Bun.spawnSync(["bun", "run", cli, "generate", "-i", "input.json", "--format", "md", "-o", out], {
+      cwd: project,
+    });
+    expect(r.exitCode, r.stderr.toString().slice(0, 500)).toBe(0);
+
+    const sheetFile = join(out, SET_DIR, "nginx configuration.md");
+    const text = readFileSync(sheetFile, "utf-8");
+    const dest = (key: string): string =>
+      new RegExp(`\\| \`${key.replace(/[[\]]/g, "\\$&")}\`<br>\\[[^\\]]+\\]\\(([^)]+)\\)`).exec(text)?.[1] ?? "";
+
+    // A row of the template, and a row of the committed fragment.
+    expect(dest("server_name")).toMatch(/nginx\.conf#L\d+$/);
+    expect(dest("server_tokens")).toMatch(/security\.conf#L\d+$/);
+
+    // …and every one of them lands on the line that holds it.
+    for (const [, key, address] of text.matchAll(/\| `([^`]+)`<br>\[[^\]]+\]\(([^)]+)\)/g)) {
+      const [path = "", frag = ""] = decodeURI(address!).split("#");
+      const at = /^L(\d+)$/.exec(frag);
+      expect(at, `${key}: no line in ${address}`).not.toBeNull();
+      const lines = readFileSync(join(dirname(sheetFile), path), "utf-8").split("\n");
+      // The row's own leaf: a key is a structural address (`http.sendfile`) and
+      // the line holds the directive (`sendfile on;`).
+      const leaf = key!.replace(/\[\d+\]$/, "").split(".").pop()!;
+      expect(lines[Number(at![1]) - 1], `${key} -> ${address}`).toContain(leaf);
+    }
+  });
+});
+
 describe("a committed set that no longer describes the model", () => {
   const project = resolvePath(import.meta.dir, "fixtures", "projects", "ansible-keycloak");
   const cli = resolvePath(import.meta.dir, "..", "src", "cli.ts");

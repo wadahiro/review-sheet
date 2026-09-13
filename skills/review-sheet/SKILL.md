@@ -1185,6 +1185,10 @@ apply and verify resolve every change through it, and the path the settings LAND
 on stays too — that is what the sheet is about. A document that must not name
 the repository at all is a different question, and this is not it.
 
+It governs the HTML only. A markdown set names no repository anywhere: every
+row's link points at the deployed file the set carries, under the row's key, so
+there is nothing there for the flag to hide.
+
 A document sheet whose markdown IS the page (`document.mode: "sheet"`) is laid
 out by the viewer as the sheet's own tables, so it carries its markdown source
 beside the rendered html and the renderer travels with it — ~45 KB, and only in

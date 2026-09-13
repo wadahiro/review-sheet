@@ -6,7 +6,9 @@ import { resolve, relative, join, dirname, basename } from "path";
 import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { langFallbacks, localizeVersions } from "./localize.js";
-import { toMarkdownSet, href, modelStamp, stampOf, slug } from "./md-set.js";
+import { toMarkdownSet, href, modelStamp, stampOf } from "./md-set.js";
+import { buildArtifactIndex } from "./artifact-index.js";
+import { carriedDocuments, addressOf, type CarriedDocument } from "./md-documents.js";
 import { zipOf } from "./zip.js";
 import { SET_DIR } from "./set-block.js";
 import type { ParamData } from "./prompt.js";
@@ -312,6 +314,12 @@ const ALLOWED_CAPS = ["review", "prompt"] as const;
 // "rendered from" line under a sheet's heading, the source line in a preview.
 // The source map itself stays in the document; apply and verify resolve every
 // change through it.
+//
+// It governs the REPOSITORY's file names and has never governed the path a
+// value LANDS on, which is what the sheet is about. So it does not reach the
+// markdown set's per-row address, which points at the deployed file this set
+// carries — and since that set no longer names the repository anywhere, the
+// flag has nothing left to hide there.
 // `-r` takes a review.json — the findings a review pass produced, exported from
 // the viewer or written by hand.
 function readReviewSource(path: string): ReviewDocument {
@@ -350,85 +358,21 @@ function parseAllow(spec: string | undefined): Set<string> | undefined {
   return new Set(names);
 }
 
-// The documents a sheet's rows are about, as files of the set.
-//
-// Three kinds, told apart by the directory they land in rather than by a header
-// in the file — the file has to BE the file, so it can be diffed against the
-// real one:
-//
-//   artifacts/  what the deployed file says, rendered
-//   sources/    the authored file it was rendered from
-//   evidence/   the bytes a host was found holding, and when
-//
-// All three relative to the SHEET'S own directory, so the chapter that
-// describes a file holds it. A single bucket at the root would be a second,
-// type-shaped arrangement laid over the chapters the document already has.
-// A command, as one path segment. Readable rather than hashed — a reader
-// scanning the directory should see which command a file holds — and cut to a
-// length every filesystem takes.
-//
-// A cut name gets the command's own digest on the end. Without it two long
-// commands that agree for their first sixty characters are one file, and the
-// second is dropped: measured on a real record, two `.well-known` fetches that
-// differ only past the cut. The digest is only on the names that needed it, so
-// a short command stays exactly itself.
-function commandFile(command: string): string {
-  const one = command.replace(/\s+/g, " ").trim();
-  const named = slug(one).trim();
-  if (named.length <= 60) return `${named}.txt`;
-  return `${named.slice(0, 60).trim()}-${modelStamp(one).slice(0, 8)}.txt`;
-}
-
-function carriedDocuments(
-  previews: ArtifactPreview[],
-  instances: string[]
-): { path: string; text: string; sheet: string; label: string }[] {
-  const strip = (f: string): string => f.replace(/^\/+/, "");
-  return previews.map((p) => {
-    // An `absent` line is one this environment does not render. The file on
-    // disk does not have it, so neither does this — the point of writing it out
-    // is that it can be compared with the real thing.
-    const text = p.lines.filter((l) => l.kind !== "absent").map((l) => l.text).join("\n");
-    if (p.nature === "observed") {
-      const from = p.deployed_path ?? p.source_file;
-      const host = p.observed?.host ?? "host";
-      const instance = p.instances?.[0] ?? "";
-      const under = `evidence/${instance === "" ? "" : `${instance}/`}${host}`;
-      // A collected FILE is named by the absolute path the host holds it at —
-      // that is how a host names a file, and it makes the tree under `evidence`
-      // read like the machine it came from. Everything else is the output of a
-      // COMMAND, and a command is not a path: it has quotes, spaces and
-      // newlines in it, and used as a filename it produced directories nobody
-      // asked for and one write that failed outright.
-      const isFile = from.startsWith("/");
-      const named = isFile ? strip(from) : `commands/${commandFile(from)}`;
-      return { sheet: p.sheet, path: `${under}/${named}`, text, label: `${host} ${from}` };
-    }
-    if (p.nature === "source") {
-      return { sheet: p.sheet, path: `sources/${strip(p.source_file)}`, text, label: p.source_file };
-    }
-    // An artifact rendered identically everywhere is written once; one that
-    // differs per environment is written per environment, under the names it
-    // covers — which is what having a file per environment means.
-    const covers = p.instances ?? [];
-    const everywhere = covers.length === 0 || instances.every((i) => covers.includes(i));
-    const at = strip(p.deployed_path ?? p.source_file);
-    return {
-      sheet: p.sheet,
-      path: `artifacts/${everywhere ? "" : `${covers.join("+")}/`}${at}`,
-      text,
-      label: `${p.deployed_path ?? p.source_file}${everywhere ? "" : ` (${covers.join(", ")})`}`,
-    };
-  });
-}
 
 // The model as a set of markdown files, written out.
 //
-// The addresses are LINKS, relative to the file the row is in — which is what
-// makes a handed-over set navigable: a reader, or the assistant they hand it
-// to, follows the link to the line and edits the configuration file, rather
-// than editing the sheet and hoping somebody applies it. A plain markdown
-// reader resolves them; so does an editor; so does a forge.
+// Every row that has a file carries a LINK to it, under its key, addressed
+// relative to the sheet — which is what makes a handed-over set navigable: the
+// reader, or the assistant they hand it to, opens the deployed file at the line
+// and sees the setting in the context that decides it. A plain markdown reader
+// resolves it; so does an editor; so does a forge; and the page beside the set
+// opens it in the panel instead of handing it to the browser.
+//
+// What it points at is the DEPLOYED file, never the repository line the value
+// is written on. Both were tried. A repository address is dead in the hands of
+// the recipient this set exists for — they have no checkout for it to resolve
+// in — and redundant for anyone who does have one, since the AI prompt this
+// document exports already groups every change by the file to edit.
 //
 // The stamp goes in the index and says which model this set was written from.
 // `verify` reads it back to say whether the committed markdown still describes
@@ -480,50 +424,43 @@ async function writeMarkdownSet(
   // could not say whether the configuration had changed underneath.
   const stamp = modelStamp(input);
 
-  const link = (file: string, line: number | undefined, fromDir: string): string => {
-    const rel = relative(fromDir, file).split("\\").join("/");
-    const text = line === undefined ? basename(file) : `${basename(file)}:${line}`;
-    return `[${text}](${href(rel)}${line === undefined ? "" : `#L${line}`})`;
-  };
+  const carried = carriedDocuments(previews, instances);
+
+  // The file each row is a line of, and where in it — as an address relative to
+  // the sheet, which is where `carriedDocuments` already puts these files.
+  //
+  // Keyed by the PREVIEW and never by its id: an id identifies one file only as
+  // far as its producer troubled to make it (see `artifact-index.ts`), and a
+  // link has to name ONE file on disk. `carried` is written from `previews` one
+  // for one, so the two are looked up together.
+  //
+  // Instance variants of one file are written one per environment, and the
+  // index picks the first. The line is right for the file it points at, which
+  // is the only claim the link makes — and which environment's values a reader
+  // is looking at is said by the sheet's own list of the files it describes.
+  const documentOf = new Map<ArtifactPreview, CarriedDocument>();
+  // …and the other copies of the same file, in model order, for `addressOf` to
+  // fall through to when this one does not render the row's line.
+  const variantsOf = new Map<string, CarriedDocument[]>();
+  previews.forEach((p, i) => {
+    documentOf.set(p, carried[i]!);
+    variantsOf.set(p.id, [...(variantsOf.get(p.id) ?? []), carried[i]!]);
+  });
+  const index = buildArtifactIndex(previews);
 
   const { files, problems } = toMarkdownSet(data, lang, {
     stamp,
     ...(narrowed === undefined ? {} : { instances: narrowed }),
-    documents: carriedDocuments(previews, instances),
-    ...(sources
-      ? {
-          source: (sheetPath: string) => {
-            // Where the page will LAND, not where the projection names it: the
-            // set sits one level down, in the folder the reader drags, and an
-            // address computed from the projection's own path is off by exactly
-            // that level — silently, since the link is still a link.
-            const fromDir = join(outDir, SET_DIR, dirname(sheetPath));
-            return (row: ParamData) => {
-              // One address, or one per environment where they differ — which
-              // for a per-environment row is the ordinary case, since that is
-              // what having a file per environment means. Deduped by address:
-              // three environments written in one file is one link, not three.
-              // A location with no file is a row that says where in a file it
-              // is without saying which — nothing to link, and the cell is left
-              // empty rather than pointing at the document's own directory.
-              if (row.source?.file !== undefined) return link(row.source.file, row.source.line, fromDir);
-              const seen = new Map<string, string[]>();
-              for (const i of row.instances ?? []) {
-                if (i.source?.file === undefined) continue;
-                const at = `${i.source.file}#${i.source.line ?? ""}`;
-                seen.set(at, [...(seen.get(at) ?? []), i.name]);
-              }
-              if (seen.size === 0) return undefined;
-              const shown = [...seen.entries()].map(([at, names]) => {
-                const [file = "", line = ""] = at.split("#");
-                const one = link(file, line === "" ? undefined : Number(line), fromDir);
-                return seen.size === 1 ? one : `${names.join(", ")}: ${one}`;
-              });
-              return shown.join("<br>");
-            };
-          },
-        }
-      : {}),
+    documents: carried,
+    preview: (sheet) => (row: ParamData, categoryPath: string[]) => {
+      const hit = index.previewFor(sheet.name, categoryPath.join("/"), row.key);
+      const mine = hit === undefined ? undefined : documentOf.get(hit);
+      if (hit === undefined || mine === undefined) return undefined;
+      const at = addressOf([mine, ...(variantsOf.get(hit.id) ?? [])], row.key);
+      if (at === undefined) return undefined;
+      const [path = "", frag = ""] = at.split(/(#.*)$/);
+      return `${href(path)}${frag}`;
+    },
   });
 
   // …and the page that reads it. Written from the SAME model, so it opens on

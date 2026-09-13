@@ -43,6 +43,7 @@ import { markdownToCategories, declaredInstances, withEnvironment, withoutEnviro
 import { runMermaid } from "./mermaid-runtime.js";
 import { filesFromDrop, filesFromPicker, type DroppedFile } from "./drop-set.js";
 import { readMarkdownSet, documentPreviews } from "../md-read.js";
+import { buildArtifactIndex } from "../artifact-index.js";
 import { SET_BLOCK_ID, setBlockJson, spliceSetBlock, FOLDER_INPUT_ID } from "../set-block.js";
 import { setShowSources, showSources } from "./display-config.js";
 import type { DiffStatus } from "../diff.js";
@@ -3993,86 +3994,18 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   const pickDock = (d: Dock): void => { setDock(d); saveDock(d); };
   // The reader's choice, or what the document being opened wants.
   const dockNow: Dock = dock ?? (evidenceOpen ? "below" : "right");
-  // Which preview a row belongs to, resolved once per document. A sheet
-  // covering several artifacts keys them by component, which the viewer only
-  // knows as the outermost category — the same resolution `assembleSheets`
-  // does for a per-component binding. A key present in exactly one of the
-  // sheet's previews needs no disambiguation at all, which is every
-  // single-artifact sheet.
-  const artifactIndex = useMemo(() => {
-    // …and never an OBSERVED one. Its lines carry the same keys — it is the
-    // same file, read off a host — so admitting it here would make a row's
-    // "show me this line" open the evidence or the rendered artifact depending
-    // on which was emitted last. The row's document is the one this sheet
-    // describes; evidence is reached from the record that cites it.
-    // Keyed by sheet AND component, never by key alone. Two components of one
-    // sheet share a key space by design — a Keycloak realm sheet has `enabled`
-    // under every realm — so a component-scoped index is what stops a row
-    // offering to open a file that has no line for it. Measured on a real
-    // sheet: 28 lines in one file were matching 46 rows.
-    const out = new Map<string, string>();
-    for (const a of artifacts ?? []) {
-      if (a.nature === "observed") continue;
-      for (const line of a.lines) {
-        // Every row the line IS, not only the one it jumps back to: a line
-        // holding two settings is two rows, and both want the button.
-        for (const k of line.keys ?? (line.key === undefined ? [] : [line.key])) {
-          out.set(`${a.sheet}\u0000${a.component ?? ""}\u0000${k}`, a.id);
-        }
-      }
-    }
-    return out;
-  }, [artifacts]);
-  // Every name a sheet's outermost category could be wearing, against the
-  // component the previews are indexed by.
-  //
-  // Two things had to go: splitting the category path on "/" to get its head —
-  // a component that is a deployed file contains one, so that took the empty
-  // string before the leading slash — and then assuming the head IS the
-  // component. It need not be. A component is free to be a short alias
-  // (`keycloak.conf`) while the category is the file it deploys
-  // (`/opt/keycloak/conf/keycloak.conf`), and after the category-naming fixes
-  // that is the ordinary case, not a corner. The artifact knows both, so both
-  // are keys here.
-  const componentByCategory = useMemo(() => {
-    const bySheet = new Map<string, Map<string, string>>();
-    const add = (sheet: string, name: string | undefined, component: string): void => {
-      if (name === undefined || name === "") return;
-      const m = bySheet.get(sheet) ?? new Map<string, string>();
-      if (!m.has(name)) m.set(name, component);
-      bySheet.set(sheet, m);
-    };
-    for (const a of artifacts ?? []) {
-      if (a.component === undefined) continue;
-      add(a.sheet, a.component, a.component);
-      add(a.sheet, a.deployed_path, a.component);
-    }
-    return bySheet;
-  }, [artifacts]);
-  const artifactFor = useCallback((sheetName: string, categoryPath: string, key: string): string | undefined => {
-    // The component is the outermost category, exactly as `assembleSheets`
-    // resolves it for a per-component binding — and it collapses away on a
-    // single-component sheet, which is why the unscoped lookup is the fallback
-    // rather than an error.
-    //
-    // Read off the names that EXIST rather than by splitting the path: the
-    // separator is "/" and a category naming a deployed file contains one.
-    // Longest first, so a name nested inside another wins.
-    const known = [...(componentByCategory.get(sheetName)?.entries() ?? [])].sort((a, b) => b[0].length - a[0].length);
-    const head =
-      known.find(([name]) => categoryPath === name || categoryPath.startsWith(`${name}/`))?.[1] ??
-      categoryPath.split("/")[0];
-    return (
-      artifactIndex.get(`${sheetName}\u0000${head}\u0000${key}`) ??
-      artifactIndex.get(`${sheetName}\u0000\u0000${key}`)
-    );
-  }, [artifactIndex, componentByCategory]);
+  // Which preview a row belongs to, and where in it — resolved once per
+  // document by the shared index (`artifact-index.ts`), because `md-set` asks
+  // the same question when it writes the link into the carried markdown, and
+  // the two answering differently would be one document with two opinions
+  // about where a row's line is.
+  const artifactIndex = useMemo(() => buildArtifactIndex(artifacts), [artifacts]);
   const artifactAccess = useMemo<ArtifactAccess | undefined>(
     () =>
       (artifacts?.length ?? 0) === 0
         ? undefined
-        : { idFor: artifactFor, open: (id, key) => setArtifactTarget({ id, key }) },
-    [artifacts, artifactFor]
+        : { idFor: artifactIndex.idFor, open: (id, key) => setArtifactTarget({ id, key }) },
+    [artifacts, artifactIndex]
   );
 
   const hasMetadata = !!(data.metadata?.project || data.metadata?.version || data.metadata?.generated_at || data.metadata?.changelog?.length || data.metadata?.extra);
