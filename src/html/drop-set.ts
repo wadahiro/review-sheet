@@ -98,3 +98,39 @@ export async function filesFromDrop(dt: DataTransfer): Promise<DroppedFile[]> {
   }
   return out;
 }
+
+// The same set, from a folder the reader PICKED rather than dragged.
+//
+// Dragging uses the entry API, and a page opened by double-clicking a file is
+// a `file://` page — where Chrome refuses to list a dropped directory at all.
+// Measured on a real delivery: the very first `readEntries` came back
+// `EncodingError`, before any file was touched, so the whole gesture the
+// markdown hand-over rests on did nothing in exactly the setting it was built
+// for. A recipient with no toolchain opens the page by double-clicking it;
+// there is no other way for them.
+//
+// `<input type="file" webkitdirectory>` does not go through the entry API.
+// Every File it yields carries `webkitRelativePath` — the path WITHIN the
+// chosen folder, which is the same thing `walk` reconstructs a directory at a
+// time — so this is the shorter road to the same place, and the one that works
+// where the reader actually is.
+export async function filesFromPicker(list: ArrayLike<File>): Promise<DroppedFile[]> {
+  const files = [...(list as unknown as File[])];
+  const out: DroppedFile[] = [];
+  for (const f of files) {
+    // `webkitRelativePath` is "" for a plain multi-file selection; the name is
+    // then all there is, exactly as in the no-entry-API drop below.
+    const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath;
+    const path = rel !== undefined && rel !== "" ? rel : f.name;
+    if (path.endsWith(".html")) continue;
+    out.push({ path, text: await f.text() });
+  }
+  // The chosen folder's own name prefixes every path, the same way a dragged
+  // folder's does — taken off so a set reads the same whichever way it arrived.
+  const roots = new Set(out.map((f) => f.path.split("/")[0]));
+  if (roots.size === 1 && out.some((f) => f.path.includes("/"))) {
+    const root = `${[...roots][0]!}/`;
+    return out.map((f) => ({ ...f, path: f.path.slice(root.length) }));
+  }
+  return out;
+}

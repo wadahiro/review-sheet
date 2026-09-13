@@ -41,9 +41,9 @@ import {
 } from "./cell-tool.js";
 import { markdownToCategories, declaredInstances, withEnvironment, withoutEnvironment, renameEnvironment } from "../sheet-markdown.js";
 import { runMermaid } from "./mermaid-runtime.js";
-import { filesFromDrop } from "./drop-set.js";
+import { filesFromDrop, filesFromPicker, type DroppedFile } from "./drop-set.js";
 import { readMarkdownSet, documentPreviews } from "../md-read.js";
-import { SET_BLOCK_ID, setBlockJson, spliceSetBlock } from "../set-block.js";
+import { SET_BLOCK_ID, setBlockJson, spliceSetBlock, FOLDER_INPUT_ID } from "../set-block.js";
 import { setShowSources, showSources } from "./display-config.js";
 import type { DiffStatus } from "../diff.js";
 import { pickLang, type OutOfScope, type Capabilities, type ArtifactPreview, PRESENCE_VALUE } from "../types.js";
@@ -3348,7 +3348,7 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, dock, onD
   `;
 }
 
-function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, lang, diff, reviewsOverride, versionPivot, server, applyEnabled, onSaveSingle }: {
+function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, lang, diff, reviewsOverride, versionPivot, server, applyEnabled, onSaveSingle, onPickFolder }: {
   data: SheetData;
   // A whole-document columnar comparison: rows keyed by sheet + path + key,
   // one column per VERSION. Supplied only while comparing, and rendered
@@ -3363,6 +3363,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // Write what is on screen into a copy of this page. Present only when the
   // page is holding a set — there is nothing to write out otherwise.
   onSaveSingle?: () => void;
+  onPickFolder?: () => void;
   reviewEnabled: boolean;
   // Let the recipient change values and remarks in place (`--allow edit`).
   // Offer the AI prompt at all (`--allow ...,prompt`). A judgement about the
@@ -4228,6 +4229,22 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                 is that the next reading needs no folder and no gesture: a
                 document that has to be assembled before it can be read is one
                 nobody assembles. */ ""}
+          ${/* The folder, CHOSEN rather than dragged. Dragging needs the entry
+                API, which a `file://` page is refused by — and a recipient with
+                no toolchain opens this by double-clicking it, which is a
+                `file://` page and nothing else. Measured on a real delivery:
+                the first directory listing came back EncodingError before a
+                file was touched, and the page did not move. The button is
+                beside Save because the two are one loop: pick the folder, look
+                at it, save it as one file and stop needing either. */ ""}
+          ${onPickFolder !== undefined && html`
+            <span class="rs-tabs-sep"></span>
+            <button class="rs-toolbar-btn rs-toolbar-btn-labelled" onClick=${onPickFolder}
+                    title=${t.pickFolderTip} aria-label=${t.pickFolderTip}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <span class="rs-btn-label">${t.pickFolder}</span>
+            </button>
+          `}
           ${onSaveSingle !== undefined && html`
             <span class="rs-tabs-sep"></span>
             <button class="rs-toolbar-btn rs-toolbar-btn-labelled" onClick=${onSaveSingle}
@@ -4623,7 +4640,7 @@ function diffBadge(status: DiffStatus | undefined) {
 // Root (version switching + diff) and entry point
 // ============================================================
 
-function Root({ payload, reviewEnabled, promptEnabled = true, showSources: sources = true, initialLang, server, dropped, onSaveSingle }: { payload: Payload; reviewEnabled: boolean; promptEnabled?: boolean; showSources?: boolean; initialLang: Lang; server: boolean; dropped?: string; onSaveSingle?: () => void }) {
+function Root({ payload, reviewEnabled, promptEnabled = true, showSources: sources = true, initialLang, server, dropped, onSaveSingle , onPickFolder }: { payload: Payload; reviewEnabled: boolean; promptEnabled?: boolean; showSources?: boolean; initialLang: Lang; server: boolean; dropped?: string; onSaveSingle?: () => void; onPickFolder?: () => void }) {
   // Applied here rather than in an effect: it decides what the FIRST render
   // draws, and an effect runs after it.
   setShowSources(sources);
@@ -4701,7 +4718,8 @@ function Root({ payload, reviewEnabled, promptEnabled = true, showSources: sourc
         columnar=${columnar} onColumnar=${setColumnar} t=${t} />`}
       <${App} data=${data} artifacts=${shown.artifacts} reviewEnabled=${reviewEnabled} promptEnabled=${promptEnabled} lang=${lang}
         diff=${diffModel?.status} reviewsOverride=${diffModel?.reviews} versionPivot=${versionPivot}
-        server=${server} applyEnabled=${applyEnabled} onSaveSingle=${onSaveSingle} />
+        server=${server} applyEnabled=${applyEnabled} onSaveSingle=${onSaveSingle}
+        onPickFolder=${onPickFolder} />
     </div>
   `;
 }
@@ -4760,12 +4778,20 @@ function init() {
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   };
 
+  // Opens the hidden input the PAGE carries. Undefined when the page carries
+  // none — a single-file HTML has no folder to read and must not offer to.
+  const pickFolder =
+    document.getElementById(FOLDER_INPUT_ID) instanceof HTMLInputElement
+      ? (): void => (document.getElementById(FOLDER_INPUT_ID) as HTMLInputElement).click()
+      : undefined;
+
   const draw = (p: Payload, dropped?: string): void => {
     render(
       html`<${Root} payload=${p} reviewEnabled=${dropped === undefined && reviewEnabled} initialLang=${lang}
                     server=${dropped === undefined && serverMode} promptEnabled=${dropped === undefined && promptEnabled}
                     showSources=${showSources} dropped=${dropped}
-                    onSaveSingle=${held === null ? undefined : saveSingle} />`,
+                    onSaveSingle=${held === null ? undefined : saveSingle}
+                    onPickFolder=${pickFolder} />`,
       appEl
     );
   };
@@ -4844,24 +4870,59 @@ function init() {
         alert(getMessages(lang).dropNoSheets);
         return;
       }
-      held = files;
-      if (read.problems.length > 0) console.warn(read.problems.join("\n"));
-      draw(
-        {
-          metadata: { ...payload.metadata, ...read.metadata },
-          versions: [
-            {
-              version: "current",
-              sheets: read.sheets as never,
-              groups: read.groups as never,
-              artifacts: documentPreviews(read.documents),
-            },
-          ],
-        } as Payload,
-        getMessages(lang).droppedFolder(read.sheets.length)
-      );
+      showSet(files, read);
     });
   });
+
+  // …and the same folder, CHOSEN. A page opened by double-clicking a file is a
+  // `file://` page, where Chrome refuses to list a dropped directory at all —
+  // measured on a real delivery, the first `readEntries` came back
+  // EncodingError before any file was touched. A recipient with no toolchain
+  // has no other way to open the page, so the gesture the hand-over rests on
+  // cannot be the one that needs an origin they do not have.
+  //
+  // The input goes through no entry API: every File it yields carries the path
+  // within the chosen folder already.
+  const picker = document.getElementById(FOLDER_INPUT_ID);
+  if (picker instanceof HTMLInputElement) {
+    picker.addEventListener("change", () => {
+      const chosen = picker.files;
+      if (chosen === null || chosen.length === 0) return;
+      void filesFromPicker(chosen)
+        .catch((err: unknown) => {
+          alert(getMessages(lang).dropFailed(err instanceof Error ? `${err.name}: ${err.message}` : String(err)));
+          return [] as DroppedFile[];
+        })
+        .then((files) => {
+          if (files.length === 0) return;
+          const read = readMarkdownSet(files, lang);
+          if (read.sheets.length === 0) {
+            alert(getMessages(lang).dropNoSheets);
+            return;
+          }
+          showSet(files, read);
+        });
+    });
+  }
+
+  function showSet(files: DroppedFile[], read: ReturnType<typeof readMarkdownSet>): void {
+    held = files;
+    if (read.problems.length > 0) console.warn(read.problems.join("\n"));
+    draw(
+      {
+        metadata: { ...payload.metadata, ...read.metadata },
+        versions: [
+          {
+            version: "current",
+            sheets: read.sheets as never,
+            groups: read.groups as never,
+            artifacts: documentPreviews(read.documents),
+          },
+        ],
+      } as Payload,
+      getMessages(lang).droppedFolder(read.sheets.length)
+    );
+  }
 }
 
 if (typeof document !== "undefined") {

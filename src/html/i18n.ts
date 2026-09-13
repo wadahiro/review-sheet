@@ -49,6 +49,8 @@ type Messages = {
   // from — see app.ts's drop handler.
   saveSingle: string;
   saveSingleTip: string;
+  pickFolder: string;
+  pickFolderTip: string;
   dropNoSheets: string;
   // What the browser said when it refused to read the dropped folder.
   dropFailed: (reason: string) => string;
@@ -264,6 +266,8 @@ const ja: Messages = {
   navExpand: "開く",
   navNoMatch: "該当する文書がありません",
   navOutlineTip: "目次を表示/非表示",
+  pickFolder: "フォルダを開く",
+  pickFolderTip: "`generate --format md` が書き出した sheet フォルダを選びます。ドラッグでも入りますが、このページをファイルとして開いている場合はブラウザがドラッグを拒否することがあります",
   saveSingle: "1ファイルで保存",
   saveSingleTip: "このフォルダごと1枚のHTMLに書き出す。次からはそれを開くだけで、ドラッグは要りません",
   dropNoSheets: "この中にシートの Markdown が見つかりませんでした。generate --format md が書き出したフォルダを入れてください。",
@@ -431,6 +435,8 @@ const en: Messages = {
   navExpand: "Expand",
   navNoMatch: "No document matches",
   navOutlineTip: "Toggle outline",
+  pickFolder: "Open folder",
+  pickFolderTip: "Choose the `sheet` folder that `generate --format md` wrote. Dragging works too, but a page opened as a local file may have its drops refused by the browser",
   saveSingle: "Save as one file",
   saveSingleTip: "Write this folder into one HTML. Open that from then on — no folder, no dragging",
   dropNoSheets: "No sheet markdown in there. Drop the folder that `generate --format md` wrote.",

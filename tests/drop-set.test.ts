@@ -8,7 +8,7 @@
 // the walk, not the browser.
 
 import { describe, it, expect } from "bun:test";
-import { filesFromDrop } from "../src/html/drop-set";
+import { filesFromDrop, filesFromPicker } from "../src/html/drop-set";
 
 type Tree = { [name: string]: string | Tree };
 
@@ -143,5 +143,44 @@ describe("a folder the browser refuses", () => {
     };
     const drop = { items: [{ kind: "file", webkitGetAsEntry: () => dir }], files: [] } as unknown as DataTransfer;
     await expect(filesFromDrop(drop)).rejects.toThrow(/詳細設計\/: SecurityError/);
+  });
+});
+
+// The same set, from a folder the reader CHOSE.
+//
+// Dragging goes through the entry API, which a `file://` page is refused by —
+// and a recipient with no toolchain opens the delivery by double-clicking it,
+// which is a `file://` page and nothing else. `<input webkitdirectory>` uses no
+// entry API: every File it yields already carries its path within the folder.
+describe("a folder chosen from the picker", () => {
+  const file = (rel: string, text: string): File => {
+    const f = new File([text], rel.split("/").pop()!);
+    Object.defineProperty(f, "webkitRelativePath", { value: rel });
+    return f;
+  };
+
+  it("keeps the path within the chosen folder", async () => {
+    const out = await filesFromPicker([
+      file("sheet/README.md", "# i"),
+      file("sheet/詳細設計/OS.md", "# os"),
+    ]);
+    expect(out.map((f) => f.path).sort()).toEqual(["README.md", "詳細設計/OS.md"]);
+  });
+
+  it("reads the whole folder except the page itself", async () => {
+    const out = await filesFromPicker([
+      file("sheet/README.md", "# i"),
+      file("sheet/viewer.html", "<html>"),
+      file("sheet/artifacts/etc/x", "x"),
+    ]);
+    expect(out.some((f) => f.path.endsWith(".html"))).toBe(false);
+    expect(out.map((f) => f.path)).toContain("artifacts/etc/x");
+  });
+
+  // A plain multi-file selection carries no relative path; the name is all
+  // there is, exactly as in a drop with no entry API.
+  it("falls back to the names when there is no relative path", async () => {
+    const out = await filesFromPicker([new File(["# a"], "a.md"), new File(["x"], "b.txt")]);
+    expect(out.map((f) => f.path)).toEqual(["a.md", "b.txt"]);
   });
 });

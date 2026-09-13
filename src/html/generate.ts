@@ -4,7 +4,7 @@ import type { ParameterSheetInput, VersionedSheetInput, SheetVersion, GenerateOp
 import { customStyles } from "./styles.js";
 import { toBase64Gzip, BOOTSTRAP } from "./compress.js";
 import { localizeVersions } from "../localize.js";
-import { SET_BLOCK_OPEN } from "../set-block.js";
+import { SET_BLOCK_OPEN, FOLDER_INPUT_ID } from "../set-block.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -161,7 +161,8 @@ ${configJson}
 </script>
 ${options?.markdownRuntime === true ? `${SET_BLOCK_OPEN}
 null
-</script>` : ""}
+</script>
+<input type="file" id="${FOLDER_INPUT_ID}" webkitdirectory directory multiple hidden />` : ""}
 <script type="application/gzip-base64" id="sheet-style-gz">
 ${toBase64Gzip(customStyles)}
 </script>

@@ -49,3 +49,14 @@ export function spliceSetBlock(html: string, json: string): string {
   if (from <= 0 || to < 0) throw new Error("this page's set block is not closed");
   return `${html.slice(0, from)}\n${json}\n${html.slice(to)}`;
 }
+
+// The folder INPUT the page carries, and the app binds to.
+//
+// Dragging uses the entry API, which a `file://` page — the only kind a
+// recipient with no toolchain can open — is refused by: measured on a real
+// delivery, the first directory listing came back EncodingError before a file
+// was touched. A picker goes through no entry API at all, so it works where the
+// reader actually is. In the page rather than rendered by the app because a
+// file input has to exist in the document to be clicked, and the app is a tree
+// that redraws.
+export const FOLDER_INPUT_ID = "rs-folder";
