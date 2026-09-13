@@ -96,6 +96,19 @@ export type ProjectMetaSheetDoc = {
   // it, which is orthogonal to where it sits — so both grouped layouts are
   // opt-in and the build reports what each one cost.
   layout?: "categories" | "file+categories";
+  // How DEEP a bound dictionary's own grouping is followed on this sheet.
+  //
+  // A dictionary's `group` is a PATH, mirroring the product's own console: a
+  // Keycloak client's `standardFlowEnabled` is filed under
+  // `Settings / Capability config`. A sheet that wants the head of that and no
+  // more had no way to say so and had to restate the head on every row —
+  // measured on one real spec, seven `category:` declarations that were not
+  // disagreements about WHERE a row belongs, only about how deep to go, and
+  // each one an opportunity to file a row away from its own siblings (which is
+  // how a feature's settings once ended up split across two tabs there).
+  //
+  // Undeclared = the whole path, which is what every sheet had before.
+  category_depth?: number;
   // Kept ONLY so a sheet still declaring it fails loudly: its meaning inverted
   // when the file layout became the default, and a key that silently means the
   // opposite of what its author intended is worse than one that is gone.
@@ -161,6 +174,8 @@ export type ProjectMetaDoc = {
   // grouped layout at all, which would have made the shorthand mean something
   // the long form does not.
   layout?: "categories" | "file+categories";
+  // The flat form's own `category_depth` — same meaning as the per-sheet one.
+  category_depth?: number;
   params?: Record<string, ProjectMetaParam>;
   sheets?: Record<string, ProjectMetaSheetDoc>;
   // The sheet groups this document uses, IN READING ORDER (types.ts's
@@ -281,6 +296,7 @@ export function loadProjectMeta(path: string, readFile: (path: string) => string
         ...(s?.group ? { group: s.group } : {}),
         ...(s?.compare_components ? { compare_components: s.compare_components === "always" ? ("always" as const) : true } : {}),
         ...(s?.layout ? { layout: s.layout } : {}),
+        ...(s?.category_depth !== undefined ? { category_depth: s.category_depth } : {}),
         ...(s?.categories_from ? { categories_from: s.categories_from } : {}),
         ...(s?.components ? { components: s.components } : {}),
       };
@@ -295,7 +311,8 @@ export function loadProjectMeta(path: string, readFile: (path: string) => string
       sheets,
       ...(doc.groups ? { groups: doc.groups } : {}),
       ...(doc.layout ? { layout: doc.layout } : {}),
-        ...(doc.numbering === undefined ? {} : { numbering: doc.numbering }),
+      ...(doc.category_depth === undefined ? {} : { category_depth: doc.category_depth }),
+      ...(doc.numbering === undefined ? {} : { numbering: doc.numbering }),
     };
   }
   checkCategoryPaths(doc.params, "param ", path);
@@ -310,6 +327,7 @@ export function loadProjectMeta(path: string, readFile: (path: string) => string
     ...(doc.under_key ? { under_key: doc.under_key } : {}),
     ...(doc.label ? { label: doc.label } : {}),
     ...(doc.layout ? { layout: doc.layout } : {}),
+    ...(doc.category_depth === undefined ? {} : { category_depth: doc.category_depth }),
   };
 }
 
@@ -373,6 +391,13 @@ export function componentParamsForSheet(
 export function layoutForSheet(doc: ProjectMetaDoc, sheet: string | undefined): "file" | "categories" | "file+categories" {
   if (!doc.sheets || sheet === undefined) return doc.layout ?? "file";
   return doc.sheets[sheet]?.layout ?? doc.layout ?? "file";
+}
+
+// How many levels of a bound dictionary's group path this sheet follows.
+// Undefined = all of them.
+export function categoryDepthForSheet(doc: ProjectMetaDoc, sheet: string | undefined): number | undefined {
+  const d = !doc.sheets || sheet === undefined ? doc.category_depth : (doc.sheets[sheet]?.category_depth ?? doc.category_depth);
+  return d !== undefined && d > 0 ? d : undefined;
 }
 
 // Whether this sheet heads its rows by the file they are written in. True for

@@ -42,6 +42,7 @@ import {
   checkProjectMetaSheets,
   type ProjectMetaDoc,
   type UnderKeyMeta,
+  categoryDepthForSheet,
 } from "./providers/project.js";
 import { findDictionary, dictionaryCoverage, resolveVariantDefaults } from "./providers/dictionary.js";
 import { baseFileName } from "./jinja2.js";
@@ -761,9 +762,21 @@ function bindingOrFallback(
   // holding six of them side by side, and only the recipe knows it is holding
   // six.
   fallbackWins = false
+  ,
+  // How deep this sheet follows the dictionary's own path (sheet.yml's
+  // `category_depth`). Applied ONLY to the dictionary's grouping: a project's
+  // own `category:` is already exactly what it wanted, and a recipe's
+  // fallback path says where a row SITS rather than what it is about.
+  depth?: number
 ): string[] | undefined {
   if (fallbackWins && fallback !== undefined) return fallback;
-  if (binding && binding.entry.group !== undefined) return groupPath(binding.entry.group);
+  if (binding && binding.entry.group !== undefined) {
+    const path = groupPath(binding.entry.group);
+    // `slice` already returns the whole path for a depth past its end, so no
+    // length test is needed — one was written here and removed after breaking
+    // it changed nothing.
+    return depth === undefined ? path : path.slice(0, depth);
+  }
   return fallback ?? (binding ? [UNCATEGORIZED] : undefined);
 }
 
@@ -1906,6 +1919,8 @@ function fileDrafts(
   // independently said, so a disagreement can be reported instead of silently
   // splitting the row in two.
   const governingComponent = categoriesFromForSheet(projectMeta, sheetName);
+  // How deep this sheet follows a bound dictionary's own group path.
+  const categoryDepth = categoryDepthForSheet(projectMeta, sheetName);
   const dictPathByKey = new Map<string, Map<string, string>>();
 
   // `group_by: file` names a row's category after the file it belongs to, and
@@ -2103,14 +2118,14 @@ function fileDrafts(
           ? [meta.category]
           : meta.category
         : groupByFile
-          ? (derivedFile ?? bindingOrFallback(categoryBinding, d.fallbackCategoryPath, d.categoryPathWins))
-          : bindingOrFallback(categoryBinding, d.fallbackCategoryPath, d.categoryPathWins);
+          ? (derivedFile ?? bindingOrFallback(categoryBinding, d.fallbackCategoryPath, d.categoryPathWins, categoryDepth))
+          : bindingOrFallback(categoryBinding, d.fallbackCategoryPath, d.categoryPathWins, categoryDepth);
     // The grouping the file heading displaced, kept for the viewer to sub-head
     // with. Only where the file actually won: a row the project categorised by
     // hand is where the project put it, and saying it "really" belongs
     // somewhere else would be this file arguing with the author.
     if (!declaredNoCategory && !meta?.category && derivedFile !== undefined) {
-      const group = bindingOrFallback(categoryBinding, d.fallbackCategoryPath, d.categoryPathWins);
+      const group = bindingOrFallback(categoryBinding, d.fallbackCategoryPath, d.categoryPathWins, categoryDepth);
       if (group !== undefined && group.length > 0) {
         if (subHeadings) d.param.sub_category = group;
         // Counted either way. A sheet on the default layout has no sub-heads to

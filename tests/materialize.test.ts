@@ -1614,3 +1614,75 @@ params:
     expect(pathOf(input, "opened_c")).toContain("Uncategorized");
   });
 });
+
+// How deep a sheet follows the dictionary's own grouping.
+//
+// A dictionary's `group` is a PATH mirroring the product's console — a Keycloak
+// client's `standardFlowEnabled` is filed under `Settings / Capability config`.
+// A sheet that wants the head and no more had to restate it on every row, and
+// each restatement is a chance to file one row away from its siblings: measured
+// on a real spec, three of one feature's settings ended up in a tab of their own
+// while twelve stayed under the product's name.
+describe("category_depth", () => {
+  const DEEP = `
+product: deepdb
+version: "1"
+provenance: extracted
+coverage: full
+parameters:
+  a_one:
+    description: { en: one }
+    default: "1"
+    group: [Settings, Capability config]
+  a_two:
+    description: { en: two }
+    default: "2"
+    group: [Settings, Access settings]
+`;
+  const build = (depth: string): ParameterSheetInput => {
+    const files: Record<string, string> = {
+      "project.yml": `layout: categories\n${depth}params: {}\n`,
+      "meta/demodb@1.yml": DICT_YAML,
+      "meta/deepdb@1.yml": DEEP,
+    };
+    const si = sheetInputs(["a_one", "a_two"]);
+    return assembleSheets(
+      si,
+      opts({ readFile: (p: string): string | null => files[p] ?? null, dictionaries: { db: [{ product: "deepdb", version: "1" }] } })
+    );
+  };
+  const pathOf = (input: ParameterSheetInput, key: string): string => {
+    let found = "";
+    const walk = (cats: Category[] | undefined, trail: string[]): void => {
+      for (const c of cats ?? []) {
+        for (const p of c.params ?? []) if (p.key === key) found = [...trail, c.name].join(" > ");
+        walk(c.categories, [...trail, c.name]);
+      }
+    };
+    walk(input.sheets[0]!.categories, []);
+    return found;
+  };
+
+  it("follows the whole path when nothing is declared", () => {
+    const input = build("");
+    expect(pathOf(input, "a_one")).toBe("Settings > Capability config");
+    expect(pathOf(input, "a_two")).toBe("Settings > Access settings");
+  });
+
+  it("stops at the head when the sheet says one", () => {
+    const input = build("category_depth: 1\n");
+    expect(pathOf(input, "a_one")).toBe("Settings");
+    expect(pathOf(input, "a_two")).toBe("Settings");
+  });
+
+  // A depth at or past the end of the path is the path.
+  it("does not pad a path shorter than the depth", () => {
+    const input = build("category_depth: 5\n");
+    expect(pathOf(input, "a_one")).toBe("Settings > Capability config");
+  });
+
+  it("is a no-op at zero, rather than erasing the category", () => {
+    const input = build("category_depth: 0\n");
+    expect(pathOf(input, "a_one")).toBe("Settings > Capability config");
+  });
+});
