@@ -42,8 +42,35 @@ describe("loadProjectMeta", () => {
   });
 
   it("defaults missing params to {}", () => {
-    const doc = loadProjectMeta("sheet.yml", () => "product: x\n");
+    const doc = loadProjectMeta("sheet.yml", () => "categories: [General]\n");
     expect(doc.params).toEqual({});
+  });
+
+  // An unknown field used to be dropped in silence, so the build produced a
+  // different document and said nothing (build.yml has rejected one since a
+  // typo'd category produced a ghost tab).
+  it("refuses a field it does not define, and suggests the near one", () => {
+    expect(() => loadProjectMeta("sheet.yml", () => "category_dpeth: 1\nparams: {}\n")).toThrow(/category_dpeth.*did you mean "category_depth"/s);
+  });
+
+  it("names every unknown field at once, at any level", () => {
+    const yaml = [
+      "sheets:",
+      "  s:",
+      "    catgories: [A]",
+      "    params:",
+      "      k: { categroy: A }",
+      "",
+    ].join("\n");
+    try {
+      loadProjectMeta("sheet.yml", () => yaml);
+      throw new Error("expected a throw");
+    } catch (e) {
+      const m = String(e);
+      expect(m).toContain("catgories");
+      expect(m).toContain("categroy");
+      expect(m).toContain("2 field(s)");
+    }
   });
 
   it("throws when the file is not found", () => {

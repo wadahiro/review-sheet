@@ -13,6 +13,7 @@
 // showing up with no error). See categoriesForSheet/underKeyForSheet below.
 
 import { parse } from "yaml";
+import { suggestNearest } from "../schema-errors.js";
 import { registerMetadataProvider, type MetadataProvider, type MetadataContext, type MetadataQuery, type MetadataResult, type LangText } from "../metadata.js";
 import type { TestDeclaration } from "../types.js";
 
@@ -268,10 +269,80 @@ function checkNav(doc: unknown, path: string): void {
   }
 }
 
+// Every field each level of sheet.yml accepts.
+//
+// build.yml has had `additionalProperties: false` since a single typo'd
+// `category:` produced a ghost tab with no error (see spec.ts). sheet.yml never
+// grew the same guard, and its loader rebuilds each level from an allow-list —
+// so an unknown field was not rejected, it was SILENTLY DROPPED, and the build
+// went on to produce a different document while reporting "0 warn, 0 error".
+// Measured: misspelling one field changed the model and nothing said so.
+//
+// `nav:` is checked separately and with a better message (checkNav), so it is
+// listed here to keep this from claiming it first.
+const DOC_FIELDS = ["categories", "under_key", "label", "layout", "category_depth", "params", "sheets", "groups", "numbering", "nav"] as const;
+const SHEET_FIELDS = [
+  "categories", "under_key", "group", "compare_components", "layout", "category_depth",
+  "group_by", "categories_from", "label", "params", "components",
+] as const;
+const COMPONENT_FIELDS = ["params"] as const;
+const PARAM_FIELDS = ["category", "deployed_file", "dict_key", "description", "remarks", "out_of_scope", "secret"] as const;
+
+// A compile-time twin of each list: a field added to the type and forgotten
+// here fails to build rather than becoming the next silently-dropped one.
+type Empty<T extends never> = T;
+type _DocCovers = Empty<Exclude<keyof ProjectMetaDoc, (typeof DOC_FIELDS)[number]>>;
+type _SheetCovers = Empty<Exclude<keyof ProjectMetaSheetDoc, (typeof SHEET_FIELDS)[number]>>;
+type _ParamCovers = Empty<Exclude<keyof ProjectMetaParam, (typeof PARAM_FIELDS)[number]>>;
+
+function unknownFields(
+  node: unknown,
+  known: readonly string[],
+  where: string,
+  out: string[]
+): void {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return;
+  for (const k of Object.keys(node as Record<string, unknown>)) {
+    if (known.includes(k)) continue;
+    const near = suggestNearest(k, [...known]);
+    out.push(`  ${where}: "${k}"${near === undefined ? "" : ` — did you mean "${near}"?`}`);
+  }
+}
+
+// Every unknown field in the document, collected before throwing: a file that
+// misspelled two must not make the author fix one and run again to find the
+// next.
+function checkFields(doc: Partial<ProjectMetaDoc>, path: string): void {
+  const bad: string[] = [];
+  unknownFields(doc, DOC_FIELDS, "(top level)", bad);
+  for (const [name, sheet] of Object.entries(doc.sheets ?? {})) {
+    unknownFields(sheet, SHEET_FIELDS, `sheet "${name}"`, bad);
+    for (const [key, param] of Object.entries(sheet?.params ?? {})) {
+      unknownFields(param, PARAM_FIELDS, `sheet "${name}" param "${key}"`, bad);
+    }
+    for (const [comp, c] of Object.entries(sheet?.components ?? {})) {
+      unknownFields(c, COMPONENT_FIELDS, `sheet "${name}" component "${comp}"`, bad);
+      for (const [key, param] of Object.entries(c?.params ?? {})) {
+        unknownFields(param, PARAM_FIELDS, `sheet "${name}" component "${comp}" param "${key}"`, bad);
+      }
+    }
+  }
+  for (const [key, param] of Object.entries(doc.params ?? {})) {
+    unknownFields(param, PARAM_FIELDS, `param "${key}"`, bad);
+  }
+  if (bad.length > 0) {
+    throw new Error(
+      `project metadata ${path}: ${bad.length} field(s) this file does not define. ` +
+        `An unknown field here was silently dropped, so the build produced a different document and said nothing:\n${bad.join("\n")}`
+    );
+  }
+}
+
 export function loadProjectMeta(path: string, readFile: (path: string) => string | null): ProjectMetaDoc {
   const content = readFile(path);
   if (content === null) throw new Error("project metadata not found: " + path);
   const doc = (parse(content) ?? {}) as Partial<ProjectMetaDoc>;
+  checkFields(doc, path);
   if (doc.sheets && doc.params) {
     throw new Error(
       `project metadata ${path}: "sheets:" and top-level "params:" cannot both be set. ` +
