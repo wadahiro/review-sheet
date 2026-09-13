@@ -929,9 +929,9 @@ state: the rows are no longer the model's.
 sheet/
   README.md                     the index, the model's stamp, and what to do
   viewer.html                   open this; drop the folder on it
-  詳細設計/SSO サーバ/Keycloak.md        one file per sheet
-  詳細設計/SSO サーバ/artifacts/…        what the deployed file says
-  詳細設計/SSO サーバ/evidence/…         what a host was found holding
+  Detailed design/Web tier/httpd.md      one file per sheet
+  Detailed design/Web tier/artifacts/…   what the deployed file says
+  Detailed design/Web tier/evidence/…    what a host was found holding
 ```
 
 Under its key, every row that has one carries a **プレビュー** link to the file

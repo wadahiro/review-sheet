@@ -58,8 +58,8 @@ export type MarkdownSetOptions = {
   // collected file beside the record that cites it, because that is the
   // structure the document already has. A single `artifacts/` bucket at the
   // root would be a second, type-shaped arrangement laid over the chapters —
-  // and the reader who opened 詳細設計 would have to leave it to see what it
-  // is describing.
+  // and the reader who opened a chapter would have to leave it to see what
+  // that chapter is describing.
   documents?: { path: string; text: string; sheet: string; label: string }[];
 };
 
