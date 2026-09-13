@@ -6,6 +6,10 @@
 
 import { describe, it, expect } from "bun:test";
 import { renderTestDoc, renderExcluded, injectBlocks, unitDocuments } from "../src/testdoc";
+import { toMarkdownSet } from "../src/md-set";
+import { readMarkdownSet } from "../src/md-read";
+import { looksLikeParamSheet } from "../src/sheet-markdown";
+import type { SheetData } from "../src/prompt";
 import type { TestPlan } from "../src/testplan";
 import type { TestResults } from "../src/testresults";
 
@@ -458,5 +462,67 @@ describe("where each unit's record is written", () => {
     expect(() => unitDocuments(p, [{ name: "record A", source_file: "docs/a.md", document: { text: "" } }, { name: "record B", source_file: "x.md" }])).toThrow(
       /is not a document sheet/
     );
+  });
+});
+
+
+// A record this tool wrote, carried in a set and read back.
+//
+// The join nothing covered, and the one that was wrong in both directions. The
+// set wrote a document sheet as its TITLE and nothing else, because the
+// projection walks categories and a document has none; and once the prose did
+// travel, the reader took it for a parameter sheet — because this file heads
+// its excluded-settings table with the projection's own key column
+// (`excludedCols`), so the collision is between two halves of this tool rather
+// than anything a project did.
+//
+// Each half had tests of its own. Their meeting had none.
+describe("a record of this tool's own, through a set", () => {
+  // Assembled the way a project's own document holds these: the blocks this
+  // file renders, under headings somebody wrote.
+  const record = (): string => {
+    const blocks = renderTestDoc(plan(), results(), "server");
+    return [
+      "# Record",
+      "",
+      "What this record covers.",
+      "",
+      ...Object.values(blocks).flatMap((b) => ["## Items", "", b, ""]),
+      "## Out of scope",
+      "",
+      renderExcluded([{ unit: "server", sheet: "os", key: "pw", reason: { ja: "secret" }, owner: "ops" }], "server"),
+      "",
+    ].join("\n");
+  };
+
+  const model = (): SheetData =>
+    ({
+      metadata: { title: "t" },
+      groups: [{ name: "rec", display: "Records" }],
+      sheets: [{ name: "unit", display: "Unit", group: "rec", categories: [], document: { html: "<p>x</p>", markdown: record() } }],
+    }) as unknown as SheetData;
+
+  it("carries the record, not just the sheet's name", () => {
+    const page = toMarkdownSet(model(), "ja").files.find((f) => f.path === "Records/Unit.md")!;
+    // The item table this file writes, in the delivered file.
+    expect(page.text).toContain("| 1 | httpd.conf | `Listen` |");
+    expect(page.text).toContain("| os > `pw` | secret | ops |");
+    expect(page.text.length).toBeGreaterThan(1000);
+  });
+
+  // The table this file heads with the projection's own key column is the
+  // reason one head cannot decide what a page is.
+  it("is still read as prose, though it uses the key column for its own table", () => {
+    const text = record();
+    expect(text).toContain("設定項目");
+    expect(looksLikeParamSheet(text)).toBe(false);
+
+    const { files } = toMarkdownSet(model(), "ja");
+    const read = readMarkdownSet(files.map((f) => ({ path: f.path, text: f.text })), "ja");
+    const back = read.sheets.find((x) => x.display === "Unit")!;
+    expect(back.document.mode).toBeUndefined();
+    expect(back.categories).toEqual([]);
+    expect(back.instances).toEqual([]);
+    expect(read.problems.filter((x) => x.includes("read as prose"))).toEqual([]);
   });
 });

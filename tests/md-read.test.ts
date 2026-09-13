@@ -11,6 +11,7 @@ import { tmpdir } from "os";
 import { SET_DIR } from "../src/set-block";
 import { join, resolve as resolvePath } from "path";
 import { readMarkdownSet, orderOf, rebase, documentPreviews, type SetFile } from "../src/md-read";
+import { looksLikeParamSheet, renamedKeyColumns } from "../src/sheet-markdown";
 import { toMarkdownSet } from "../src/md-set";
 import type { SheetData } from "../src/prompt";
 
@@ -69,7 +70,7 @@ describe("reading a folder back as a document", () => {
     ];
     const r = readMarkdownSet(two);
     expect(r.sheets.filter((s) => s.display === "OS")).toHaveLength(2);
-    expect(r.problems).toEqual([]);
+    expect(r.problems.filter((x) => x.includes("read as prose"))).toEqual([]);
   });
 
   it("reads the environments off the table, and the rows under their headings", () => {
@@ -205,5 +206,74 @@ describe("a row's link, after the folder is read back", () => {
       }
     }
     expect(checked).toBeGreaterThan(10);
+  });
+});
+
+// A page of a set is a parameter SHEET or it is PROSE, and only the text says
+// which.
+//
+// Read as a sheet, a document's tables become rows and their headers become
+// ENVIRONMENTS. Measured the moment prose documents started travelling at all:
+// a record `testdoc.ts` had written came back as about a thousand rows across
+// fourteen environments, each named after one of its own columns, while the
+// HTML rendered the same document as prose — the asymmetry a set is supposed
+// not to have. See `tests/testdoc.test.ts` for that join, end to end.
+describe("telling a sheet from a document", () => {
+  const sheetPage = [
+    "# os",
+    "",
+    "| 設定項目 | デフォルト値 | staging |",
+    "| --- | --- | --- |",
+    "| `Listen` | 80 | 8080 |",
+    "",
+  ].join("\n");
+
+  it("reads a page this projection wrote as a sheet", () => {
+    expect(looksLikeParamSheet(sheetPage)).toBe(true);
+    const s = readMarkdownSet([{ path: "os.md", text: sheetPage }]).sheets[0]!;
+    expect(s.instances).toEqual(["staging"]);
+    expect(s.document.mode).toBe("sheet");
+  });
+
+  // TWO of the projection's heads, not one. The key head alone is a word an
+  // ordinary table reaches for — a record listing what it does NOT cover is
+  // prose about settings, not a sheet of them — and one such table had a whole
+  // document read as rows.
+  it("is not fooled by a prose table that happens to use the key head", () => {
+    const record = [
+      "# Acceptance record",
+      "",
+      "## Out of scope",
+      "",
+      "| 設定項目 | Reason | Owner |",
+      "| --- | --- | --- |",
+      "| db-password | secret | ops |",
+      "",
+      "## Items",
+      "",
+      "| No. | Subject | Result | 備考 |",
+      "| --- | --- | --- | --- |",
+      "| 1 | Listen | pass |  |",
+      "",
+    ].join("\n");
+    expect(looksLikeParamSheet(record)).toBe(false);
+    const r = readMarkdownSet([{ path: "t.md", text: record }]);
+    const s = r.sheets[0]!;
+    expect(s.categories).toEqual([]);
+    expect(s.instances).toEqual([]);
+    expect(s.document.mode).toBeUndefined();
+    // …and its markdown still travels, which is the whole point.
+    expect(s.document.markdown).toContain("| 1 | Listen | pass |");
+    // A document nobody mis-wrote draws no warning. The remarks head is an
+    // ordinary column of an ordinary table; counting it as evidence reported
+    // one real record twenty-eight times over.
+    expect(r.problems.filter((x) => x.includes("read as prose"))).toEqual([]);
+  });
+
+  // The one case where prose is the WRONG answer, and the only one reported.
+  it("names a sheet whose key column was renamed", () => {
+    const renamed = ["# os", "", "| Setting | デフォルト値 | staging |", "| --- | --- | --- |", "| `Listen` | 80 | 8080 |", ""].join("\n");
+    expect(renamedKeyColumns(renamed)).toEqual(["Setting"]);
+    expect(readMarkdownSet([{ path: "os.md", text: renamed }]).problems.join("\n")).toContain("read as prose");
   });
 });

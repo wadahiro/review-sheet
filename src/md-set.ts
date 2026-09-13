@@ -143,7 +143,15 @@ export function toMarkdownSet(
       problems.push(`"${sheet.name}" and "${clash}" both spell ${path} — the second is written as ${finalPath}`);
     }
     taken.set(path, sheet.name);
-    const body = sheetToMarkdown(sheet as never, lang, opts.preview?.(sheet), sheet.display ?? sheet.name);
+    const title = sheet.display ?? sheet.name;
+    const body = documentBody(sheet, title) ?? sheetToMarkdown(sheet as never, lang, opts.preview?.(sheet), title);
+    // A sheet that wrote nothing but its own name. Rows and prose are the only
+    // two things a sheet is made of, so a file with neither is a sheet that did
+    // not travel — the failure this whole area exists to prevent, and one that
+    // looks exactly like a sheet which is simply short.
+    if (!/\n\s*\S/.test(body.replace(/^#[^\n]*\n/, ""))) {
+      problems.push(`sheet "${sheet.name}" was written as its title and nothing else — it carries neither rows nor prose`);
+    }
     const mine = (opts.documents ?? []).filter((d) => d.sheet === sheet.name);
     sheets.push({ path: finalPath, text: withDocuments(body, finalPath, mine, lang) });
     const under = dir.join("/");
@@ -172,6 +180,35 @@ export function toMarkdownSet(
     files: [{ path: "README.md", text: index(data, paths, lang, opts.stamp, opts.instances) }, ...sheets, ...documents],
     problems,
   };
+}
+
+// A sheet whose model is a DOCUMENT is written as that document.
+//
+// `sheetToMarkdown` projects CATEGORIES, and a prose document has none — so
+// such a sheet came out as its title and nothing else. Measured on a real
+// delivery: four sheets and a quarter of a megabyte of prose, gone with no
+// error and no warning. The HTML carried them the whole time, which is what
+// made it invisible: the two shapes are meant to be one model, and only one of
+// them was reading this half of it.
+//
+// The document's own h1 is dropped exactly as `markdown.ts` drops it when
+// rendering: the page already shows the sheet's heading, which carries the
+// label in the reader's language where a markdown h1 carries one language, so
+// keeping both put the same words twice, a line apart. The SHEET's title is
+// written in its place, because that is the name the chapter tree, the index
+// and the read-back all call this page.
+function documentBody(sheet: SheetData["sheets"][number], title: string): string | undefined {
+  const text = sheet.document?.markdown;
+  if (text === undefined || text.trim() === "") return undefined;
+  // The FIRST heading, and only if it is an h1 — the same test markdown.ts
+  // makes. A document that opens at h2 has no title to drop, and a later h1 is
+  // a section of a flat document rather than its name.
+  const first = /^[ \t]*(#{1,6})[ \t]+[^\n]*\n?/m.exec(text);
+  const without =
+    first !== null && first[1] === "#"
+      ? text.slice(0, first.index) + text.slice(first.index + first[0].length)
+      : text;
+  return `# ${title}\n\n${without.replace(/^\s*\n+/, "")}`;
 }
 
 // The files this sheet describes, listed under its title as ordinary prose.

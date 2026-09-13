@@ -151,6 +151,70 @@ describe("the documents a sheet carries", () => {
   });
 });
 
+// A sheet whose model is a DOCUMENT, not rows.
+//
+// `toMarkdownSheet` projects categories and a prose document has none, so such
+// a sheet was written as its title and nothing else. Measured on a real
+// delivery: four sheets, including two test records, gone with no error and no
+// warning — and the HTML carried them the whole time, which is what made it
+// invisible. The two shapes are one model; only one of them was reading this
+// half of it.
+describe("a sheet that is a document", () => {
+  const prose = [
+    "# Acceptance record",
+    "",
+    "What this record covers.",
+    "",
+    "## Items",
+    "",
+    "| No. | Subject | Result |",
+    "| --- | --- | --- |",
+    "| 1 | Listen | pass |",
+    "",
+  ].join("\n");
+  const doc = (): SheetData =>
+    ({
+      metadata: { title: "t" },
+      groups: [{ name: "record", display: "Records" }],
+      sheets: [
+        {
+          name: "acceptance",
+          display: "Acceptance",
+          group: "record",
+          categories: [],
+          document: { html: "<p>…</p>", markdown: prose },
+        },
+      ],
+    }) as unknown as SheetData;
+
+  it("writes the document, not just the sheet's name", () => {
+    const { files, problems } = toMarkdownSet(doc(), "ja");
+    const page = files.find((f) => f.path === "Records/Acceptance.md")!;
+    expect(page.text).toContain("## Items");
+    expect(page.text).toContain("| 1 | Listen | pass |");
+    expect(problems).toEqual([]);
+  });
+
+  // The page already shows the sheet's heading, which carries the label in the
+  // reader's language where a markdown h1 carries one — the same reason the
+  // renderer drops it (markdown.ts).
+  it("heads it with the sheet's title, in place of the document's own", () => {
+    const page = toMarkdownSet(doc(), "ja").files.find((f) => f.path === "Records/Acceptance.md")!;
+    expect(page.text.split("\n")[0]).toBe("# Acceptance");
+    expect(page.text).not.toContain("# Acceptance record");
+  });
+
+  // The shape of the bug, as a check: a sheet is made of rows or of prose, and
+  // a file with neither is a sheet that did not travel — which looks exactly
+  // like a sheet that is simply short.
+  it("reports a sheet that came out as its title and nothing else", () => {
+    const empty = doc();
+    delete (empty.sheets[0] as { document?: unknown }).document;
+    const { problems } = toMarkdownSet(empty, "ja");
+    expect(problems.join("\n")).toContain("title and nothing else");
+  });
+});
+
 describe("the index", () => {
   // The recipient has no toolchain and did not ask for one. If it is not
   // obvious in three lines what to edit, what to read it with and what not to

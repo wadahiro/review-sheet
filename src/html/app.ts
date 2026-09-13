@@ -759,7 +759,28 @@ function DocumentBody({ sheet, onEvidence, t }: {
   onEvidence?: (id: string, line?: number) => void;
   t: Messages;
 }) {
-  const html_ = sheet.document!.html;
+  // Rendered at BUILD time and carried — except in a set somebody dropped,
+  // where nothing built anything: the page holds the markdown a recipient
+  // edited and has to render it itself. The renderer is already aboard for any
+  // page that may be handed a folder (`markdownRuntime`), so this costs nothing
+  // a document sheet was not paying. Where there is neither, the body is empty
+  // and says nothing rather than showing markup — but that combination means
+  // the page was built without the runtime it needs, so it is said out loud.
+  const doc = sheet.document!;
+  const html_ = useMemo(() => {
+    if (doc.html !== "") return doc.html;
+    const md = doc.markdown;
+    if (md === undefined || md === "") return "";
+    const render_ = getMarkdownRenderer();
+    if (render_ === null) {
+      console.warn(`document "${sheet.name}" carries markdown and no rendered html, and this page has no markdown renderer`);
+      return "";
+    }
+    // The same namespacing the build uses (recipes/document.ts): ids have to be
+    // unique across the whole document, and a heading text is not.
+    const prefix = `rs-doc-${sheet.name.replace(/[^A-Za-z0-9\u00A0-\uFFFF]+/g, "-").replace(/^-+|-+$/g, "") || "sheet"}-`;
+    return render_(md, {}, { navDepth: 0, idPrefix: prefix }).html;
+  }, [doc.html, doc.markdown, sheet.name]);
 
   // Diagrams are drawn HERE, not by the build — see mermaid-runtime.ts. After
   // every render of this body, including the one an edit causes: a diagram
@@ -4573,6 +4594,33 @@ function diffBadge(status: DiffStatus | undefined) {
 // Root (version switching + diff) and entry point
 // ============================================================
 
+// A read-back set, as the payload the page renders.
+//
+// Its own function because there are THREE ways a set reaches this page and
+// they must produce the same document: a dropped folder, a folder chosen from
+// the picker, and one the file itself carries (what "Save as one file" wrote
+// into a copy of this page). Two of them used to build this object literal
+// separately, under a comment claiming they were the same code path — and a
+// claim about the code that the code does not back is the thing this project
+// distrusts everywhere else.
+//
+// Exported so a test can mount the page the way a drop does, rather than
+// assembling its own idea of what a drop produces and then asserting against
+// it — which would pass whatever the real entries went on to do.
+export function payloadOfSet(metadata: Payload["metadata"], read: ReturnType<typeof readMarkdownSet>): Payload {
+  return {
+    metadata: { ...metadata, ...read.metadata },
+    versions: [
+      {
+        version: "current",
+        sheets: read.sheets as never,
+        groups: read.groups as never,
+        artifacts: documentPreviews(read.documents),
+      },
+    ],
+  } as Payload;
+}
+
 function Root({ payload, reviewEnabled, promptEnabled = true, showSources: sources = true, initialLang, server, dropped, onSaveSingle , onPickFolder }: { payload: Payload; reviewEnabled: boolean; promptEnabled?: boolean; showSources?: boolean; initialLang: Lang; server: boolean; dropped?: string; onSaveSingle?: () => void; onPickFolder?: () => void }) {
   // Applied here rather than in an effect: it decides what the FIRST render
   // draws, and an effect runs after it.
@@ -4736,7 +4784,8 @@ function init() {
   //
   // The same code path as the drop, fed from a block instead of a folder: two
   // ways in, one reading, so a page cannot show one thing when dropped and
-  // another when opened.
+  // another when opened. `payloadOfSet` is what makes that true rather than
+  // intended — this said it while holding a second copy of the construction.
   const carried = document.getElementById(SET_BLOCK_ID);
   const carriedText = (carried?.textContent ?? "").trim();
   if (carriedText !== "" && carriedText !== "null") {
@@ -4745,17 +4794,7 @@ function init() {
     const read = readMarkdownSet(files, lang);
     if (read.problems.length > 0) console.warn(read.problems.join("\n"));
     if (read.sheets.length > 0) {
-      draw({
-        metadata: { ...payload.metadata, ...read.metadata },
-        versions: [
-          {
-            version: "current",
-            sheets: read.sheets as never,
-            groups: read.groups as never,
-            artifacts: documentPreviews(read.documents),
-          },
-        ],
-      } as Payload);
+      draw(payloadOfSet(payload.metadata, read));
     } else {
       draw(payload);
     }
@@ -4841,20 +4880,7 @@ function init() {
   function showSet(files: DroppedFile[], read: ReturnType<typeof readMarkdownSet>): void {
     held = files;
     if (read.problems.length > 0) console.warn(read.problems.join("\n"));
-    draw(
-      {
-        metadata: { ...payload.metadata, ...read.metadata },
-        versions: [
-          {
-            version: "current",
-            sheets: read.sheets as never,
-            groups: read.groups as never,
-            artifacts: documentPreviews(read.documents),
-          },
-        ],
-      } as Payload,
-      getMessages(lang).droppedFolder(read.sheets.length)
-    );
+    draw(payloadOfSet(payload.metadata, read), getMessages(lang).droppedFolder(read.sheets.length));
   }
 }
 

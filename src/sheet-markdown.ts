@@ -770,6 +770,74 @@ const DOC_HEADS: ReadonlySet<string> = new Set<string>(
   )
 );
 
+// Is this page a parameter SHEET, or prose?
+//
+// A page of a handed-over set is one or the other, and until this existed it
+// was always read as a sheet — so a prose document's tables were read as rows
+// and their headers as ENVIRONMENTS. Measured on a real delivery: a prose
+// record came back as about a thousand rows across fourteen environments, each
+// named after one of its own columns. The HTML rendered the same document as
+// prose the whole time, which is the asymmetry a set is supposed not to have.
+//
+// The signal is the projection's OWN key header, in either language: a table
+// this tool wrote always leads with it, and a table it did not write has no
+// reason to. Read off the header rather than declared anywhere, for the same
+// reason the chapters are read off the directories — a declaration is prose
+// somebody may reword, and an assistant asked to tidy a document will.
+//
+// What it costs is stated rather than hidden: a page whose key column somebody
+// RENAMED stops being read as a sheet. The parse is positional everywhere else
+// precisely so a reviewer may translate or rename a column, and this is the one
+// header that now has to survive. It is the cheaper half of the trade — a
+// renamed column loses one page's rows, and no signal at all turned every prose
+// document in the set into a sheet of nonsense.
+const KEY_HEADS: ReadonlySet<string> = new Set<string>([HEAD_BY_LANG.ja.key, HEAD_BY_LANG.en.key]);
+const DEFAULT_HEADS: ReadonlySet<string> = new Set<string>([HEAD_BY_LANG.ja.default, HEAD_BY_LANG.en.default]);
+
+export function looksLikeParamSheet(markdown: string): boolean {
+  // TWO of the projection's heads, not one, and the second is not caution: a
+  // document THIS TOOL writes already uses the key head for something that is
+  // not a sheet. `testdoc.ts`'s excluded-settings table is headed
+  // `excludedCols` — the key head, a reason and an owner — which is prose ABOUT
+  // settings rather than a sheet of them, and on that one table a whole
+  // quarter-megabyte record was read as a thousand rows. So the collision is
+  // structural rather than incidental, and a signal that cannot tell those two
+  // apart is not a signal. The DEFAULT column is the second one because this
+  // projection always writes it (the header array holds it unconditionally,
+  // unlike description and remarks), so requiring it rules nothing out that
+  // this tool produced.
+  return parseMarkdownBlocks(markdown).some(
+    (b) => b.kind === "table" && KEY_HEADS.has((b.head[0] ?? "").trim()) && b.head.slice(1).some((h) => DEFAULT_HEADS.has(h.trim()))
+  );
+}
+
+// A table that reads like one of this projection's, with its KEY column wearing
+// some other name.
+//
+// The one case reading a page as prose is the wrong answer: somebody renamed or
+// mistyped the header this now depends on, and their rows quietly stopped being
+// rows. Reported only for that — a document full of ordinary tables (a test
+// record, a decision log) is prose, is read as prose, and a warning on every
+// one of them is a warning nobody reads by the third set.
+//
+// The evidence is the DEFAULT head, and deliberately only that one. It is the
+// column this projection always writes AND one nothing else asks for, which is
+// the pair that makes it a signal. The description and remarks heads are
+// neither: `testdoc.ts` ends every item row with the remarks head, as any
+// table might, and counting it reported one generated record twenty-eight
+// times over as a sheet with a renamed key column. A warning that fires on a
+// document this tool wrote itself is a warning nobody reads by the third set.
+export function renamedKeyColumns(markdown: string): string[] {
+  const out: string[] = [];
+  for (const b of parseMarkdownBlocks(markdown)) {
+    if (b.kind !== "table") continue;
+    const first = (b.head[0] ?? "").trim();
+    if (KEY_HEADS.has(first)) continue;
+    if (b.head.slice(1).some((h) => DEFAULT_HEADS.has(h.trim()))) out.push(first);
+  }
+  return out;
+}
+
 // Which columns of ONE table are environments.
 //
 // The document's environment SET decides — the names it knows — and the table

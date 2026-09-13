@@ -595,7 +595,7 @@ describe("the address under a row's key", () => {
     document.body.appendChild(host);
     render(
       h(MarkdownSheetBody, {
-        markdown: md.replace("#L34)", "#L34) など"),
+        markdown: md.replace("#L34)", "#L34) and then some"),
         instances: ["staging", "production"],
         lang: "ja",
         sheetIndex: 0,

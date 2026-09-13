@@ -14,7 +14,13 @@ if (typeof (globalThis as { document?: unknown }).document === "undefined") Glob
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { h, render } from "preact";
-import { Root, artifactProvenance } from "../src/html/app";
+import { Root, artifactProvenance, payloadOfSet } from "../src/html/app";
+import { readMarkdownSet } from "../src/md-read";
+import { setMarkdownRenderer } from "../src/html/markdown-runtime";
+import { renderMarkdown } from "../src/markdown";
+import { toMarkdownSet } from "../src/md-set";
+import { carriedDocuments, addressOf } from "../src/md-documents";
+import { buildArtifactIndex } from "../src/artifact-index";
 import { customStyles } from "../src/html/styles";
 import { getMessages } from "../src/html/i18n";
 import type { ParameterSheetInput, ReviewDocument } from "../src/types";
@@ -2790,5 +2796,153 @@ describe("a button that cannot act", () => {
     expect(block).toContain("cursor: not-allowed");
     // …and it must not light up under the pointer either.
     expect(css).toContain(".rs-btn-danger:hover:not(:disabled)");
+  });
+});
+
+
+// A handed-over set, opened the way a recipient opens it.
+//
+// This is the whole chain the delivery rests on and the one nothing covered:
+// the projection writes an address under a row's key, the reader of the folder
+// rebases it, the page holds the file under that very path, and a click has to
+// land on the line. Every step is an equality between two strings computed in
+// different modules, so any of them can be off while every part still looks
+// right on its own — a link that is there, reads correctly, and opens nothing.
+//
+// The page is built by `payloadOfSet`, the same function the drop, the picker
+// and a carried set all go through: a test assembling its own idea of what a
+// drop produces would pass whatever those three went on to do.
+describe("a dropped set, opened at a row's line", () => {
+  const MODEL = {
+    metadata: { title: "d", project: "p" },
+    // In a chapter, and a nested one: a set writes its addresses relative to
+    // the sheet, while the page is ONE document for the whole folder — so an
+    // address that is not rebased resolves against the page and is off by
+    // exactly the sheet's depth. A top-level sheet cannot show that, because
+    // there is nothing to climb.
+    groups: [{ name: "design", display: "Detailed design", groups: [{ name: "srv", display: "Web tier" }] }],
+    sheets: [
+      {
+        name: "web",
+        group: "srv",
+        instances: ["staging"],
+        categories: [{ name: "httpd.conf", params: [{ key: "Listen", value: "8080", description: "Port" }] }],
+      },
+    ],
+    artifacts: [
+      {
+        id: "web",
+        sheet: "web",
+        source_file: "roles/web/templates/httpd.conf.j2",
+        deployed_path: "/etc/httpd/conf/httpd.conf",
+        instances: ["staging"],
+        lines: [
+          { text: "# managed", kind: "verbatim" },
+          { text: "ServerRoot /etc/httpd", kind: "verbatim" },
+          { text: "Listen 8080", kind: "substituted", key: "Listen" },
+        ],
+      },
+    ],
+  };
+
+  // Written and read back exactly as the CLI does it: the same projection, the
+  // same carried documents, the same address rule.
+  function droppedPage(): HTMLElement {
+    const carried = carriedDocuments(MODEL.artifacts as never, ["staging"]);
+    const index = buildArtifactIndex(MODEL.artifacts as never);
+    const { files } = toMarkdownSet(MODEL as never, "ja", {
+      documents: carried,
+      preview: (sheet) => (row, categoryPath) => {
+        const hit = index.previewFor(sheet.name, categoryPath.join("/"), row.key);
+        const doc = carried[MODEL.artifacts.indexOf(hit as never)];
+        return doc === undefined ? undefined : addressOf([doc], row.key);
+      },
+    });
+    const read = readMarkdownSet(files.map((f) => ({ path: `${f.path}`, text: f.text })), "ja");
+    expect(read.problems).toEqual([]);
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    openSheetTab();
+    render(
+      h(Root, {
+        payload: payloadOfSet({ title: "d" } as never, read),
+        reviewEnabled: false,
+        initialLang: "ja",
+        server: false,
+        dropped: "…",
+      }),
+      host
+    );
+    return host;
+  }
+
+  it("puts the address under the key, as a link into the set", () => {
+    const a = droppedPage().querySelector("td.rs-col-key a") as HTMLAnchorElement | null;
+    expect(a).not.toBeNull();
+    expect(a!.textContent).toBe("プレビュー");
+    // Rebased on the SET — the page is one document for the whole folder, so an
+    // address left relative to the sheet resolves against the wrong place.
+    // Percent-encoded, and the fragment carried through — the page decodes it
+    // back and compares it against what it is holding, so both halves have to
+    // survive the climb out of the chapter.
+    expect(decodeURI(a!.getAttribute("href")!)).toBe("Detailed design/Web tier/artifacts/etc/httpd/conf/httpd.conf#L3");
+  });
+
+  it("opens the file beside the sheet, at that line", async () => {
+    const host = droppedPage();
+    expect(host.querySelector(".rs-artifact-panel")).toBeNull();
+    const a = host.querySelector("td.rs-col-key a") as HTMLAnchorElement;
+    a.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 30));
+
+    const panel = host.querySelector(".rs-artifact-panel");
+    expect(panel, "the link did not open the panel").not.toBeNull();
+    // Named by where it sits in the folder, since that is all a read-back set
+    // knows: the deployed path lost its leading slash on the way to disk, and
+    // the page has no model to ask for the original.
+    expect(panel!.querySelector(".rs-artifact-path")!.textContent).toBe("etc/httpd/conf/httpd.conf");
+    // The line the row is written on, and not another one: the highlight is
+    // the whole point of carrying a line number.
+    const here = panel!.querySelector(".rs-artifact-line.rs-here");
+    expect(here, "no line is marked").not.toBeNull();
+    expect(here!.textContent).toContain("Listen 8080");
+  });
+});
+
+
+// A page of a dropped set that is PROSE, not rows.
+//
+// Two halves had to meet for this to work at all. The set has to carry the
+// document (it used to write the title and stop), and the page has to render
+// it: nothing built a dropped set, so there is no finished html to show, only
+// the markdown a recipient edited. Before this the body was simply blank —
+// which is what "the test items are missing" looked like from the reader's
+// side, and is indistinguishable from a document that is genuinely empty.
+describe("a dropped set's prose page", () => {
+  const PROSE = ["# Acceptance record", "", "## Items", "", "| No. | Subject | Result |", "| --- | --- | --- |", "| 1 | Listen | pass |", ""].join("\n");
+
+  it("renders the markdown it was handed, since nothing built it html", () => {
+    setMarkdownRenderer((source, images, opts) =>
+      renderMarkdown(source, () => null, opts)
+    );
+    const read = readMarkdownSet([{ path: "Records/Acceptance.md", text: PROSE }], "ja");
+    // Read as PROSE — its tables are a record, not rows (see md-read.ts).
+    expect(read.sheets[0]!.document.mode).toBeUndefined();
+
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(
+      h(Root, { payload: payloadOfSet({ title: "d" } as never, read), reviewEnabled: false, initialLang: "ja", server: false, dropped: "…" }),
+      host
+    );
+
+    const body = host.querySelector(".rs-doc");
+    expect(body, "the page rendered no document body").not.toBeNull();
+    expect(body!.querySelector("h2")!.textContent).toBe("Items");
+    expect(body!.querySelectorAll("tbody tr")).toHaveLength(1);
+    expect(body!.textContent).toContain("Listen");
+    // The document's own h1 is the sheet's name and is not printed twice.
+    expect(body!.querySelector("h1")).toBeNull();
   });
 });

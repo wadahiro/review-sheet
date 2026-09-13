@@ -15,7 +15,7 @@
 //
 // Pure: it is given the files, it does not read them.
 
-import { markdownToCategories, declaredInstances } from "./sheet-markdown.js";
+import { markdownToCategories, declaredInstances, looksLikeParamSheet, renamedKeyColumns } from "./sheet-markdown.js";
 import type { Lang } from "./html/i18n.js";
 import type { ArtifactPreview } from "./types.js";
 
@@ -30,7 +30,10 @@ export type ReadSet = {
     group?: string;
     instances: string[];
     categories: unknown[];
-    document: { html: ""; markdown: string; mode: "sheet" };
+    // `mode: "sheet"` on a page whose markdown IS a parameter table, absent on
+    // one that is prose — the viewer switches on exactly this, and a set holds
+    // both kinds (see `looksLikeParamSheet`).
+    document: { html: ""; markdown: string; mode?: "sheet" };
   }[];
   // Everything in the folder that is not a sheet: the rendered artifacts, the
   // authored sources, the collected evidence. Carried so a page that embeds the
@@ -98,6 +101,7 @@ export function orderOf(indexText: string): string[] {
 
 export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
   const problems: string[] = [];
+  const prose: string[] = [];
   const index = files.find((f) => f.path === INDEX || f.path.endsWith(`/${INDEX}`));
   // Everything else in the folder — the artifacts, the evidence — is carried,
   // not read as a sheet. A sheet is a `.md` that is not the index.
@@ -149,6 +153,32 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
     if (named.has(name)) problems.push(`two files are at ${f.path}`);
     named.add(name);
     const markdown = rebase(f.text, dirs.join("/"));
+    // A page is a parameter SHEET or it is PROSE, and the text says which
+    // (`looksLikeParamSheet`). Read as a sheet, a document's tables become rows
+    // and their headers become environments — measured on a real delivery, a
+    // record `testdoc.ts` had written came back as about a thousand rows across
+    // fourteen environments, each named after one of its own columns, while the
+    // HTML rendered the same document as prose. Two halves of this tool
+    // disagreeing about its own output, not a project doing anything unusual.
+    // `mode` is what the viewer switches on, so it is what carries the answer.
+    if (!looksLikeParamSheet(markdown)) {
+      // Only the case where prose is the WRONG answer: a table that reads like
+      // one of the projection's with its key column renamed. Ordinary prose
+      // with ordinary tables is not remarked on — see `renamedKeyColumns`.
+      for (const head of renamedKeyColumns(markdown)) prose.push(`${f.path} (${head})`);
+      sheets.push({
+        name,
+        display,
+        ...(group === undefined ? {} : { group }),
+        instances: [],
+        categories: [],
+        // No `html`: nothing built this, so there is nothing rendered to carry.
+        // The viewer renders the markdown itself when it finds one without the
+        // other — the same renderer a markdown-backed sheet already brings.
+        document: { html: "", markdown },
+      });
+      continue;
+    }
     sheets.push({
       name,
       display,
@@ -157,6 +187,16 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
       categories: markdownToCategories(markdown, declaredInstances(markdown) ?? [], lang) as unknown[],
       document: { html: "", markdown, mode: "sheet" },
     });
+  }
+
+  // Never silent where prose is the wrong answer: "this page has no rows" and
+  // "this page's rows were not recognised" look identical on screen, and only
+  // one of them is the document somebody wrote.
+  for (const at of prose) {
+    problems.push(
+      `${at}: a table here has this projection's own columns but not its key column, so the page is read as prose and its rows are not rows. ` +
+        `Name the first column 設定項目 (or Parameter) to have it read as a sheet.`
+    );
   }
 
   // An empty chapter would be a heading in the tree with nothing under it. It
