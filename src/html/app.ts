@@ -1682,7 +1682,14 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     let end = i;
     while (end < params.length && compositeKey(params[end]!) === ck) end++;
     const run = params.slice(i, end);
-    for (const p of run) compositeGroups.set(p, run);
+    // Only a run carrying EVERY field the control writes. A sheet scoped to
+    // part of a product has some of them and not the rest, and a tuple missing
+    // a member matches no choice — which would put "no matching choice" over a
+    // row whose screen is perfectly ordinary (measured on a real upgrade sheet
+    // that carries one of the three). The rows render as themselves instead:
+    // what the sheet cannot read, it does not claim.
+    const of = run[0]!.composite!.of;
+    if (of.every((k) => run.some((p) => p.key === k))) for (const p of run) compositeGroups.set(p, run);
     i = end;
   }
 
@@ -1773,7 +1780,29 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   if (descPresent) {
     leadingLines.push({
       key: "__description", label: t.descriptionHeader, lineKind: "attr", colClass: "rs-col-description", colStyle: "", freezePos: 2,
-      cell: (param) => ({ kind: "review", value: pickLang(param.description, "en") ?? "", target: baseTarget(param), field: "description", className: "rs-col-description", isCode: false, copyable: false }),
+      // A field of a CONTROL whose help is the control's own says it once, on
+      // the control's line above, rather than on each of the three rows under
+      // it. The product has no help for the field — it has help for the thing
+      // an operator sets — so repeating it down the column is the same
+      // paragraph three times with nothing to tell the rows apart. A field the
+      // product DOES describe in its own right keeps its description.
+      cell: (param) => ({
+        kind: "review",
+        // A field of a CONTROL whose help IS the control's own says it once, on
+        // the control's line above. Compared as text, never by identity: the
+        // two arrive from different places and are equal only because the
+        // product wrote one sentence about the thing an operator sets.
+        value:
+          param.composite?.description !== undefined &&
+          pickLang(param.composite.description, "en") === pickLang(param.description, "en")
+            ? ""
+            : (pickLang(param.description, "en") ?? ""),
+        target: baseTarget(param),
+        field: "description",
+        className: "rs-col-description",
+        isCode: false,
+        copyable: false,
+      }),
     });
   }
   leadingLines.push({

@@ -3067,6 +3067,40 @@ describe("a control and the rows it writes", () => {
     expect(head.querySelector(".rs-composite-writes")!.textContent!.trim()).toBe("detect / permanent を設定");
   });
 
+  it("says the control's help once, on the control, not on each row under it", () => {
+    // The product has no help for `detect` — it has help for the thing an
+    // operator sets. Repeated down the column it is the same paragraph twice
+    // with nothing to tell the rows apart.
+    const HELP = "検出したときに何が起きるかを指定します。";
+    const c = { ...CONTROL, description: HELP };
+    const host = mount([
+      {
+        name: "c",
+        params: [
+          { key: "detect", value: "true", origin: "embedded", composite: c, description: HELP },
+          // …and a field the product describes in its own right keeps it.
+          { key: "permanent", default: "false", origin: "default", composite: c, description: "ロックを永久にするか。" },
+        ],
+      },
+    ]);
+    const descs = [...host.querySelectorAll("tr.rs-row-composed .rs-col-description")].map((d) => d.textContent!.trim());
+    expect(descs).toEqual(["", "ロックを永久にするか。"]);
+    expect(host.querySelector("tr.rs-row-composite .rs-col-description")!.textContent!.trim()).toBe(HELP);
+  });
+
+  it("claims nothing where the sheet carries only part of the tuple", () => {
+    // A sheet scoped to part of a product has some of a control's fields and
+    // not the rest. A tuple missing a member matches no choice at all, so the
+    // control would announce "no matching choice" over a screen that is
+    // perfectly ordinary — measured on a real upgrade sheet carrying one of
+    // three. The rows render as themselves and the control says nothing.
+    const host = mount([
+      { name: "c", params: [{ key: "detect", value: "true", origin: "embedded", composite: CONTROL, description: "d" }] },
+    ]);
+    expect(host.querySelectorAll("tr.rs-row-composite")).toHaveLength(0);
+    expect([...host.querySelectorAll("tr.rs-param-row .rs-col-key")].map((c) => c.textContent!.trim()).join(" ")).toContain("detect");
+  });
+
   it("marks only the rows the control is spelled by", () => {
     // A sibling combinator cannot say where a group ends, so the rest of the
     // category was indented under a control it has nothing to do with.
