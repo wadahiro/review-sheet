@@ -505,3 +505,67 @@ parameters:
     ).toThrow(/parameter "db" has unknown field "group"/);
   });
 });
+
+// One control of the product's own screen, writing several settings — see
+// types.ts's `composite`. A product fact, so it travels the same way every
+// other product fact does.
+describe("a control the dictionary states", () => {
+  const provider = getMetadataProvider("dictionary")!;
+  const CONTROL = {
+    control: { en: "Brute Force Mode", ja: "ブルートフォースモード" },
+    description: { en: "What happens when one is detected.", ja: "検出時に何が起きるかを指定します。" },
+    of: ["bruteForceProtected", "permanentLockout"],
+    modes: [
+      { label: { en: "Disabled", ja: "無効" }, values: { bruteForceProtected: "false", permanentLockout: "false" } },
+      { label: { en: "Lockout", ja: "ロックアウト" }, values: { bruteForceProtected: "true", permanentLockout: "false" } },
+    ],
+  };
+
+  it("carries it to the row, values untouched", () => {
+    const r = provider.resolve({ key: "bruteForceProtected", binding: binding({ composite: CONTROL }) }, ctx());
+    expect(r!.composite!.of).toEqual(["bruteForceProtected", "permanentLockout"]);
+    expect(r!.composite!.modes[0]!.values).toEqual({ bruteForceProtected: "false", permanentLockout: "false" });
+  });
+
+  it("resolves its words to the language this product's screens are read in", () => {
+    // The control's name, its help and every choice's name are the PRODUCT's
+    // own words, read off the same screen as the label beside them — so a
+    // binding that declares `lang` moves them with everything else it supplies.
+    const r = provider.resolve(
+      { key: "bruteForceProtected", binding: binding({ composite: CONTROL }, { lang: "en" }) },
+      ctx({ lang: "ja" })
+    );
+    expect(r!.composite!.control).toBe("Brute Force Mode");
+    expect(r!.composite!.description).toBe("What happens when one is detected.");
+    expect(r!.composite!.modes.map((m) => m.label)).toEqual(["Disabled", "Lockout"]);
+    // …and a value is not a word.
+    expect(r!.composite!.modes[0]!.values.bruteForceProtected).toBe("false");
+  });
+
+  it("keeps both languages when the project declared none", () => {
+    const r = provider.resolve({ key: "bruteForceProtected", binding: binding({ composite: CONTROL }) }, ctx());
+    expect(pickLang(r!.composite!.control, "ja")).toBe("ブルートフォースモード");
+    expect(pickLang(r!.composite!.control, "en")).toBe("Brute Force Mode");
+  });
+
+  it("is the extraction's to state and never an overlay's", () => {
+    // A community guess at which fields a control writes, and at what values,
+    // is indistinguishable from the product's own list — the same rule
+    // `options` follows.
+    expect(() =>
+      parseOverlay(
+        "o.yml",
+        `
+product: widget
+version: "1"
+parameters:
+  bruteForceProtected:
+    composite:
+      control: { en: Brute Force Mode }
+      of: [bruteForceProtected, permanentLockout]
+      modes: []
+`
+      )
+    ).toThrow(/composite/);
+  });
+});

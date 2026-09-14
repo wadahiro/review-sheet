@@ -203,6 +203,9 @@
             "$ref": "#/definitions/paramOption"
           }
         },
+        "composite": {
+          "$ref": "#/definitions/composite"
+        },
         "secret": {
           "type": "boolean"
         },
@@ -296,6 +299,54 @@
         },
         "label": {
           "$ref": "#/definitions/langText"
+        }
+      }
+    },
+    "composite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "control",
+        "of",
+        "modes"
+      ],
+      "properties": {
+        "control": {
+          "$ref": "#/definitions/langText"
+        },
+        "description": {
+          "$ref": "#/definitions/langText"
+        },
+        "of": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "modes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "label",
+              "values"
+            ],
+            "properties": {
+              "label": {
+                "$ref": "#/definitions/langText"
+              },
+              "values": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          }
         }
       }
     }

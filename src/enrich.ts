@@ -419,6 +419,12 @@ function enrichParam(
       param.options = resolved.options;
       wrote = true;
     }
+    // The product's control this row is one field of. Fill-only like the rest:
+    // a project that stated its own control in sheet.yml keeps it.
+    if (resolved.composite !== undefined && param.composite === undefined) {
+      param.composite = resolved.composite;
+      wrote = true;
+    }
     // Only onto a row the extraction MARKED as presence. A dictionary saying a
     // setting is presence-shaped while the file writes it with a value is a
     // disagreement to report, not a licence to relabel the value — see the

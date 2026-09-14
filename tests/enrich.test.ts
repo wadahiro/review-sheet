@@ -44,6 +44,26 @@ parameters:
     options:
       - { value: "TLSv1.2", label: { en: "TLS 1.2" } }
       - { value: "TLSv1.3", label: { en: "TLS 1.3", ja: "TLS 1.3 のみ" } }
+  gzip:
+    description: Whether responses are compressed
+    default: "off"
+    composite:
+      control: { en: Compression }
+      description: { en: "How responses are compressed, if at all." }
+      of: [gzip, gzip_comp_level]
+      modes:
+        - { label: { en: "Off" }, values: { gzip: "off", gzip_comp_level: "1" } }
+        - { label: { en: "On" }, values: { gzip: "on", gzip_comp_level: "1" } }
+  gzip_comp_level:
+    description: How hard to compress
+    default: "1"
+    composite:
+      control: { en: Compression }
+      description: { en: "How responses are compressed, if at all." }
+      of: [gzip, gzip_comp_level]
+      modes:
+        - { label: { en: "Off" }, values: { gzip: "off", gzip_comp_level: "1" } }
+        - { label: { en: "On" }, values: { gzip: "on", gzip_comp_level: "1" } }
 `;
 
 const PG_DICT_YAML = `
@@ -503,5 +523,30 @@ describe("options", () => {
     ]);
     // The label must not have been flattened into a string on the way.
     expect(param.extra?.options).toBeUndefined();
+  });
+});
+
+describe("a control the product's screen has and the file does not", () => {
+  it("reaches the row from the dictionary, on every field of the tuple", () => {
+    // Carried on each of them (never on one "owner"), so removing a row cannot
+    // silently take the control with it — the same shape types.ts documents.
+    const input: ParameterSheetInput = {
+      sheets: [
+        {
+          name: "web",
+          categories: [
+            { name: "Compression", params: [{ key: "nginx_gzip", value: "on" }, { key: "nginx_gzip_comp_level", value: "1" }] },
+          ],
+        },
+      ],
+    };
+    const { input: out } = enrich(input, opts({ project: undefined, argumentSpecs: [], strict: false }));
+    const params = out.sheets[0].categories[0].params!;
+    expect(params.map((p) => p.composite?.control)).toEqual([{ en: "Compression" }, { en: "Compression" }]);
+    expect(params[0]!.composite!.of).toEqual(["gzip", "gzip_comp_level"]);
+    expect(params[0]!.composite!.modes[1]!.values).toEqual({ gzip: "on", gzip_comp_level: "1" });
+    // Its help is the CONTROL's; each row keeps its own.
+    expect(params[0]!.composite!.description).toEqual({ en: "How responses are compressed, if at all." });
+    expect(params[0]!.description).toBe("Whether responses are compressed");
   });
 });

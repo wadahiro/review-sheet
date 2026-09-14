@@ -73,6 +73,27 @@ export type DictionaryParam = {
   // fact: an overlay may not set it, because a community guess at which
   // values are legal would be indistinguishable from the product's own list.
   options?: ParamOption[];
+  // One control of the product's own screen writes this setting AND others —
+  // see types.ts's ParameterBase.composite for what it means and why the rows
+  // are not folded into one.
+  //
+  // Stated on EVERY entry of the tuple, each naming the whole set in `of`, so
+  // no entry is a special owner whose removal would take the control with it —
+  // the same shape the model carries. It is a fact about the product's screen,
+  // so it is extraction-owned like `options`: an overlay may not set it,
+  // because a community guess at which fields a control writes, and at what,
+  // is indistinguishable from the product's own.
+  //
+  // `description` here is the CONTROL's help, not any field's. The extraction
+  // used to copy it onto all three entries' own `description` and append the
+  // mode table as prose, which said the same paragraph three times and left
+  // the control itself saying nothing.
+  composite?: {
+    control: LangText;
+    description?: LangText;
+    of: string[];
+    modes: { label: LangText; values: Record<string, string> }[];
+  };
   // This setting is recorded by PRESENCE: the product's file says it by having
   // the thing there, not by writing a value beside a name — a logrotate
   // `missingok`, a service listed in a firewall zone.
@@ -196,6 +217,7 @@ export const DICTIONARY_PARAM_FIELDS = [
   "kind",
   "ui",
   "options",
+  "composite",
   "presence",
   "secret",
   "docs_url",
@@ -756,6 +778,21 @@ const dictionaryProvider: MetadataProvider = {
       // Each option's own name is the product's too, and is read off the same
       // screen as the label above it.
       options: entry.options === undefined ? undefined : entry.options.map((o) => ({ ...o, label: say(o.label) })),
+      // The control's name, its help and every choice's name are the product's
+      // own words, read off the same screen as the label above them — so they
+      // follow the same `lang` the rest of this entry does. The VALUES are not
+      // words and are carried untouched.
+      composite:
+        entry.composite === undefined
+          ? undefined
+          : {
+              ...entry.composite,
+              control: say(entry.composite.control) as LangText,
+              ...(entry.composite.description === undefined
+                ? {}
+                : { description: say(entry.composite.description) as LangText }),
+              modes: entry.composite.modes.map((m) => ({ ...m, label: say(m.label) as LangText })),
+            },
       // Only beside a default there IS: the field explains where a value came
       // from, and an entry with no default has nothing to explain.
       default_from: entry.default !== undefined ? defaultsFrom : undefined,
