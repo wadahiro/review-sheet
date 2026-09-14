@@ -669,6 +669,16 @@ export type ParameterBase = {
   composite?: {
     // What the product's own UI calls the control.
     control: LangText;
+    // The control's OWN help — the sentence the product prints beside it.
+    //
+    // It belongs to the control and to none of the fields: "specify what should
+    // happen to the user account if a brute force attack is detected" is not a
+    // statement about `bruteForceProtected` the API field, and an extraction
+    // that copies it onto each of the three leaves the sheet saying the same
+    // paragraph three times while the line a reviewer is actually judging says
+    // nothing. Each row keeps its own field-level help where the product has
+    // one; this is the control's.
+    description?: LangText;
     // Every row the control writes, by key, in the order the product's own
     // source sets them — which is the order a reader compares them in.
     of: string[];

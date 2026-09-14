@@ -1660,6 +1660,32 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   // the nearest enclosing category's (nearest-wins).
   const rowOutOfScope = (param: ParamData): OutOfScope | undefined => param.out_of_scope ?? categoryOutOfScope;
 
+  // Which rows spell a control, read off the params and never off what is on
+  // screen. What the control holds is a fact about the configuration, not about
+  // how much of it the reader has revealed — and a tuple missing two of its
+  // three members matches no choice at all, which rendered as "no matching
+  // choice" on a realm whose screen plainly shows one.
+  //
+  // Grouped by CONTIGUOUS run, never by the control's name across the table:
+  // one sheet holds the same control once per component (two realms both have a
+  // brute force mode), and reading those as one tuple mixes two deployments'
+  // values into a combination neither of them has.
+  const compositeKey = (p: ParamData): string =>
+    p.composite === undefined ? "" : `${p.composite.control ?? ""}\u0000${p.composite.of.join(",")}`;
+  const compositeGroups = new Map<ParamData, ParamData[]>();
+  for (let i = 0; i < params.length; ) {
+    const ck = compositeKey(params[i]!);
+    if (ck === "") {
+      i++;
+      continue;
+    }
+    let end = i;
+    while (end < params.length && compositeKey(params[end]!) === ck) end++;
+    const run = params.slice(i, end);
+    for (const p of run) compositeGroups.set(p, run);
+    i = end;
+  }
+
   // Visible params under the "commented only" / "hide out-of-scope" /
   // "undecided only" filters.
   const visibleParams = params.filter((param) => {
@@ -1689,8 +1715,16 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   //
   // Ancestors are re-admitted, never re-ordered: the params keep their original
   // sequence, so a block still sits above its contents.
+  //
+  // The rows a CONTROL is spelled by are re-admitted the same way, and for the
+  // mirror of the same reason: a control is the tuple, so hiding two thirds of
+  // it leaves a heading standing over one row that does not explain it. The
+  // ordinary case is exactly that — a product ships the fields defaulted and
+  // the config states only the one it changes, so two of the three are unset
+  // and the unset filter takes them. Together or not at all.
   const kept = new Set(visibleParams.map((p) => p.key));
   const needed = new Set(visibleParams.flatMap((p) => (p.container_path ?? []).map((c) => c.path)));
+  for (const p of visibleParams) for (const m of compositeGroups.get(p) ?? []) needed.add(m.key);
   const shown = needed.size === 0 ? visibleParams : params.filter((p) => kept.has(p.key) || needed.has(p.key));
 
   // Under a filter a category can end up with nothing to show; render nothing
@@ -2015,9 +2049,8 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   // is the reading a reviewer actually wants: which of the control's choices
   // the combination in front of them spells, once, above the rows that spell
   // it. Display only, computed here, stored nowhere.
-  const compositeKey = (p: ParamData): string =>
-    p.composite === undefined ? "" : `${p.composite.control ?? ""}\u0000${p.composite.of.join(",")}`;
   const composed = shown.some((p) => p.composite !== undefined);
+
 
   // What a row of the tuple HOLDS, for an environment. A row nobody set holds
   // its default — which is the whole point here: two of Keycloak's three brute
@@ -2026,24 +2059,39 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   const heldValue = (p: ParamData, instance: string | undefined): string | undefined => {
     const own = instance === undefined ? p.value : (p.instances?.find((i) => i.name === instance)?.value ?? p.value);
     if (own !== undefined && own !== "") return own;
-    return p.baseline ?? p.default;
+    return defaultOf(p);
   };
+
+  // What a row of the tuple holds when nobody has set it.
+  const defaultOf = (p: ParamData): string | undefined => p.baseline ?? p.default;
 
   // The choice a tuple spells, or undefined when it spells none of them.
   //
   // NEVER the nearest match. A realm configured through the API can hold a
   // combination the console cannot produce, and naming that after a screen the
   // product would not show is the sheet inventing one.
-  const modeOf = (rows: ParamData[], instance: string | undefined): { label: string; other?: string } | undefined => {
+  const modeSpelledBy = (
+    rows: ParamData[],
+    held: Map<string, string | undefined>
+  ): { label: string; other?: string } | undefined => {
     const c = rows[0]?.composite;
     if (c === undefined) return undefined;
-    const held = new Map(rows.map((r) => [r.key, heldValue(r, instance)]));
     for (const m of c.modes) {
       if (c.of.every((k) => held.get(k) !== undefined && held.get(k) === m.values[k]))
         return { label: String(m.label), ...(m.label_other === undefined ? {} : { other: m.label_other }) };
     }
     return undefined;
   };
+
+  const modeOf = (rows: ParamData[], instance: string | undefined) =>
+    modeSpelledBy(rows, new Map(rows.map((r) => [r.key, heldValue(r, instance)])));
+
+  // The choice a FRESH install spells — the control's own default, read off the
+  // three rows' defaults exactly as the value columns are read off their values.
+  // Nothing in the dictionary states it: "Disabled" is what false/false/0 comes
+  // to, and computing it is how the two can never disagree.
+  const defaultModeOf = (rows: ParamData[]) =>
+    modeSpelledBy(rows, new Map(rows.map((r) => [r.key, defaultOf(r)])));
 
   // The control as a ROW, with the product's own choice in the VALUE column.
   //
@@ -2056,22 +2104,28 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   // Still display only: this row has no key, no source and no review target of
   // its own (see types.ts's `composite`). The rows beneath it keep all three,
   // which is what apply, verify, the test plan and the ledger go on reading.
-  const compositeHeadLine = (rows: ParamData[]): VNode => {
+  const compositeHeadLine = (rows: ParamData[], id: string): VNode => {
     const c = rows[0]!.composite!;
     const control = (c.control as string) ?? "";
     const unmatched = normalLines.some(
       (line) => line.lineKind === "instance" && modeOf(rows, line.label) === undefined
     );
     const single = modeOf(rows, undefined);
-    return html`<tr key=${`comp:${control}`} class=${`rs-param-row rs-row-composite ${unmatched || (!hasInstances && single === undefined) ? "rs-composite-unmatched" : ""}`}>
+    return html`<tr key=${`comp:${id}`} class=${`rs-param-row rs-row-composite ${unmatched || (!hasInstances && single === undefined) ? "rs-composite-unmatched" : ""}`}>
       <td class="rs-col-key">
         <span class="rs-composite-control">${control}</span>
-        <span class="rs-key-subline rs-composite-note">${t.compositeNote(c.of.length)}</span>
+        <span class="rs-key-subline rs-composite-writes">${t.compositeWrites(c.of)}</span>
       </td>
       ${normalLines.map((line) => {
-        // A value column answers per environment; everything else (description,
-        // default, a project's own columns) is the ROWS' to answer, not the
-        // control's, and is left empty rather than filled with a guess.
+        // Three columns are the CONTROL's to answer and the rest are the rows'.
+        // Its help is the product's sentence about the control and about none of
+        // the three fields; its default is what a fresh install's tuple spells;
+        // its value is what this deployment's does. A project's own columns, and
+        // remarks, stay empty rather than being filled with a guess.
+        if (line.key === "__description")
+          return html`<td class=${line.colClass}>${c.description ?? ""}</td>`;
+        if (line.key === "__default")
+          return html`<td class=${line.colClass}>${defaultModeOf(rows)?.label ?? ""}</td>`;
         if (line.lineKind !== "instance" && !(line.key === "__value")) return html`<td class=${line.colClass}></td>`;
         const mode = modeOf(rows, line.lineKind === "instance" ? line.label : undefined);
         return html`<td class=${`${line.colClass} rs-composite-cell`}>
@@ -2098,7 +2152,8 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
       const ck = compositeKey(param);
       if (ck !== lastComposite) {
         lastComposite = ck;
-        if (ck !== "") out.push(compositeHeadLine(ordered.filter((p) => compositeKey(p) === ck)));
+        const group = compositeGroups.get(param);
+        if (ck !== "" && group !== undefined) out.push(compositeHeadLine(group, `${ck}\u0000${group[0]!.key}`));
       }
     }
     if (subHeaded) {
@@ -2215,7 +2270,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     const leaf = keyLeaf(param);
     return html`
     <tr key=${param.key} id=${paramAnchorId(sheetIndex, categoryPath, param.key)}
-        class=${`rs-param-row ${param.container ? "rs-row-container" : ""} ${param.container?.nameFromDocs ? "rs-name-from-docs" : ""} ${oos ? "rs-row-excluded" : ""} ${param.added ? "rs-row-added" : ""} ${param.deleted ? "rs-row-deleted" : ""} ${paramHasReview(param) ? "rs-has-review" : ""} ${rd && rd !== "unchanged" ? `rs-diff-row-${rd}` : ""}`}
+        class=${`rs-param-row ${compositeGroups.has(param) ? "rs-row-composed" : ""} ${param.container ? "rs-row-container" : ""} ${param.container?.nameFromDocs ? "rs-name-from-docs" : ""} ${oos ? "rs-row-excluded" : ""} ${param.added ? "rs-row-added" : ""} ${param.deleted ? "rs-row-deleted" : ""} ${paramHasReview(param) ? "rs-has-review" : ""} ${rd && rd !== "unchanged" ? `rs-diff-row-${rd}` : ""}`}
         style=${depth > 0 ? `--rs-block-depth:${depth}` : undefined}
         title=${param.deleted ? t.rowDeletedTip : undefined}>
       <${ReviewableCell} value=${label ?? param.key} display=${label ? undefined : leaf} target=${baseTarget(param)} field="key"

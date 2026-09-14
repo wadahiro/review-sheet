@@ -68,6 +68,9 @@ export function localizeParam(p: ParamData, lang: Lang): ParamData {
           composite: {
             ...p.composite,
             control: pickLang(p.composite.control, lang) ?? "",
+            ...(p.composite.description === undefined
+              ? {}
+              : { description: pickLang(p.composite.description, lang) ?? "" }),
             // …and the OTHER language beside it. A description is read; this is
             // a value somebody compares with a screen, and which language that
             // screen is in is not knowable here — a reader holding a Japanese

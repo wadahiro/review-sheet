@@ -2229,6 +2229,16 @@ code {
 
 .rs-composite-control { font-weight: 600; }
 
+/* The keys the control writes, named under it. What indentation cannot say is
+   WHICH rows — and these are the row keys printed directly beneath. */
+.rs-composite-writes {
+  font-family: var(--rs-mono);
+  font-size: 0.72rem;
+  color: var(--rs-text-muted);
+}
+
+
+
 .rs-composite-mode {
   padding: 0 0.4rem;
   border-radius: 3px;
@@ -2245,18 +2255,27 @@ code {
 
 /* The rows that spell the control, under it. Indented and quieter: they are
    what the files hold, and the line above is what the product's screen says —
-   which is the one a reviewer is judging. */
-.rs-row-composite + .rs-param-row > .rs-col-key,
-.rs-row-composite ~ .rs-param-row > .rs-col-key {
+   which is the one a reviewer is judging.
+
+   Marked in the MARKUP, never by a sibling combinator, which cannot say where a
+   group ends: every row after the tuple — the rest of the category — was
+   indented under a control it has nothing to do with. */
+.rs-row-composed > .rs-col-key {
   padding-left: 1.4rem;
 }
-
-.rs-composite-note {
-  margin-left: 0.6rem;
-  font-weight: 400;
-  font-size: 0.72rem;
-  color: var(--rs-text-muted);
+/* The control and the rows it writes read as ONE block: a rail down the left of
+   the whole group, and a ground under it. An indent alone is read as a long
+   name that wrapped — it says the rows sit below the control, not that they
+   belong to it. */
+.rs-row-composite > td,
+.rs-row-composed > td {
+  background: rgba(127, 127, 127, 0.05);
 }
+.rs-row-composite > .rs-col-key,
+.rs-row-composed > .rs-col-key {
+  box-shadow: inset 2px 0 0 var(--rs-border);
+}
+
 
 .rs-row-subhead:first-child > .rs-col-key {
   padding-top: 0.35rem;

@@ -63,6 +63,7 @@ export type ParamData = {
   // text it does not have to resolve.
   composite?: {
     control: LangText | string;
+    description?: LangText | string;
     of: string[];
     modes: { label: LangText | string; label_other?: string; values: Record<string, string> }[];
   };

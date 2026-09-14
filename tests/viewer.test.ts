@@ -2956,3 +2956,124 @@ describe("a dropped set's prose page", () => {
     expect(body!.querySelector("h1")).toBeNull();
   });
 });
+
+// One control of the product's screen whose value is a TUPLE over several rows
+// (types.ts's `composite`). Everything here is about what the head row READS —
+// the three rows below it are ordinary rows and are covered like any other.
+describe("a control several rows spell", () => {
+  const MODES = [
+    { label: { ja: "無効", en: "Off" }, values: { detect: "false", permanent: "false", tries: "0" } },
+    { label: { ja: "一時的に停止", en: "Pause" }, values: { detect: "true", permanent: "false", tries: "0" } },
+    { label: { ja: "恒久的に停止", en: "Stop" }, values: { detect: "true", permanent: "true", tries: "0" } },
+  ];
+  const CONTROL = {
+    control: { ja: "検知モード", en: "Detection mode" },
+    description: { ja: "検知したときに何が起きるかを指定します。", en: "What happens when one is detected." },
+    of: ["detect", "permanent", "tries"],
+    modes: MODES,
+  };
+  // Two of the three are UNSET, which is the ordinary shape: a product ships
+  // them defaulted and the config states only the one it changes.
+  const trio = (vals: Record<string, string>, composite = CONTROL) => [
+    { key: "detect", value: vals.detect, default: "false", origin: "embedded" as const, composite, description: "d" },
+    { key: "permanent", default: "false", origin: "default" as const, composite, description: "p" },
+    { key: "tries", default: "0", origin: "default" as const, composite, description: "t" },
+  ];
+
+  const mountRows = (categories: { name: string; params: unknown[] }[]): HTMLElement => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const payload = { metadata: { title: "t", version: "1" }, versions: [{ version: "current", sheets: [{ name: "s", categories }] }] };
+    render(h(Root, { payload: payload as never, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    return host;
+  };
+  const heads = (host: HTMLElement) => [...host.querySelectorAll("tr.rs-row-composite")];
+  const cell = (row: Element, sel: string) => (row.querySelector(sel)?.textContent ?? "").trim();
+
+  it("shows the whole tuple, though two thirds of it is unset", () => {
+    // `permanent` and `tries` sit at their defaults, which the unset filter
+    // hides — leaving the control standing over one row that does not explain
+    // it, and a tuple missing two members that matches no choice at all.
+    const host = mountRows([{ name: "c", params: trio({ detect: "true" }) }]);
+    const keys = [...host.querySelectorAll("tr.rs-param-row .rs-col-key")].map((c) => (c.textContent ?? "").trim());
+    for (const k of ["detect", "permanent", "tries"]) expect(keys.join(" ")).toContain(k);
+    expect(cell(heads(host)[0]!, ".rs-col-value")).toBe("一時的に停止");
+  });
+
+  it("says what the product's screen says about the control, not about one field", () => {
+    const head = heads(mountRows([{ name: "c", params: trio({ detect: "true" }) }]))[0]!;
+    expect(head.querySelector(".rs-composite-control")!.textContent!.trim()).toBe("検知モード");
+    expect(cell(head, ".rs-col-description")).toBe("検知したときに何が起きるかを指定します。");
+  });
+
+  it("computes the control's own default from the rows' defaults", () => {
+    // Nothing states it: false/false/0 IS "off", and computing it is how the
+    // two can never disagree.
+    expect(cell(heads(mountRows([{ name: "c", params: trio({ detect: "true" }) }]))[0]!, ".rs-col-default")).toBe("無効");
+  });
+
+  it("never resolves a combination the screen cannot produce to the nearest one", () => {
+    const params = trio({ detect: "true" });
+    params[2] = { ...params[2]!, value: "5", origin: "embedded" as const };
+    const head = heads(mountRows([{ name: "c", params }]))[0]!;
+    expect(head.querySelector(".rs-composite-mode-unmatched")).not.toBeNull();
+    expect(cell(head, ".rs-col-value")).not.toContain("停止");
+  });
+
+  it("keeps two components' controls apart", () => {
+    // One sheet holds the same control once per component (two realms both have
+    // a brute force mode). Read as one tuple they mix into a combination
+    // neither deployment has, and BOTH heads then read "no matching choice".
+    const host = mountRows([
+      { name: "alpha", params: trio({ detect: "true" }) },
+      { name: "beta", params: trio({ detect: "true" }).map((p) => (p.key === "permanent" ? { ...p, value: "true", origin: "embedded" as const } : p)) },
+    ]);
+    expect(heads(host)).toHaveLength(2);
+    expect(cell(heads(host)[0]!, ".rs-col-value")).toBe("一時的に停止");
+    expect(cell(heads(host)[1]!, ".rs-col-value")).toBe("恒久的に停止");
+  });
+});
+
+// How the sheet says that a control and the rows under it are one thing.
+describe("a control and the rows it writes", () => {
+  const CONTROL = {
+    control: "検知モード",
+    of: ["detect", "permanent"],
+    modes: [
+      { label: "無効", values: { detect: "false", permanent: "false" } },
+      { label: "一時的に停止", values: { detect: "true", permanent: "false" } },
+    ],
+  };
+  const pair = (detect: string) => [
+    { key: "detect", value: detect, default: "false", origin: "embedded" as const, composite: CONTROL, description: "d" },
+    { key: "permanent", default: "false", origin: "default" as const, composite: CONTROL, description: "p" },
+  ];
+  const mount = (categories: { name: string; params: unknown[] }[]): HTMLElement => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const payload = { metadata: { title: "t", version: "1" }, versions: [{ version: "current", sheets: [{ name: "s", categories }] }] };
+    render(h(Root, { payload: payload as never, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    return host;
+  };
+
+  it("names the rows it writes, rather than describing that it has some", () => {
+    // An earlier version said "one control of the product's screen, spelled by
+    // the 3 rows below" — true of every control on every sheet, and furniture
+    // after one reading. The keys are the one thing indentation cannot say.
+    const host = mount([{ name: "c", params: pair("true") }]);
+    const head = host.querySelector("tr.rs-row-composite")!;
+    expect(head.querySelector(".rs-composite-writes")!.textContent!.trim()).toBe("detect / permanent を設定");
+  });
+
+  it("marks only the rows the control is spelled by", () => {
+    // A sibling combinator cannot say where a group ends, so the rest of the
+    // category was indented under a control it has nothing to do with.
+    const host = mount([{ name: "c", params: [...pair("true"), { key: "after", value: "9", origin: "embedded", description: "a" }] }]);
+    const composed = [...host.querySelectorAll("tr.rs-row-composed .rs-col-key")].map((c) => c.textContent!.trim()).join(" ");
+    expect(composed).toContain("detect");
+    expect(composed).toContain("permanent");
+    expect(composed).not.toContain("after");
+  });
+});
