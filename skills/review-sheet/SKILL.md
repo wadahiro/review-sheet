@@ -1173,12 +1173,16 @@ DOM, so it is not the body that breaks: the outline lists every sheet's entries
 at once and marks the current one by comparing ids, so one id shared by three
 entries highlights all three.
 
-**`--no-sources` hides where each value is written.** Three places name a file:
-the tag under a row's key (the file that row came from), the "rendered from"
-line under a sheet's heading, and a preview's source line. They exist so a
-finding turns into an action — "edit that file" — and they are the wrong thing
-to show a reader who is judging the settings and has no part in maintaining the
-repository. On a real sheet 454 rows of 1536 carried one.
+**`--no-sources` hides where each value is written.** Two places name a file:
+the "rendered from" line under a sheet's heading, and a preview's source line.
+They exist so a finding turns into an action — "edit that file" — and they are
+the wrong thing to show a reader who is judging the settings and has no part in
+maintaining the repository.
+
+There were three. A row's own key cell carried the file its literal sits in,
+until the row's preview link started opening that same file: measured on a real
+sheet, 391 of 454 such rows had a name beside a link to the very file it named.
+That line is gone for every document, not hidden by this flag.
 
 A display switch, not redaction: the source map stays in the document, because
 apply and verify resolve every change through it, and the path the settings LAND

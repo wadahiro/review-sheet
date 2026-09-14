@@ -311,8 +311,11 @@ program
 const ALLOWED_CAPS = ["review", "prompt"] as const;
 
 // Displaying WHERE a value is written is not a capability, so it is a flag of
-// its own: `--no-sources` hides the file names — the tag under a row's key, the
-// "rendered from" line under a sheet's heading, the source line in a preview.
+// its own: `--no-sources` hides the file names — the "rendered from" line under
+// a sheet's heading, and the source line in a preview. It governed a third, the
+// file name under a row's key, until that stopped being written at all: the
+// row's own preview link opens the file, so the name beside it was the same
+// answer twice (see app.ts's `originTag`).
 // The source map itself stays in the document; apply and verify resolve every
 // change through it.
 //

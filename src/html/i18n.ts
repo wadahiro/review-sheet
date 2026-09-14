@@ -173,16 +173,15 @@ type Messages = {
   pivotAbsent: string;
   compareComponents: string;
   showDefaults: (n: number) => string;
-  // Origin (viewer-only marker in the key cell). An `embedded` row is tagged
-  // with the FILE its literal lives in (originEmbedded is only the fallback when
-  // it has no source); a `default` row says "not set here" — deliberately not
-  // "default", which would collide with the sheet's own デフォルト値/Default
-  // column and states the consequence rather than the reviewable fact.
-  // overlay/common render no marker.
-  originEmbedded: string;
+  // Origin (viewer-only marker in the key cell). A `default` row says "not set
+  // here" — deliberately not "default", which would collide with the sheet's
+  // own デフォルト値/Default column and states the consequence rather than the
+  // reviewable fact. Every other origin renders no marker: `embedded` carried
+  // the name of the file its literal sits in until the row's own preview link
+  // started opening that same file (see `originTag`), and overlay/common never
+  // had one.
   originDefault: string;
   originDefaultTip: string;
-  originEmbeddedTip: string;
   // `asInstalled` is the default column's heading on a sheet that has a
   // baseline (ansible recipe's `baseline:`). ONE column, not two: the vendor's
   // shipped file and the product's documented default are two SOURCES for a
@@ -369,10 +368,8 @@ const ja: Messages = {
   // 「未設定」であって「未使用」ではない — 製品の既定値はいま実際に効いている。
   // 欠けているのはこのプロジェクトからの表明のほう。
   showDefaults: (n: number) => `未設定の行を表示（製品既定値 ${n} 件）`,
-  originEmbedded: "組み込み",
   originDefault: "未設定",
   originDefaultTip: "この構成では設定していない（効いている値は製品のデフォルト値）",
-  originEmbeddedTip: "変数を介さずファイルに直接書かれた値。環境ごとに変えることはできず、変更するにはそのファイル自体を編集する",
   asInstalled: "インストール時",
   originBaselineDisabled: "無効化",
   sheetSourceLabel: "生成元",
@@ -538,10 +535,8 @@ const en: Messages = {
   // "not set", not "unused": the product's default is in force on these rows.
   // What is absent is any statement from THIS project.
   showDefaults: (n: number) => `Show unset rows (${n} product defaults)`,
-  originEmbedded: "hardcoded",
   originDefault: "not set",
   originDefaultTip: "Not set here — the value in effect is the product's own default",
-  originEmbeddedTip: "Written straight into the file rather than through a variable: the same in every environment, and changed by editing that file",
   asInstalled: "As installed",
   originBaselineDisabled: "not present",
   sheetSourceLabel: "Source",

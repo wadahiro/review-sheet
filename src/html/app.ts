@@ -82,17 +82,21 @@ function originTag(param: ParamData, t: Messages): { label: string; title: strin
   // configuration at all, which is a stronger statement than any of the below.
   if (param.added) return { label: t.originAdded, title: t.originAddedTip };
   const origin = effectiveOrigin(param);
-  if (origin === "embedded") {
-    // The FILE, not a word for the category. Tried both: a one-word label reads
-    // cleanly and throws away the thing a reader of such a row actually needs —
-    // these 75 rows are spread over four files, and "edit that file" is the
-    // whole remedy, so which file is the useful half. What the marker MEANS is
-    // explained once per sheet by the legend instead of being crammed into
-    // every row's label.
-    const file = showSources() ? param.source?.file : undefined;
-    const base = file ? file.split("/").pop() : undefined;
-    return { label: base ?? t.originEmbedded, title: file ? `${t.originEmbeddedTip}\n${file}` : t.originEmbeddedTip };
-  }
+  // An `embedded` row USED to carry the name of the file its literal sits in —
+  // a word for the category read cleanly and threw away "which file to edit",
+  // which was the whole remedy for such a row. Two things have since made it
+  // noise. The row's own プレビュー link opens that file, at that line:
+  // measured on a real sheet, 391 of 454 embedded rows had a tag naming the
+  // very file the link opens, so the cell said it twice. And the justification
+  // for showing a file rather than a word — "what the marker MEANS is
+  // explained once per sheet by the legend" — described a legend that was
+  // never built, so the meaning was only ever in a tooltip.
+  //
+  // Dropped rather than shortened to a word: what a reader of this column is
+  // looking for is the setting, and a fourth line under its name that repeats
+  // the link below it is what pushed them apart. `default` keeps its marker —
+  // it is a word, not a path, and "nobody set this" is not said anywhere else
+  // in the row.
   if (origin === "default") return { label: t.originDefault, title: t.originDefaultTip };
   return null;
 }

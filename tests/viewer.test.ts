@@ -2580,16 +2580,26 @@ describe("viewer: showing where a value is written", () => {
     return host;
   };
 
-  it("shows the file a row came from, and the template a sheet was rendered from", () => {
+  // TWO places now, not three. A row's own key cell used to carry the file its
+  // literal sits in; that went when the row's preview link started opening the
+  // same file (see `originTag`), so what is left for this flag to hide is the
+  // template a sheet was rendered from, and a preview's source line.
+  it("shows the template a sheet was rendered from", () => {
     const host = mountWith(true);
-    expect(host.textContent).toContain("main.yml");
     expect(host.textContent).toContain("httpd.conf.j2");
   });
 
-  it("shows neither when the document was generated without them", () => {
+  it("shows it not at all when the document was generated without them", () => {
     const host = mountWith(false);
-    expect(host.textContent).not.toContain("main.yml");
     expect(host.textContent).not.toContain("httpd.conf.j2");
+  });
+
+  // …and the row's own file name is in neither, now that nothing puts it in
+  // the key cell — the flag has one fewer thing to govern, not a new exception.
+  it("never puts a row's own source file in its key cell", () => {
+    for (const sources of [true, false]) {
+      expect(mountWith(sources).querySelector("td.rs-col-key")!.textContent).not.toContain("main.yml");
+    }
   });
 
   // The DEPLOYED path is what the sheet is ABOUT, not where the repository
