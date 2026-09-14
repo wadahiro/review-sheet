@@ -335,14 +335,27 @@ describe("where a user-federation row sits in a reconstructed realm document", (
   });
 
   // A STORE's own row (General/Settings/Cache Settings/…) is not under the
-  // mappers category at all, so it is left unanswered here — for
-  // `registerProductAddress`'s `{address}` template to answer instead, from
-  // the row's own `item.address`, which for a store's own field IS the
-  // correct — and only — address.
-  it("does not answer a store's own row, only a mapper's", () => {
+  // mappers category, so its key carries no mapper prefix to construct
+  // from — it is answered from its own `item.address` instead, which for a
+  // store's own field IS the correct — and only — address. This is what
+  // lets a project bind the WHOLE sheet through `documents:`'s `router:`
+  // (judge.ts takes no other branch once a sheet names one) without losing
+  // every store-level row the moment it does.
+  it("answers a store's own row from its own item.address, not by constructing one", () => {
     const router = bind();
     expect(
       router.route(item({ kind: "value", address: "irrelevant", target: { sheet: "federation", path: ["General"], key: "kcr_ldap_connection_url", instance: "local" } }))
+    ).toEqual({ document: "userFederation", address: "irrelevant", idFields: ["name"] });
+  });
+
+  // A store row with no `item.address` at all (never authored, and
+  // materialize has nothing to invent one from either) gets no answer — the
+  // same "no address on the row, no address from the router" rule as an
+  // unrecognised mapper key shape.
+  it("leaves a store's own row with no item.address unanswered", () => {
+    const router = bind();
+    expect(
+      router.route(item({ target: { sheet: "federation", path: ["General"], key: "kcr_ldap_connection_url", instance: "local" } }))
     ).toBeUndefined();
   });
 
@@ -370,6 +383,86 @@ describe("where a user-federation row sits in a reconstructed realm document", (
     const router = bind();
     expect(
       router.route(item({ target: { sheet: "federation", path: ["Mappers", "sAMAccountName"], key: "unrelated.key", instance: "local" } }))
+    ).toBeUndefined();
+  });
+});
+
+// A sheet with SEVERAL LDAP stores (`split: { by: name }`) puts the store at
+// path[0], which two stores of one product routinely name their mappers
+// alike — "username", "email", "last name" are the product's own defaults,
+// reused by every store an admin sets up. `ldap_component` is a single fixed
+// string and cannot tell them apart; the router must read the store off the
+// row itself instead.
+describe("where a user-federation row sits, with several LDAP stores on one sheet", () => {
+  const bind = () =>
+    registerKeycloakLdapRouter({
+      document: "userFederation",
+      sheet: "multi-federation",
+      mappers_category: "Mappers",
+    });
+
+  const item = (over: Partial<TestItem>): TestItem =>
+    ({
+      target: { sheet: "multi-federation", path: ["corp-ldap", "Mappers", "username"], key: "username.user-attribute-ldap-mapper.providerId", instance: "local" },
+      unit: "u",
+      kind: "default-in-force",
+      decider: "product-default",
+      ...over,
+    }) as TestItem;
+
+  it("addresses a mapper under the FIRST store using that store's own name", () => {
+    const router = bind();
+    expect(router.route(item({}))?.address).toBe(
+      'components["org.keycloak.storage.UserStorageProvider"][name=corp-ldap].subComponents["org.keycloak.storage.ldap.mappers.LDAPStorageMapper"][name=username].providerId'
+    );
+  });
+
+  // The same mapper NAME, under the OTHER store — must resolve under ITS OWN
+  // store, never fall back to the first-seen one. A router that ignored
+  // path[0] here would silently address a partner store's row under the
+  // corporate store, reading one store's configuration as if it were the
+  // other's: a confident wrong verdict, not a missing one.
+  it("addresses the SAME mapper name under a SECOND store using that store's own name, not the first's", () => {
+    const router = bind();
+    expect(
+      router.route(
+        item({
+          target: { sheet: "multi-federation", path: ["partner-ldap", "Mappers", "username"], key: "username.user-attribute-ldap-mapper.providerId", instance: "local" },
+        })
+      )?.address
+    ).toBe(
+      'components["org.keycloak.storage.UserStorageProvider"][name=partner-ldap].subComponents["org.keycloak.storage.ldap.mappers.LDAPStorageMapper"][name=username].providerId'
+    );
+  });
+
+  // A store's own row (General/Settings) still carries the store at path[0]
+  // but is outside the mappers category, so it is answered from its own
+  // `item.address` here too, unchanged from the single-store case — the
+  // store axis at path[0] plays no part in this branch, since the row
+  // already carries its own correct address.
+  it("answers a store's own row on a multi-store sheet from its own item.address too", () => {
+    const router = bind();
+    expect(
+      router.route(item({ kind: "value", address: "irrelevant", target: { sheet: "multi-federation", path: ["corp-ldap", "General"], key: "kcr_ldap_connection_url", instance: "local" } }))
+    ).toEqual({ document: "userFederation", address: "irrelevant", idFields: ["name"] });
+  });
+});
+
+// A single-store sheet whose project OMITS `ldap_component` (rather than
+// naming the wrong LDAP store, which nothing here can detect) has no fact
+// anywhere the router can address a mapper row with — path[0] is the
+// mappers category, not a store name, on a single-store sheet. The same "no
+// address, no answer" rule as an unrecognised key shape, never a guess.
+describe("where a single-store sheet's binding omits ldap_component", () => {
+  it("leaves a mapper row unanswered rather than guessing a store name", () => {
+    const router = registerKeycloakLdapRouter({ document: "userFederation", sheet: "no-component-bound", mappers_category: "Mappers" });
+    expect(
+      router.route({
+        target: { sheet: "no-component-bound", path: ["Mappers", "sAMAccountName"], key: "sAMAccountName.user-attribute-ldap-mapper.providerId", instance: "local" },
+        unit: "u",
+        kind: "default-in-force",
+        decider: "product-default",
+      } as TestItem)
     ).toBeUndefined();
   });
 });

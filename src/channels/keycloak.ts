@@ -376,12 +376,32 @@ export function registerKeycloakChannels(binding: {
 const LDAP_PROVIDER_TYPE = "org.keycloak.storage.UserStorageProvider";
 const LDAP_MAPPER_PROVIDER_TYPE = "org.keycloak.storage.ldap.mappers.LDAPStorageMapper";
 
+// Which LDAP store (the Admin API's `components[name=…]`) a row belongs to.
+// A sheet with ONE store has no store axis at all — `item.target.path` is
+// `["Mappers", mapperName]` and `item.component` is the CATEGORY label
+// ("Mappers"), never the store, so there is nothing on the row to read it
+// from and the project has to STATE it (`binding.ldap_component`). A sheet
+// with SEVERAL stores (`split: { by: name }`) puts the store at `path[0]`
+// (`[store, "Mappers", mapperName]`) precisely because two stores share one
+// key space and something has to disambiguate them — and that something is
+// already on every row, so reading it off the path is not a guess, it is the
+// same fact `by:` used to build the split in the first place.
+//
+// The two cases are told apart structurally, not by whether a binding was
+// given: the mappers category sits at path[0] on a single-store sheet and
+// one level deeper on a multi-store one, so "is path[0] the category" is the
+// same test either way. A binding is still required (not merely offered) for
+// the single-store case, since there the path carries no store name to fall
+// back to.
+function ldapComponentNameOf(item: TestItem, binding: { ldap_component?: string; mappers_category: string }): string | undefined {
+  if (item.target.path[0] === binding.mappers_category) return binding.ldap_component;
+  return item.target.path[0] ?? binding.ldap_component;
+}
+
 // A mapper row's key, once `split.nest` has folded the mapper's own identity
 // in front of it: `<mapperName>.<providerId>.<realKey>`. Bound on the LAST
-// path segment rather than a fixed index — `item.target.path` is
-// `["Mappers", mapperName]` on a sheet with one store and
-// `[store, "Mappers", mapperName]` on one with several, and the mapper name
-// is always the innermost segment either way.
+// path segment rather than a fixed index — the mapper name is always the
+// innermost segment, whether the sheet has one store or several.
 //
 // `undefined` here, for a row the caller already knows is under the mappers
 // category, means the KEY does not carry the shape this function expects —
@@ -416,30 +436,45 @@ function nestedMapperAddress(item: TestItem, ldapComponentName: string): string 
 }
 
 // Bound by the project: which document holds the reconstructed realm's
-// `components`, which sheet(s) route through it, and — the one fact no
-// reading of the sheet can recover — the LDAP store's own Admin API name
-// (`item.component` on this sheet is the CATEGORY label, "Mappers" or
-// "General", never the store).
+// `components`, which sheet(s) route through it, and — for a sheet with only
+// one store, where nothing on the row can say so (see `ldapComponentNameOf`)
+// — that store's own Admin API name. A sheet with several stores derives it
+// per row instead, so `ldap_component` is optional: omitting it on a
+// single-store sheet is not a guess-around, it is the same "a row the
+// binding does not name gets no answer" rule as an unrecognised key shape —
+// route() returns undefined, the row lands not_run, and a verdict diff
+// surfaces it.
 export function registerKeycloakLdapRouter(binding: {
   document: string;
   sheet: string;
-  ldap_component: string;
+  ldap_component?: string;
   mappers_category: string;
 }): DocumentRouter {
   const router: DocumentRouter = {
     name: `keycloak-ldap:${binding.sheet}`,
     route: (item) => {
       if (item.target.sheet !== binding.sheet) return undefined;
-      // Only a MAPPER row's key carries a `<mapperName>.<providerId>.`
-      // prefix to strip — a store's own row (General/Settings/Cache
-      // Settings) is left unanswered here, for `registerProductAddress`'s
-      // `{address}` template to answer from the row's own `item.address`.
+      // A MAPPER row's key carries a `<mapperName>.<providerId>.` prefix to
+      // strip; a STORE's own row (General/Settings/Cache Settings) does not
+      // and is answered from its own `item.address` instead — unquoted the
+      // same way nestedMapperAddress's own construction is (see that
+      // function's doc comment on why judge.ts's unquoteIds makes this
+      // safe): a router bound via `documents:`'s `router:` (rather than
+      // left for the `{address}` template to answer) is the ONLY path for
+      // every row of the sheet, mapper and store alike — judge.ts's
+      // documentFor takes no other branch once a sheet names a router, so a
+      // router that only ever answered Mappers rows would leave every
+      // store-level row unanswered the moment a project wires it that way.
       // The mappers category can sit at path[0] (one store on the sheet) or
       // one level deeper ([store, "Mappers", mapper], several stores) — see
       // nestedMapperAddress's own comment on why the mapper name itself is
       // read off the LAST segment rather than a fixed index.
-      if (!item.target.path.includes(binding.mappers_category)) return undefined;
-      const address = nestedMapperAddress(item, binding.ldap_component);
+      if (!item.target.path.includes(binding.mappers_category)) {
+        return item.address === undefined ? undefined : { document: binding.document, address: item.address, idFields: ["name"] };
+      }
+      const ldapComponentName = ldapComponentNameOf(item, binding);
+      if (ldapComponentName === undefined) return undefined;
+      const address = nestedMapperAddress(item, ldapComponentName);
       return address === undefined ? undefined : { document: binding.document, address, idFields: ["name"] };
     },
   };
