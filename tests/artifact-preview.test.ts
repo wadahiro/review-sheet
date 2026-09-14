@@ -106,7 +106,12 @@ describe("an artifact preview is the whole file", () => {
 
   it("names where the file comes from and where it lands", () => {
     const [p] = policy();
-    expect(p.id).toBe("os::logrotate-app");
+    // The FILE is part of the id, not just the sheet and component. Instance
+    // variants of one file still share it — they are the same file — but two
+    // different files of one sheet/component do not, which is the contract
+    // `ArtifactPreview.id` states (types.ts) and what stops the viewer from
+    // drawing unrelated files as instance tabs of each other.
+    expect(p.id).toBe("os::logrotate-app::logrotate-app.j2");
     expect(p.deployed_path).toBe("/etc/logrotate.d/app");
     expect(p.source_file).toContain("logrotate-app.j2");
   });

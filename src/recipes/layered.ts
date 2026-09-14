@@ -928,7 +928,7 @@ function buildEmbeddedFromStaticFiles(
     const keys: LineKeys = new Map();
     for (const e of fileEntries) addLineKey(keys, e.source.line, e.key);
     const preview = previewFile(
-      { id: previewId(sheetName, sf.component), sheet: sheetName, ...(sf.component !== undefined ? { component: sf.component } : {}), source_file: file },
+      { id: previewId(sheetName, sf.component, file), sheet: sheetName, ...(sf.component !== undefined ? { component: sf.component } : {}), source_file: file },
       content,
       keys,
       warn
@@ -1164,7 +1164,7 @@ export const layeredRecipe: SheetRecipe = {
         }
       }
       return previewRendered(
-        { id: previewId(name, componentId), sheet: name, ...(componentId !== undefined ? { component: componentId } : {}), deployed_path: dest, source_file: file },
+        { id: previewId(name, componentId, file), sheet: name, ...(componentId !== undefined ? { component: componentId } : {}), deployed_path: dest, source_file: file },
         found.file.content,
         io.instances,
         (instance, n) => (instance !== undefined ? rawOverlays.get(instance)?.get(n)?.value : undefined) ?? rawBase.get(n)?.value,

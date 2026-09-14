@@ -901,3 +901,63 @@ describe("ansible recipe: why a row is in some environments and not others", () 
     expect(rows(odd).find((e) => e.key === "Extra")).toBeUndefined();
   });
 });
+
+
+// One sheet, two different FILES, two different preview ids.
+//
+// `ArtifactPreview.id` promises that instance variants of one file share an id
+// — which is how the viewer draws them as tabs — and that two DIFFERENT files
+// never do. Three of the four producers omitted `previewId`'s file
+// discriminator, so a sheet with a `template:` and a `static_files:` entry gave
+// both files one id: the panel then drew a rendered nginx.conf and a committed
+// security.conf as instance tabs of each other, and a link written into a
+// markdown set had to resolve a row to a preview OBJECT rather than to its id
+// (artifact-index.ts) because the id no longer named one file.
+//
+// Asserted over a whole example rather than on `previewId` alone: the function
+// was always able to take a file, and the defect was every caller declining to
+// pass one.
+describe("two files of one sheet are two previews", () => {
+  it("gives no id to more than one source file", () => {
+    const { input } = buildActual("ansible-basic");
+    const files = new Map<string, Set<string>>();
+    for (const a of input.artifacts ?? []) {
+      files.set(a.id, (files.get(a.id) ?? new Set<string>()).add(a.source_file));
+    }
+    const shared = [...files.entries()].filter(([, f]) => f.size > 1);
+    expect(shared.map(([id, f]) => `${id} <- ${[...f].join(", ")}`)).toEqual([]);
+  });
+
+  // …and the example really does hold the shape this is about, so the check
+  // above cannot pass by having nothing to check.
+  it("is asked of a sheet that really does deploy two files", () => {
+    const { input } = buildActual("ansible-basic");
+    const nginx = (input.artifacts ?? []).filter((a) => a.sheet === "nginx configuration");
+    const sources = new Set(nginx.map((a) => a.source_file));
+    expect(sources.size).toBeGreaterThan(1);
+    expect(new Set(nginx.map((a) => a.id)).size).toBe(sources.size);
+  });
+
+  // Every producer this example reaches, held separately — which the contract
+  // above cannot do.
+  //
+  // Two producers collide only when BOTH omit the file: one that omits it
+  // while the other passes it still yields two different ids, so the "no id
+  // names two files" check passes with a producer already broken. It would
+  // take a sheet carrying two files from the SAME producer to catch one, and
+  // no example has that shape. So this asserts the SPELLING `previewId` gives
+  // an id it was handed a file for, which is checkable per preview no matter
+  // what any other producer did.
+  //
+  // Two of the three reach here: `layered`'s `static_files` and `ansible`'s
+  // `templates`. The third, `layered`'s `preview: { from, dest }` (a file an
+  // Ansible task writes inline), is reached by no fixture and asserted by no
+  // test at all — that gap predates this check and is not closed by it.
+  it("names its own file in the id, for each producer separately", () => {
+    const { input } = buildActual("ansible-basic");
+    const missing = (input.artifacts ?? [])
+      .filter((a) => !a.id.endsWith(`::${a.source_file.split("/").pop()}`))
+      .map((a) => `${a.id} <- ${a.source_file}`);
+    expect(missing).toEqual([]);
+  });
+});

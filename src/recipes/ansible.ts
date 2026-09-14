@@ -1909,7 +1909,7 @@ export const ansibleRecipe: SheetRecipe = {
         artifacts.push(
           ...previewRendered(
             {
-              id: previewId(name, spec.component),
+              id: previewId(name, spec.component, file),
               sheet: name,
               ...(spec.component !== undefined ? { component: spec.component } : {}),
               ...(spec.deployedPath !== undefined ? { deployed_path: spec.deployedPath } : {}),
