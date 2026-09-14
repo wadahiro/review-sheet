@@ -526,3 +526,53 @@ describe("a record of this tool's own, through a set", () => {
     expect(read.problems.filter((x) => x.includes("read as prose"))).toEqual([]);
   });
 });
+
+// A row whose name is not a name anybody set. Three of Keycloak's realm fields
+// are written by ONE control of the admin console, and no operator ever set
+// `permanentLockout` — they set "Brute Force Mode", once.
+describe("a row the product's screen has no field for", () => {
+  const CONTROL = {
+    label: { ja: "ブルートフォースモード", en: "Brute Force Mode" },
+    of: ["bruteForceProtected", "permanentLockout"],
+    modes: [{ label: { ja: "無効" }, values: { bruteForceProtected: "false", permanentLockout: "false" } }],
+  };
+  const withControl = (): TestPlan =>
+    ({
+      metadata: { title: "t" },
+      units: [{ name: "server", declaration: { method: { ja: "API を読む" } }, sheets: ["realm"] }],
+      items: [
+        { target: { sheet: "realm", path: ["Security"], key: "bruteForceProtected", instance: "prod" }, unit: "server", component: "Security", kind: "value", decider: "project", expected: "true", control: CONTROL },
+        { target: { sheet: "realm", path: ["Security"], key: "permanentLockout", instance: "prod" }, unit: "server", component: "Security", kind: "value", decider: "project", expected: "false", control: CONTROL },
+        // Its own field on the same screen — not part of the control.
+        { target: { sheet: "realm", path: ["Security"], key: "failureFactor", instance: "prod" }, unit: "server", component: "Security", kind: "value", decider: "project", expected: "5" },
+      ],
+      functional: [],
+    }) as TestPlan;
+
+  const items = (lang: "ja" | "en" = "ja"): string[] =>
+    renderTestDoc(withControl(), { results: [] } as TestResults, "server", { lang })
+      ["test:items"]!.split("\n")
+      .filter((l) => l.startsWith("| ") && !l.startsWith("| No.") && !l.startsWith("| ---"));
+
+  it("names the control each row is part of, so one row alone can be traced to the screen", () => {
+    const cells = items().map((l) => l.split("|")[3]!.trim());
+    expect(cells).toEqual([
+      "ブルートフォースモード / `bruteForceProtected`",
+      "ブルートフォースモード / `permanentLockout`",
+      // Untouched: a row the screen has a field of its own for.
+      "`failureFactor`",
+    ]);
+  });
+
+  it("adds no item for the control itself", () => {
+    // The mode is a function of the values, so a check of it could neither fail
+    // while they pass nor pass while one fails — and the API has no field of
+    // that name to have read. Three rows in, three rows out.
+    expect(items()).toHaveLength(3);
+    expect(items().map((l) => l.split("|")[1]!.trim())).toEqual(["1", "2", "3"]);
+  });
+
+  it("names it in the reader's language", () => {
+    expect(items("en")[0]).toContain("Brute Force Mode / `bruteForceProtected`");
+  });
+});

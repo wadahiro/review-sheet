@@ -25,7 +25,14 @@ import { evidenceCell } from "./evidence.js";
 export type TestDocLang = "ja" | "en";
 
 type Words = {
-  no: string; item: string; expected: string; verdict: string; ran: string; how: string; evidence: string; note: string;
+  no: string;
+  item: string;
+  expected: string;
+  verdict: string;
+  ran: string;
+  how: string;
+  evidence: string;
+  note: string;
   // The three levels a project's taxonomy declares, spelled the same way HERE — a
   // reader maps the table onto the page by reading the same words twice.
   major: string; middle: string; subject: string;
@@ -223,7 +230,20 @@ function dropEmpty(header: string[], rows: string[][], at: number): { header: st
 // itself, an unset row states that it is unset, and a row on the product's own
 // default says which. Nothing is lost — the reader now reads the two columns as
 // one sentence instead of one column twice.
-const itemText = (t: Words, i: TestItem): string => `\`${cell(i.target.key)}\``;
+// WHICH row is checked — and, where the product's own screen has no field of
+// that name, which control on the screen it is part of.
+//
+// The trace is on EVERY row rather than only on the control's own line above
+// them, because a row is read alone: a reader following one NG, or one
+// evidence file, has to be able to say what screen item it belongs to without
+// finding the group it came from. Three checks of `permanentLockout`,
+// `bruteForceProtected` and `maxTemporaryLockouts` name nothing an operator
+// ever set — "Brute Force Mode" is what they set, once.
+const itemText = (t: Words, i: TestItem, lang: TestDocLang): string => {
+  const key = `\`${cell(i.target.key)}\``;
+  const control = i.control === undefined ? undefined : pickLang(i.control.label, lang);
+  return control === undefined || control === "" ? key : `${control} / ${key}`;
+};
 
 // WHAT is expected, and nothing about who decided it — that is the column
 // beside this one. Three things it must be able to say and an empty cell is
@@ -289,6 +309,7 @@ export type TestDocOptions = {
 };
 
 // One rendered block per marker name.
+
 export function renderTestDoc(
   plan: TestPlan,
   results: TestResults,
@@ -415,8 +436,8 @@ export function renderTestDoc(
       // itself out of a 19rem panel. Which level a heading is belongs in the
       // taxonomy table, which says it once.
       if (middle !== "") sections.push(`#### ${middle}`, "");
-      const rows = here
-        .filter((i) => middleOf(i, lang) === middle)
+      const mineHere = here.filter((i) => middleOf(i, lang) === middle);
+      const rows = mineHere
         .map((i) => {
           const r = answerFor(index, i);
           n += 1;
@@ -426,7 +447,7 @@ export function renderTestDoc(
             // table rather than in a heading: a client identified by its URL
             // makes an unreadable heading and a perfectly good cell.
             cell(i.component),
-            itemText(t, i),
+            itemText(t, i, lang),
             expectedText(t, i),
             t.deciders[i.decider] ?? "",
             verdictOf(t, r),

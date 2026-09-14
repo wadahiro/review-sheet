@@ -18,6 +18,7 @@
 // a collector and a judge outside answer it. See the `test` declaration below
 // for the part a project writes, which is the part nothing can derive.
 
+import { pickLang } from "./types.js";
 import type { FunctionalItem, LangText, OutOfScope, ParameterSheetInput, Parameter, Sheet, SheetGroup, TestDeclaration } from "./types.js";
 
 export type { TestDeclaration, FunctionalItem };
@@ -42,6 +43,18 @@ export type TestItem = {
   // when it has one — the row that does not follow its neighbours.
   file?: string;
   kind: TestKind;
+  // The product's own CONTROL this row is one third of — see types.ts's
+  // `composite`. Carried so a record can say, beside the three fields it
+  // checked, which choice on the screen they come to: a reader deciding whether
+  // a realm is configured correctly is looking at "Brute Force Mode", and
+  // `permanentLockout: expected false, got true` does not answer them.
+  //
+  // It adds no ITEM. The mode is a pure function of the three values, so a
+  // fourth check cannot fail while they pass nor pass while one fails — it
+  // would carry no information and inflate the coverage count by one. And the
+  // product's API has no such field to ask for, so an item claiming to have
+  // checked it would be claiming a reading nothing took.
+  control?: { label: LangText; of: string[]; modes: { label: LangText; values: Record<string, string> }[] };
   // WHO decided the expected value — a different question from what it is, and
   // from how it was checked. A record that answers only the first cannot say
   // whether `Listen 80` is this project's decision or a line it inherited
@@ -145,6 +158,32 @@ export type TestPlanReport = {
   // A per-environment row that says nothing about an environment: no value for
   // it, so there is nothing to expect and nothing to check.
   unstated: { unit: string; sheet: string; key: string; instance: string }[];
+  // A control the record can show but not READ: some of the rows that spell it
+  // are tested here and some are not.
+  //
+  // Not a coverage failure — a row left out is left out by a decision the
+  // project stated (`out_of_scope`), or because a per-environment row says
+  // nothing here, and both are answered elsewhere. What is lost is different:
+  // a control's value is the TUPLE, so two of three fields passing says nothing
+  // about which choice the screen is on, while the record still reads
+  // "Brute Force Mode / permanentLockout — OK" and looks as though the control
+  // had been checked. The same shape as a declared rule matching nothing: the
+  // rule ran, and what it could not reach is what nobody sees.
+  //
+  // Per INSTANCE, because the answer differs between them: a control complete
+  // in production and partial in staging is partial in staging only. Reported
+  // only when part of it IS tested — a control no field of which is tested here
+  // is a control this unit does not cover at all, which is what `excluded` and
+  // `unstated` already say row by row.
+  partialControls: {
+    unit: string;
+    sheet: string;
+    component?: string;
+    instance: string;
+    control: LangText;
+    tested: string[];
+    missing: string[];
+  }[];
 };
 
 const walkGroups = (groups: SheetGroup[] | undefined, visit: (g: SheetGroup) => void): void => {
@@ -235,7 +274,7 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
 
   const units = new Map<string, TestUnit>();
   const items: TestItem[] = [];
-  const report: TestPlanReport = { excluded: [], unstated: [] };
+  const report: TestPlanReport = { excluded: [], unstated: [], partialControls: [] };
   const bare: string[] = [];
 
   for (const sheet of input.sheets) {
@@ -287,10 +326,54 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
           kind,
           decider: deciderOf(row.p, kind, expected),
           ...(row.p.container === undefined ? {} : { container: true as const }),
+          ...(row.p.composite === undefined
+            ? {}
+            : { control: { label: row.p.composite.control, of: row.p.composite.of, modes: row.p.composite.modes } }),
           ...(addressOf(row.p) === undefined ? {} : { address: addressOf(row.p)! }),
           ...(row.p.secret === true ? { quiet: true as const } : expected === undefined ? {} : { expected }),
         });
       }
+    }
+  }
+
+  // Controls only PART of whose rows became items here — see
+  // TestPlanReport.partialControls. Derived from the items rather than from the
+  // rows, because "became an item" is the question, and every way a row can
+  // fail to (excluded, states nothing in this environment, a whole sheet left
+  // out) ends at the same place.
+  {
+    const seen = new Map<
+      string,
+      { unit: string; sheet: string; component?: string; instance: string; control: LangText; of: string[]; tested: Set<string> }
+    >();
+    for (const i of items) {
+      if (i.control === undefined) continue;
+      const k = [i.unit, i.target.sheet, i.component ?? "", i.target.instance, JSON.stringify(i.control.label)].join("\u0000");
+      const at = seen.get(k);
+      if (at === undefined)
+        seen.set(k, {
+          unit: i.unit,
+          sheet: i.target.sheet,
+          ...(i.component === undefined ? {} : { component: i.component }),
+          instance: i.target.instance,
+          control: i.control.label,
+          of: i.control.of,
+          tested: new Set([i.target.key]),
+        });
+      else at.tested.add(i.target.key);
+    }
+    for (const c of seen.values()) {
+      const missing = c.of.filter((k) => !c.tested.has(k));
+      if (missing.length === 0) continue;
+      report.partialControls.push({
+        unit: c.unit,
+        sheet: c.sheet,
+        ...(c.component === undefined ? {} : { component: c.component }),
+        instance: c.instance,
+        control: c.control,
+        tested: c.of.filter((k) => c.tested.has(k)),
+        missing,
+      });
     }
   }
 
@@ -358,6 +441,18 @@ export function formatTestPlanReport(plan: TestPlan, report: TestPlanReport): st
   }
   if (report.unstated.length > 0) {
     lines.push(`  states nothing in that environment (${report.unstated.length}): ${report.unstated.slice(0, 3).map((e) => `${e.sheet} > ${e.key} [${e.instance}]`).join(", ")}${report.unstated.length > 3 ? ", …" : ""}`);
+  }
+  if (report.partialControls.length > 0) {
+    lines.push(
+      `  a control only partly tested (${report.partialControls.length}): ` +
+        report.partialControls
+          .slice(0, 3)
+          .map(
+            (c) =>
+              `${c.sheet} > ${pickLang(c.control, "en") ?? ""} [${c.instance}] — ${c.tested.length}/${c.tested.length + c.missing.length}, missing ${c.missing.join(", ")}`
+          )
+          .join("; ") + (report.partialControls.length > 3 ? "; …" : "")
+    );
   }
   return lines.join("\n");
 }

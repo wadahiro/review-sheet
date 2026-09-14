@@ -376,3 +376,75 @@ describe("the file an item is checked in", () => {
     expect(plan.items[0].file).toBe("/etc/other.conf");
   });
 });
+
+// A control several rows spell (types.ts's `composite`) adds no item — the
+// control is not a row. What it adds is a way for a record to be complete and
+// still unreadable, which is what this reports.
+describe("a control only part of which is tested", () => {
+  const CONTROL = {
+    control: { ja: "検知モード", en: "Detection mode" },
+    of: ["detect", "permanent", "tries"],
+    modes: [{ label: { ja: "無効" }, values: { detect: "false", permanent: "false", tries: "0" } }],
+  };
+  const trio = (over: Record<string, Record<string, unknown>> = {}) =>
+    ["detect", "permanent", "tries"].map((key) => ({
+      key,
+      description: "d",
+      origin: "common",
+      value: "x",
+      composite: CONTROL,
+      ...(over[key] ?? {}),
+    }));
+  const build = (params: unknown[], instances = ["staging", "production"]) =>
+    buildTestPlan(
+      model(
+        [{ name: "realm", group: "server", instances, categories: [{ name: "c", params }] }],
+        [{ name: "server", test: TESTED }]
+      ) as ParameterSheetInput
+    );
+
+  it("says nothing when every field of it is tested", () => {
+    const { plan, report } = build(trio());
+    // Six items — three rows, two environments — and no fourth "the mode" item:
+    // the mode is a function of the three, so a check of it could not fail
+    // while they pass, and the product's API has no field of that name.
+    expect(plan.items).toHaveLength(6);
+    expect(report.partialControls).toEqual([]);
+  });
+
+  it("reports the control, per environment, when a field is out of scope", () => {
+    const { report } = build(trio({ tries: { out_of_scope: { reason: { ja: "既定のまま" } } } }));
+    expect(report.partialControls.map((c) => [c.instance, c.tested, c.missing])).toEqual([
+      ["staging", ["detect", "permanent"], ["tries"]],
+      ["production", ["detect", "permanent"], ["tries"]],
+    ]);
+  });
+
+  it("reports the environment where it is partial and not the one where it is whole", () => {
+    // A per-environment row that states nothing in staging: the control can be
+    // read in production and not there.
+    const { report } = build(
+      trio({ tries: { value: undefined, instances: [{ name: "production", value: "0" }] } })
+    );
+    expect(report.partialControls.map((c) => [c.instance, c.missing])).toEqual([["staging", ["tries"]]]);
+  });
+
+  it("says nothing about a control no field of which is tested here", () => {
+    // Not partial — absent. Every row of it is already named by `excluded`, and
+    // a second line saying the control is untested adds no reachable fact.
+    const { report } = build(
+      trio({
+        detect: { out_of_scope: { reason: { ja: "x" } } },
+        permanent: { out_of_scope: { reason: { ja: "x" } } },
+        tries: { out_of_scope: { reason: { ja: "x" } } },
+      })
+    );
+    expect(report.excluded).toHaveLength(3);
+    expect(report.partialControls).toEqual([]);
+  });
+
+  it("names it in the printed summary", () => {
+    const { plan, report } = build(trio({ tries: { out_of_scope: { reason: { ja: "既定のまま" } } } }));
+    expect(formatTestPlanReport(plan, report)).toContain("missing tries");
+  });
+});
