@@ -18,7 +18,8 @@
 // `functional_channels:`), which is also what keeps this from claiming an item
 // that happens to share a name.
 
-import { registerFunctionalChannel, registerProbeRule, type FunctionalAnswer } from "../channel.js";
+import { registerDocumentRouter, registerFunctionalChannel, registerProbeRule, type DocumentRouter, type FunctionalAnswer } from "../channel.js";
+import type { TestItem } from "../testplan.js";
 
 // ---------------------------------------------------------------------------
 // What the product says it is USING, and where each value came from.
@@ -331,6 +332,119 @@ export function registerKeycloakChannels(binding: {
       return loginAnswer(kind === "assets" ? "assets" : "page", hosts, sheet);
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// WHERE A USER-FEDERATION MAPPER ROW SITS in a realm's user-federation
+// component document — the one address `registerProductAddress`
+// (channels/reads.ts, "keycloak-ldap") cannot state as a template, because
+// review-sheet's own `split.nest` (keytransform.ts) has folded the mapper's
+// identity INTO the key (`<mapperName>.<providerId>.<realKey>`, via
+// `withNestPrefix`) — there is no template placeholder that could spell that
+// back out for EITHER an authored row or a materialized one.
+//
+// Always CONSTRUCTS, deliberately never passes an authored row's own
+// `item.address` through unchanged (unlike a template's address, which
+// judge.ts's document branch does prefer over a construction — see its
+// "stated beats derived" comment): an authored mapper row's `item.address`
+// and this construction from its key name the same address, once both are
+// read through `unquoteIds` (judge.ts) — an identity predicate whose value
+// needs quoting (`[name="last name"]`, a mapper Keycloak itself names with a
+// space) is quoted in `item.address` and unquoted here, and only a reader
+// that normalizes BOTH sides before comparing can treat them as one
+// address. `judgeFiles` does; a caller that reads its own collected
+// document through `extractFile` and compares raw strings does not — so
+// passing `item.address` through unchanged there would construct a correct
+// address for a materialized row and silently miscompare every mapper
+// Keycloak itself names with a space ("last name", "first name", "creation
+// date", "modify date"). One construction, one code path, for every kind —
+// reachable through `judgeFiles` too, which normalizes what this always
+// spells unquoted.
+//
+// The DOCUMENT this addresses is a project's own synthesized shape — a realm
+// export's `components` field, keyed by provider TYPE rather than by the
+// flat, `parentId`-linked list the Admin API itself returns (`GET
+// /admin/realms/{realm}` carries no `components` field at all, and
+// `/admin/realms/{realm}/components` is flat). Reconstructing that nesting
+// from the flat API is the COLLECTOR's job, once, the same project fact
+// `documents:` names for any other sheet — this router only says where
+// inside that already-nested document a row sits, never how the document
+// was built. A project whose collector emits a different shape gets wrong
+// addresses from this router, not an error: state the shape in the
+// `documents:` binding's own comment, the discipline `aws-rds.ts` documents
+// for its own table.
+const LDAP_PROVIDER_TYPE = "org.keycloak.storage.UserStorageProvider";
+const LDAP_MAPPER_PROVIDER_TYPE = "org.keycloak.storage.ldap.mappers.LDAPStorageMapper";
+
+// A mapper row's key, once `split.nest` has folded the mapper's own identity
+// in front of it: `<mapperName>.<providerId>.<realKey>`. Bound on the LAST
+// path segment rather than a fixed index — `item.target.path` is
+// `["Mappers", mapperName]` on a sheet with one store and
+// `[store, "Mappers", mapperName]` on one with several, and the mapper name
+// is always the innermost segment either way.
+//
+// `undefined` here, for a row the caller already knows is under the mappers
+// category, means the KEY does not carry the shape this function expects —
+// review-sheet's own `split.nest` producing something else, or a project
+// hand-editing a materialized row's key. That is a shape the router does not
+// recognise, the same "a row the table does not name gets no answer, never a
+// guess" rule `aws-rds.ts` documents, and the caller should treat it as
+// louder than an ordinary miss: it falls back to `not_run` in the plan, which
+// a verdict diff against a working baseline surfaces (see
+// tests/channel-keycloak.test.ts's "leaves an unrecognised key shape
+// unanswered").
+function nestedMapperAddress(item: TestItem, ldapComponentName: string): string | undefined {
+  const mapperName = item.target.path.at(-1);
+  if (mapperName === undefined) return undefined;
+  const prefix = `${mapperName}.`;
+  if (!item.target.key.startsWith(prefix)) return undefined;
+  const rest = item.target.key.slice(prefix.length);
+  const dot = rest.indexOf(".");
+  if (dot === -1) return undefined;
+  const realKey = rest.slice(dot + 1);
+  // `providerId` is a plain field of the mapper itself; `config.*` is already
+  // a complete bracketed reference (`config["ldap.attribute"][0]`), so both
+  // attach with a dot. Anything else is a bare key with no bracket form of
+  // its own, which `extractFile` addresses in brackets because the key may
+  // itself contain a dot (`is.mandatory.in.ldap`) — attaching it with a dot
+  // would read as a THIRD nesting level rather than one dotted key.
+  const suffix = realKey === "providerId" || realKey.startsWith("config[") ? `.${realKey}` : `["${realKey}"]`;
+  return (
+    `components["${LDAP_PROVIDER_TYPE}"][name=${ldapComponentName}]` +
+    `.subComponents["${LDAP_MAPPER_PROVIDER_TYPE}"][name=${mapperName}]${suffix}`
+  );
+}
+
+// Bound by the project: which document holds the reconstructed realm's
+// `components`, which sheet(s) route through it, and — the one fact no
+// reading of the sheet can recover — the LDAP store's own Admin API name
+// (`item.component` on this sheet is the CATEGORY label, "Mappers" or
+// "General", never the store).
+export function registerKeycloakLdapRouter(binding: {
+  document: string;
+  sheet: string;
+  ldap_component: string;
+  mappers_category: string;
+}): DocumentRouter {
+  const router: DocumentRouter = {
+    name: `keycloak-ldap:${binding.sheet}`,
+    route: (item) => {
+      if (item.target.sheet !== binding.sheet) return undefined;
+      // Only a MAPPER row's key carries a `<mapperName>.<providerId>.`
+      // prefix to strip — a store's own row (General/Settings/Cache
+      // Settings) is left unanswered here, for `registerProductAddress`'s
+      // `{address}` template to answer from the row's own `item.address`.
+      // The mappers category can sit at path[0] (one store on the sheet) or
+      // one level deeper ([store, "Mappers", mapper], several stores) — see
+      // nestedMapperAddress's own comment on why the mapper name itself is
+      // read off the LAST segment rather than a fixed index.
+      if (!item.target.path.includes(binding.mappers_category)) return undefined;
+      const address = nestedMapperAddress(item, binding.ldap_component);
+      return address === undefined ? undefined : { document: binding.document, address, idFields: ["name"] };
+    },
+  };
+  registerDocumentRouter(router);
+  return router;
 }
 
 // "The readiness endpoint answered, and nothing under it is DOWN" contains no

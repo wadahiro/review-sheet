@@ -7,14 +7,17 @@
 
 import { describe, it, expect, beforeEach } from "bun:test";
 import {
-  registerKeycloakChannels, effectiveConfig, isProductDefault, lineOfEffective,
+  registerKeycloakChannels, registerKeycloakLdapRouter, effectiveConfig, isProductDefault, lineOfEffective,
   readyReport, clusterMembers, issuerOf, issuerFor,
 } from "../src/channels/keycloak";
-import { listFunctionalChannels } from "../src/channel";
+import { listFunctionalChannels, listDocumentRouters } from "../src/channel";
+import type { TestItem } from "../src/testplan";
 
 const clear = (): void => {
-  const arr = (globalThis as Record<symbol, unknown>)[Symbol.for("review-sheet.functional-channels.v1")] as unknown[];
-  if (Array.isArray(arr)) arr.length = 0;
+  for (const key of ["review-sheet.functional-channels.v1", "review-sheet.document-routers.v1"]) {
+    const arr = (globalThis as Record<symbol, unknown>)[Symbol.for(key)] as unknown[];
+    if (Array.isArray(arr)) arr.length = 0;
+  }
 };
 beforeEach(() => {
   clear();
@@ -214,5 +217,159 @@ describe("a login page on more than one node", () => {
       ["web01", "a"],
       ["web02", "b"],
     ]);
+  });
+});
+
+// The gap `registerProductAddress`'s `{address}` template cannot close: a
+// mapper row's key has `split.nest` (keytransform.ts) folding the mapper's
+// identity INTO it (`<mapperName>.<providerId>.<realKey>`), for which no
+// placeholder template can ever spell the address back out — for an
+// authored row exactly as much as a materialized one. Real shapes below are
+// taken verbatim from a project's own test-plan output (plan.json), not
+// invented.
+describe("where a user-federation row sits in a reconstructed realm document", () => {
+  const bind = () =>
+    registerKeycloakLdapRouter({
+      document: "userFederation",
+      sheet: "federation",
+      ldap_component: "corp-ldap",
+      mappers_category: "Mappers",
+    });
+
+  const item = (over: Partial<TestItem>): TestItem =>
+    ({
+      target: { sheet: "federation", path: ["Mappers", "sAMAccountName"], key: "x", instance: "local" },
+      unit: "u",
+      kind: "default-in-force",
+      decider: "product-default",
+      ...over,
+    }) as TestItem;
+
+  it("registers itself, once, under a name naming the sheet it is bound to", () => {
+    bind();
+    expect(listDocumentRouters().map((r) => r.name)).toEqual(["keycloak-ldap:federation"]);
+  });
+
+  it("does not answer a row of a different sheet", () => {
+    const router = bind();
+    expect(router.route(item({ target: { sheet: "other", path: [], key: "k", instance: "local" } }))).toBeUndefined();
+  });
+
+  // A materialized mapper row's own field, address-built the same way
+  // check-live.mjs's matchMapperItem built it by hand — `providerId` is a
+  // plain field of the mapper, so it attaches with a dot.
+  it("addresses a mapper's own providerId field", () => {
+    const router = bind();
+    expect(
+      router.route(item({ target: { sheet: "federation", path: ["Mappers", "sAMAccountName"], key: "sAMAccountName.user-attribute-ldap-mapper.providerId", instance: "local" } }))
+    ).toEqual({
+      document: "userFederation",
+      address:
+        'components["org.keycloak.storage.UserStorageProvider"][name=corp-ldap].subComponents["org.keycloak.storage.ldap.mappers.LDAPStorageMapper"][name=sAMAccountName].providerId',
+      idFields: ["name"],
+    });
+  });
+
+  // A materialized config.* row: the real key already carries its own
+  // bracket form (config["ldap.attribute"][0]) and attaches with a dot too —
+  // the extra bracket wrap is only for keys the parser has no bracket form
+  // for yet (a bare dotted key like is.mandatory.in.ldap).
+  it("addresses a mapper's config.* field without double-wrapping the bracket it already has", () => {
+    const router = bind();
+    expect(
+      router.route(
+        item({
+          target: {
+            sheet: "federation",
+            path: ["Mappers", "sAMAccountName"],
+            key: 'sAMAccountName.user-attribute-ldap-mapper.config["ldap.attribute"][0]',
+            instance: "local",
+          },
+        })
+      )?.address
+    ).toBe(
+      'components["org.keycloak.storage.UserStorageProvider"][name=corp-ldap].subComponents["org.keycloak.storage.ldap.mappers.LDAPStorageMapper"][name=sAMAccountName].config["ldap.attribute"][0]'
+    );
+  });
+
+  // A bare dotted key with no bracket form of its own gets one from the
+  // router, so extractFile reads it as ONE key and not a third nesting level.
+  it("brackets a bare dotted key rather than attaching it with another dot", () => {
+    const router = bind();
+    expect(
+      router.route(
+        item({
+          target: { sheet: "federation", path: ["Mappers", "sAMAccountName"], key: "sAMAccountName.user-attribute-ldap-mapper.is.mandatory.in.ldap", instance: "local" },
+        })
+      )?.address
+    ).toBe(
+      'components["org.keycloak.storage.UserStorageProvider"][name=corp-ldap].subComponents["org.keycloak.storage.ldap.mappers.LDAPStorageMapper"][name=sAMAccountName]["is.mandatory.in.ldap"]'
+    );
+  });
+
+  // An AUTHORED mapper row (`kind: value`, a real `item.address`) is
+  // CONSTRUCTED too, from its key, exactly like a materialized one — never
+  // read off `item.address`. Construction and `item.address` name the same
+  // address once both are read through judge.ts's own `unquoteIds`; this
+  // one is the case that would NOT agree without it — Keycloak's own default
+  // mapper name has a space, so `item.address` carries it quoted
+  // (`[name="last name"]`) while this construction spells it bare. A router
+  // reachable only through `judgeFiles` (which normalizes both sides before
+  // comparing) can rely on that; one wired into a caller that compares raw
+  // strings cannot, which is exactly why this router does not read
+  // `item.address` at all.
+  it("constructs an authored mapper row's address too, unquoted", () => {
+    const router = bind();
+    expect(
+      router.route(
+        item({
+          kind: "value",
+          address:
+            'components["org.keycloak.storage.UserStorageProvider"][name=corp-ldap].subComponents["org.keycloak.storage.ldap.mappers.LDAPStorageMapper"][name="last name"].config["ldap.attribute"][0]',
+          target: { sheet: "federation", path: ["Mappers", "last name"], key: 'last name.user-attribute-ldap-mapper.config["ldap.attribute"][0]', instance: "local" },
+        })
+      )?.address
+    ).toBe(
+      'components["org.keycloak.storage.UserStorageProvider"][name=corp-ldap].subComponents["org.keycloak.storage.ldap.mappers.LDAPStorageMapper"][name=last name].config["ldap.attribute"][0]'
+    );
+  });
+
+  // A STORE's own row (General/Settings/Cache Settings/…) is not under the
+  // mappers category at all, so it is left unanswered here — for
+  // `registerProductAddress`'s `{address}` template to answer instead, from
+  // the row's own `item.address`, which for a store's own field IS the
+  // correct — and only — address.
+  it("does not answer a store's own row, only a mapper's", () => {
+    const router = bind();
+    expect(
+      router.route(item({ kind: "value", address: "irrelevant", target: { sheet: "federation", path: ["General"], key: "kcr_ldap_connection_url", instance: "local" } }))
+    ).toBeUndefined();
+  });
+
+  // The mapper name is the LAST path segment, not a fixed index — a sheet
+  // with several stores nests it one level deeper ([store, "Mappers", name])
+  // and the same construction still finds it.
+  it("finds the mapper name at the end of the category path regardless of nesting depth", () => {
+    const router = bind();
+    expect(
+      router.route(
+        item({
+          target: { sheet: "federation", path: ["corp-ldap", "Mappers", "sAMAccountName"], key: "sAMAccountName.user-attribute-ldap-mapper.providerId", instance: "local" },
+        })
+      )?.address
+    ).toContain("[name=sAMAccountName]");
+  });
+
+  // A key that does not start with "<mapperName>." is a shape this router
+  // does not recognise (a malformed nest, or a sheet whose category does not
+  // actually name the mapper) — left unanswered rather than guessed at, the
+  // same "a row the table does not name gets no answer" rule aws-rds.ts
+  // documents. Silent to this router; LOUD in the plan (the row falls back
+  // to not_run, which a verdict diff against a working baseline surfaces).
+  it("leaves an unrecognised key shape unanswered rather than guessing", () => {
+    const router = bind();
+    expect(
+      router.route(item({ target: { sheet: "federation", path: ["Mappers", "sAMAccountName"], key: "unrelated.key", instance: "local" } }))
+    ).toBeUndefined();
   });
 });
