@@ -294,7 +294,15 @@ describe("where a user-federation row sits in a reconstructed realm document", (
 
   // A bare dotted key with no bracket form of its own gets one from the
   // router, so extractFile reads it as ONE key and not a third nesting level.
-  it("brackets a bare dotted key rather than attaching it with another dot", () => {
+  // A MATERIALIZED mapper row's key is bare — never `config[...]`-wrapped,
+  // because nothing extracted it from a file; a dictionary names its own
+  // mapper entries this way (`is.mandatory.in.ldap`, `attribute.force.default`).
+  // It is still a `config` entry of the mapper on the API side — there is no
+  // other place for it — so it is addressed under `.config[...][0]`, the
+  // same shape extractFile gives an AUTHORED row's equivalent key. An
+  // authored mapper key already carries `config[`; a materialized one never
+  // does — the two never collide.
+  it("routes a bare materialized key under config[...][0], the same shape an authored key already has", () => {
     const router = bind();
     expect(
       router.route(
@@ -303,7 +311,7 @@ describe("where a user-federation row sits in a reconstructed realm document", (
         })
       )?.address
     ).toBe(
-      'components["org.keycloak.storage.UserStorageProvider"][name=corp-ldap].subComponents["org.keycloak.storage.ldap.mappers.LDAPStorageMapper"][name=sAMAccountName]["is.mandatory.in.ldap"]'
+      'components["org.keycloak.storage.UserStorageProvider"][name=corp-ldap].subComponents["org.keycloak.storage.ldap.mappers.LDAPStorageMapper"][name=sAMAccountName].config["is.mandatory.in.ldap"][0]'
     );
   });
 
@@ -348,15 +356,18 @@ describe("where a user-federation row sits in a reconstructed realm document", (
     ).toEqual({ document: "userFederation", address: "irrelevant", idFields: ["name"] });
   });
 
-  // A store row with no `item.address` at all (never authored, and
-  // materialize has nothing to invent one from either) gets no answer — the
-  // same "no address on the row, no address from the router" rule as an
-  // unrecognised mapper key shape.
-  it("leaves a store's own row with no item.address unanswered", () => {
+  // A store row with no `item.address` (a MATERIALIZED row — nothing ever
+  // wrote it anywhere) falls back to its own bare key, exactly the fallback
+  // judge.ts's `{address}` template applies (`item.address ?? item.target.key`).
+  // Never `undefined`: a router that declined here would turn documentFor's
+  // "the document was asked and the key was absent" (default-in-force's own
+  // pass, judge.ts's answerByDocument) into an indistinguishable "no document
+  // answers this row at all".
+  it("falls back to a store row's own bare key when it has no item.address", () => {
     const router = bind();
     expect(
       router.route(item({ target: { sheet: "federation", path: ["General"], key: "kcr_ldap_connection_url", instance: "local" } }))
-    ).toBeUndefined();
+    ).toEqual({ document: "userFederation", address: "kcr_ldap_connection_url", idFields: ["name"] });
   });
 
   // The mapper name is the LAST path segment, not a fixed index — a sheet

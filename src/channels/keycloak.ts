@@ -422,13 +422,21 @@ function nestedMapperAddress(item: TestItem, ldapComponentName: string): string 
   const dot = rest.indexOf(".");
   if (dot === -1) return undefined;
   const realKey = rest.slice(dot + 1);
-  // `providerId` is a plain field of the mapper itself; `config.*` is already
-  // a complete bracketed reference (`config["ldap.attribute"][0]`), so both
-  // attach with a dot. Anything else is a bare key with no bracket form of
-  // its own, which `extractFile` addresses in brackets because the key may
-  // itself contain a dot (`is.mandatory.in.ldap`) — attaching it with a dot
-  // would read as a THIRD nesting level rather than one dotted key.
-  const suffix = realKey === "providerId" || realKey.startsWith("config[") ? `.${realKey}` : `["${realKey}"]`;
+  // `providerId` is a plain field of the mapper itself; an AUTHORED row's
+  // config.* key is already a complete bracketed reference
+  // (`config["ldap.attribute"][0]`, extractFile's own spelling), so both
+  // attach with a dot. Everything else is a bare dictionary key
+  // (`is.mandatory.in.ldap`, `attribute.force.default`) — a dictionary
+  // names its own mapper entries this way, never `config[`-prefixed and
+  // never the name of a structural component field
+  // (id/name/providerId/providerType/parentId/subComponents/config) — and a
+  // bare key like this is a `config` entry the product itself has no OTHER
+  // place to put, so it is addressed there, index 0, the same shape
+  // extractFile gives an authored one. Bracketing it directly on the mapper
+  // (no `.config`) would construct an address one level too shallow for
+  // every materialized mapper row.
+  const suffix =
+    realKey === "providerId" || realKey.startsWith("config[") ? `.${realKey}` : `.config["${realKey}"][0]`;
   return (
     `components["${LDAP_PROVIDER_TYPE}"][name=${ldapComponentName}]` +
     `.subComponents["${LDAP_MAPPER_PROVIDER_TYPE}"][name=${mapperName}]${suffix}`
@@ -469,8 +477,19 @@ export function registerKeycloakLdapRouter(binding: {
       // one level deeper ([store, "Mappers", mapper], several stores) — see
       // nestedMapperAddress's own comment on why the mapper name itself is
       // read off the LAST segment rather than a fixed index.
+      //
+      // A row with NO item.address (materialized from a dictionary, nothing
+      // ever wrote it anywhere) falls back to its own bare key, exactly the
+      // fallback judge.ts's own `{address}` template applies (`item.address
+      // ?? item.target.key`) — never `undefined`. Skipping this fallback
+      // would silently regress every default-in-force row of a sheet bound
+      // via `router:`: a row whose miss MEANS "the product's own default
+      // applies" (judge.ts's own answerByDocument, `kind ===
+      // "default-in-force"`) would turn into a silent not_run instead,
+      // because `route()` returning undefined here is indistinguishable to
+      // documentFor from "no document answers this row at all".
       if (!item.target.path.includes(binding.mappers_category)) {
-        return item.address === undefined ? undefined : { document: binding.document, address: item.address, idFields: ["name"] };
+        return { document: binding.document, address: item.address ?? item.target.key, idFields: ["name"] };
       }
       const ldapComponentName = ldapComponentNameOf(item, binding);
       if (ldapComponentName === undefined) return undefined;
