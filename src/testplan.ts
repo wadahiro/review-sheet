@@ -43,6 +43,11 @@ export type TestItem = {
   // when it has one — the row that does not follow its neighbours.
   file?: string;
   kind: TestKind;
+  // What the PRODUCT calls this row where a human meets it — see
+  // ParameterBase.label. The key is the row's identity and the only thing a
+  // collector can ask for; this is the only name the person doing the test has
+  // seen before, on the screen they are checking against.
+  label?: LangText;
   // The product's own CONTROL this row is one third of — see types.ts's
   // `composite`. Carried so a record can say, beside the three fields it
   // checked, which choice on the screen they come to: a reader deciding whether
@@ -326,6 +331,7 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
           kind,
           decider: deciderOf(row.p, kind, expected),
           ...(row.p.container === undefined ? {} : { container: true as const }),
+          ...(row.p.label === undefined ? {} : { label: row.p.label }),
           ...(row.p.composite === undefined
             ? {}
             : { control: { label: row.p.composite.control, of: row.p.composite.of, modes: row.p.composite.modes } }),

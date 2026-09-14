@@ -403,6 +403,22 @@ describe("a control only part of which is tested", () => {
       ) as ParameterSheetInput
     );
 
+  it("carries the product's own name for the row", () => {
+    // The key is what a collector asks for; the label is the only name the
+    // person doing the test has seen. Both travel, or the record is a list of
+    // identifiers nobody can line up with a screen.
+    const { plan } = build([
+      { key: "failureFactor", description: "d", origin: "common", value: "5", label: { ja: "最大ログイン失敗回数" } },
+      { key: "waitIncrementSeconds", description: "d", origin: "common", value: "60" },
+    ]);
+    expect(plan.items.map((i) => [i.target.key, i.target.instance, i.label])).toEqual([
+      ["failureFactor", "staging", { ja: "最大ログイン失敗回数" }],
+      ["failureFactor", "production", { ja: "最大ログイン失敗回数" }],
+      ["waitIncrementSeconds", "staging", undefined],
+      ["waitIncrementSeconds", "production", undefined],
+    ]);
+  });
+
   it("says nothing when every field of it is tested", () => {
     const { plan, report } = build(trio());
     // Six items — three rows, two environments — and no fourth "the mode" item:

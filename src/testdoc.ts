@@ -241,8 +241,17 @@ function dropEmpty(header: string[], rows: string[][], at: number): { header: st
 // ever set — "Brute Force Mode" is what they set, once.
 const itemText = (t: Words, i: TestItem, lang: TestDocLang): string => {
   const key = `\`${cell(i.target.key)}\``;
-  const control = i.control === undefined ? undefined : pickLang(i.control.label, lang);
-  return control === undefined || control === "" ? key : `${control} / ${key}`;
+  // The product's own name for the row, then the key. The key alone is what a
+  // collector asks for and what a source map resolves; it is not what the
+  // person doing the test is looking at, and a record they cannot line up with
+  // the screen in front of them is a record they check by guessing.
+  //
+  // A field with no name of its own falls back to the CONTROL that writes it —
+  // and those are the same string today, because a field the console labels
+  // was already claimed before the composite ran. Both are stated so the
+  // record keeps working the day one of them changes.
+  const shown = pickLang(i.label, lang) ?? (i.control === undefined ? undefined : pickLang(i.control.label, lang));
+  return shown === undefined || shown === "" ? key : `${shown} / ${key}`;
 };
 
 // WHAT is expected, and nothing about who decided it — that is the column

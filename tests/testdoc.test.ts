@@ -543,8 +543,11 @@ describe("a row the product's screen has no field for", () => {
       items: [
         { target: { sheet: "realm", path: ["Security"], key: "bruteForceProtected", instance: "prod" }, unit: "server", component: "Security", kind: "value", decider: "project", expected: "true", control: CONTROL },
         { target: { sheet: "realm", path: ["Security"], key: "permanentLockout", instance: "prod" }, unit: "server", component: "Security", kind: "value", decider: "project", expected: "false", control: CONTROL },
-        // Its own field on the same screen — not part of the control.
-        { target: { sheet: "realm", path: ["Security"], key: "failureFactor", instance: "prod" }, unit: "server", component: "Security", kind: "value", decider: "project", expected: "5" },
+        // Its own field on the same screen — not part of the control, and named
+        // by the product in its own right.
+        { target: { sheet: "realm", path: ["Security"], key: "failureFactor", instance: "prod" }, unit: "server", component: "Security", kind: "value", decider: "project", expected: "5", label: { ja: "最大ログイン失敗回数", en: "Max login failures" } },
+        // …and one the product names not at all.
+        { target: { sheet: "realm", path: ["Security"], key: "waitIncrementSeconds", instance: "prod" }, unit: "server", component: "Security", kind: "value", decider: "project", expected: "60" },
       ],
       functional: [],
     }) as TestPlan;
@@ -559,8 +562,10 @@ describe("a row the product's screen has no field for", () => {
     expect(cells).toEqual([
       "ブルートフォースモード / `bruteForceProtected`",
       "ブルートフォースモード / `permanentLockout`",
-      // Untouched: a row the screen has a field of its own for.
-      "`failureFactor`",
+      // Its own name, not the control's — it is a field of its own.
+      "最大ログイン失敗回数 / `failureFactor`",
+      // Nothing to put in front of the key, so nothing is.
+      "`waitIncrementSeconds`",
     ]);
   });
 
@@ -568,8 +573,8 @@ describe("a row the product's screen has no field for", () => {
     // The mode is a function of the values, so a check of it could neither fail
     // while they pass nor pass while one fails — and the API has no field of
     // that name to have read. Three rows in, three rows out.
-    expect(items()).toHaveLength(3);
-    expect(items().map((l) => l.split("|")[1]!.trim())).toEqual(["1", "2", "3"]);
+    expect(items()).toHaveLength(4);
+    expect(items().map((l) => l.split("|")[1]!.trim())).toEqual(["1", "2", "3", "4"]);
   });
 
   it("names it in the reader's language", () => {
