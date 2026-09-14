@@ -176,6 +176,68 @@ describe("making a document out of some of the sheets", () => {
     expect(input.groups!.map((g) => g.name)).toEqual(["platform"]);
   });
 
+  // A chapter tree is three or four levels deep on a real document, and a
+  // sheet names the LEAF it sits in — never the chapter above it. Filtering
+  // the top level against the sheets' own group names therefore threw away
+  // every ancestor: the name a sheet carries is a child's, so no top-level
+  // entry ever matched and the whole branch went, kept sheets and all.
+  describe("a chapter tree deeper than one level", () => {
+    const DEEP = {
+      metadata: { title: "t" },
+      groups: [
+        {
+          name: "design",
+          label: { ja: "設計" },
+          groups: [
+            { name: "design-os", label: { ja: "OS" } },
+            { name: "design-app", label: { ja: "App" } },
+          ],
+        },
+        { name: "tests", label: { ja: "試験" } },
+      ],
+      sheets: [
+        { name: "os", group: "design-os", categories: [{ name: "c", params: [{ key: "a", description: "d", value: "1" }] }] },
+        { name: "app", group: "design-app", categories: [{ name: "c", params: [{ key: "b", description: "d", value: "2" }] }] },
+        { name: "os tests", group: "tests", categories: [{ name: "c", params: [{ key: "t", description: "d", value: "OK" }] }] },
+      ],
+    } as unknown as ParameterSheetInput;
+
+    it("keeps the chapter ABOVE the one a kept sheet is in", () => {
+      const { input } = selectSheets(DEEP, ["os"]);
+      expect(input.groups!.map((g) => g.name)).toEqual(["design"]);
+    });
+
+    it("prunes inside it too: a sibling chapter with nothing left goes", () => {
+      const { input } = selectSheets(DEEP, ["os"]);
+      const design = input.groups!.find((g) => g.name === "design")!;
+      expect((design.groups ?? []).map((g) => g.name)).toEqual(["design-os"]);
+    });
+
+    it("drops a whole branch when nothing under it survives", () => {
+      const { input } = selectSheets(DEEP, ["os tests"]);
+      expect(input.groups!.map((g) => g.name)).toEqual(["tests"]);
+    });
+
+    it("keeps both children when both still hold a sheet", () => {
+      const { input } = selectSheets(DEEP, ["os", "app"]);
+      const design = input.groups!.find((g) => g.name === "design")!;
+      expect((design.groups ?? []).map((g) => g.name)).toEqual(["design-os", "design-app"]);
+      expect(input.groups!.map((g) => g.name)).toEqual(["design"]);
+    });
+
+    // The ancestor is kept as the heading it is, with its own label — not
+    // rebuilt, and not stripped down to a name.
+    it("keeps the ancestor's own label", () => {
+      const { input } = selectSheets(DEEP, ["os"]);
+      expect(input.groups!.find((g) => g.name === "design")!.label).toEqual({ ja: "設計" });
+    });
+
+    it("is still the identity when every sheet is kept", () => {
+      const { input } = selectSheets(DEEP, ["os", "app", "os tests"]);
+      expect(JSON.stringify(input)).toBe(JSON.stringify(DEEP));
+    });
+  });
+
   it("says which sheets the document has", () => {
     expect(sheetsOf(TWO)).toEqual(["os", "os tests"]);
   });

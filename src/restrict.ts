@@ -15,7 +15,7 @@
 //
 // A pure core: it takes a model and returns a model, and says what it dropped.
 
-import type { ParameterSheetInput, VersionedSheetInput, Sheet, Category, Parameter, ArtifactPreview } from "./types.js";
+import type { ParameterSheetInput, VersionedSheetInput, Sheet, Category, Parameter, ArtifactPreview, SheetGroup } from "./types.js";
 
 export type RestrictReport = {
   kept: string[];
@@ -117,7 +117,7 @@ export function selectSheets<T extends ParameterSheetInput | VersionedSheetInput
   let rows = 0;
   let previews = 0;
   const dropped: string[] = [];
-  const apply = <S extends { sheets: Sheet[]; artifacts?: ArtifactPreview[]; groups?: { name: string }[] }>(doc: S): S => {
+  const apply = <S extends { sheets: Sheet[]; artifacts?: ArtifactPreview[]; groups?: SheetGroup[] }>(doc: S): S => {
     const sheets = doc.sheets.filter((s) => {
       if (wanted.has(s.name)) return true;
       if (!dropped.includes(s.name)) dropped.push(s.name);
@@ -132,12 +132,47 @@ export function selectSheets<T extends ParameterSheetInput | VersionedSheetInput
       return stays;
     });
     // …and a group nothing is left under is a heading over nothing.
+    //
+    // Asked of the whole SUBTREE, not of the entry itself. A chapter tree is
+    // three or four levels deep on a real document and a sheet names the LEAF
+    // it sits in, never the chapter above it — so testing a top-level entry
+    // against the sheets' own group names is a test no ancestor can ever pass,
+    // and the branch went with every kept sheet under it. At its worst that
+    // fired with nothing dropped at all: naming every sheet still emptied the
+    // tree. The same recursion `assemble.ts`'s `holdsSomething` already makes
+    // for the mirror check — a declared group no sheet belongs to.
     const used = new Set(sheets.map((s) => s.group).filter((g): g is string => g !== undefined));
+    const holdsSomething = (g: SheetGroup): boolean => used.has(g.name) || (g.groups ?? []).some(holdsSomething);
+    // Pruned at every level, so a chapter that survives because ONE of its
+    // children does is not left holding the siblings that did not.
+    const prune = (gs: SheetGroup[]): SheetGroup[] => {
+      const out: SheetGroup[] = [];
+      for (const g of gs) {
+        if (!holdsSomething(g)) continue;
+        if (g.groups === undefined) {
+          out.push(g);
+          continue;
+        }
+        const inner = prune(g.groups);
+        // The SAME object back when nothing beneath it moved: a selection that
+        // keeps every sheet has to be the identity, and rebuilding each entry
+        // would rewrite the document to say exactly what it already said.
+        if (inner.length === g.groups.length && inner.every((x, i) => x === g.groups![i])) out.push(g);
+        // A chapter kept for its own sheets, whose every child chapter went.
+        // The key goes rather than standing as an empty list — `groups: []` is
+        // a heading over nothing, which is the thing being removed here.
+        else if (inner.length === 0) {
+          const { groups: _dropped, ...rest } = g;
+          out.push(rest);
+        } else out.push({ ...g, groups: inner });
+      }
+      return out;
+    };
     return {
       ...doc,
       sheets,
       ...(doc.artifacts === undefined ? {} : { artifacts }),
-      ...(doc.groups === undefined ? {} : { groups: doc.groups.filter((g) => used.has(g.name)) }),
+      ...(doc.groups === undefined ? {} : { groups: prune(doc.groups) }),
     };
   };
   const out =
