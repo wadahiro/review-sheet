@@ -6,7 +6,8 @@ import { resolve, relative, join, dirname, basename } from "path";
 import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { langFallbacks, localizeVersions } from "./localize.js";
-import { toMarkdownSet, href, modelStamp, stampOf } from "./md-set.js";
+import { toMarkdownSet, href, modelStamp, stampOf, hasBody } from "./md-set.js";
+import type { Lang } from "./html/i18n.js";
 import { buildArtifactIndex } from "./artifact-index.js";
 import { carriedDocuments, addressOf, type CarriedDocument } from "./md-documents.js";
 import { zipOf } from "./zip.js";
@@ -397,6 +398,48 @@ function leftInDirectory(dir: string, written: Set<string>): string[] {
   };
   walk(dir, "");
   return out.sort();
+}
+
+// Which of the pages this model would write are gone from a committed set, or
+// left holding nothing but their own heading.
+//
+// The projection is the oracle: it is pure, and asking it is the only way to
+// know which files a set OUGHT to have — they are named by each sheet's own
+// `display`, resolved per language, which is why the stamp records the
+// language. A set written before it did says nothing, so both spellings are
+// tried and a page found under either is a page that is there.
+//
+// Only the sheet pages. The carried artifacts and evidence are checked by
+// nothing here: a delivery may legitimately be handed on without them (they
+// are what `--evidence` and the preview machinery put in), while a sheet is
+// the document itself.
+function missingFromSet(
+  model: ParameterSheetInput | VersionedSheetInput,
+  lang: Lang | undefined,
+  setDir: string
+): string[] {
+  const langs: Lang[] = lang === undefined ? ["ja", "en"] : [lang];
+  const expected = langs.map((l) => {
+    const versions = "versions" in model ? model.versions : [{ version: "current", sheets: model.sheets, columns: model.columns, groups: model.groups }];
+    const current = localizeVersions(versions as never, l)[versions.length - 1]!;
+    return toMarkdownSet({ metadata: model.metadata, ...current } as never, l).files.filter((f) => f.path !== "README.md");
+  });
+  const out: string[] = [];
+  // Indexed by the FIRST language's paths; a set written in the other spelling
+  // satisfies them through `found` below.
+  for (const [i, want] of expected[0]!.entries()) {
+    const candidates = expected.map((e) => e[i]).filter((f): f is { path: string; text: string } => f !== undefined);
+    let found: string | undefined;
+    for (const c of candidates) {
+      try {
+        found = readFileSync(join(setDir, c.path), "utf-8");
+        break;
+      } catch { /* the other spelling, then */ }
+    }
+    if (found === undefined) out.push(`${want.path} — no such file`);
+    else if (hasBody(want.text) && !hasBody(found)) out.push(`${want.path} — its heading and nothing else`);
+  }
+  return out;
 }
 
 async function writeMarkdownSet(
@@ -1763,7 +1806,33 @@ program
           if (was.stamp !== now) {
             console.error(`Error: ${opts.md}/ was written from model ${was.stamp}${covers}; this one is ${now}. Regenerate the set (generate --format md).`);
             process.exit(1);
-          } else if (!opts.quiet) {
+          }
+          // …and that every page the model has is still THERE, with something
+          // on it.
+          //
+          // The stamp says the set came from this model and deliberately says
+          // nothing about its contents: the set is MEANT to be maintained by
+          // hand — a value corrected, a remark reworded, a row struck out — so
+          // comparing it with what this tool would write today would fail on
+          // the very thing it exists for. That left the check unable to see
+          // any loss at all: a sheet cut to three lines, or a document sheet
+          // that never carried its prose, passed with "describes this model".
+          // Both were real (the second shipped in a delivery).
+          //
+          // So: existence, and a body beyond the title. Nothing else compared.
+          // Deleting a page is not an edit the flow has — edits happen INSIDE
+          // a page — and a page with nothing left on it has not been edited,
+          // it has been lost.
+          const missing = missingFromSet(same, was.lang, dirname(index));
+          if (missing.length > 0) {
+            console.error(
+              `Error: ${opts.md}/ carries this model's stamp but ${missing.length} of its page(s) are gone or empty:\n` +
+                missing.map((m) => `  ${m}`).join("\n") +
+                `\nRestore them from version control, or regenerate the set (generate --format md).`
+            );
+            process.exit(1);
+          }
+          if (!opts.quiet) {
             console.log(`OK   ${opts.md}/ describes this model (${now})${covers}`);
           }
         }

@@ -149,7 +149,7 @@ export function toMarkdownSet(
     // two things a sheet is made of, so a file with neither is a sheet that did
     // not travel — the failure this whole area exists to prevent, and one that
     // looks exactly like a sheet which is simply short.
-    if (!/\n\s*\S/.test(body.replace(/^#[^\n]*\n/, ""))) {
+    if (!hasBody(body)) {
       problems.push(`sheet "${sheet.name}" was written as its title and nothing else — it carries neither rows nor prose`);
     }
     const mine = (opts.documents ?? []).filter((d) => d.sheet === sheet.name);
@@ -248,7 +248,17 @@ function index(
 ): string {
   const title = data.metadata?.title ?? (lang === "ja" ? "パラメータシート" : "Parameter sheet");
   const out: string[] = [];
-  if (stamp !== undefined) out.push(`<!-- review-sheet:model ${stamp}${narrowed === undefined || narrowed.length === 0 ? "" : ` instances=${narrowed.join(",")}`} -->`, "");
+  // …and which LANGUAGE it was written in, beside the environments. Both are
+  // narrowings of the model that decide what the set contains, and the paths
+  // are one of them: a file is named by its sheet's own `display`, which is
+  // resolved per language, so a reader checking the set against the model has
+  // to project it the same way to know which files to expect. A set written
+  // before this says nothing, and `verify` tries both spellings for it.
+  if (stamp !== undefined)
+    out.push(
+      `<!-- review-sheet:model ${stamp}${narrowed === undefined || narrowed.length === 0 ? "" : ` instances=${narrowed.join(",")}`} lang=${lang} -->`,
+      ""
+    );
   out.push(`# ${title}`, "");
 
   const meta = data.metadata;
@@ -332,8 +342,23 @@ export function modelStamp(model: unknown): string {
 // The stamp a written-out index carries, or undefined for a set that predates
 // it — or one whose index somebody replaced. Read by scanning, because the
 // index is markdown and this is a comment in it.
-export function stampOf(indexText: string): { stamp: string; instances?: string[] } | undefined {
-  const m = /<!--\s*review-sheet:model\s+([0-9a-f]+)(?:\s+instances=([^\s>-]+))?\s*-->/.exec(indexText);
+export function stampOf(indexText: string): { stamp: string; instances?: string[]; lang?: Lang } | undefined {
+  const m = /<!--\s*review-sheet:model\s+([0-9a-f]+)(?:\s+instances=([^\s>-]+))?(?:\s+lang=(ja|en))?\s*-->/.exec(indexText);
   if (m === null) return undefined;
-  return { stamp: m[1]!, ...(m[2] === undefined ? {} : { instances: m[2].split(",") }) };
+  return {
+    stamp: m[1]!,
+    ...(m[2] === undefined ? {} : { instances: m[2].split(",") }),
+    ...(m[3] === undefined ? {} : { lang: m[3] as Lang }),
+  };
 }
+
+// A page that says its own name and nothing else.
+//
+// The one thing `verify --md` can hold a committed set to without forbidding
+// the edits it exists for. The set is MEANT to be hand-maintained — a value
+// corrected, a remark reworded, a row struck out — so nothing about its
+// CONTENT can be compared with what this tool would write today. What is not
+// an edit is a page losing everything: a sheet cut down to its heading, a
+// document sheet that never carried its prose. Same rule `toMarkdownSet`
+// applies at the writing end, read from the other side.
+export const hasBody = (text: string): boolean => /\n\s*\S/.test(text.replace(/^#[^\n]*\n/, ""));

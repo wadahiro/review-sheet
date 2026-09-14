@@ -242,7 +242,10 @@ describe("the index", () => {
   // of them, and what it identifies is the SET.
   it("carries the model's stamp, and no sheet file does", () => {
     const { files } = toMarkdownSet(doc(), "ja", { stamp: "abc123" });
-    expect(files[0]!.text).toContain("<!-- review-sheet:model abc123 -->");
+    // …and which LANGUAGE it was written in, beside it: the file names are
+    // resolved per language, so `verify --md` has to project the model the
+    // same way to know which files to expect.
+    expect(files[0]!.text).toContain("<!-- review-sheet:model abc123 lang=ja -->");
     expect(files.slice(1).some((f) => f.text.includes("review-sheet:model"))).toBe(false);
   });
 });
@@ -424,6 +427,69 @@ describe("a committed set that no longer describes the model", () => {
     const r = run("verify", "-i", "input.json", "--md", set);
     expect(r.code).toBe(0);
     expect(r.out).toContain("describes this model");
+  });
+
+  // What the stamp deliberately cannot see.
+  //
+  // It is taken over the MODEL so it survives the editing this set exists for
+  // — a value corrected, a remark reworded, a row struck out — which left it
+  // blind to the set's contents entirely: a sheet cut down to its heading, or
+  // a document sheet that never carried its prose, passed with "describes this
+  // model". Both happened, and the second shipped in a delivery.
+  describe("a page that is gone rather than edited", () => {
+    const sheetFile = (name: string): string => join(set, SET_DIR, `${name}.md`);
+
+    it("names a sheet left holding nothing but its heading", () => {
+      run("generate", "-i", "input.json", "--format", "md", "-o", set);
+      const f = sheetFile("keycloak configuration");
+      writeFileSync(f, `${readFileSync(f, "utf-8").split("\n")[0]}\n`, "utf-8");
+      const r = run("verify", "-i", "input.json", "--md", set);
+      expect(r.code).not.toBe(0);
+      expect(r.out).toContain("keycloak configuration.md — its heading and nothing else");
+    });
+
+    it("names a sheet whose file is not there", () => {
+      run("generate", "-i", "input.json", "--format", "md", "-o", set);
+      rmSync(sheetFile("keycloak realm"));
+      const r = run("verify", "-i", "input.json", "--md", set);
+      expect(r.code).not.toBe(0);
+      expect(r.out).toContain("keycloak realm.md — no such file");
+    });
+
+    // THE DESIGN PIN. Everything this check refuses to look at, done at once.
+    // A set is MEANT to be maintained by hand, and `markdown-changes.ts` has
+    // `row-removed` as a first-class edit — so a check that compared contents,
+    // or counted rows, would fail on the flow it is supposed to protect. The
+    // next person tempted to turn this into a content hash should see this go
+    // red first.
+    it("stays silent about a set somebody edited", () => {
+      run("generate", "-i", "input.json", "--format", "md", "-o", set);
+      const f = sheetFile("keycloak configuration");
+      const text = readFileSync(f, "utf-8");
+      const rows = text.split("\n").filter((l) => l.startsWith("| `"));
+      expect(rows.length).toBeGreaterThan(4);
+      const edited = text
+        .replace(rows[0]!, rows[0]!.replace(/\| ([^|]+) \|$/, "| a different value |"))
+        .replace(rows[1]!, `${rows[1]!.replace(/\|\s*$/, "")} a reworded remark |`)
+        .replace(`${rows[2]!}\n`, "")
+        .replace(rows[3]!, `${rows[3]!}\n| \`a row somebody added\` |  |  |  |`);
+      writeFileSync(f, edited, "utf-8");
+      const r = run("verify", "-i", "input.json", "--md", set);
+      expect(r.out).not.toContain("are gone or empty");
+      expect(r.code).toBe(0);
+    });
+
+    // A set written before the stamp carried the language. Its file names were
+    // resolved in one of them and this does not know which, so both are tried
+    // — a page found under either spelling is a page that is there.
+    it("still finds the pages of a set whose stamp predates lang=", () => {
+      run("generate", "-i", "input.json", "--format", "md", "-o", set);
+      const readme = join(set, SET_DIR, "README.md");
+      writeFileSync(readme, readFileSync(readme, "utf-8").replace(/ lang=(ja|en)/, ""), "utf-8");
+      const r = run("verify", "-i", "input.json", "--md", set);
+      expect(r.out).not.toContain("are gone or empty");
+      expect(r.code).toBe(0);
+    });
   });
 
   it("fails, naming both models, once they are not the same one", () => {
