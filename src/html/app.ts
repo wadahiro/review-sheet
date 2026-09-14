@@ -1673,24 +1673,25 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   const compositeKey = (p: ParamData): string =>
     p.composite === undefined ? "" : `${p.composite.control ?? ""}\u0000${p.composite.of.join(",")}`;
   const compositeGroups = new Map<ParamData, ParamData[]>();
-  for (let i = 0; i < params.length; ) {
-    const ck = compositeKey(params[i]!);
-    if (ck === "") {
-      i++;
-      continue;
+  {
+    const byControl = new Map<string, ParamData[]>();
+    for (const p of params) {
+      const ck = compositeKey(p);
+      if (ck === "") continue;
+      const at = byControl.get(ck);
+      if (at === undefined) byControl.set(ck, [p]);
+      else at.push(p);
     }
-    let end = i;
-    while (end < params.length && compositeKey(params[end]!) === ck) end++;
-    const run = params.slice(i, end);
-    // Only a run carrying EVERY field the control writes. A sheet scoped to
-    // part of a product has some of them and not the rest, and a tuple missing
-    // a member matches no choice — which would put "no matching choice" over a
-    // row whose screen is perfectly ordinary (measured on a real upgrade sheet
-    // that carries one of the three). The rows render as themselves instead:
-    // what the sheet cannot read, it does not claim.
-    const of = run[0]!.composite!.of;
-    if (of.every((k) => run.some((p) => p.key === k))) for (const p of run) compositeGroups.set(p, run);
-    i = end;
+    for (const run of byControl.values()) {
+      // Only a group carrying EVERY field the control writes. A sheet scoped to
+      // part of a product has some of them and not the rest, and a tuple missing
+      // a member matches no choice — which would put "no matching choice" over a
+      // row whose screen is perfectly ordinary (measured on a real upgrade sheet
+      // that carries one of the three). The rows render as themselves instead:
+      // what the sheet cannot read, it does not claim.
+      const of = run[0]!.composite!.of;
+      if (of.every((k) => run.some((p) => p.key === k))) for (const p of run) compositeGroups.set(p, run);
+    }
   }
 
   // Visible params under the "commented only" / "hide out-of-scope" /
@@ -2062,7 +2063,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
 
   const subKey = (p: ParamData): string => (p.sub_category ?? []).join(" / ");
   const subHeaded = shown.some((p) => (p.sub_category?.length ?? 0) > 0);
-  const ordered = subHeaded
+  const bySubHead = subHeaded
     ? // First appearance decides the order of the sub-heads, and rows keep
       // their order within one. A sort by name would reshuffle the page every
       // time a group was renamed.
@@ -2070,6 +2071,48 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
         .map(([k, _]) => shown.filter((p) => subKey(p) === k))
         .flat()
     : shown;
+
+  // A control's fields, brought together at the first of them. The product's
+  // own screen shows them as ONE control; the sheet files them by the
+  // dictionary's order, which on a real realm put `failureFactor`,
+  // `bruteForceStrategy` and four others between the three that spell the mode.
+  // Scattered, the control heads a block that is not one.
+  //
+  // Only within the group: everything else keeps its place, and a category with
+  // no control is returned unchanged.
+  const withControlsTogether = (rows: ParamData[]): ParamData[] => {
+    if (compositeGroups.size === 0) return rows;
+    const here = new Set(rows);
+    const placed = new Set<ParamData>();
+    const out: ParamData[] = [];
+    for (const p of rows) {
+      if (placed.has(p)) continue;
+      const g = compositeGroups.get(p);
+      if (g === undefined) {
+        out.push(p);
+        continue;
+      }
+      const members = g.filter((m) => here.has(m));
+      // In the order the product's own source sets them, which is the order a
+      // reader compares them in (types.ts's `composite.of`).
+      const byKey = new Map(members.map((m) => [m.key, m]));
+      for (const k of p.composite!.of) {
+        const m = byKey.get(k);
+        if (m !== undefined && !placed.has(m)) {
+          out.push(m);
+          placed.add(m);
+        }
+      }
+      for (const m of members)
+        if (!placed.has(m)) {
+          out.push(m);
+          placed.add(m);
+        }
+    }
+    return out;
+  };
+
+  const ordered = withControlsTogether(bySubHead);
 
   // One control of the product's UI whose value is a TUPLE over several rows.
   //
@@ -2238,7 +2281,17 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     // A label that merely repeats the description is not shown twice — 18 of
     // this Keycloak extraction's fields carry a name and no help text, so
     // their description IS the label.
-    const label = typeof param.label === "string" ? param.label : undefined;
+    //
+    // A label that is the CONTROL's name is not shown either: the control's own
+    // line sits directly above these rows and says it once. The product has no
+    // name for the field — it names the thing an operator sets — so repeating
+    // it down the group is the same word three times with the keys, which are
+    // what tell the rows apart, pushed under it.
+    const own = typeof param.label === "string" ? param.label : undefined;
+    const label =
+      own !== undefined && compositeGroups.has(param) && own === (param.composite?.control as string | undefined)
+        ? undefined
+        : own;
     const keySubline: (VNode | null)[] = [];
     // The key goes beneath the label because they answer different questions —
     // what a reviewer recognises, and where the value lives. When they are the

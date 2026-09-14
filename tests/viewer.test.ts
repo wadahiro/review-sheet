@@ -3088,6 +3088,54 @@ describe("a control and the rows it writes", () => {
     expect(host.querySelector("tr.rs-row-composite .rs-col-description")!.textContent!.trim()).toBe(HELP);
   });
 
+  it("says the control's name once, not on each row under it", () => {
+    // The product names the thing an operator SETS, so the extraction gives all
+    // three fields that one name. Printed on each of them it is the same word
+    // three times, directly under the line that already says it, with the keys
+    // — the only thing telling the rows apart — pushed beneath.
+    const host = mount([
+      {
+        name: "c",
+        params: ["detect", "permanent", "tries"].map((key) => ({
+          key,
+          value: key === "detect" ? "true" : key === "permanent" ? "false" : "0",
+          origin: "embedded",
+          composite: CONTROL,
+          description: "d",
+          label: "検知モード",
+        })),
+      },
+    ]);
+    const keys = [...host.querySelectorAll("tr.rs-row-composed .rs-col-key")].map((c) => c.textContent!.trim());
+    expect(keys).toEqual(["detect", "permanent", "tries"]);
+    expect(host.querySelector("tr.rs-row-composite .rs-composite-control")!.textContent!.trim()).toBe("検知モード");
+  });
+
+  it("brings the control's fields together, though the sheet files them apart", () => {
+    // A real realm puts `failureFactor`, `bruteForceStrategy` and four others
+    // between the three that spell the mode — the dictionary's order, not the
+    // screen's. Scattered, the control heads a block that is not one.
+    const host = mount([
+      {
+        name: "c",
+        params: [
+          { key: "detect", value: "true", origin: "embedded", composite: CONTROL, description: "d" },
+          { key: "other", value: "9", origin: "embedded", description: "o" },
+          { key: "permanent", value: "false", origin: "embedded", composite: CONTROL, description: "p" },
+          { key: "tries", value: "0", origin: "embedded", composite: CONTROL, description: "t" },
+        ],
+      },
+    ]);
+    const rows = [...host.querySelectorAll("tr.rs-param-row")];
+    const at = (i: number) => (rows[i]!.querySelector(".rs-col-key")?.textContent ?? "").trim();
+    expect(rows[0]!.classList.contains("rs-row-composite")).toBe(true);
+    expect([at(1), at(2), at(3)].join(" ")).toContain("detect");
+    expect([at(1), at(2), at(3)].join(" ")).toContain("tries");
+    // …and the row that belongs to no control keeps its place, after them.
+    expect(at(4)).toContain("other");
+    expect(host.querySelector("tr.rs-row-composite .rs-col-value")!.textContent!.trim()).toBe("一時的に停止");
+  });
+
   it("claims nothing where the sheet carries only part of the tuple", () => {
     // A sheet scoped to part of a product has some of a control's fields and
     // not the rest. A tuple missing a member matches no choice at all, so the
