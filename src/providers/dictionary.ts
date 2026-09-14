@@ -9,6 +9,7 @@ import { parse, stringify } from "yaml";
 import Ajv from "ajv";
 import dictionarySchema from "../schema/dictionary.schema.json";
 import { suggestNearest, formatAjvErrors } from "../schema-errors.js";
+import { pickLang } from "../types.js";
 import {
   registerMetadataProvider,
   collapseProvenance,
@@ -731,23 +732,37 @@ const dictionaryProvider: MetadataProvider = {
     // enrich.ts's own standalone pass for the `import -f` path).
     if (!query.binding) return undefined;
 
-    const { entry, docProvenance, defaultsFrom } = query.binding;
+    const { entry, docProvenance, defaultsFrom, lang } = query.binding;
+    // A dictionary's words are the PRODUCT's, copied from a screen somebody
+    // opens, so a project may state which language that screen is in
+    // (DictionaryBinding.lang) — Keycloak's console is English until a user
+    // switches it, and a Japanese sheet that renames every field for a team
+    // who never switched it does not match what they are looking at.
+    //
+    // Resolved HERE, to a plain string, rather than carried as a language map
+    // for the document to resolve later: the document's language is a different
+    // question with a different answer, and `pickLang` over a string is the
+    // identity, so localize.ts passes these through untouched.
+    //
+    // Undeclared is untouched — the map travels and the document resolves it,
+    // exactly as every document written before this did.
+    const say = <T,>(v: T): T | string => (lang === undefined || v === undefined ? v : (pickLang(v as LangText, lang) ?? (v as never)));
     return {
-      // Carry the full LangText through; the viewer resolves the display
-      // language at render time so the in-page language toggle switches it.
-      label: entry.label,
-      description: entry.description,
+      label: say(entry.label),
+      description: say(entry.description),
       default: entry.default !== undefined ? String(entry.default) : undefined,
       type: entry.type,
       scope: entry.scope,
-      options: entry.options,
+      // Each option's own name is the product's too, and is read off the same
+      // screen as the label above it.
+      options: entry.options === undefined ? undefined : entry.options.map((o) => ({ ...o, label: say(o.label) })),
       // Only beside a default there IS: the field explains where a value came
       // from, and an entry with no default has nothing to explain.
       default_from: entry.default !== undefined ? defaultsFrom : undefined,
       // Only the word travels. Whether the row IS presence was decided when the
       // file was read; a dictionary that could decide it would make the same
       // model verify differently depending on which dictionaries are on disk.
-      presence_label: typeof entry.presence === "object" ? entry.presence.label : undefined,
+      presence_label: typeof entry.presence === "object" ? say(entry.presence.label) : undefined,
       secret: entry.secret,
       docs_url: entry.docs_url,
       // provenanceFor always resolves to a defined Provenance per language

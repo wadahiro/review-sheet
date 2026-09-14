@@ -2216,6 +2216,48 @@ code {
   background: transparent;
 }
 
+/* One control of the product's own screen, above the rows that spell it.
+   Louder than an ordinary sub-head — it carries a VALUE, not just a name, and
+   it is the line a reviewer of these rows reads first. Not uppercase for the
+   same reason: the mode is the product's own wording and is shown as written. */
+.rs-row-composite > .rs-col-key {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 0.86rem;
+  color: var(--rs-text);
+}
+
+.rs-composite-control { font-weight: 600; }
+
+.rs-composite-mode {
+  padding: 0 0.4rem;
+  border-radius: 3px;
+  background: rgba(127, 127, 127, 0.12);
+  font-weight: 600;
+}
+
+/* A combination none of the control's choices spells. Never resolved to the
+   nearest one, so it has to LOOK unresolved rather than read as a mode. */
+.rs-composite-mode-unmatched {
+  background: var(--rs-accent-border);
+  color: #fff;
+}
+
+/* The rows that spell the control, under it. Indented and quieter: they are
+   what the files hold, and the line above is what the product's screen says —
+   which is the one a reviewer is judging. */
+.rs-row-composite + .rs-param-row > .rs-col-key,
+.rs-row-composite ~ .rs-param-row > .rs-col-key {
+  padding-left: 1.4rem;
+}
+
+.rs-composite-note {
+  margin-left: 0.6rem;
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--rs-text-muted);
+}
+
 .rs-row-subhead:first-child > .rs-col-key {
   padding-top: 0.35rem;
 }

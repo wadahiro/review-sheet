@@ -90,6 +90,29 @@ export type DictionaryBinding = {
   // work for MATERIALIZED rows — product defaults nobody set, which have no
   // source file at all and so could never be grouped by one.
   deployed_file?: string;
+  // WHICH LANGUAGE this product's own screens are read in here.
+  //
+  // The document has one language (`--lang`), and for everything the document
+  // says that is right: one reader, one language. A dictionary's words are not
+  // the document's, though — they are the product's own, copied from the screen
+  // an operator opens, and which language THAT screen is in is a fact about how
+  // this project runs the product rather than about who reads the sheet.
+  //
+  // Keycloak's admin console ships in English and is switched to Japanese by a
+  // per-user setting, so both are ordinary: a team that never switches it
+  // designs and configures in English, and a Japanese sheet that renames every
+  // field for them is a sheet that does not match the screen beside it. The
+  // dictionary carries both languages either way; this says which to take.
+  //
+  // Absent means the document's language, which is what every document written
+  // before this did — declaring it is how a project departs from that, never
+  // how it keeps it.
+  //
+  // Applies ONLY to what the dictionary supplies (the product's label, its
+  // description, its option names). A project's own prose in sheet.yml, and the
+  // sheet's own headings and buttons, stay in the document's language: those
+  // are written for the reader, not copied from a screen.
+  lang?: "ja" | "en";
   key_prefix?: string;
   // A declarative rewrite from the ROW key to the dictionary key, for the case
   // `key_prefix` cannot express: the row's identity legitimately carries more

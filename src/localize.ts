@@ -59,6 +59,31 @@ export function localizeParam(p: ParamData, lang: Lang): ParamData {
     // viewer shows — without this the cell falls back to the neutral word even
     // where the dictionary supplied a better one.
     presence_label: pickLang(p.presence_label, lang),
+    // The control's name and its choices, resolved here like every other
+    // LangText the viewer shows — so the viewer compares VALUES (which are not
+    // language-dependent) and prints text it does not have to resolve.
+    ...(p.composite === undefined
+      ? {}
+      : {
+          composite: {
+            ...p.composite,
+            control: pickLang(p.composite.control, lang) ?? "",
+            // …and the OTHER language beside it. A description is read; this is
+            // a value somebody compares with a screen, and which language that
+            // screen is in is not knowable here — a reader holding a Japanese
+            // sheet in front of an English console needs the other spelling to
+            // match them up. Carried, not shown: the cell prints one and offers
+            // the other on hover, so the column a reader scans stays one value
+            // wide.
+            modes: p.composite.modes.map((m) => ({
+              ...m,
+              label: pickLang(m.label, lang) ?? "",
+              ...(typeof m.label === "string" || pickLang(m.label, lang === "ja" ? "en" : "ja") === pickLang(m.label, lang)
+                ? {}
+                : { label_other: pickLang(m.label, lang === "ja" ? "en" : "ja") }),
+            })),
+          },
+        }),
   };
 }
 export function localizeCategory(c: CategoryData, lang: Lang): CategoryData {

@@ -648,6 +648,36 @@ export type ParameterBase = {
   // supplied it rather than the product's documentation — see
   // DictionaryDoc.defaults_from. Display only.
   default_from?: string;
+  // One control of the product's own UI whose value is a TUPLE over several
+  // rows — Keycloak's brute force setting is a four-way choice the API stores
+  // as three fields, and no one of them carries the choice: `permanentLockout:
+  // true` is two of the four modes.
+  //
+  // The rows STAY. Folding them into one would put a value ("Lockout
+  // temporarily") in a row whose `source` points at a file that holds no such
+  // string — breaking the one thing a source map asserts, which is where the
+  // value lives — and would take three real API fields out of the exhaustive
+  // ledger and out of the test plan, which answers each of them from the
+  // product's own document. So this is DISPLAY ONLY, exactly as `sub_category`
+  // is: the viewer reads the rows' values, finds the mode they spell, and puts
+  // it above them as a heading. Review targets, apply targets and diff keys are
+  // untouched.
+  //
+  // Carried on every row of the tuple (each names the whole set in `of`), so a
+  // reader of any one of them can be shown the group, and so no row is a
+  // special "owner" whose removal would silently take the heading with it.
+  composite?: {
+    // What the product's own UI calls the control.
+    control: LangText;
+    // Every row the control writes, by key, in the order the product's own
+    // source sets them — which is the order a reader compares them in.
+    of: string[];
+    // What each choice writes. A tuple the values do not match is NOT resolved
+    // to the nearest one: a realm somebody set through the API can hold a
+    // combination the console cannot produce, and calling that "Lockout
+    // temporarily" would be the sheet inventing a screen that does not exist.
+    modes: { label: LangText; values: Record<string, string> }[];
+  };
   // The grouping a file heading displaced (`layout: file+categories`): the
   // dictionary's own group path for this row, carried so the viewer can
   // sub-head a long flat file by it. DISPLAY ONLY — the row's identity stays

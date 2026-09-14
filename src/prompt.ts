@@ -57,6 +57,15 @@ export type ParamData = {
   presence?: true;
   // The product own word for presence — see ParameterBase.presence_label.
   presence_label?: LangText | string;
+  // One control of the product's UI whose value is a tuple over several rows —
+  // see ParameterBase.composite. Its prose arrives here already resolved to the
+  // document's language (localize.ts), so the viewer compares VALUES and prints
+  // text it does not have to resolve.
+  composite?: {
+    control: LangText | string;
+    of: string[];
+    modes: { label: LangText | string; label_other?: string; values: Record<string, string> }[];
+  };
   // The `{% if %}` test that decides whether this row is in the file — see
   // `ParameterBase.present_when`.
   present_when?: { variable: string; negated?: boolean }[];

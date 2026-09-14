@@ -124,6 +124,9 @@ export type Binding = {
   dictKey: string;
   entry: DictionaryParam;
   method: BindMethod;
+  // The language this product's screens are read in here, when the project
+  // declared one (DictionaryBinding.lang). Absent = the document's language.
+  lang?: "ja" | "en";
   // The bound dictionary DOCUMENT's own provenance (providers/dictionary.ts's
   // DictionaryDoc.provenance — LangProvenance, type-only change from this
   // module's point of view: bind.ts carries it, never interprets it),
@@ -474,6 +477,10 @@ export function bindKey(key: string, dictKey: ProjectDictKey, sources: readonly 
         dictKey: dictKeyHit,
         entry: source.doc.parameters[dictKeyHit],
         method,
+        // Which language to take the product's own words in — see
+        // DictionaryBinding.lang. Carried, never interpreted here; the
+        // dictionary metadata provider is what resolves the text.
+        ...(source.binding.lang === undefined ? {} : { lang: source.binding.lang }),
         docProvenance: source.doc.provenance,
         defaultsFrom: source.doc.defaults_from,
       };

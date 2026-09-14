@@ -176,6 +176,9 @@ const statedDictionarySchema = {
       // StartServers under each MPM); the project declares which, because the
       // project is what chooses.
       variant: { type: "string" },
+      // Which language this product's own screens are read in here — see
+      // DictionaryBinding.lang in metadata.ts. Absent = the document's.
+      lang: { enum: ["ja", "en"] },
       key_prefix: { type: "string" },
       // Only the `steps` half of a recipe's `key:` — there is no `from:` to
       // choose here, the input is always the row's own key.

@@ -2008,14 +2008,99 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
         .flat()
     : shown;
 
+  // One control of the product's UI whose value is a TUPLE over several rows.
+  //
+  // The rows stay rows — each keeps its own source, its own review target and
+  // its own place in the test plan (see types.ts's `composite`). What is added
+  // is the reading a reviewer actually wants: which of the control's choices
+  // the combination in front of them spells, once, above the rows that spell
+  // it. Display only, computed here, stored nowhere.
+  const compositeKey = (p: ParamData): string =>
+    p.composite === undefined ? "" : `${p.composite.control ?? ""}\u0000${p.composite.of.join(",")}`;
+  const composed = shown.some((p) => p.composite !== undefined);
+
+  // What a row of the tuple HOLDS, for an environment. A row nobody set holds
+  // its default — which is the whole point here: two of Keycloak's three brute
+  // force fields are normally unset, and reading them as empty would leave
+  // every realm unresolvable.
+  const heldValue = (p: ParamData, instance: string | undefined): string | undefined => {
+    const own = instance === undefined ? p.value : (p.instances?.find((i) => i.name === instance)?.value ?? p.value);
+    if (own !== undefined && own !== "") return own;
+    return p.baseline ?? p.default;
+  };
+
+  // The choice a tuple spells, or undefined when it spells none of them.
+  //
+  // NEVER the nearest match. A realm configured through the API can hold a
+  // combination the console cannot produce, and naming that after a screen the
+  // product would not show is the sheet inventing one.
+  const modeOf = (rows: ParamData[], instance: string | undefined): { label: string; other?: string } | undefined => {
+    const c = rows[0]?.composite;
+    if (c === undefined) return undefined;
+    const held = new Map(rows.map((r) => [r.key, heldValue(r, instance)]));
+    for (const m of c.modes) {
+      if (c.of.every((k) => held.get(k) !== undefined && held.get(k) === m.values[k]))
+        return { label: String(m.label), ...(m.label_other === undefined ? {} : { other: m.label_other }) };
+    }
+    return undefined;
+  };
+
+  // The control as a ROW, with the product's own choice in the VALUE column.
+  //
+  // What a reviewer of a parameter sheet reads in that column has to be what
+  // the screen says — `true` is not a setting anyone chose, it is one third of
+  // one. So the control takes the value cells, per environment like any other
+  // row, and the three fields that spell it sit under it holding what the files
+  // actually contain.
+  //
+  // Still display only: this row has no key, no source and no review target of
+  // its own (see types.ts's `composite`). The rows beneath it keep all three,
+  // which is what apply, verify, the test plan and the ledger go on reading.
+  const compositeHeadLine = (rows: ParamData[]): VNode => {
+    const c = rows[0]!.composite!;
+    const control = (c.control as string) ?? "";
+    const unmatched = normalLines.some(
+      (line) => line.lineKind === "instance" && modeOf(rows, line.label) === undefined
+    );
+    const single = modeOf(rows, undefined);
+    return html`<tr key=${`comp:${control}`} class=${`rs-param-row rs-row-composite ${unmatched || (!hasInstances && single === undefined) ? "rs-composite-unmatched" : ""}`}>
+      <td class="rs-col-key">
+        <span class="rs-composite-control">${control}</span>
+        <span class="rs-key-subline rs-composite-note">${t.compositeNote(c.of.length)}</span>
+      </td>
+      ${normalLines.map((line) => {
+        // A value column answers per environment; everything else (description,
+        // default, a project's own columns) is the ROWS' to answer, not the
+        // control's, and is left empty rather than filled with a guess.
+        if (line.lineKind !== "instance" && !(line.key === "__value")) return html`<td class=${line.colClass}></td>`;
+        const mode = modeOf(rows, line.lineKind === "instance" ? line.label : undefined);
+        return html`<td class=${`${line.colClass} rs-composite-cell`}>
+          <span class=${`rs-composite-mode ${mode === undefined ? "rs-composite-mode-unmatched" : ""}`}
+                title=${mode?.other}>
+            ${mode === undefined ? t.compositeUnmatched : mode.label}
+          </span>
+        </td>`;
+      })}
+    </tr>` as VNode;
+  };
+
   const subHeadLine = (label: string): VNode =>
     html`<tr key=${`sub:${label}`} class="rs-param-row rs-row-subhead">
       <td class="rs-col-key" colSpan=${1 + Math.max(1, normalLines.length)}>${label}</td>
     </tr>` as VNode;
 
   let lastSub: string | undefined;
+  let lastComposite: string | undefined;
   const normalBody = ordered.flatMap((param) => {
     const out: VNode[] = [];
+    // The control's own line, once, before the first row it is spelled by.
+    if (composed) {
+      const ck = compositeKey(param);
+      if (ck !== lastComposite) {
+        lastComposite = ck;
+        if (ck !== "") out.push(compositeHeadLine(ordered.filter((p) => compositeKey(p) === ck)));
+      }
+    }
     if (subHeaded) {
       const k = subKey(param);
       if (k !== lastSub) {

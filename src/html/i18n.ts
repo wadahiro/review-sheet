@@ -182,6 +182,12 @@ type Messages = {
   // had one.
   originDefault: string;
   originDefaultTip: string;
+  // One control of the product's UI whose value is a tuple over several rows.
+  // `compositeUnmatched` is what a combination the product's own screen cannot
+  // produce reads as — never the nearest choice, which would be the sheet
+  // naming a screen that does not exist.
+  compositeUnmatched: string;
+  compositeNote: (n: number) => string;
   // `asInstalled` is the default column's heading on a sheet that has a
   // baseline (ansible recipe's `baseline:`). ONE column, not two: the vendor's
   // shipped file and the product's documented default are two SOURCES for a
@@ -369,6 +375,8 @@ const ja: Messages = {
   // 欠けているのはこのプロジェクトからの表明のほう。
   showDefaults: (n: number) => `未設定の行を表示（製品既定値 ${n} 件）`,
   originDefault: "未設定",
+  compositeUnmatched: "画面のどの選択肢にも一致しない組み合わせ",
+  compositeNote: (n: number) => `画面のひとつの項目。下の ${n} 行がこの値を決める`,
   originDefaultTip: "この構成では設定していない（効いている値は製品のデフォルト値）",
   asInstalled: "インストール時",
   originBaselineDisabled: "無効化",
@@ -536,6 +544,8 @@ const en: Messages = {
   // What is absent is any statement from THIS project.
   showDefaults: (n: number) => `Show unset rows (${n} product defaults)`,
   originDefault: "not set",
+  compositeUnmatched: "a combination none of this control's choices spells",
+  compositeNote: (n: number) => `one control of the product's own screen, spelled by the ${n} rows below`,
   originDefaultTip: "Not set here — the value in effect is the product's own default",
   asInstalled: "As installed",
   originBaselineDisabled: "not present",

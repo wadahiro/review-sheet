@@ -88,6 +88,51 @@ describe("dictionary metadata provider", () => {
     expect(result?.default_from).toBeUndefined();
   });
 
+  // A dictionary's words are the PRODUCT's, copied from a screen an operator
+  // opens — and Keycloak's console is English until somebody switches it, so a
+  // Japanese sheet that renames every field for a team who never switched it
+  // does not match what they are looking at. The document's language is a
+  // different question and keeps its own answer.
+  describe("the language this product's screens are read in", () => {
+    const both = {
+      label: { en: "Brute Force Mode", ja: "ブルートフォースモード" },
+      description: { en: "What happens on a brute force attack.", ja: "ブルートフォース攻撃時の動作。" },
+      options: [{ value: "true", label: { en: "On", ja: "オン" } }],
+      presence: { label: { en: "present", ja: "あり" } },
+    } as unknown as DictionaryParam;
+
+    it("carries both languages when the project declares none", () => {
+      const r = provider.resolve({ key: "k", binding: binding(both) }, ctx())!;
+      expect(r.label).toEqual({ en: "Brute Force Mode", ja: "ブルートフォースモード" });
+      expect(r.description).toEqual({ en: "What happens on a brute force attack.", ja: "ブルートフォース攻撃時の動作。" });
+    });
+
+    it("takes the declared one, for everything the product supplies", () => {
+      const r = provider.resolve({ key: "k", binding: binding(both, { lang: "en" }) }, ctx())!;
+      expect(r.label).toBe("Brute Force Mode");
+      expect(r.description).toBe("What happens on a brute force attack.");
+      expect(r.options?.[0]!.label).toBe("On");
+      expect(r.presence_label).toBe("present");
+    });
+
+    it("and the other one when that is what was declared", () => {
+      const r = provider.resolve({ key: "k", binding: binding(both, { lang: "ja" }) }, ctx())!;
+      expect(r.label).toBe("ブルートフォースモード");
+      expect(r.options?.[0]!.label).toBe("オン");
+    });
+
+    // The product may translate a field's name and not its help text. Falling
+    // back is right — the English beats nothing — and is what `pickLang`
+    // already does for every other reader of a dictionary.
+    it("falls back rather than blanking a language the product lacks", () => {
+      const r = provider.resolve(
+        { key: "k", binding: binding({ label: { en: "Only English" } } as DictionaryParam, { lang: "ja" }) },
+        ctx()
+      )!;
+      expect(r.label).toBe("Only English");
+    });
+  });
+
   it("provenance precedence: the entry's own provenance wins over the dictionary document's", () => {
     const result = provider.resolve(
       { key: "worker_connections", binding: binding({ provenance: "community" }, { docProvenance: "official" }) },
