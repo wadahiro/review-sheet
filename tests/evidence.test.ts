@@ -189,3 +189,34 @@ describe("an evidence reference", () => {
     });
   });
 });
+
+// A record that travels and evidence that does not is one document
+// contradicting itself.
+describe("evidence a carried record already cites", () => {
+  // A unit-test record is a DOCUMENT sheet: its verdicts and their links are
+  // baked in at import, and `--instances` never narrowed them. So a delivery
+  // for prod hands over every verdict read on `local` — and dropping the bytes
+  // those verdicts name leaves links that open nothing, which is the one thing
+  // this tool refuses to ship.
+  const localId = "observed local web01 /etc/httpd/conf/httpd.conf";
+
+  it("drops an environment's evidence when nothing carried cites it", () => {
+    const docs = evidencePreviews(results(), ["prod"]);
+    expect(docs.map((d) => d.id)).not.toContain(localId);
+  });
+
+  it("keeps it when a carried document links to it", () => {
+    const docs = evidencePreviews(results(), ["prod"], new Set([localId]));
+    expect(docs.map((d) => d.id)).toContain(localId);
+    // …and the one it does cover is there either way.
+    expect(docs.some((d) => (d.instances ?? []).includes("prod"))).toBe(true);
+  });
+
+  it("keeps only what is cited, not the whole environment", () => {
+    // Citing one document is not a reason to widen the delivery to every file
+    // that environment holds.
+    const wide = { ...results(), evidence: [...(results().evidence ?? []), { instance: "local", host: "web01", at: "2026-09-08T00:11:22Z", sheet: "web", path: "/etc/other.conf", text: "x\n" }] } as TestResults;
+    const docs = evidencePreviews(wide, ["prod"], new Set([localId]));
+    expect(docs.map((d) => d.id).filter((id) => id.startsWith("observed local"))).toEqual([localId]);
+  });
+});

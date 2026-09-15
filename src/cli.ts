@@ -675,7 +675,22 @@ program
       // nothing about the sheet's own previews changes (types.ts).
       if (opts.evidence !== undefined) {
         const carried = validateResults(JSON.parse(readFileSync(opts.evidence, "utf-8")));
-        const docs = evidencePreviews(carried, opts.instances);
+        // Which evidence the DOCUMENTS this build carries already link to. A
+        // record's links are baked in at import and `--instances` never
+        // narrowed them, so they decide what evidence has to travel — see
+        // evidencePreviews.
+        const cited = new Set<string>();
+        for (const v of "versions" in input ? input.versions : [input]) {
+          for (const sheet of v.sheets) {
+            const html = (sheet as { document?: { html?: string } }).document?.html;
+            if (html === undefined) continue;
+            for (const m of html.matchAll(/href="rs-evidence:([^"]*)"/g)) {
+              const raw = decodeURIComponent(m[1] ?? "");
+              cited.add(raw.replace(/#L\d+$/, ""));
+            }
+          }
+        }
+        const docs = evidencePreviews(carried, opts.instances, cited);
         for (const v of "versions" in input ? input.versions : [input]) {
           (v as { artifacts?: ArtifactPreview[] }).artifacts = [...((v as { artifacts?: ArtifactPreview[] }).artifacts ?? []), ...docs];
         }
@@ -683,8 +698,17 @@ program
         // the results and is not in the document is exactly what a reader must
         // not have to discover by its absence.
         const held = (carried.evidence ?? []).length;
+        // …and how many of them are here only because a record names them, which
+        // is a widening of `--instances` and must never be silent.
+        const beyond =
+          opts.instances === undefined
+            ? 0
+            : docs.filter((d) => (d.instances ?? []).some((i) => !opts.instances!.includes(i))).length;
         console.error(
-          `evidence: ${docs.length} document(s) carried${held > docs.length ? `, ${held - docs.length} left out by --instances` : ""}`
+          `evidence: ${docs.length} document(s) carried${held > docs.length ? `, ${held - docs.length} left out by --instances` : ""}` +
+            (beyond > 0
+              ? ` — ${beyond} of them for an environment this delivery does not cover, kept because a record it carries cites them`
+              : "")
         );
         // The sheet's own secret check ran above, over the VALUES. Evidence is
         // raw host bytes, so a credential the sheet holds as a literal can be

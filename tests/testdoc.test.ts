@@ -581,3 +581,47 @@ describe("a row the product's screen has no field for", () => {
     expect(items("en")[0]).toContain("Brute Force Mode / `bruteForceProtected`");
   });
 });
+
+// The instant is the fact; the zone is how a reader meets it.
+describe("a record read in the reader's own zone", () => {
+  const planAt = (): TestPlan =>
+    ({
+      metadata: { title: "t" },
+      units: [{ name: "server", declaration: { method: { ja: "読む" } }, sheets: ["os"] }],
+      items: [
+        { target: { sheet: "os", path: ["c"], key: "Listen", instance: "local" }, unit: "server", component: "c", kind: "value", decider: "project", expected: "80" },
+      ],
+      functional: [],
+    }) as TestPlan;
+  // 23:30Z on the 14th is 08:30 on the 15th in Tokyo — the case where taking
+  // the date off the instant is not merely raw but wrong.
+  const resultsAt = (runAt: string, rowAt: string): TestResults => ({
+    runs: { local: { at: runAt, hosts: ["web01"] } },
+    results: [{ target: { sheet: "os", key: "Listen", instance: "local" }, status: "pass", at: rowAt }],
+  });
+  const items = (opts: Record<string, unknown>, runAt = "2026-09-14T23:30:00Z", rowAt = "2026-09-14T23:30:00Z"): string =>
+    renderTestDoc(planAt(), resultsAt(runAt, rowAt), "server", opts)["test:items"]!;
+
+  it("prints the instant exactly as recorded when no zone is given", () => {
+    expect(items({ lang: "ja" })).toContain("2026-09-14T23:30:00Z");
+  });
+
+  it("reads it in the zone, keeping the offset", () => {
+    // Without the offset a record says "08:30" and cannot be lined up with a
+    // log on the host, which is why it carries a time at all.
+    expect(items({ lang: "ja", timezone: "Asia/Tokyo" })).toContain("2026-09-15 08:30:00 +09:00");
+  });
+
+  it("moves the per-row date with it", () => {
+    // The row's own date is printed only when it differs from the run's. Here
+    // they are the same instant, so nothing is printed — and that agreement is
+    // itself what the zone has to preserve.
+    const tokyo = items({ lang: "ja", timezone: "Asia/Tokyo" }, "2026-09-14T23:30:00Z", "2026-09-15T02:00:00Z");
+    // 02:00Z on the 15th is 11:00 on the 15th in Tokyo — the same DAY as the
+    // run, so the column stays empty, where reading both in UTC would have
+    // shown the 15th against a run dated the 14th.
+    expect(tokyo).not.toContain("2026-09-15 ／");
+    const utc = items({ lang: "ja" }, "2026-09-14T23:30:00Z", "2026-09-15T02:00:00Z");
+    expect(utc).toContain("2026-09-15");
+  });
+});

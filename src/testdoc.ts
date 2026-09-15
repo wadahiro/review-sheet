@@ -206,9 +206,9 @@ const evidenceOf = (
 // So this answers the exception — an answer carrying a timestamp of its own
 // from a different day, which is the only case where the row knows something
 // the heading does not.
-const dayOf = (r: TestResult | undefined, run: { at?: string } | undefined): string => {
-  const mine = (r?.at ?? "").slice(0, 10);
-  return mine === "" || mine === (run?.at ?? "").slice(0, 10) ? "" : mine;
+const dayOf = (r: TestResult | undefined, run: { at?: string } | undefined, zone: string | undefined): string => {
+  const mine = dateIn(r?.at ?? "", zone);
+  return mine === "" || mine === dateIn(run?.at ?? "", zone) ? "" : mine;
 };
 
 // …and a column no row of this section filled is not written at all, the same
@@ -315,7 +315,56 @@ export type TestDocOptions = {
   // this project SET. Turning them on is one flag, for a customer who wants the
   // exhaustive list.
   includeDefaults?: boolean;
+  // WHICH ZONE the reader of this record is in (an IANA name, "Asia/Tokyo").
+  //
+  // The instant is the fact and the zone is how it is read, so it is decided
+  // here rather than recorded: a result carries `2026-09-14T08:42:55Z`, which
+  // is correct everywhere and legible nowhere. Absent leaves it exactly as
+  // recorded — a document built before this option, or by someone who wants the
+  // instant itself, is unchanged.
+  //
+  // It moves the per-row DATE too, and that is the half that was wrong rather
+  // than merely raw: `dayOf` took the first ten characters of the instant,
+  // which is the date in UTC, so a run at 23:30Z showed the day before the one
+  // the operator was standing in.
+  timezone?: string;
 };
+
+// An instant, as a reader in `zone` meets it — with the offset, always.
+//
+// A local time with no offset is the one thing worse than UTC here: a record
+// that says "17:42" and nothing else cannot be lined up with a log on the host,
+// which is the whole reason a test record carries a time at all.
+function inZone(iso: string, zone: string | undefined): string {
+  if (zone === undefined) return iso;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: zone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "longOffset",
+  }).formatToParts(at);
+  const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? "";
+  // "GMT+09:00" → "+09:00"; a zone that is exactly GMT formats as "GMT".
+  const offset = get("timeZoneName").replace(/^GMT/, "") || "+00:00";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")} ${offset}`;
+}
+
+// …and just the DATE a reader in `zone` was standing in.
+function dateIn(iso: string, zone: string | undefined): string {
+  if (iso === "") return "";
+  if (zone === undefined) return iso.slice(0, 10);
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso.slice(0, 10);
+  // en-CA formats as YYYY-MM-DD, which is what every other date here is.
+  return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
+}
 
 // One rendered block per marker name.
 
@@ -430,7 +479,12 @@ export function renderTestDoc(
   const sections: string[] = [];
   for (const instance of instances) {
     const run = results.runs?.[instance];
-    sections.push(`### ${unitShown} (${instance})`, "", run?.at === undefined ? t.notRunYet : t.ranAt(run.at, (run.hosts ?? []).join(", ") || "—"), "");
+    sections.push(
+      `### ${unitShown} (${instance})`,
+      "",
+      run?.at === undefined ? t.notRunYet : t.ranAt(inZone(run.at, opts.timezone), (run.hosts ?? []).join(", ") || "—"),
+      ""
+    );
     let n = 0;
     const here = shown.filter((i) => i.target.instance === instance);
     // By the sheet's LABEL, which is what a reader sees; two sheets sharing one
@@ -460,7 +514,7 @@ export function renderTestDoc(
             expectedText(t, i),
             t.deciders[i.decider] ?? "",
             verdictOf(t, r),
-            dayOf(r, run),
+            dayOf(r, run, opts.timezone),
             cell(r?.detail),
             evidenceOf(r === undefined ? undefined : { instance: i.target.instance, ...(r.evidence === undefined ? {} : { evidence: r.evidence }) }, results.evidence ?? []),
             // WHY it was not run. A record that says "not run" and keeps the
@@ -494,7 +548,7 @@ export function renderTestDoc(
           String(n),
           cell(pickLang(f.text, lang) ?? ""),
           a === undefined ? t.notRun : a.status === "pass" ? t.pass : a.status === "fail" ? t.fail : t.notRun,
-          dayOf(a as TestResult | undefined, run),
+          dayOf(a as TestResult | undefined, run, opts.timezone),
           cell(a?.detail),
           evidenceOf(a === undefined ? undefined : { instance: f.instance, ...(a.evidence === undefined ? {} : { evidence: a.evidence }) }, results.evidence ?? []),
           // An intrusive item nobody ran did not fall through a gap — it was

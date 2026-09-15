@@ -22,7 +22,13 @@ import type { TestResults } from "./testresults.js";
 const idOf = (e: { instance: string; host: string; path?: string; command?: string }): string =>
   `observed ${e.instance} ${e.host} ${e.path ?? e.command ?? ""}`;
 
-export function evidencePreviews(results: TestResults, instances: string[] | undefined): ArtifactPreview[] {
+export function evidencePreviews(
+  results: TestResults,
+  instances: string[] | undefined,
+  // Evidence ids some CARRIED document already links to, whatever `instances`
+  // says. See the narrowing below.
+  cited?: ReadonlySet<string>
+): ArtifactPreview[] {
   const out: ArtifactPreview[] = [];
   // Two documents at one address is a judge bug, and a silent one: the link a
   // verdict carries resolves to whichever was emitted first, so a reader can be
@@ -42,7 +48,20 @@ export function evidencePreviews(results: TestResults, instances: string[] | und
     // `--instances` narrows evidence exactly as it narrows values: an
     // environment a delivery does not cover is NOT IN THE FILE. The same claim
     // `restrictInstances` makes about columns — never a hidden section.
-    if (instances !== undefined && !instances.includes(e.instance)) continue;
+    //
+    // …unless a document THIS delivery carries already cites it. A unit-test
+    // record is a document sheet: its verdicts are baked in at import and
+    // `--instances` does not narrow them, so a delivery for staging and
+    // production still hands over every verdict read on `local` — and dropping
+    // the bytes those verdicts name left 346 links opening nothing on one real
+    // delivery. A record that travels and evidence that does not is one
+    // document contradicting itself.
+    //
+    // Carrying it adds no exposure the record did not already have: the judge
+    // decided what may travel and redacted before this file was written (see
+    // this module's own contract), and the verdict citing the address is in the
+    // reader's hands either way.
+    if (instances !== undefined && !instances.includes(e.instance) && cited?.has(idOf(e)) !== true) continue;
     out.push({
       id: idOf(e),
       sheet: e.sheet,
