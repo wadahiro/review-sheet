@@ -18,6 +18,7 @@ import { deriveChannels, deriveDocuments, deriveDefaultsCheckedBy, type DerivedC
 import { getProductRead, getProductAddress, getProductDefaults } from "./channel.js";
 import "./channels/reads.js";
 import type { DictionaryBinding } from "./metadata.js";
+import type { ProjectOverlap } from "./assemble.js";
 import {
   assembleSheetsWithReport,
   type AssembleHooks,
@@ -86,6 +87,8 @@ export function assembleFromSpecWithReport(
   materializeWarnings: string[];
   // Advice about a sheet's layout — see assembleSheetsWithReport.
   layoutNotes: string[];
+  // Where a project says something about the PRODUCT — see ProjectOverlap.
+  projectOverlap: ProjectOverlap;
   // The `channels:` entries the bindings produced, and the ones they could not
   // — see derive-channels.ts. Reported rather than merely appended: a channel
   // nobody wrote is as surprising as a row nobody wrote.

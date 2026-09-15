@@ -1227,7 +1227,7 @@ async function runSpecImport(opts: {
     // just as well, and a committed input.json shouldn't bake in a local
     // filesystem layout. This means verify/apply must be run from the same CWD
     // used for `import --spec`, same as every other path this CLI records.
-    const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, materializeWarnings, layoutNotes, derivedChannels, derivedDocuments, derivedDefaults } = assembleFromSpecWithReport(spec, {
+    const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, materializeWarnings, layoutNotes, projectOverlap, derivedChannels, derivedDocuments, derivedDefaults } = assembleFromSpecWithReport(spec, {
       readFile,
       listDir,
       readBinary,
@@ -1314,6 +1314,30 @@ async function runSpecImport(opts: {
     // Advice, printed before the warnings: it is about the shape of what was
     // just built, not about something being wrong with it.
     for (const n of layoutNotes) console.error(`Note: ${n}`);
+    // Where this project's own metadata says something about the PRODUCT.
+    // Informational: the build already succeeded, and each of these is a
+    // decision somebody made — what is new is that it is now said out loud.
+    // Exemplars, not just counts (see .claude/rules/verifying.md R4).
+    {
+      const few = (xs: { sheet: string; key: string }[]): string =>
+        xs.slice(0, 3).map((x) => `${x.sheet} > ${x.key}`).join(", ") + (xs.length > 3 ? ", …" : "");
+      if (projectOverlap.gaps.length > 0)
+        console.error(
+          `Note: ${projectOverlap.gaps.length} row(s) placed by hand because the bound dictionary groups nothing for them ` +
+            `(the dictionary is short, not the sheet verbose): ${few(projectOverlap.gaps)}`
+        );
+      if (projectOverlap.overrides.length > 0)
+        console.error(
+          `Note: ${projectOverlap.overrides.length} description(s) in the project metadata differ from the product's own and win ` +
+            `(an overlay cannot carry these — the dictionary already describes the key): ${few(projectOverlap.overrides)}`
+        );
+      if (projectOverlap.redundant.length > 0)
+        console.error(
+          `Note: ${projectOverlap.redundant.length} declaration(s) restate what the bound dictionary already says and can be deleted: ` +
+            projectOverlap.redundant.slice(0, 3).map((x) => `${x.sheet} > ${x.key} (${x.field})`).join(", ") +
+            (projectOverlap.redundant.length > 3 ? ", …" : "")
+        );
+    }
     for (const w of materializeWarnings) console.error(`Warning: ${w}`);
     if (categoryWarnings.length > 0) {
       for (const w of categoryWarnings) console.error(`Warning: ${w}`);

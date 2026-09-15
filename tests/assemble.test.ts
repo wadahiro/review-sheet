@@ -1972,3 +1972,96 @@ describe("attributedFile: a row whose instances carry the substitution", () => {
     expect(attributedFile(plain as never, "/etc/httpd/conf/httpd.conf", "httpd.conf.j2", false)).toBe("group_vars/prod.yml");
   });
 });
+
+// Where a project's own metadata says something the PRODUCT could have said.
+//
+// Not a gate: measured on a real project, only 8 of 113 declarations are a
+// bound dictionary saying the same thing — refusing them would break a build
+// for almost nothing. What the measurement found is that the interesting cases
+// are INVISIBLE, and that is what this says out loud.
+describe("assembleSheetsWithReport — a project speaking for the product", () => {
+  const DICT = `
+product: widget
+version: "1"
+provenance: official
+parameters:
+  described_and_grouped:
+    description: The product's own words.
+    group: Networking
+  grouped_only:
+    group: Networking
+  ungrouped:
+    description: Documented, filed nowhere.
+`;
+  const PROJECT = `
+sheets:
+  app:
+    categories: [Networking, Elsewhere]
+    params:
+      described_and_grouped:
+        category: Networking
+        description: The product's own words.
+      grouped_only:
+        category: Networking
+        description: Ours, where the product says nothing.
+      ungrouped:
+        category: Elsewhere
+        description: A wording of our own.
+`;
+  const io = (p: string): string | null =>
+    p === "p.yml" ? PROJECT : p === "meta/widget@1.yml" ? DICT : null;
+  const inputs: SheetInputs[] = [
+    {
+      name: "app",
+      instances: [],
+      layers: [
+        {
+          kind: "base",
+          entries: map([
+            ["described_and_grouped", entry("a")],
+            ["grouped_only", entry("b")],
+            ["ungrouped", entry("c")],
+          ]),
+        },
+      ],
+      embedded: [],
+    },
+  ];
+  const run = () =>
+    assembleSheetsWithReport(inputs, {
+      projectPath: "p.yml",
+      readFile: io,
+      strictMetadata: false,
+      metadataDirs: ["meta"],
+      dictionaries: { app: [{ product: "widget", version: "1" }] },
+    });
+
+  it("names a declaration the dictionary already makes", () => {
+    expect(run().projectOverlap.redundant).toEqual([
+      { sheet: "app", key: "described_and_grouped", field: "description" },
+      { sheet: "app", key: "described_and_grouped", field: "category" },
+      // …and one that only restates the grouping.
+      { sheet: "app", key: "grouped_only", field: "category" },
+    ]);
+  });
+
+  it("names a description that differs from the product's own and wins", () => {
+    // An overlay cannot carry this one: `mergeOverlays` refuses a language the
+    // base already supplies. So it stays in the project and is merely said.
+    expect(run().projectOverlap.overrides).toEqual([{ sheet: "app", key: "ungrouped" }]);
+  });
+
+  it("names a row placed by hand because the dictionary groups nothing for it", () => {
+    // The dictionary is short, not the sheet verbose — the signal that would
+    // have caught five audit-event rows sitting under the wrong tab.
+    expect(run().projectOverlap.gaps).toEqual([{ sheet: "app", key: "ungrouped" }]);
+  });
+
+  it("says nothing about a row that binds to no dictionary", () => {
+    const unbound = assembleSheetsWithReport(
+      [{ name: "app", instances: [], layers: [{ kind: "base", entries: map([["ungrouped", entry("c")]]) }], embedded: [] }],
+      { projectPath: "p.yml", readFile: io, strictMetadata: false }
+    );
+    expect(unbound.projectOverlap).toEqual({ redundant: [], overrides: [], gaps: [] });
+  });
+});

@@ -71,6 +71,7 @@ import type {
   SheetDocument,
   ContainerNode,
 } from "./types.js";
+import { pickLang } from "./types.js";
 import { PRESENCE_VALUE } from "./types.js";
 
 // `origin: "embedded"` marks a base-layer entry whose position relative to its
@@ -560,6 +561,32 @@ export type MaterializeReport = {
 // Rows a dictionary's `ui` claim removed or narrowed on one sheet — the same
 // "counted, never silent" rule MaterializeReport follows. Emitted per sheet,
 // not per binding, because a row is decided by whichever dictionary bound it.
+// Where a project's own metadata says something the PRODUCT could have said.
+//
+// Not an error and not a rule: measured on a real project, only 8 of 113
+// declarations are a bound dictionary saying the same thing, so refusing them
+// would be a breaking gate for almost nothing. What the measurement DID find is
+// that the interesting cases are invisible — a project overriding the product's
+// own wording, and a dictionary with no grouping for a key somebody therefore
+// had to place by hand. Both are decisions; neither is written down anywhere a
+// reader of the build output meets them.
+//
+// The one that pays is `gap`: a key the sheet had to file by hand because its
+// bound dictionary groups nothing for it. It is a quality signal about the
+// DICTIONARY, and it is exactly what would have caught the five audit-event
+// rows that sat under the wrong tab for months while every gate passed.
+export type ProjectOverlap = {
+  // The project restates what the dictionary already says, identically.
+  redundant: { sheet: string; key: string; field: "category" | "description" }[];
+  // The project's description differs from the product's own. A decision — and
+  // one an overlay cannot carry, since `mergeOverlays` refuses a language the
+  // base already supplies — so it stays here and is merely said out loud.
+  overrides: { sheet: string; key: string }[];
+  // The key is bound, and the dictionary groups nothing for it, so the project
+  // placed it. The dictionary is short, not the project verbose.
+  gaps: { sheet: string; key: string }[];
+};
+
 export type UiReport = {
   sheet: string;
   // Keys dropped: nobody set them and the product's UI does not mention them.
@@ -2539,6 +2566,8 @@ export function assembleSheetsWithReport(
   // with the declaration that would divide it. Never a decision: detection may
   // inform a report, and may not decide what a page looks like.
   layoutNotes: string[];
+  // Where a project says something about the PRODUCT — see projectOverlap.
+  projectOverlap: ProjectOverlap;
 } {
   // A configured project path whose file doesn't exist yet (first-ever run,
   // sheet.yml not authored yet) is treated as "no project metadata" here too
@@ -2626,6 +2655,7 @@ export function assembleSheetsWithReport(
   // warning says which way and how to state the other.
   const materializeWarnings: string[] = [];
   const layoutNotes: string[] = [];
+  const projectOverlap: ProjectOverlap = { redundant: [], overrides: [], gaps: [] };
 
   for (const si of inputs) {
     // This sheet's own under_key declaration lives in the project metadata
@@ -2754,6 +2784,29 @@ export function assembleSheetsWithReport(
     // A copy per component too, not just of the outer map: materialize adds its
     // own rows' bindings below, and a shallow copy would push them into the
     // very map fileDrafts must keep seeing unchanged (see the comment above).
+    // What this sheet's own metadata says that the product could have said —
+    // see ProjectOverlap. Read from the bindings this phase just resolved, so
+    // nothing here re-derives a match.
+    for (const [key, declared] of Object.entries(paramsForSheet(projectMeta, si.name))) {
+      let bound: Binding | undefined;
+      for (const byKey of draftBindings.values()) bound = bound ?? byKey.get(key);
+      if (bound === undefined) continue;
+      const entry = bound.entry;
+      if (declared.description !== undefined) {
+        const theirs = pickLang(entry.description, "en");
+        const ours = pickLang(declared.description, "en");
+        if (theirs !== undefined && ours !== undefined) {
+          if (theirs === ours) projectOverlap.redundant.push({ sheet: si.name, key, field: "description" });
+          else projectOverlap.overrides.push({ sheet: si.name, key });
+        }
+      }
+      if (declared.category !== undefined && declared.category !== null) {
+        const group = entry.group;
+        const head = group === undefined ? undefined : Array.isArray(group) ? group[0] : group;
+        if (head === undefined) projectOverlap.gaps.push({ sheet: si.name, key });
+        else if (head === declared.category) projectOverlap.redundant.push({ sheet: si.name, key, field: "category" as const });
+      }
+    }
     const sheetBindings: SheetBindings = new Map([...draftBindings].map(([c, byKey]) => [c, new Map(byKey)]));
     allBindings.set(si.name, sheetBindings);
     // One expansion PER COMPONENT (see materializeDrafts): each component's
@@ -3353,7 +3406,7 @@ export function assembleSheetsWithReport(
     }
   }
 
-  return { ...enriched, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, materializeWarnings, layoutNotes };
+  return { ...enriched, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, materializeWarnings, layoutNotes, projectOverlap };
 }
 
 export function assembleSheets(inputs: SheetInputs[], opts: AssembleOpts): ParameterSheetInput {
