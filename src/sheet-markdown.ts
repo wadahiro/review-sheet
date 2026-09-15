@@ -115,6 +115,12 @@ export type MarkdownRow = {
   perEnv?: true;
   absent?: true;
   presence?: string;
+  // Every value cell is empty and the row is NOT one nobody set: its value is
+  // in an environment this document does not carry. A delivery narrowed to some
+  // of them produces exactly this, and reports it — 5 rows of one real delivery
+  // — and read back by the "all cells empty means nobody set it" rule those
+  // rows disappeared from the page altogether.
+  elsewhere?: true;
 };
 
 // A heading and the rows under it. The heading path IS the category path, so
@@ -284,6 +290,11 @@ function rowOf(p: ParamData, instances: string[], l: Lang, path: string[], opts:
     ...(label !== "" && label !== p.key ? { label } : {}),
     ...(options.length > 0 ? { options } : {}),
     ...(!shared && new Set(Object.values(values)).size <= 1 ? { perEnv: true as const } : {}),
+    // …and never a CONTAINER, which has no value of its own by nature: a block
+    // is not a row whose values went somewhere else.
+    ...(p.container === undefined && !unset(p) && Object.values(values).every((v) => v === "")
+      ? { elsewhere: true as const }
+      : {}),
     ...(p.absent_where_unlisted === true ? { absent: true as const } : {}),
     ...(lang(p.presence_label, l) === "" ? {} : { presence: lang(p.presence_label, l) }),
     // …and the documented default, when the column is showing the vendor's.
@@ -680,6 +691,7 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
         (row.options ?? []).map((o) => cellMark("option", `${o.value}=${o.label}`)).join("") +
         (row.perEnv === true ? cellMark("perenv", "") : "") +
         (row.absent === true ? cellMark("absent", "") : "") +
+        (row.elsewhere === true ? cellMark("elsewhere", "") : "") +
         (row.presence === undefined ? "" : cellMark("presence", row.presence));
       const cells = [
         row.control === true
@@ -1085,7 +1097,11 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
         ...(extra === undefined ? {} : { extra }),
         // Nothing is set here: the document says so by leaving every value cell
         // empty, and this is that fact in the shape the viewer knows it by.
-        ...(shown[n] ? {} : { origin: "default" as const }),
+        // Nothing is set here: the document says so by leaving every value cell
+        // empty, and this is that fact in the shape the viewer knows it by —
+        // unless the row says its values are in an environment this document
+        // does not carry, which looks identical and is not the same thing.
+        ...(shown[n] || has("elsewhere") ? {} : { origin: "default" as const }),
       } as ParamData);
     }
     into.params = params;

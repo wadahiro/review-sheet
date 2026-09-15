@@ -118,6 +118,16 @@ const MODEL = {
               absent_where_unlisted: true,
               instances: [{ name: "staging", value: "on" }],
             },
+            // …and one whose only value is in an environment this sheet does
+            // not carry at all: empty in every column it HAS, and still a row.
+            {
+              key: "local-only",
+              description: "Dummy",
+              absent_where_unlisted: true,
+              // Emptied by the narrowing a delivery does: its one value was in
+              // an environment this document does not carry.
+              instances: [],
+            },
             // A setting whose value IS its presence, and the product's own word
             // for it.
             { key: "http", value: "true", presence: true, presence_label: { ja: "許可" }, default: "true", description: "Service" },
