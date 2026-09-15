@@ -291,6 +291,20 @@ describe("a control in a handed-over set", () => {
     expect(line.split("|")[1]).not.toContain("`");
   });
 
+  it("says the control's help once, not on each row under it", () => {
+    // The product has no help for the field — it has help for the thing an
+    // operator sets — so repeating it down the column is the same paragraph
+    // four times, which is what the viewer already refuses.
+    const rows = [
+      { key: "detect", value: "true", default: "false", description: { ja: "検出時に何が起きるかを指定します。" }, composite: CONTROL },
+      { key: "permanent", default: "false", description: { ja: "ロックを永久にするか。" }, composite: CONTROL },
+    ];
+    const md = renderSheetMarkdown(toMarkdownSheet(sheet(rows), "ja"));
+    expect(md.split("検出時に何が起きるかを指定します。").length - 1).toBe(1);
+    // …and a field the product describes in its own right keeps its own.
+    expect(md).toContain("ロックを永久にするか。");
+  });
+
   it("does not come back as a row", () => {
     // It has no key and no address. Read as a row it would be one the model
     // does not have, reported as added on every read of a delivered set.

@@ -8,6 +8,8 @@
 // exists to prevent, and it fails silently.
 
 import { describe, it, expect, afterAll } from "bun:test";
+import { carriedDocuments } from "../src/md-documents";
+import type { ArtifactPreview } from "../src/types";
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, dirname, resolve as resolvePath } from "path";
@@ -531,5 +533,41 @@ describe("a committed set that no longer describes the model", () => {
     const r = run("verify", "-i", "input.json", "--md", join(work, "nothing-here"));
     expect(r.code).not.toBe(0);
     expect(r.out).toContain("no set under");
+  });
+});
+
+// WHICH environments a carried file is for is always a level of its own.
+describe("the environment level under artifacts/", () => {
+  const preview = (over: Record<string, unknown>): ArtifactPreview =>
+    ({
+      id: String(over.id ?? "a"),
+      sheet: "web",
+      source_file: String(over.deployed_path ?? "x"),
+      lines: [{ text: String(over.text ?? "x"), kind: "verbatim" as const }],
+      ...over,
+    }) as ArtifactPreview;
+
+  it("says `common` for a file that is the same everywhere", () => {
+    const docs = carriedDocuments([preview({ deployed_path: "/etc/chrony.conf" })], ["staging", "production"]);
+    expect(docs[0]!.path).toBe("artifacts/common/etc/chrony.conf");
+  });
+
+  it("names the environments for a file that differs", () => {
+    const docs = carriedDocuments([preview({ deployed_path: "/etc/x.conf", instances: ["staging"] })], ["staging", "production"]);
+    expect(docs[0]!.path).toBe("artifacts/staging/etc/x.conf");
+  });
+
+  it("keeps a path that begins with an environment's own name apart", () => {
+    // Without a level that is ALWAYS there, these two land on one path: a
+    // repository laying its configuration out per environment has files at
+    // `staging/…`, and so does the level itself.
+    const docs = carriedDocuments(
+      [
+        preview({ id: "a", deployed_path: "app.conf", instances: ["staging"], text: "a" }),
+        preview({ id: "b", deployed_path: "staging/app.conf", text: "b" }),
+      ],
+      ["staging", "production"]
+    );
+    expect(docs.map((d) => d.path)).toEqual(["artifacts/staging/app.conf", "artifacts/common/staging/app.conf"]);
   });
 });

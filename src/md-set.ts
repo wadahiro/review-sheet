@@ -169,6 +169,8 @@ export function toMarkdownSet(
   const documents: MarkdownFile[] = [];
   for (const d of carried) {
     if (seen.has(d.path)) {
+      // `carriedDocuments` gives every document a path of its own, so reaching
+      // here means two of them ARE the same document, emitted twice.
       if (!documents.some((x) => x.path === d.path && x.text === d.text)) {
         problems.push(`two documents are written at ${d.path} — only the first is kept`);
       }
@@ -268,9 +270,12 @@ function index(
   if (meta?.project !== undefined || meta?.version !== undefined || meta?.generated_at !== undefined) {
     const label =
       lang === "ja"
-        ? { project: "プロジェクト", version: "バージョン", at: "作成日時" }
-        : { project: "Project", version: "Version", at: "Generated" };
-    out.push("| | |", "| --- | --- |");
+        ? { project: "プロジェクト", version: "バージョン", at: "作成日時", item: "項目", value: "値" }
+        : { project: "Project", version: "Version", at: "Generated", item: "Item", value: "Value" };
+    // Markdown REQUIRES a header row, so a table written with empty ones opens
+    // with a blank one — which reads as an index with a hole in it rather than
+    // as a table that needs no heading.
+    out.push(`| ${label.item} | ${label.value} |`, "| --- | --- |");
     if (meta.project !== undefined) out.push(`| ${label.project} | ${meta.project} |`);
     if (meta.version !== undefined) out.push(`| ${label.version} | ${meta.version} |`);
     if (meta.generated_at !== undefined) out.push(`| ${label.at} | ${meta.generated_at} |`);

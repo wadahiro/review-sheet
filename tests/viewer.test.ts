@@ -2895,7 +2895,7 @@ describe("a dropped set, opened at a row's line", () => {
     // Percent-encoded, and the fragment carried through — the page decodes it
     // back and compares it against what it is holding, so both halves have to
     // survive the climb out of the chapter.
-    expect(decodeURI(a!.getAttribute("href")!)).toBe("Detailed design/Web tier/artifacts/etc/httpd/conf/httpd.conf#L3");
+    expect(decodeURI(a!.getAttribute("href")!)).toBe("Detailed design/Web tier/artifacts/common/etc/httpd/conf/httpd.conf#L3");
   });
 
   it("opens the file beside the sheet, at that line", async () => {

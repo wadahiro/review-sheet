@@ -32,6 +32,11 @@ import { slug, modelStamp } from "./md-set.js";
 // second is dropped: measured on a real record, two `.well-known` fetches that
 // differ only past the cut. The digest is only on the names that needed it, so
 // a short command stays exactly itself.
+// The level that says WHICH environments a carried file is for, when it is all
+// of them. `common` is the word this model already uses for one value that
+// holds everywhere (types.ts's `origin: "common"`).
+const COMMON = "common";
+
 function commandFile(command: string): string {
   const one = command.replace(/\s+/g, " ").trim();
   const named = slug(one).trim();
@@ -52,7 +57,44 @@ export type CarriedDocument = {
   lineOf: (key: string) => number | undefined;
 };
 
+// One path per document, decided HERE and nowhere else.
+//
+// Every consumer resolves a link through the CarriedDocument it holds — the row
+// addresses (`addressOf`), the set's own files — so a path renamed anywhere
+// downstream would move the file and leave the links behind.
+//
+// The collision is real rather than theoretical: the per-environment level
+// shares a namespace with the paths themselves. A file written only for
+// `staging` lands at `artifacts/staging/…`, and so does one whose own path
+// simply begins with `staging/` — which is what a repository laying its
+// configuration out per environment looks like. Rather than restructure every
+// delivered path for it, the second document is given a name of its own, the
+// same way `commandFile` separates two long commands that agree to the
+// character it cuts at.
+function withDistinctPaths(docs: CarriedDocument[]): CarriedDocument[] {
+  const taken = new Map<string, string>();
+  return docs.map((d) => {
+    const already = taken.get(d.path);
+    if (already === undefined) {
+      taken.set(d.path, d.text);
+      return d;
+    }
+    // The same bytes at one path is one document emitted twice: nothing to
+    // choose between, and one file is the right answer.
+    if (already === d.text) return d;
+    const at = d.path.lastIndexOf(".");
+    const cut = at > d.path.lastIndexOf("/") ? at : d.path.length;
+    const moved = `${d.path.slice(0, cut)}-${modelStamp(d.text).slice(0, 8)}${d.path.slice(cut)}`;
+    taken.set(moved, d.text);
+    return { ...d, path: moved };
+  });
+}
+
 export function carriedDocuments(previews: ArtifactPreview[], instances: string[]): CarriedDocument[] {
+  return withDistinctPaths(carriedDocumentsRaw(previews, instances));
+}
+
+function carriedDocumentsRaw(previews: ArtifactPreview[], instances: string[]): CarriedDocument[] {
   const strip = (f: string): string => f.replace(/^\/+/, "");
   return previews.map((p) => {
     // An `absent` line is one this environment does not render. The file on
@@ -86,12 +128,23 @@ export function carriedDocuments(previews: ArtifactPreview[], instances: string[
     // An artifact rendered identically everywhere is written once; one that
     // differs per environment is written per environment, under the names it
     // covers — which is what having a file per environment means.
+    //
+    // WHICH environments is ALWAYS a level of its own, `common` when the file
+    // is the same in all of them. It used to appear only when the file
+    // differed, which put the environment names in the same namespace as the
+    // paths: a file written for `staging` alone landed at
+    // `artifacts/staging/…`, and so did one whose own path simply begins with
+    // `staging/` — which is what a repository laying its configuration out per
+    // environment looks like. Two different files, one path. A level that is
+    // always there cannot be mistaken for a path segment, and it reads better
+    // besides: every file says which environments it is for instead of leaving
+    // the reader to infer it from the absence of a directory.
     const covers = p.instances ?? [];
     const everywhere = covers.length === 0 || instances.every((i) => covers.includes(i));
     const to = strip(p.deployed_path ?? p.source_file);
     return {
       sheet: p.sheet,
-      path: `artifacts/${everywhere ? "" : `${covers.join("+")}/`}${to}`,
+      path: `artifacts/${everywhere ? COMMON : covers.join("+")}/${to}`,
       text,
       label: `${p.deployed_path ?? p.source_file}${everywhere ? "" : ` (${covers.join(", ")})`}`,
       lineOf,

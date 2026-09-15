@@ -234,12 +234,22 @@ export function documentPreviews(documents: { path: string; text: string }[]): A
       kind === "evidence" && under.length >= 2
         ? { host: under[1]!, at: "", instance: under[0]! }
         : undefined;
+    // …and an artifact names WHICH ENVIRONMENTS before the file, always —
+    // `common` when it is the same in all of them (md-documents.ts). That level
+    // is the set's own bookkeeping and not part of the path the file lands on,
+    // so the panel drops it: a reader opening `/etc/httpd/conf/httpd.conf`
+    // should meet that name and not `common/etc/httpd/conf/httpd.conf`.
+    const covers = kind === "artifacts" && under.length >= 2 ? under[0]! : undefined;
+    const file = kind === "artifacts" && covers !== undefined ? under.slice(1) : under;
     return {
       // The PATH is the id, because that is what a link names — the panel is
       // opened by matching one against the other.
       id: d.path,
       sheet: "",
-      source_file: under.length > 0 ? under.join("/") : d.path,
+      source_file: file.length > 0 ? file.join("/") : d.path,
+      // …and which environments it covers, where the folder says so. `common`
+      // covers every one, which is what carrying no list already means.
+      ...(covers === undefined || covers === "common" ? {} : { instances: covers.split("+") }),
       nature: kind === "sources" ? ("source" as const) : kind === "evidence" ? ("observed" as const) : ("artifact" as const),
       ...(observed === undefined ? {} : { observed: { host: observed.host, at: observed.at }, instances: [observed.instance] }),
       lines: d.text.replace(/\n$/, "").split("\n").map((text) => ({ text, kind: "verbatim" as const })),

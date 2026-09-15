@@ -227,7 +227,7 @@ function rowOf(p: ParamData, instances: string[], l: Lang, path: string[], opts:
     values,
     ...(shared ? { shared: true as const } : {}),
     default: cell(applies ?? ""),
-    description: lang(p.description, l),
+    description: saysWhatItsControlSays(p, l) ? "" : lang(p.description, l),
     remarks: lang(p.remarks, l),
     ...(() => {
       if (opts.preview === undefined) return {};
@@ -275,6 +275,12 @@ function controlRowOf(group: ParamData[], instances: string[], l: Lang): Markdow
     remarks: "",
   };
 }
+
+// A field of a CONTROL whose help IS the control's own. The product has no help
+// for the field — it has help for the thing an operator sets — so the control's
+// line says it and the rows under it do not, exactly as the viewer does.
+const saysWhatItsControlSays = (p: ParamData, l: Lang): boolean =>
+  p.composite?.description !== undefined && pickLang(p.composite.description, l) === pickLang(p.description, l);
 
 function rowsOf(params: ParamData[], instances: string[], l: Lang, path: string[], opts: ProjectionOptions): MarkdownRow[] {
   const groups = controlGroups(params, l);
