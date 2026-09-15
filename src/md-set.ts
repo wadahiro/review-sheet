@@ -16,6 +16,7 @@
 // Pure: it returns the files, it does not write them.
 
 import type { SheetData, ParamData } from "./prompt.js";
+import { sheetsInOrder } from "./prompt.js";
 import type { Lang } from "./html/i18n.js";
 import { createHash } from "crypto";
 import { sheetToMarkdown } from "./sheet-markdown.js";
@@ -101,32 +102,19 @@ type Placed = { sheet: SheetData["sheets"][number]; dir: string[] };
 // dropped — losing a sheet is the failure this project refuses to let happen
 // quietly — and it is reported as well.
 function place(data: SheetData): { placed: Placed[]; problems: string[] } {
-  const placed: Placed[] = [];
   const problems: string[] = [];
-  const seen = new Set<string>();
-
-  const walk = (groups: SheetData["groups"], dir: string[]): void => {
-    for (const g of groups ?? []) {
-      const here = [...dir, slug(g.display ?? g.name)];
-      for (const s of data.sheets) {
-        if (s.group !== g.name || seen.has(s.name)) continue;
-        seen.add(s.name);
-        placed.push({ sheet: s, dir: here });
-      }
-      walk(g.groups, here);
-    }
-  };
-  walk(data.groups, []);
-
-  for (const s of data.sheets) {
-    if (seen.has(s.name)) continue;
-    if (s.group !== undefined) {
+  // The walk itself is shared with the page that draws this document
+  // (`sheetsInOrder`): the tab a reader opens and the file a set holds have to
+  // be the same sheet, and two walks that must agree are two walks that will
+  // not. What stays here is the DIRECTORY each chapter is, and the report.
+  const placed: Placed[] = sheetsInOrder(data.sheets, data.groups).map(({ sheet, chapters }) => {
+    if (chapters.length === 0 && sheet.group !== undefined) {
       problems.push(
-        `sheet "${s.name}" names chapter "${s.group}", which this document has no chapter for — written at the top level`
+        `sheet "${sheet.name}" names chapter "${sheet.group}", which this document has no chapter for — written at the top level`
       );
     }
-    placed.push({ sheet: s, dir: [] });
-  }
+    return { sheet, dir: chapters.map((g) => slug(g.display ?? g.name)) };
+  });
   return { placed, problems };
 }
 

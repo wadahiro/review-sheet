@@ -136,6 +136,44 @@ export function effectiveOrigin(param: { origin?: Origin; instances?: { name: st
 
 export type SheetGroupData = { name: string; label?: LangText; display?: string; groups?: SheetGroupData[] };
 
+// The order the document DECLARES its sheets in: the chapter tree, walked, a
+// group's own sheets before the groups inside it.
+//
+// NOT the order the build emitted them in. That one is the spec's and means
+// nothing to a reader — measured on one real document, the two part company at
+// the seventh sheet — and everything a reader navigates by has always used the
+// tree. Only the TAB INDEX still followed the array, so `#7` opened one sheet in
+// the page a delivery carries and another in the folder it is written as, since
+// a set is written in chapter order by construction.
+//
+// One walk, used by the projection that writes the set and by the page that
+// draws it, because two walks that must agree are two walks that will not.
+//
+// A sheet whose chapter the tree does not have comes LAST rather than being
+// dropped — losing a sheet is the failure this project refuses to let happen
+// quietly — and whoever is writing files out reports it.
+export function sheetsInOrder<T extends { name: string; group?: string }>(
+  sheets: readonly T[],
+  groups: readonly SheetGroupData[] | undefined
+): { sheet: T; chapters: SheetGroupData[] }[] {
+  const out: { sheet: T; chapters: SheetGroupData[] }[] = [];
+  const seen = new Set<string>();
+  const walk = (gs: readonly SheetGroupData[] | undefined, above: SheetGroupData[]): void => {
+    for (const g of gs ?? []) {
+      const here = [...above, g];
+      for (const s of sheets) {
+        if (s.group !== g.name || seen.has(s.name)) continue;
+        seen.add(s.name);
+        out.push({ sheet: s, chapters: here });
+      }
+      walk(g.groups, here);
+    }
+  };
+  walk(groups, []);
+  for (const s of sheets) if (!seen.has(s.name)) out.push({ sheet: s, chapters: [] });
+  return out;
+}
+
 export type SheetData = {
   metadata?: {
     title?: string;

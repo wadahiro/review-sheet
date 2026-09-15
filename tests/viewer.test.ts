@@ -3550,3 +3550,43 @@ describe("a dropped set's record, opened at its evidence", () => {
     expect(here!.textContent).toContain("10.0.0.9 web01");
   });
 });
+
+
+// The order a reader meets the sheets in is the one the document DECLARES.
+//
+// Everything they navigate by has always used the chapter tree; the tab index
+// followed the array the build emitted, which is the spec's order and means
+// nothing to a reader. On one real document the two part company at the seventh
+// sheet — and a set is written in chapter order by construction, so the same
+// number opened a different sheet depending on which half of a delivery was in
+// the reader's hands.
+describe("the order the sheets are in", () => {
+  it("follows the chapter tree, not the order the build emitted", () => {
+    const payload = {
+      metadata: { title: "t" },
+      versions: [
+        {
+          version: "current",
+          groups: [{ name: "a", display: "First" }, { name: "b", display: "Second" }],
+          sheets: [
+            // The build's order: the second chapter's sheet first.
+            { name: "later", group: "b", instances: [], categories: [{ name: "c", params: [{ key: "k", value: "1" }] }] },
+            { name: "earlier", group: "a", instances: [], categories: [{ name: "c", params: [{ key: "k", value: "1" }] }] },
+            // …and one whose chapter the tree does not have, which comes last
+            // rather than being dropped.
+            { name: "loose", group: "nowhere", instances: [], categories: [{ name: "c", params: [{ key: "k", value: "1" }] }] },
+          ],
+        },
+      ],
+    };
+    const titleAt = (tab: number): string => {
+      document.body.innerHTML = "";
+      location.hash = `#${tab}`;
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      render(h(Root, { payload: payload as never, reviewEnabled: false, initialLang: "ja", server: false }), host);
+      return host.querySelector("h2")?.textContent?.trim() ?? "";
+    };
+    expect([titleAt(1), titleAt(2), titleAt(3)]).toEqual(["earlier", "later", "loose"]);
+  });
+});

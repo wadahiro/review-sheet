@@ -13,6 +13,7 @@ import {
   targetLabel,
   retargetReviews,
   effectiveOrigin,
+  sheetsInOrder,
   HELD_REASON_GENERATED,
   HELD_REASON_ADDED_ROW,
   HELD_REASON_STRUCK_ROW,
@@ -3679,7 +3680,11 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     // the tree points at ids only one of them baked.
     const proseHere = (s: SheetData["sheets"][number]): boolean =>
       s.document !== undefined && s.document.mode !== "sheet" && (s.document.html ?? "") === "" && (s.document.markdown ?? "") !== "";
-    if (!base.sheets.some((s) => s.document?.mode === "sheet" || proseHere(s))) return base;
+    const inOrder = (d: SheetData): SheetData => {
+      const ordered = sheetsInOrder(d.sheets, d.groups).map((x) => x.sheet);
+      return ordered.every((s, i) => s === d.sheets[i]) ? d : { ...d, sheets: ordered };
+    };
+    if (!base.sheets.some((s) => s.document?.mode === "sheet" || proseHere(s))) return inOrder(base);
     // A column the page has and this tool has no field for is DECLARED, so the
     // sheet's own table shows it under its own heading instead of folding it
     // into a neighbour. Document-level, as every other column declaration is,
@@ -3731,7 +3736,18 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
           ...(lifted.lead === "" ? {} : { document: { ...s.document, lead: lifted.lead } }),
         };
     });
-    return { ...base, sheets, ...(added.length === 0 ? {} : { columns: [...(base.columns ?? []), ...added] }) };
+    // …in the order the document DECLARES, which is the chapter tree's and not
+    // the one the build emitted. Everything a reader navigates by has always
+    // used the tree; only the tab index still followed the array, so `#7` opened
+    // one sheet here and another in the folder this same document is written as
+    // — a set is in chapter order by construction (`sheetsInOrder`, shared with
+    // the projection that writes it).
+    const ordered = sheetsInOrder(sheets, base.groups).map((x) => x.sheet);
+    return {
+      ...base,
+      sheets: ordered,
+      ...(added.length === 0 ? {} : { columns: [...(base.columns ?? []), ...added] }),
+    };
   }, [baseData, lang, environments]);
   const hasMetadataInit = !!(data.metadata?.project || data.metadata?.version || data.metadata?.generated_at || data.metadata?.changelog?.length || data.metadata?.extra);
 

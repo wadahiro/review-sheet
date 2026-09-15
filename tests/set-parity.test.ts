@@ -31,8 +31,22 @@ import { renderMarkdown } from "../src/markdown";
 // preview chip all need one.
 const MODEL = {
   metadata: { title: "d", project: "p" },
-  groups: [{ name: "design", display: "Detailed design", groups: [{ name: "srv", display: "Web tier" }] }],
+  groups: [
+    { name: "design", display: "Detailed design", groups: [{ name: "srv", display: "Web tier" }] },
+    { name: "tests", display: "Unit tests" },
+  ],
   sheets: [
+    // OUT OF CHAPTER ORDER, as a build emits them: this belongs to the second
+    // chapter and the ones after it to the first. A set is written in chapter
+    // order by construction, so a document whose array disagrees opened a
+    // different sheet at the same tab number in each of its two readings.
+    {
+      name: "record",
+      group: "tests",
+      instances: [],
+      categories: [],
+      document: { html: "", markdown: "# record\n\n## Items\n\ntext\n" },
+    },
     // A sheet that exists only to compare: it opens side by side and has no
     // stacked reading to return to.
     {
@@ -344,6 +358,20 @@ afterEach(() => {
 });
 
 describe("the same model, carried and read back", () => {
+  // …and the same page AT THE SAME TAB. A set is written in chapter order and a
+  // build emits its sheets in the spec's, so a document whose array disagrees
+  // put a different sheet behind the same number in each of its two readings —
+  // which the page-by-page comparison below cannot see, because it compares tab
+  // N with tab N and would simply find two sheets that differ.
+  it("puts the same sheet at the same tab", async () => {
+    setMarkdownRenderer((source, images, opts) => renderMarkdown(source, () => null, opts));
+    const read = readMarkdownSet(writtenSet().files.map((f) => ({ path: f.path, text: f.text })), "ja");
+    const model = { metadata: MODEL.metadata, versions: [{ version: "current", sheets: MODEL.sheets, groups: MODEL.groups, artifacts: MODEL.artifacts }] };
+    const titles = (payload: unknown): string[] =>
+      MODEL.sheets.map((_, i) => draw(payload, i + 1).querySelector("h2")?.textContent?.trim() ?? "");
+    expect(titles(payloadOfSet({ title: "d" } as never, read))).toEqual(titles(model));
+  });
+
   // EVERY page, not the first: the sheets differ in shape — one compares its
   // components, one is an ordinary table — and a difference lives in whichever
   // shape nobody looked at.
