@@ -78,7 +78,15 @@ const MODEL = {
           // identity is `alb`, the reader sees the name its author gave it.
           name: "alb",
           label: { ja: "SSO 公開エンドポイント" },
-          categories: [{ name: "Basic", params: [{ key: "idle", value: "60", description: "Idle", default: "60" }] }],
+          categories: [
+            {
+              name: "Basic",
+              params: [
+                { key: "idle", value: "60", description: "Idle", default: "60" },
+                { key: "idle[1]", value: "60", description: "Idle", default: "60" },
+              ],
+            },
+          ],
         },
         {
           name: "Basic",
@@ -128,6 +136,16 @@ const MODEL = {
               // an environment this document does not carry.
               instances: [],
             },
+            // The vendor shipped it and this file dropped it — unset, but not
+            // because nobody ever set it, and the sheet keeps it on the page.
+            { key: "dropped", origin: "baseline", baseline: "On", description: "Dropped" },
+            // …and one this project is deliberately not reviewing here.
+            {
+              key: "pw",
+              value: "REF",
+              description: "Secret",
+              out_of_scope: { reason: { ja: "デプロイ時に供給される" } },
+            },
             // A setting whose value IS its presence, and the product's own word
             // for it.
             { key: "http", value: "true", presence: true, presence_label: { ja: "許可" }, default: "true", description: "Service" },
@@ -149,7 +167,9 @@ const MODEL = {
       nature: "source",
       lines: [
         { text: 'resource "aws_lb" "this" {', kind: "verbatim" },
-        { text: "  idle_timeout = 60", kind: "verbatim", key: "idle" },
+        // ONE line, two rows — what a `count`ed resource writes: every copy is
+        // addressed by the same line of the source.
+        { text: "  idle_timeout = 60", kind: "verbatim", key: "idle", keys: ["idle", "idle[1]"] },
       ],
     },
     {

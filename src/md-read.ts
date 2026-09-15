@@ -50,7 +50,7 @@ export type ReadSet = {
   // built over these documents exactly as it is over a model's previews — which
   // is what lets the sheet's own renderer draw the chip with nothing new told
   // to it. `keys` is by 1-based line, as the address names it.
-  documents: { path: string; text: string; keys?: Record<number, string> }[];
+  documents: { path: string; text: string; keys?: Record<number, string[]> }[];
   problems: string[];
 };
 
@@ -156,7 +156,7 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
   // realm document is pointed into by seven sheets of one real delivery — so it
   // belongs to none of them in particular, and the index answers for any (see
   // `artifact-index.ts`).
-  const keyed = new Map<string, { keys: Record<number, string> }>();
+  const keyed = new Map<string, { keys: Record<number, string[]> }>();
   const named = new Set<string>();
   for (const f of sorted) {
     const parts = f.path.split("/");
@@ -218,11 +218,15 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
       const [at = "", frag = ""] = decodeURI(href).split("#");
       const line = /^L(\d+)$/.exec(frag);
       if (line === null) continue;
-      const held = keyed.get(at) ?? { keys: {} as Record<number, string> };
-      // FIRST wins, the same rule the artifact index takes: two rows claiming
-      // one line is one line holding two settings, and the index already
-      // resolves that from the model's side.
-      held.keys[Number(line[1])] ??= key;
+      const held = keyed.get(at) ?? { keys: {} as Record<number, string[]> };
+      // EVERY row the line is, not the first of them. One line IS several rows
+      // often enough to matter: a `count`ed resource writes one line that every
+      // one of its copies is addressed by, and a directive holding two settings
+      // is two rows — so first-wins left the second, third and fourth of them
+      // with no way into the file. The model says the same thing with
+      // `ArtifactLine.keys`; this is where a set says it.
+      const at_ = Number(line[1]);
+      held.keys[at_] = [...(held.keys[at_] ?? []), ...(held.keys[at_]?.includes(key) === true ? [] : [key])];
       keyed.set(at, held);
     }
   }
@@ -302,7 +306,11 @@ export function documentPreviews(documents: ReadSet["documents"]): ArtifactPrevi
       lines: d.text
         .replace(/\n$/, "")
         .split("\n")
-        .map((text, i) => ({ text, kind: "verbatim" as const, ...(d.keys?.[i + 1] === undefined ? {} : { key: d.keys[i + 1] }) })),
+        .map((text, i) => ({
+          text,
+          kind: "verbatim" as const,
+          ...(d.keys?.[i + 1] === undefined ? {} : { key: d.keys[i + 1]![0]!, keys: d.keys[i + 1]! }),
+        })),
     };
   });
 }

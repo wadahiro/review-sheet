@@ -121,6 +121,16 @@ export type MarkdownRow = {
   // — and read back by the "all cells empty means nobody set it" rule those
   // rows disappeared from the page altogether.
   elsewhere?: true;
+  // This row is unset because the VENDOR shipped the setting and this file
+  // dropped it — not because nobody ever set it. The sheet keeps such a row on
+  // the page (the absence IS the decision) while a row nobody set is behind a
+  // toggle, and both are written with empty value cells, so the text alone
+  // reads the first as the second and the row disappears.
+  vendor?: true;
+  // …and WHY this row is not being reviewed here, which is the project's own
+  // decision and the one thing the sheet prints under a key that is not the
+  // product's (`OutOfScope.reason`).
+  outOfScope?: string;
 };
 
 // A heading and the rows under it. The heading path IS the category path, so
@@ -295,6 +305,8 @@ function rowOf(p: ParamData, instances: string[], l: Lang, path: string[], opts:
     ...(p.container === undefined && !unset(p) && Object.values(values).every((v) => v === "")
       ? { elsewhere: true as const }
       : {}),
+    ...(p.origin === "baseline" ? { vendor: true as const } : {}),
+    ...(lang(p.out_of_scope?.reason, l) === "" ? {} : { outOfScope: lang(p.out_of_scope?.reason, l) }),
     ...(p.absent_where_unlisted === true ? { absent: true as const } : {}),
     ...(lang(p.presence_label, l) === "" ? {} : { presence: lang(p.presence_label, l) }),
     // …and the documented default, when the column is showing the vendor's.
@@ -692,6 +704,8 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
         (row.perEnv === true ? cellMark("perenv", "") : "") +
         (row.absent === true ? cellMark("absent", "") : "") +
         (row.elsewhere === true ? cellMark("elsewhere", "") : "") +
+        (row.vendor === true ? cellMark("vendor", "") : "") +
+        (row.outOfScope === undefined ? "" : cellMark("oos", row.outOfScope)) +
         (row.presence === undefined ? "" : cellMark("presence", row.presence));
       const cells = [
         row.control === true
@@ -1101,7 +1115,14 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
         // empty, and this is that fact in the shape the viewer knows it by —
         // unless the row says its values are in an environment this document
         // does not carry, which looks identical and is not the same thing.
-        ...(shown[n] || has("elsewhere") ? {} : { origin: "default" as const }),
+        ...(has("vendor")
+          ? { origin: "baseline" as const }
+          : shown[n] || has("elsewhere")
+            ? {}
+            : { origin: "default" as const }),
+        ...(split.marks.find((m) => m.kind === "oos") === undefined
+          ? {}
+          : { out_of_scope: { reason: split.marks.find((m) => m.kind === "oos")!.value } }),
       } as ParamData);
     }
     into.params = params;
