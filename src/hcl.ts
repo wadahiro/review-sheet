@@ -185,9 +185,35 @@ function scan(content: string): Block {
         rawValue = content.slice(valStart, valEnd);
         i = valEnd; // advance past closing quote
       } else {
-        // Bareword: read until whitespace, comment, or newline
+        // Bareword: read until whitespace, comment, or newline — but never
+        // inside brackets it opened itself.
+        //
+        // `subnet_ids[count.index % length(subnet_ids)]` is ONE value, and
+        // stopping at the first space left `% length(subnet_ids)]` behind to be
+        // read as the next attribute name. The stray `]` and `)` then unbalanced
+        // the block tracker, and every attribute after it in the block was
+        // swallowed into one nonsense path — measured on a real module, three
+        // settings (`vpc_security_group_ids`, `iam_instance_profile`,
+        // `key_name`) lost their line in their own source file, silently.
+        //
+        // Depth over `[ ( {`, so an ordinary bareword — which opens none —
+        // reads exactly as it did.
         const start = i;
-        while (i < len && !/[\s#\n]/.test(content[i])) i++;
+        let depth = 0;
+        while (i < len) {
+          const c = content[i]!;
+          if (c === '"') {
+            i = readQuotedString(content, i);
+            continue;
+          }
+          if (c === "[" || c === "(" || c === "{") depth++;
+          else if (c === "]" || c === ")" || c === "}") {
+            // A closer with nothing open is the enclosing block's, not ours.
+            if (depth === 0) break;
+            depth--;
+          } else if (depth === 0 && /[\s#\n]/.test(c)) break;
+          i++;
+        }
         rawValue = content.slice(start, i);
         valEnd = i;
       }

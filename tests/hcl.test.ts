@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { hclIndex, hclLocate, hclEdit } from "../src/hcl";
+import { hclIndex, hclLocate, hclEdit, hclAttributeSites } from "../src/hcl";
 import { extractFile } from "../src/extract";
 import { computeApply } from "../src/apply";
 import { verifySources } from "../src/verify";
@@ -306,5 +306,52 @@ resource "aws_security_group" "sg" {
       return null;
     });
     expect(vr.ok).toBe(1);
+  });
+});
+
+// A value that opens a bracket of its own.
+//
+// The bareword reader stopped at the first whitespace, so
+// `subnet_ids[count.index % length(subnet_ids)]` ended at the space inside its
+// own index and left `% length(subnet_ids)]` to be read as the next attribute
+// name. The stray closers then unbalanced the block tracker and every attribute
+// after it in the block was swallowed into one nonsense path.
+describe("hclAttributeSites: a value with spaces inside brackets", () => {
+  const block = (value: string) => `resource "aws_instance" "node" {\n  a = ${value}\n  b = var.y\n  c = var.z\n}\n`;
+
+  it("keeps reading the block after an indexed expression", () => {
+    const sites = hclAttributeSites(block("var.x[count.index % length(var.x)]"));
+    expect(sites.map((s) => s.path)).toEqual([
+      "resource.aws_instance.node.a",
+      "resource.aws_instance.node.b",
+      "resource.aws_instance.node.c",
+    ]);
+  });
+
+  it("reports the expression as a SITE and not as a value", () => {
+    // `hclAttributeSites` answers where an attribute is written; only
+    // `hclIndex` answers what it holds, and an expression holds nothing a
+    // source map could resolve. The site is what a preview needs.
+    const [a] = hclAttributeSites(block("var.x[count.index % length(var.x)]"));
+    expect(a!.line).toBe(2);
+    expect(a!.value).toBeUndefined();
+  });
+
+  it("leaves an ordinary bareword exactly as it was", () => {
+    // It opens no bracket, so the depth is zero throughout and the whitespace
+    // rule is the only one that applies — the behaviour this change must not
+    // move.
+    const sites = hclAttributeSites(block("var.plain"));
+    expect(sites.map((s) => `${s.path}@${s.line}`)).toEqual([
+      "resource.aws_instance.node.a@2",
+      "resource.aws_instance.node.b@3",
+      "resource.aws_instance.node.c@4",
+    ]);
+  });
+
+  it("stops at a closer it did not open", () => {
+    // The `}` that ends the block belongs to the block, not to the value.
+    const sites = hclAttributeSites(`resource "r" "n" {\n  a = var.x\n}\nresource "r" "m" {\n  b = var.y\n}\n`);
+    expect(sites.map((s) => s.path)).toEqual(["resource.r.n.a", "resource.r.m.b"]);
   });
 });
