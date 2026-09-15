@@ -49,6 +49,8 @@ export type MarkdownRow = {
   // markdown set did not — one model read two ways depending on which half of
   // this tool the reader was holding.
   control?: true;
+  // Drawn to hold other rows, and nothing else — see where it is pushed.
+  block?: true;
   // One entry per column the table has: per environment on a sheet that has
   // them, and `{ "": value }` on one that does not. A row holding a single
   // SHARED value repeats it across the columns, which is what the sheet's own
@@ -428,6 +430,13 @@ function rowsOf(params: ParamData[], instances: string[], l: Lang, path: string[
         key: INDENT.repeat(depth) + cell(containerLeaf(b.path)),
         values: { ...blank },
         shared: true as const,
+        // Structure, not a row the model has. A block whose opening carries no
+        // argument is no decision of anybody's — the model states it only as
+        // the INDENT of the rows inside it — but a table has no other way to
+        // put those rows under something, so the projection draws the opening.
+        // Read back without this, it came home as a row the model never had:
+        // one per block, on every sheet whose rows sit in blocks.
+        block: true as const,
         default: "",
         description: "",
         remarks: "",
@@ -715,6 +724,7 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
         (row.absent === true ? cellMark("absent", "") : "") +
         (row.elsewhere === true ? cellMark("elsewhere", "") : "") +
         (row.vendor === true ? cellMark("vendor", "") : "") +
+        (row.block === true ? cellMark("block", "") : "") +
         (row.outOfScope === undefined ? "" : cellMark("oos", row.outOfScope)) +
         (row.outOfScopeOwner === undefined ? "" : cellMark("oosowner", row.outOfScopeOwner)) +
         (row.presence === undefined ? "" : cellMark("presence", row.presence));
@@ -1059,6 +1069,10 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
       const same = new Set(values).size <= 1 && !has("perenv");
       const key = chain.slice(0, row.indent + 1).join(".");
       if (split.preview !== undefined) addresses.push({ key, href: split.preview });
+      // A block the projection drew so its contents could sit under something
+      // is not a row: it is already in the chain above, which is what the rows
+      // inside it are named and indented by.
+      if (has("block")) continue;
       // The blocks this row sits in, and whether it IS one. The document says
       // both with its indent: the rows above it at shallower indents are the
       // blocks, and a row something is indented UNDER is a block itself. The
@@ -1083,7 +1097,14 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
       }
       params.push({
         key,
-        ...(row.indent > 0 ? { container_path: chain.slice(0, row.indent).map((p) => ({ path: p })) } : {}),
+        // …with the block's own NAME on each step. The sheet draws a heading
+        // for a block whose row is not on screen and takes the words from
+        // there, so a step carrying only a path drew an empty one — a heading
+        // with nothing in it, above rows that need it to say which block they
+        // are in.
+        ...(row.indent > 0
+          ? { container_path: chain.slice(0, row.indent).map((p) => ({ path: p, name: p })) }
+          : {}),
         ...(holds ? { container: { name } } : {}),
         // Named by the column's own header: which environments a table carries
         // is the table's business, and a name read off a list somewhere else

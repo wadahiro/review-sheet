@@ -179,7 +179,8 @@ describe("the sheet as markdown, written", () => {
     expect(table.kind === "table" && table.rows.map((r) => [r.indent, r.cells[0]])).toEqual([
       [0, "`Unit`"],
       [1, "`Description`"],
-      [0, "`Service`"],
+      // …and says beside itself that it is the opening and not a row.
+      [0, "`Service`<!-- rs:block= -->"],
       [1, "`Restart`"],
       [1, "`Nice`"],
     ]);
@@ -233,6 +234,12 @@ describe("the sheet as markdown, rendered", () => {
       (r as HTMLElement).style.getPropertyValue("--rs-block-depth") || "0",
       r.querySelector("td.rs-col-key")?.textContent,
     ]);
+    // `Service` is there, and is NOT a row: the model has that block only as
+    // the indent of the row inside it, and the sheet draws the heading from
+    // that chain. The projection writes an opening for it because a table has
+    // no other way to put a row under something — and says so beside it, so the
+    // page draws its own heading rather than reading the opening as a row the
+    // model never had.
     expect(keys).toEqual([
       ["0", "Unit"],
       ["1", "Description"],
@@ -286,10 +293,10 @@ describe("the rows the derived index states", () => {
 
   it("marks the row nobody set, and only that one", () => {
     const origins = cats()[0].params!.map((p) => [p.key, p.origin]);
+    // `Service` is the projection's own block opening, not a row — see above.
     expect(origins).toEqual([
       ["Unit", undefined],
       ["Unit.Description", undefined],
-      ["Service", undefined],
       ["Service.Restart", undefined],
       ["Service.Nice", "default"],
     ]);

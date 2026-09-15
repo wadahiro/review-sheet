@@ -154,6 +154,14 @@ const MODEL = {
               value: "Indexes",
               description: "Options",
             },
+            // A block whose opening carries no argument: the model has no row
+            // for it at all, only the indent of what is inside.
+            {
+              key: "IfModule.LogLevel",
+              container_path: [{ path: "IfModule", name: "IfModule" }],
+              value: "warn",
+              description: "Level",
+            },
             // …and one this project is deliberately not reviewing here.
             {
               key: "pw",
