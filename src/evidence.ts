@@ -110,6 +110,43 @@ export function evidencePreviews(
   return out;
 }
 
+// The model with the collected evidence taken back out — the model as the file
+// on disk holds it.
+//
+// Evidence is carried BESIDE a model and is never part of one: `--evidence`
+// reads a separate results file and appends observed documents to each
+// version's `artifacts` at generate time, and the model an import wrote has
+// never held them. Anything that IDENTIFIES the model therefore has to take
+// them back out, or it identifies the delivery's flags instead.
+//
+// Which is not hypothetical: a markdown set's stamp is taken over the model and
+// `verify --md` re-takes it over the model FILE, so every evidence-carrying
+// delivery was reported stale the moment it was written — a gate that could
+// only fail, with nothing the reader could do to make it pass. Both sides go
+// through this one function, so the two can never disagree about what the model
+// is.
+type WithArtifacts = { artifacts?: ArtifactPreview[] };
+
+function withoutObserved<V extends WithArtifacts>(v: V): V {
+  const held = v.artifacts;
+  if (held === undefined) return v;
+  const kept = held.filter((a) => a.nature !== "observed");
+  // Nothing left is NO KEY, whether or not there was one before. This is the
+  // exact inverse of appending — which creates the key on a model that had
+  // none — and an `artifacts: []` a model genuinely carries is stamped the same
+  // way on both sides, which is all the check asks of it.
+  if (kept.length === 0) {
+    const { artifacts: _dropped, ...rest } = v;
+    return rest as V;
+  }
+  return kept.length === held.length ? v : { ...v, artifacts: kept };
+}
+
+export function withoutEvidence<T extends WithArtifacts & { versions?: WithArtifacts[] }>(model: T): T {
+  if (model.versions === undefined) return withoutObserved(model);
+  return { ...model, versions: model.versions.map(withoutObserved) };
+}
+
 // A verdict's evidence cell: the address it always carried, made a LINK to the
 // document that address names — when that document is actually being carried.
 //

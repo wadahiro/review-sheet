@@ -13,7 +13,7 @@
 // cover is NOT IN THE FILE, not hidden in it.
 
 import { describe, it, expect } from "bun:test";
-import { evidencePreviews, evidenceCell } from "../src/evidence";
+import { evidencePreviews, evidenceCell, withoutEvidence } from "../src/evidence";
 import { parseEvidenceRef } from "../src/html/app";
 import type { TestResults } from "../src/testresults";
 
@@ -242,5 +242,30 @@ describe("which sheet an evidence document is filed under", () => {
     // whose values it answers for is the only anchor left.
     expect(sheetOf(new Map([["observed local web01 /etc/other.conf", "unit tests"]]))).toBe("web");
     expect(sheetOf(undefined)).toBe("web");
+  });
+});
+
+// A stamp identifies the MODEL. Evidence is carried beside one and is never
+// part of it, so the stamp must not move when a delivery carries some — the
+// check that reads it re-takes it over the model FILE, which never held any.
+describe("the model a stamp is taken over", () => {
+  const observed = { id: "o", sheet: "s", source_file: "/etc/x", nature: "observed" as const, lines: [] };
+  const rendered = { id: "a", sheet: "s", source_file: "x.j2", lines: [] };
+
+  it("is the same before and after evidence is carried", () => {
+    const model = { sheets: [], artifacts: [rendered] };
+    expect(withoutEvidence({ ...model, artifacts: [rendered, observed] })).toEqual(model);
+  });
+
+  it("has no artifacts key when evidence created it", () => {
+    // `--evidence` appends to a model that may carry no artifacts at all, which
+    // CREATES the key. Taking the evidence out has to take the key with it, or
+    // the inverse is not an inverse.
+    expect(Object.keys(withoutEvidence({ sheets: [], artifacts: [observed] }))).toEqual(["sheets"]);
+  });
+
+  it("does the same inside every version of a history", () => {
+    const one = { version: "1", artifacts: [rendered] };
+    expect(withoutEvidence({ versions: [{ ...one, artifacts: [rendered, observed] }] })).toEqual({ versions: [one] });
   });
 });

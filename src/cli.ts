@@ -22,7 +22,7 @@ import { findBakedSecrets, formatBakedSecrets, findSecretsInEvidence, formatEvid
 import { listProbeRules } from "./channel.js";
 import { collectHost, reachWith } from "./collect.js";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, ArtifactPreview } from "./types.js";
-import { evidencePreviews } from "./evidence.js";
+import { evidencePreviews, withoutEvidence } from "./evidence.js";
 import { inZone, knownZone } from "./instant.js";
 import { computeApply } from "./apply.js";
 import { verifySources } from "./verify.js";
@@ -478,8 +478,9 @@ async function writeMarkdownSet(
 
   // Identifies the MODEL, not this rendering: the same model written twice in
   // two languages is the same model, and a stamp that moved with the rendering
-  // could not say whether the configuration had changed underneath.
-  const stamp = modelStamp(input);
+  // could not say whether the configuration had changed underneath. Nor with
+  // the evidence the delivery carries beside it — see `withoutEvidence`.
+  const stamp = modelStamp(withoutEvidence(input));
 
   const carried = carriedDocuments(previews, instances);
 
@@ -1915,7 +1916,7 @@ program
             was.instances === undefined || instancesOf(input).length === 0
               ? input
               : restrictInstances(input, was.instances).input;
-          const now = modelStamp(same);
+          const now = modelStamp(withoutEvidence(same));
           const covers = was.instances === undefined ? "" : ` (${was.instances.join(", ")})`;
           if (was.stamp !== now) {
             console.error(`Error: ${opts.md}/ was written from model ${was.stamp}${covers}; this one is ${now}. Regenerate the set (generate --format md).`);
