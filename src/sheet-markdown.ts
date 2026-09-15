@@ -116,7 +116,17 @@ export type MarkdownRow = {
   //             value IS its presence.
   perEnv?: true;
   absent?: true;
+  // The product's own word for a setting whose value IS its presence. The
+  // EMPTY string where the product has no word of its own but the row is still
+  // one of those: the sheet then says it in its own words, and a row carrying
+  // nothing at all reads as an ordinary `true`.
   presence?: string;
+  // Where this row's default was READ, when a distribution's shipped file
+  // supplied it rather than the product's documentation. The sheet prints it
+  // beside the default, because a product's own documentation and the file a
+  // distribution ships disagree often enough that a default with no source
+  // reads as broken.
+  defaultFrom?: string;
   // Every value cell is empty and the row is NOT one nobody set: its value is
   // in an environment this document does not carry. A delivery narrowed to some
   // of them produces exactly this, and reports it — 5 rows of one real delivery
@@ -320,7 +330,8 @@ function rowOf(p: ParamData, instances: string[], l: Lang, path: string[], opts:
     ...(lang(p.out_of_scope?.reason, l) === "" ? {} : { outOfScope: lang(p.out_of_scope?.reason, l) }),
     ...(p.out_of_scope?.owner === undefined ? {} : { outOfScopeOwner: p.out_of_scope.owner }),
     ...(p.absent_where_unlisted === true ? { absent: true as const } : {}),
-    ...(lang(p.presence_label, l) === "" ? {} : { presence: lang(p.presence_label, l) }),
+    ...(p.presence === true ? { presence: lang(p.presence_label, l) } : {}),
+    ...(p.default_from === undefined ? {} : { defaultFrom: p.default_from }),
     // …and the documented default, when the column is showing the vendor's.
     // WHENEVER the column is showing the vendor's, even where the product
     // documents no default of its own: an empty marker still says which of the
@@ -727,7 +738,8 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
         (row.block === true ? cellMark("block", "") : "") +
         (row.outOfScope === undefined ? "" : cellMark("oos", row.outOfScope)) +
         (row.outOfScopeOwner === undefined ? "" : cellMark("oosowner", row.outOfScopeOwner)) +
-        (row.presence === undefined ? "" : cellMark("presence", row.presence));
+        (row.presence === undefined ? "" : cellMark("presence", row.presence)) +
+        (row.defaultFrom === undefined ? "" : cellMark("from", row.defaultFrom));
       const cells = [
         row.control === true
           ? `${indent}**${escapeCell(row.key.slice(indent.length))}**`
@@ -1139,7 +1151,12 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
         ...(label === undefined ? {} : { label }),
         ...(options.length === 0 ? {} : { options }),
         ...(has("absent") ? { absent_where_unlisted: true as const } : {}),
-        ...(presence === undefined ? {} : { presence: true as const, presence_label: presence }),
+        ...(presence === undefined
+          ? {}
+          : { presence: true as const, ...(presence === "" ? {} : { presence_label: presence }) }),
+        ...(split.marks.find((m) => m.kind === "from") === undefined
+          ? {}
+          : { default_from: split.marks.find((m) => m.kind === "from")!.value }),
         ...(extra === undefined ? {} : { extra }),
         // Nothing is set here: the document says so by leaving every value cell
         // empty, and this is that fact in the shape the viewer knows it by.

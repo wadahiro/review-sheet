@@ -172,6 +172,13 @@ const MODEL = {
             // A setting whose value IS its presence, and the product's own word
             // for it.
             { key: "http", value: "true", presence: true, presence_label: { ja: "許可" }, default: "true", description: "Service" },
+            // …and one the product has no word of its own for: the sheet says
+            // it in the reader's language, and a row carrying nothing at all
+            // reads as an ordinary `true`.
+            { key: "cockpit", value: "true", presence: true, default: "true", description: "Service" },
+            // Where the default was READ — a distribution's shipped file rather
+            // than the product's documentation.
+            { key: "driftfile", value: "/var/lib/chrony/drift", default: "/var/lib/chrony/drift", default_from: "/etc/chrony.conf", description: "Drift" },
             { key: "Timeout", value: "60", default: "60", origin: "default", description: "Idle timeout" },
             { key: "ServerName", description: "Name", instances: [{ name: "staging", value: "a" }, { name: "production", value: "b" }] },
           ],
