@@ -755,6 +755,16 @@ function ReviewModal({ target, field, currentValue, sharedRow, reviews, onSave, 
 // Edit modal (editing a generated document)
 // ============================================================
 
+// The namespacing the build uses (recipes/document.ts): an id has to be unique
+// across the whole document and a heading text is not. Shared, because the
+// outline of a page read back out of a folder is derived from the same render
+// that draws it — two spellings of this would be a tree whose entries point at
+// ids the page does not have, which does nothing when clicked and says nothing
+// about why.
+export function docIdPrefix(sheetName: string): string {
+  return `rs-doc-${sheetName.replace(/[^A-Za-z0-9\u00A0-\uFFFF]+/g, "-").replace(/^-+|-+$/g, "") || "sheet"}-`;
+}
+
 // A document sheet's body.
 function DocumentBody({ sheet, onEvidence, t }: {
   sheet: SheetData["sheets"][number];
@@ -787,10 +797,7 @@ function DocumentBody({ sheet, onEvidence, t }: {
       console.warn(`document "${sheet.name}" carries markdown and no rendered html, and this page has no markdown renderer`);
       return "";
     }
-    // The same namespacing the build uses (recipes/document.ts): ids have to be
-    // unique across the whole document, and a heading text is not.
-    const prefix = `rs-doc-${sheet.name.replace(/[^A-Za-z0-9\u00A0-\uFFFF]+/g, "-").replace(/^-+|-+$/g, "") || "sheet"}-`;
-    return render_(md, {}, { navDepth: 0, idPrefix: prefix }).html;
+    return render_(md, {}, { navDepth: 0, idPrefix: docIdPrefix(sheet.name) }).html;
   }, [doc.html, doc.markdown, sheet.name]);
 
   // Diagrams are drawn HERE, not by the build — see mermaid-runtime.ts. After
@@ -3659,7 +3666,20 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     // the text a second time through a renderer of its own, and six visible
     // differences came out of the two — so the second one is gone and anything
     // the lift does not carry is carried now (`lead`).
-    if (!base.sheets.some((s) => s.document?.mode === "sheet")) return base;
+    // …and a PROSE page read back out of a folder, whose outline is its own
+    // headings. The model bakes those in at generate time; a dropped set has
+    // only the text, and the viewer rendered it asking for no headings at all
+    // (`navDepth: 0`) and threw away the half of the answer that carries them —
+    // so those pages had a chapter tree entry and nothing under it. Measured on
+    // a real delivery: 4 pages, 50 headings, and the longest of them is the
+    // unit-test record, where jumping to a section is the whole point.
+    //
+    // Rendered HERE rather than in the body, and the result kept, so it is the
+    // SAME render: two of them would be two answers about what the page is, and
+    // the tree points at ids only one of them baked.
+    const proseHere = (s: SheetData["sheets"][number]): boolean =>
+      s.document !== undefined && s.document.mode !== "sheet" && (s.document.html ?? "") === "" && (s.document.markdown ?? "") !== "";
+    if (!base.sheets.some((s) => s.document?.mode === "sheet" || proseHere(s))) return base;
     // A column the page has and this tool has no field for is DECLARED, so the
     // sheet's own table shows it under its own heading instead of folding it
     // into a neighbour. Document-level, as every other column declaration is,
@@ -3670,6 +3690,16 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     // literal evaluates its properties in order — written above `sheets:` it
     // was read while still empty, and the column never reached the table.
     const sheets = base.sheets.map((s) => {
+        if (proseHere(s)) {
+          const render_ = getMarkdownRenderer();
+          if (render_ === null) return s;
+          // The depth is the one this projection defaults to: a set carries the
+          // text and not the project's own `nav_depth`, so a document that
+          // declared a deeper outline gets the default here and says so by
+          // showing fewer levels — never by pointing at an id that is not there.
+          const out = render_(s.document!.markdown ?? "", {}, { idPrefix: docIdPrefix(s.name) });
+          return { ...s, document: { ...s.document!, html: out.html, ...(out.headings.length > 0 ? { headings: out.headings } : {}) } };
+        }
         if (s.document?.mode !== "sheet") return s;
         const markdown = s.document.markdown ?? "";
         // The environments the DOCUMENT declares. The model's list is what it

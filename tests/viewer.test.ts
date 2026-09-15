@@ -14,7 +14,7 @@ if (typeof (globalThis as { document?: unknown }).document === "undefined") Glob
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { h, render } from "preact";
-import { Root, artifactProvenance, payloadOfSet } from "../src/html/app";
+import { Root, artifactProvenance, payloadOfSet, docIdPrefix } from "../src/html/app";
 import { readMarkdownSet } from "../src/md-read";
 import { setMarkdownRenderer } from "../src/html/markdown-runtime";
 import { renderMarkdown } from "../src/markdown";
@@ -2963,6 +2963,35 @@ describe("a dropped set's prose page", () => {
     expect(body!.textContent).toContain("Listen");
     // The document's own h1 is the sheet's name and is not printed twice.
     expect(body!.querySelector("h1")).toBeNull();
+  });
+
+  // …and its headings are its OUTLINE. The model bakes those in at generate
+  // time; a dropped set has only the text, and the render that draws it is
+  // where they come from — so the tree entry is not a heading with nothing
+  // under it. The entry has to point at an id the page really has, which is
+  // what makes one render rather than two the load-bearing part.
+  it("puts its headings in the chapter tree, pointing at the page's own ids", () => {
+    setMarkdownRenderer((source, images, opts) => renderMarkdown(source, () => null, opts));
+    const read = readMarkdownSet([{ path: "Records/Acceptance.md", text: PROSE }], "ja");
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(
+      h(Root, { payload: payloadOfSet({ title: "d" } as never, read), reviewEnabled: false, initialLang: "ja", server: false, dropped: "…" }),
+      host
+    );
+    expect(
+      [...host.querySelectorAll(".rs-navtree-item")].some((e) => (e.textContent ?? "").trim() === "Items"),
+      "the page's heading is not in the tree"
+    ).toBe(true);
+    // …and the tree's entry resolves. The id it carries comes from the render
+    // that produced the outline; the id on the page comes from the render that
+    // drew it — one render, so they are the same string, and the check is that
+    // the page really has the id that render decided.
+    const id = renderMarkdown(read.sheets[0]!.document.markdown, () => null, {
+      idPrefix: docIdPrefix(read.sheets[0]!.name),
+    }).headings[0]!.id;
+    expect(host.querySelector(`[id="${id}"]`), `the outline points at ${id}, which the page does not have`).not.toBeNull();
   });
 });
 
