@@ -498,3 +498,47 @@ describe("terraform-plan recipe: which line of a repeated block is which row", (
     expect(Object.keys(labelled(si))).toHaveLength(0);
   });
 });
+
+// A `count`ed resource writes each attribute ONCE, and that line is the source
+// of every replica — unlike repeated blocks, which write one line each.
+describe("terraform-plan recipe: one line that several rows are written by", () => {
+  const TF_COUNT = `resource "aws_instance" "node" {
+  count         = var.instance_count
+  instance_type = var.instance_type
+}
+`;
+  const PLAN_COUNT = JSON.stringify({
+    resource_changes: [
+      { address: "module.db.aws_instance.node[0]", change: { after: { instance_type: "t3.small" } } },
+      { address: "module.db.aws_instance.node[1]", change: { after: { instance_type: "t3.small" } } },
+    ],
+  });
+
+  const load = (planJson: string, tf: string) => {
+    const r = getRecipe("terraform-plan");
+    if (!r) throw new Error("terraform-plan recipe is not registered");
+    const files: Record<string, string> = { "/f/plan.json": planJson, "/f/module/main.tf": tf };
+    return r.load(
+      { name: "aws", recipe: "terraform-plan", snapshots: { staging: "plan.json" }, sources: { db: "module" } },
+      {
+        readFile: (p) => files[p] ?? null,
+        listDir: (p) => (p === "/f/module" ? ["main.tf"] : null),
+        specDir: "/f",
+        resolve: (p) => `/f/${p}`,
+        instances: ["staging"],
+      }
+    );
+  };
+
+  it("gives the one assignment to every row it writes", () => {
+    const si = load(PLAN_COUNT, TF_COUNT);
+    const lines = (si.artifacts ?? []).flatMap((a) => a.lines) as (ArtifactLine & { key?: string; keys?: string[]; text?: string })[];
+    const at = lines.find((l) => (l.text ?? "").includes("instance_type"))!;
+    // Both rows, on the one line — which is true: there is one assignment, and
+    // it is the source of every replica.
+    expect([...(at.keys ?? [at.key])].sort()).toEqual([
+      "db.aws_instance.node[0].instance_type",
+      "db.aws_instance.node[1].instance_type",
+    ]);
+  });
+});

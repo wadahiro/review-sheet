@@ -209,6 +209,15 @@ function buildFilePreview(
   // even though `hclIndex` (extraction) would have skipped it as an
   // expression.
   const sites = hclAttributeSites(content);
+  // How many assignments in THIS file land on one normalized row key — see the
+  // count/repeated-block split below.
+  const sitesPerKey = new Map<string, number>();
+  for (const site of sites) {
+    const k = tfSourceKey(component, site.path);
+    if (k === undefined) continue;
+    const n = normalizeTfKey(k);
+    sitesPerKey.set(n, (sitesPerKey.get(n) ?? 0) + 1);
+  }
   // Every scalar in this file by its own address, so a repeated block's
   // identifying field can be read from the block the line sits in.
   const valueAt = new Map<string, string>();
@@ -238,9 +247,29 @@ function buildFilePreview(
       continue;
     }
     // Unresolvable — the two documents address this repetition in ways nothing
-    // here can line up (a `count`ed resource has no identifying field to read).
-    // No preview beats one pointing at another setting's line, and it is
-    // reported rather than dropped.
+    // here can line up. A `count`ed resource has no identifying field to read:
+    // `instance_type = var.instance_type` inside `count = var.instance_count`
+    // is the source of `node[0]` AND `node[1]`, and asking which one it is
+    // asks a question the file does not answer.
+    //
+    // Two shapes hide under that, and only one of them is every row's line.
+    //
+    // A `count`ed RESOURCE writes each attribute ONCE, and that one line is the
+    // source of `node[0]` and `node[1]` alike — so it is both, which is what
+    // `ArtifactLine.keys` is for (types.ts: "One line can be SEVERAL rows").
+    // Dropping it left 14 rows of one real project with no way into their own
+    // source while the line sat right there, and the reason given — "no preview
+    // beats one pointing at another setting's line" — does not apply, because
+    // this line is not another setting's, it is theirs.
+    //
+    // Repeated BLOCKS are the opposite: each writes its own line, so every line
+    // belongs to exactly ONE row and nothing here can say which. Labelling them
+    // all with every row would tell a reader that one setting is written in two
+    // places, which is false. Those stay unlabelled.
+    //
+    // The two are told apart by counting: one site for this key in this file is
+    // the first shape, several is the second.
+    if ((sitesPerKey.get(normalizeTfKey(srcKey)) ?? 0) === 1) for (const k of group) addLineKey(keys, site.line, k);
     collapsedHere.set(group.join(SEP), group);
   }
   const preview = previewFile(
