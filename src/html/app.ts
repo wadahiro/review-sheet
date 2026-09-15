@@ -2232,7 +2232,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
         <span class="rs-key-subline">
           <button class="rs-artifact-chip" title=${t.artifactOpen}
                   onClick=${(e: Event) => { e.stopPropagation(); artifact!.open(artifactId, param.key); }}>
-            ${t.artifactTitle}
+            ${artifact!.natureFor(sheetName, categoryPath, param.key) === "source" ? t.artifactTitleSource : t.artifactTitle}
           </button>
         </span>
       ` as VNode);
@@ -3365,6 +3365,9 @@ export function parseEvidenceRef(value: string): { id: string; line?: number } {
 // What a row needs in order to offer "show me this line in the file".
 export type ArtifactAccess = {
   idFor: (sheetName: string, categoryPath: string, key: string) => string | undefined;
+  // What KIND of document the row routes to — see i18n's `artifactTitle`. The
+  // index resolved the document, so it is the only thing that knows.
+  natureFor: (sheetName: string, categoryPath: string, key: string) => ArtifactPreview["nature"];
   open: (id: string, key: string) => void;
 };
 
@@ -3411,7 +3414,7 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, dock, onD
   const gaps = shown.lines.filter((l) => l.kind === "unrendered" && l.cause !== "deploy-time").length;
 
   return html`
-    <aside class=${`rs-artifact-panel ${dock === "below" ? "rs-artifact-below" : ""}`} aria-label=${t.artifactTitle}>
+    <aside class=${`rs-artifact-panel ${dock === "below" ? "rs-artifact-below" : ""}`} aria-label=${shown.nature === "source" ? t.artifactTitleSource : t.artifactTitle}>
       <div class="rs-artifact-head">
         ${/* Pinned to the panel's own top-right corner rather than laid out
              beside the path: a deployed path is long and wraps, and a close
@@ -4167,7 +4170,11 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     () =>
       (artifacts?.length ?? 0) === 0
         ? undefined
-        : { idFor: artifactIndex.idFor, open: (id, key) => setArtifactTarget({ id, key }) },
+        : {
+            idFor: artifactIndex.idFor,
+            natureFor: (sheet, categoryPath, key) => artifactIndex.previewFor(sheet, categoryPath, key)?.nature,
+            open: (id, key) => setArtifactTarget({ id, key }),
+          },
     [artifacts, artifactIndex]
   );
 

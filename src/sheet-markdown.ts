@@ -75,6 +75,11 @@ export type MarkdownRow = {
   // the sheet's own viewer puts under a row's key, and putting it anywhere else
   // would make the two readings of one document look like two documents.
   preview?: string;
+  // The WORD the address wears, when it is not the ordinary one. A document
+  // nothing deploys is not a preview of anything — see html/i18n.ts's
+  // `artifactTitle` — and the set must not call it one while the viewer does
+  // not. Absent means the ordinary word for the document's language.
+  previewWord?: string;
 };
 
 // A heading and the rows under it. The heading path IS the category path, so
@@ -181,7 +186,9 @@ export type ProjectionOptions = {
   // the line and sees the setting in its own context — the `{% if %}` around
   // it, the block it is in — which is what a value on its own cannot be judged
   // against.
-  preview?: (p: ParamData, categoryPath: string[]) => string | undefined;
+  // The address a row's key cell carries, and optionally the word on it (a
+  // document nothing deploys is not a "preview" — see MarkdownRow.previewWord).
+  preview?: (p: ParamData, categoryPath: string[]) => string | { href: string; word?: string } | undefined;
 };
 
 const INDENT = "  ";
@@ -222,7 +229,14 @@ function rowOf(p: ParamData, instances: string[], l: Lang, path: string[], opts:
     default: cell(applies ?? ""),
     description: lang(p.description, l),
     remarks: lang(p.remarks, l),
-    ...(opts.preview === undefined ? {} : { preview: cell(opts.preview(p, path) ?? "") }),
+    ...(() => {
+      if (opts.preview === undefined) return {};
+      const at = opts.preview(p, path);
+      if (at === undefined) return { preview: cell("") };
+      const href = typeof at === "string" ? at : at.href;
+      const word = typeof at === "string" ? undefined : at.word;
+      return { preview: cell(href), ...(word === undefined ? {} : { previewWord: word }) };
+    })(),
   };
 }
 
@@ -555,7 +569,7 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
       const address =
         (row.preview ?? "") === ""
           ? ""
-          : `<br>[${PREVIEW}](${(row.preview ?? "").replace(/\|/g, "\\|")})`;
+          : `<br>[${row.previewWord ?? PREVIEW}](${(row.preview ?? "").replace(/\|/g, "\\|")})`;
       const cells = [
         row.control === true
           ? `${indent}**${escapeCell(row.key.slice(indent.length))}**`
@@ -1074,7 +1088,7 @@ export function parseSheetMarkdown(text: string, instances: string[], l: Lang = 
 export function sheetToMarkdown(
   sheet: Sheet,
   lang: Lang,
-  preview?: (p: ParamData, categoryPath: string[]) => string | undefined,
+  preview?: (p: ParamData, categoryPath: string[]) => string | { href: string; word?: string } | undefined,
   title?: string
 ): string {
   const doc = toMarkdownSheet(sheet as unknown as SheetData["sheets"][number], lang, {

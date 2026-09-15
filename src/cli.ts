@@ -7,6 +7,7 @@ import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { langFallbacks, localizeVersions } from "./localize.js";
 import { toMarkdownSet, href, modelStamp, stampOf, hasBody } from "./md-set.js";
+import { getMessages } from "./html/i18n.js";
 import type { Lang } from "./html/i18n.js";
 import { buildArtifactIndex } from "./artifact-index.js";
 import { carriedDocuments, addressOf, type CarriedDocument } from "./md-documents.js";
@@ -514,7 +515,13 @@ async function writeMarkdownSet(
       const at = addressOf([mine, ...(variantsOf.get(hit.id) ?? [])], row.key);
       if (at === undefined) return undefined;
       const [path = "", frag = ""] = at.split(/(#.*)$/);
-      return `${href(path)}${frag}`;
+      // …and the word it wears. A document nothing deploys is not a preview of
+      // anything, and the set must not call it one while the viewer does not.
+      const words = getMessages(lang);
+      return {
+        href: `${href(path)}${frag}`,
+        ...(hit.nature === "source" ? { word: words.artifactTitleSource } : {}),
+      };
     },
   });
 

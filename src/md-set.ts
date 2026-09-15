@@ -31,9 +31,12 @@ export type MarkdownSetOptions = {
   // arithmetic left for the caller to do, only the lookup.
   //
   // Omit it and no row carries an address.
+  // The address a row's key cell carries, and optionally the word on it — a
+  // document nothing deploys is not a "preview" of anything (see
+  // MarkdownRow.previewWord).
   preview?: (
     sheet: SheetData["sheets"][number]
-  ) => ((p: ParamData, categoryPath: string[]) => string | undefined) | undefined;
+  ) => ((p: ParamData, categoryPath: string[]) => string | { href: string; word?: string } | undefined) | undefined;
   // What the model was when this set was written. Carried in the INDEX and
   // nowhere else: it identifies the set, and a stamp on every file is a stamp
   // to forget on one of them.

@@ -89,12 +89,20 @@ type Messages = {
   shortcutSave: string;
   shortcutClose: string;
   // Artifact preview panel (the file a row lives in, beside the sheet).
-  // `artifactTitle` labels the affordance and the panel, and stays neutral
-  // on purpose: the panel shows a rendered artifact, a committed config file
-  // OR an authored source (see ArtifactPreview.nature), and "what gets
-  // deployed" was a false claim over the third.
+  //
+  // `artifactTitle` was meant to stay neutral across all three kinds a panel
+  // shows — a rendered artifact, a committed config file, an authored source —
+  // and the word chosen for it does not: a PREVIEW is what a file will be once
+  // it is deployed, and a Terraform module's `.tf` is never deployed at all. It
+  // is the code the value was written in, which the plan was derived FROM. So
+  // the word follows `ArtifactPreview.nature`, on the row's button and on the
+  // panel alike; a row routes to exactly one document, so its kind is known
+  // wherever the word is printed.
   artifactOpen: string;
   artifactTitle: string;
+  // …and for a document nothing deploys. Not "preview": there is nothing to
+  // preview, the file IS the subject.
+  artifactTitleSource: string;
   // The heading on a row's file sub-line. Shown only where one group holds
   // rows from more than one file (`layout: categories`), so a reader can see
   // the mixture instead of reading two files' settings as one file's.
@@ -315,6 +323,7 @@ const ja: Messages = {
   shortcutClose: "閉じる",
   artifactOpen: "設定ファイルの該当箇所を見る",
   artifactTitle: "プレビュー",
+  artifactTitleSource: "ソース",
   rowFile: "ファイル",
   present: "あり",
   presentWhen: "この行がある条件",
@@ -485,6 +494,7 @@ const en: Messages = {
   shortcutClose: "Close",
   artifactOpen: "Show this line in the file",
   artifactTitle: "Preview",
+  artifactTitleSource: "Source",
   rowFile: "File",
   present: "present",
   presentWhen: "in the file when",

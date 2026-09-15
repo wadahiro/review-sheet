@@ -316,3 +316,23 @@ describe("a control in a handed-over set", () => {
     expect(cells.slice(-3, -1)).toEqual(["一時的に停止", "無効"]);
   });
 });
+
+// A document nothing deploys is not a preview of anything.
+describe("the word a row's address wears", () => {
+  const sheet = () =>
+    ({ name: "aws", categories: [{ name: "alb", params: [{ key: "idle_timeout", value: "60", description: { ja: "d" } }] }] }) as unknown as SheetData["sheets"][number];
+
+  it("says the ordinary word for a file that gets deployed", () => {
+    const doc = toMarkdownSheet(sheet(), "ja", { preview: () => "artifacts/httpd.conf#L4" });
+    expect(renderSheetMarkdown(doc)).toContain("[プレビュー](artifacts/httpd.conf#L4)");
+  });
+
+  it("says the document's own word when the caller names one", () => {
+    // A Terraform module's `.tf` is authored and never deployed — the viewer's
+    // button says so, and the set must not disagree with it.
+    const doc = toMarkdownSheet(sheet(), "ja", { preview: () => ({ href: "artifacts/main.tf#L4", word: "ソース" }) });
+    const md = renderSheetMarkdown(doc);
+    expect(md).toContain("[ソース](artifacts/main.tf#L4)");
+    expect(md).not.toContain("プレビュー");
+  });
+});
