@@ -87,6 +87,10 @@ const MODEL = {
               description: "Mode",
             },
             { key: "ServerRoot", value: "/etc/httpd", default: "/usr/local/apache", baseline: "/etc/httpd", description: "Root" },
+            // The vendor shipped it and the product documents no default of its
+            // own — the column still holds the vendor's, and this project set
+            // the value to the same string.
+            { key: "Port", value: "80", baseline: "80", description: "Port" },
             { key: "Timeout", value: "60", default: "60", origin: "default", description: "Idle timeout" },
             { key: "ServerName", description: "Name", instances: [{ name: "staging", value: "a" }, { name: "production", value: "b" }] },
           ],
@@ -95,6 +99,19 @@ const MODEL = {
     },
   ],
   artifacts: [
+    // Scoped to a COMPONENT, so the way into the file is resolved against the
+    // category path — which is the identity's, not the displayed one.
+    {
+      id: "alb",
+      sheet: "web",
+      component: "alb",
+      source_file: "modules/alb/main.tf",
+      nature: "source",
+      lines: [
+        { text: 'resource "aws_lb" "this" {', kind: "verbatim" },
+        { text: "  idle_timeout = 60", kind: "verbatim", key: "idle" },
+      ],
+    },
     {
       id: "web",
       sheet: "web",

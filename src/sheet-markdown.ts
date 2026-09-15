@@ -268,7 +268,11 @@ function rowOf(p: ParamData, instances: string[], l: Lang, path: string[], opts:
     ...(label !== "" && label !== p.key ? { label } : {}),
     ...(options.length > 0 ? { options } : {}),
     // …and the documented default, when the column is showing the vendor's.
-    ...(p.baseline !== undefined && p.default !== undefined ? { product: p.default } : {}),
+    // WHENEVER the column is showing the vendor's, even where the product
+    // documents no default of its own: an empty marker still says which of the
+    // two the column holds, and without it a value this project set to what the
+    // distribution ships read as "the default, untouched".
+    ...(p.baseline !== undefined ? { product: p.default ?? "" } : {}),
     default: cell(applies ?? ""),
     description: saysWhatItsControlSays(p, l) ? "" : lang(p.description, l),
     remarks: lang(p.remarks, l),
@@ -404,6 +408,13 @@ export function toMarkdownSheet(
       const shown = pickLang(c.label, l) ?? c.display ?? c.name;
       const here = [...path, shown];
       const named = [...ids, shown === c.name ? undefined : c.name];
+      // …and the same path in IDENTITIES, which is what the caller resolves a
+      // row's file by (`ProjectionOptions.preview` is answered per sheet and
+      // per category, against the names the model uses). Handing it the
+      // displayed path stopped three sheets of a real delivery finding their
+      // files at all — every one of them a sheet whose components are named
+      // for the reader rather than by their own key.
+      const ids_ = here.map((x, n) => named[n] ?? x);
       // EVERY category, including one whose rows are all in its children. Its
       // heading is what makes the structure self-describing: without it a
       // nested category is written at a depth whose parent was never named, and
@@ -411,7 +422,7 @@ export function toMarkdownSheet(
       sections.push({
         path: here,
         ...(named.some((n) => n !== undefined) ? { names: named } : {}),
-        rows: rowsOf(c.params ?? [], instances, l, here, opts),
+        rows: rowsOf(c.params ?? [], instances, l, ids_, opts),
         // The section's own paragraph, which is editable prose like a remark —
         // so it round-trips through this document rather than reading as
         // something the reviewer just wrote.
@@ -1021,7 +1032,7 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
           ? {}
           : product === undefined
             ? { default: dflt.text.trim() }
-            : { baseline: dflt.text.trim(), default: product }),
+            : { baseline: dflt.text.trim(), ...(product === "" ? {} : { default: product }) }),
         ...(shape.description >= 0 && (row.cells[shape.description] ?? "").trim() !== ""
           ? { description: (row.cells[shape.description] ?? "").trim() }
           : {}),
