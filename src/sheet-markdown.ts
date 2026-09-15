@@ -49,8 +49,10 @@ export type MarkdownRow = {
   // markdown set did not — one model read two ways depending on which half of
   // this tool the reader was holding.
   control?: true;
-  // Drawn to hold other rows, and nothing else — see where it is pushed.
-  block?: true;
+  // Drawn to hold other rows, and nothing else. Carries the block's own PATH,
+  // which is its identity — the heading shows the leaf, and several blocks can
+  // share one. See where it is pushed.
+  block?: string;
   // One entry per column the table has: per environment on a sheet that has
   // them, and `{ "": value }` on one that does not. A row holding a single
   // SHARED value repeats it across the columns, which is what the sheet's own
@@ -447,7 +449,11 @@ function rowsOf(params: ParamData[], instances: string[], l: Lang, path: string[
         // put those rows under something, so the projection draws the opening.
         // Read back without this, it came home as a row the model never had:
         // one per block, on every sheet whose rows sit in blocks.
-        block: true as const,
+        // …and WHICH block: three `<IfModule>` openings are three blocks and
+        // one word, so the heading cannot be their identity. The rows inside
+        // them are keyed by it, and without it the second and third block's
+        // rows collided with the first's.
+        block: b.path,
         default: "",
         description: "",
         remarks: "",
@@ -735,7 +741,7 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
         (row.absent === true ? cellMark("absent", "") : "") +
         (row.elsewhere === true ? cellMark("elsewhere", "") : "") +
         (row.vendor === true ? cellMark("vendor", "") : "") +
-        (row.block === true ? cellMark("block", "") : "") +
+        (row.block === undefined ? "" : cellMark("block", row.block)) +
         (row.outOfScope === undefined ? "" : cellMark("oos", row.outOfScope)) +
         (row.outOfScopeOwner === undefined ? "" : cellMark("oosowner", row.outOfScopeOwner)) +
         (row.presence === undefined ? "" : cellMark("presence", row.presence)) +
@@ -1037,6 +1043,8 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
     const into = stack[stack.length - 1];
     if (into === undefined) continue;
     const chain: string[] = [];
+    // …and what each step of it SAYS, which is not what it is.
+    const shownChain: string[] = [];
     const params: ParamData[] = into.params ?? [];
     // Which rows nobody set, decided by the SAME rule the body hides by: a
     // container has no value of its own and must not be filed as unset while it
@@ -1054,7 +1062,12 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
       // read of a delivered set.
       if (isControlRow((row.cells[0] ?? "").trim())) continue;
       const split = splitKeyCell((row.cells[0] ?? "").trim());
-      const name = split.key.replace(/^`(.*)`$/s, "$1").trim();
+      const shownName = split.key.replace(/^`(.*)`$/s, "$1").trim();
+      // A block's IDENTITY is its path and its heading is the leaf of it: three
+      // `<IfModule>` openings are three blocks and one word. Every other row is
+      // its own identity.
+      const blockPath = split.marks.find((m) => m.kind === "block")?.value;
+      const name = blockPath !== undefined && blockPath !== "" ? blockPath : shownName;
       // The product's own words, taken back off the cells they were written
       // into. `label` shows above the key; `option` names a value; `product` is
       // the documented default, which means the column beside it is showing the
@@ -1070,6 +1083,8 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
       const presence = split.marks.find((m) => m.kind === "presence")?.value;
       chain.length = Math.min(row.indent, chain.length);
       chain[row.indent] = name;
+      shownChain.length = Math.min(row.indent, shownChain.length);
+      shownChain[row.indent] = shownName;
       const values = shape.values.map((n) => (row.cells[n] ?? "").trim());
       const names = shape.values.map((n) => block.head[n]);
       // One value across every column is a SHARED row — unless the page says
@@ -1115,7 +1130,7 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
         // with nothing in it, above rows that need it to say which block they
         // are in.
         ...(row.indent > 0
-          ? { container_path: chain.slice(0, row.indent).map((p) => ({ path: p, name: p })) }
+          ? { container_path: chain.slice(0, row.indent).map((p, i) => ({ path: p, name: shownChain[i] ?? p })) }
           : {}),
         ...(holds ? { container: { name } } : {}),
         // Named by the column's own header: which environments a table carries

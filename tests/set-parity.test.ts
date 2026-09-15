@@ -157,10 +157,19 @@ const MODEL = {
             // A block whose opening carries no argument: the model has no row
             // for it at all, only the indent of what is inside.
             {
-              key: "IfModule.LogLevel",
-              container_path: [{ path: "IfModule", name: "IfModule" }],
+              key: "IfModule[0].LogLevel",
+              container_path: [{ path: "IfModule[0]", name: "IfModule" }],
               value: "warn",
               description: "Level",
+            },
+            // A SECOND block with the same word for a heading. Three
+            // `<IfModule>` openings are three blocks and one word, so the
+            // heading cannot be what their rows are keyed by.
+            {
+              key: "IfModule[1].LogFormat",
+              container_path: [{ path: "IfModule[1]", name: "IfModule" }],
+              value: "combined",
+              description: "Format",
             },
             // …and one this project is deliberately not reviewing here.
             {

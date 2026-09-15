@@ -180,7 +180,7 @@ describe("the sheet as markdown, written", () => {
       [0, "`Unit`"],
       [1, "`Description`"],
       // …and says beside itself that it is the opening and not a row.
-      [0, "`Service`<!-- rs:block= -->"],
+      [0, "`Service`<!-- rs:block=Service -->"],
       [1, "`Restart`"],
       [1, "`Nice`"],
     ]);
