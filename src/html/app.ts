@@ -3431,7 +3431,20 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, dock, onD
         </div>
         <button class="rs-modal-close rs-artifact-close" onClick=${onClose} aria-label=${t.shortcutClose}>\u00d7</button>
         <div class="rs-artifact-title">
-          <span class="rs-artifact-path">${shown.nature === "source" ? shown.source_file : (shown.deployed_path ?? shown.source_file)}</span>
+          ${/* WHICH FILE this is. The deployed path wherever there is one — that
+               is what the sheet is about and what the recipient's own host
+               holds. A `nature: "source"` preview has none (a Terraform module's
+               `.tf` is authored and never deployed), so the title falls back to
+               where it is written HERE, which is a path inside this repository.
+               Under `--no-sources` that is the one thing a delivery does not
+               carry, so the file is named and its directory is not: the module
+               is already the component the reader opened this from, and the
+               name is what tells `main.tf` from `variables.tf`. */ ""}
+          <span class="rs-artifact-path">${(() => {
+            const deployed = shown.nature === "source" ? undefined : shown.deployed_path;
+            if (deployed !== undefined) return deployed;
+            return showSources() ? shown.source_file : (shown.source_file.split("/").pop() ?? shown.source_file);
+          })()}</span>
         </div>
         <div class="rs-artifact-meta">
           ${/* Provenance — which file to edit — and nothing else. A tally of how

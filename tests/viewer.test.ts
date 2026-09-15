@@ -3201,3 +3201,54 @@ describe("--no-sources and a row's backing variable", () => {
     expect(host.querySelector("tbody .rs-col-key")!.textContent).toContain("Listen");
   });
 });
+
+// A preview the sheet is ABOUT, whose file has no deployed counterpart.
+describe("a source preview's title in a delivery", () => {
+  const PAYLOAD = (nature: "source" | "artifact") => ({
+    metadata: { title: "t", version: "1" },
+    versions: [
+      {
+        version: "current",
+        sheets: [{ name: "aws", categories: [{ name: "alb", params: [{ key: "idle_timeout", value: "60", description: "d" }] }] }],
+        artifacts: [
+          {
+            id: "aws::alb",
+            sheet: "aws",
+            component: "alb",
+            nature,
+            source_file: "platforms/aws-ec2/terraform/modules/alb/main.tf",
+            ...(nature === "artifact" ? { deployed_path: "/etc/thing.conf" } : {}),
+            lines: [{ text: 'idle_timeout = 60', kind: "verbatim" as const, key: "idle_timeout" }],
+          },
+        ],
+      },
+    ],
+  });
+  const openPanel = async (nature: "source" | "artifact", sources: boolean): Promise<string> => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: PAYLOAD(nature) as never, reviewEnabled: true, showSources: sources, initialLang: "ja", server: false }), host);
+    (host.querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+    return (host.querySelector(".rs-artifact-path")?.textContent ?? "").trim();
+  };
+
+  it("names the file and not its place in this repository", async () => {
+    // A `.tf` is authored and never deployed, so the title has nowhere to fall
+    // back to but a path inside this repository — the one thing a delivery does
+    // not carry. The module is already the component the reader opened it from.
+    expect(await openPanel("source", false)).toBe("main.tf");
+  });
+
+  it("keeps the whole path for our own build", async () => {
+    expect(await openPanel("source", true)).toBe("platforms/aws-ec2/terraform/modules/alb/main.tf");
+  });
+
+  it("leaves a deployed path alone either way", async () => {
+    // That is where the file LANDS on the recipient's host — what the sheet is
+    // about, not where this project keeps it.
+    expect(await openPanel("artifact", false)).toBe("/etc/thing.conf");
+    expect(await openPanel("artifact", true)).toBe("/etc/thing.conf");
+  });
+});
