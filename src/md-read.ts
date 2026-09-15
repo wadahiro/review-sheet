@@ -15,7 +15,7 @@
 //
 // Pure: it is given the files, it does not read them.
 
-import { liftMarkdownSheet, declaredInstances, looksLikeParamSheet, renamedKeyColumns, parseSheetMarkdown, withoutDeployedPath } from "./sheet-markdown.js";
+import { liftMarkdownSheet, declaredInstances, looksLikeParamSheet, renamedKeyColumns, parseSheetMarkdown, withoutDeployedPath, comparesComponents } from "./sheet-markdown.js";
 import type { Lang } from "./html/i18n.js";
 import type { ArtifactPreview } from "./types.js";
 
@@ -30,6 +30,10 @@ export type ReadSet = {
     group?: string;
     instances: string[];
     categories: unknown[];
+    // Where this sheet's rows land, and how the page is read — both stated by
+    // the page itself, so a set carries no number the reader cannot see.
+    file_path?: string;
+    compare_components?: "always";
     // `mode: "sheet"` on a page whose markdown IS a parameter table, absent on
     // one that is prose — the viewer switches on exactly this, and a set holds
     // both kinds (see `looksLikeParamSheet`).
@@ -200,6 +204,8 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
       display,
       ...(group === undefined ? {} : { group }),
       ...(deployed === undefined ? {} : { file_path: deployed }),
+      // …and how the page is READ, which the page says itself.
+      ...(comparesComponents(markdown) ? { compare_components: "always" as const } : {}),
       instances: declaredInstances(markdown) ?? [],
       categories: lifted.categories as unknown[],
       document: { html: "", markdown: deployed === undefined ? markdown : withoutDeployedPath(markdown), mode: "sheet" },

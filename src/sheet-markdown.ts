@@ -120,6 +120,8 @@ export type MarkdownSheet = {
   // prose: a reader may write prose here, and a fact this projection is
   // responsible for must not be mixed into text nobody parses.
   file?: string;
+  // Read side by side, one column per component — see COMPARE_MARKER.
+  compare?: true;
   // Prose before the first heading.
   prose: string;
 };
@@ -389,7 +391,15 @@ export function toMarkdownSheet(
     }
   };
   walk(sheet.categories, [], []);
-  return { sheet: sheet.name, instances, lang: l, sections, ...(sheet.file_path === undefined ? {} : { file: sheet.file_path }), prose: "" };
+  return {
+    sheet: sheet.name,
+    instances,
+    lang: l,
+    sections,
+    ...(sheet.file_path === undefined ? {} : { file: sheet.file_path }),
+    ...(sheet.compare_components === "always" ? { compare: true as const } : {}),
+    prose: "",
+  };
 }
 
 // The column a value goes in. A Pattern A row has one; a Pattern B sheet has one
@@ -564,6 +574,7 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
   // The sheet's name, so a file that has been saved and reopened still says
   // which sheet it is — and so a reviewer editing two of them cannot mix them up.
   out.push(`# ${doc.title ?? doc.sheet}`, "");
+  if (doc.compare) out.push(COMPARE_MARKER_TEXT, "");
   if (doc.file) out.push(`\`${doc.file}\``, "");
   if (doc.prose) out.push(doc.prose, "");
   for (const section of doc.sections) {
@@ -638,6 +649,20 @@ const HEADING = /^(#{1,6})\s+(.*?)\s*$/;
 // identity carries nothing at all.
 const NAME_MARKER = /^\s*<!--\s*rs:name=(.*?)\s*-->\s*$/;
 export const nameMarker = (name: string): string => `<!-- rs:name=${name} -->`;
+
+// …and how this SHEET is read: side by side, one column per component, rather
+// than as sections stacked down the page. A sheet that exists only to compare
+// (`compare_components: "always"`) opens that way and has no stacked reading to
+// return to, and the set carried the tables and not the choice — so ten sheets
+// of one real delivery opened stacked, with an orientation toggle instead of
+// the comparison they are for.
+//
+// At the top of the page, because it is about the whole page, and in the same
+// spelling as every other fact this projection writes beside the thing it is
+// about.
+const COMPARE_MARKER = /^\s*<!--\s*rs:compare\s*-->\s*$/m;
+export const COMPARE_MARKER_TEXT = "<!-- rs:compare -->";
+export const comparesComponents = (text: string): boolean => COMPARE_MARKER.test(text);
 const TABLE_ROW = /^\s*\|(.*)\|\s*$/;
 const SEPARATOR = /^\s*\|[\s:|-]+\|\s*$/;
 

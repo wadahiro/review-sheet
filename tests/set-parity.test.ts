@@ -33,6 +33,18 @@ const MODEL = {
   metadata: { title: "d", project: "p" },
   groups: [{ name: "design", display: "Detailed design", groups: [{ name: "srv", display: "Web tier" }] }],
   sheets: [
+    // A sheet that exists only to compare: it opens side by side and has no
+    // stacked reading to return to.
+    {
+      name: "versions",
+      group: "srv",
+      instances: ["staging"],
+      compare_components: "always",
+      categories: [
+        { name: "19.0.2", params: [{ key: "db", value: "postgres", description: "Store" }] },
+        { name: "26.7.3", params: [{ key: "db", value: "postgres", description: "Store" }] },
+      ],
+    },
     {
       name: "web",
       group: "srv",
@@ -72,9 +84,9 @@ const MODEL = {
   ],
 };
 
-function draw(payload: unknown): HTMLElement {
+function draw(payload: unknown, tab: number): HTMLElement {
   document.body.innerHTML = "";
-  location.hash = "#1";
+  location.hash = `#${tab}`;
   const host = document.createElement("div");
   document.body.appendChild(host);
   render(h(Root as never, { payload, reviewEnabled: false, initialLang: "ja", server: false } as never), host);
@@ -128,7 +140,7 @@ function writtenSet(): ReturnType<typeof toMarkdownSet> {
 // Rendered ONE AT A TIME and read before the next: `draw` empties the document,
 // so holding both hosts and reading them afterwards reads one live tree and one
 // that has been torn out — which passes and compares nothing.
-async function bothWays(act: (host: HTMLElement) => void = () => {}): Promise<{ embedded: string[]; folder: string[] }> {
+async function bothWays(tab = 1, act: (host: HTMLElement) => void = () => {}): Promise<{ embedded: string[]; folder: string[] }> {
   setMarkdownRenderer((source, images, opts) => renderMarkdown(source, () => null, opts));
   const { files } = writtenSet();
   const read = readMarkdownSet(files.map((f) => ({ path: f.path, text: f.text })), "ja");
@@ -136,7 +148,7 @@ async function bothWays(act: (host: HTMLElement) => void = () => {}): Promise<{ 
   // A state change redraws on a microtask, so what `act` asked for is not on
   // screen until it has been let run.
   const one = async (payload: unknown): Promise<string[]> => {
-    const host = draw(payload);
+    const host = draw(payload, tab);
     act(host);
     await new Promise((r) => setTimeout(r, 0));
     return seen(host);
@@ -153,9 +165,14 @@ afterEach(() => {
 });
 
 describe("the same model, carried and read back", () => {
+  // EVERY page, not the first: the sheets differ in shape — one compares its
+  // components, one is an ordinary table — and a difference lives in whichever
+  // shape nobody looked at.
   it("shows the reader the same page", async () => {
-    const { embedded, folder } = await bothWays();
-    expect(folder).toEqual(embedded);
+    for (let tab = 1; tab <= MODEL.sheets.length; tab++) {
+      const { embedded, folder } = await bothWays(tab);
+      expect(folder, `page ${tab} differs`).toEqual(embedded);
+    }
   });
 
   // The heading says what the page says, and the IDENTITY comes back intact —
@@ -168,7 +185,8 @@ describe("the same model, carried and read back", () => {
     const page = files.find((f) => f.path.endsWith("web.md"))!;
     expect(page.text).toContain("<!-- rs:name=alb -->\n## SSO 公開エンドポイント");
     const read = readMarkdownSet(files.map((f) => ({ path: f.path, text: f.text })), "ja");
-    const top = (read.sheets[0]!.categories as { name: string; display?: string }[])[0]!;
+    const web = read.sheets.find((x) => x.display === "web")!;
+    const top = (web.categories as { name: string; display?: string }[])[0]!;
     expect(top.name).toBe("alb");
     expect(top.display).toBe("SSO 公開エンドポイント");
   });
@@ -176,7 +194,7 @@ describe("the same model, carried and read back", () => {
   it("…and the same page in the other orientation", async () => {
     // The toggle is part of it: a reading the set could not offer is a
     // difference the first comparison cannot see, because it never gets there.
-    const { embedded, folder } = await bothWays((host) => {
+    const { embedded, folder } = await bothWays(2, (host) => {
       const btn = [...host.querySelectorAll("button.rs-view-btn")].find((b) => (b.textContent ?? "").includes("転置")) as HTMLButtonElement;
       expect(btn, "no orientation toggle on this page").not.toBeUndefined();
       btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
