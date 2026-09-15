@@ -136,12 +136,21 @@ describe("the sheet as markdown, rendered", () => {
 
   // Freezing the leading columns is the sheet's own control, on the sheet's own
   // classes — a document is read the same way a sheet is.
-  it("freezes the key column, and lets it go", async () => {
+  // Two columns to begin with, not one: the key and the description beside it,
+  // which is what the SHEET freezes by default when the table has a description
+  // at all — a key alone scrolls away from the sentence saying what it is. The
+  // two readings of one document are held to each other by `set-parity`.
+  it("freezes the key and its description, and lets them go", async () => {
     const host = mount();
+    expect(host.querySelector("table")?.className).toContain("rs-freeze-2");
+    const tick = async (): Promise<void> => {
+      (host.querySelector(".rs-pin") as HTMLElement).click();
+      // Preact batches, so the class is on the next tick, not this one.
+      await new Promise((r) => setTimeout(r, 40));
+    };
+    await tick();
     expect(host.querySelector("table")?.className).toContain("rs-freeze-1");
-    (host.querySelector(".rs-pin") as HTMLElement).click();
-    // Preact batches, so the class is on the next tick, not this one.
-    await new Promise((r) => setTimeout(r, 40));
+    await tick();
     expect(host.querySelector("table")?.className).toContain("rs-freeze-0");
   });
 
@@ -507,7 +516,10 @@ describe("what a value cell says about itself", () => {
 
   it("marks a value of its own, one that equals the default, and one nobody set", () => {
     const host = mountMd();
-    expect(cellsOf(host, "own")).toEqual(["rs-changed", "rs-changed"]);
+    // `rs-cell-common` beside it: one value repeated across every environment
+    // is what `origin: "common"` asserts, and the sheet marks it. A set carries
+    // no origin by design, so it is read off the table — see md-sheet.ts.
+    expect(cellsOf(host, "own")).toEqual(["rs-changed rs-cell-common", "rs-changed rs-cell-common"]);
     expect(cellsOf(host, "same")).toEqual(["rs-same-as-default", "rs-same-as-default"]);
     expect(cellsOf(host, "unset")).toEqual(["rs-cell-unset", "rs-cell-unset"]);
   });

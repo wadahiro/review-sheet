@@ -15,7 +15,7 @@
 //
 // Pure: it is given the files, it does not read them.
 
-import { markdownToCategories, declaredInstances, looksLikeParamSheet, renamedKeyColumns } from "./sheet-markdown.js";
+import { markdownToCategories, declaredInstances, looksLikeParamSheet, renamedKeyColumns, parseSheetMarkdown, withoutDeployedPath } from "./sheet-markdown.js";
 import type { Lang } from "./html/i18n.js";
 import type { ArtifactPreview } from "./types.js";
 
@@ -179,13 +179,19 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
       });
       continue;
     }
+    // WHERE this sheet's rows land, lifted out of the page and into the field
+    // the sheet's own heading shows it from. Left in the markdown it would be
+    // read twice — as the page's subtitle and again as a paragraph of its body
+    // — which is the one thing a page built from the model does not do.
+    const deployed = parseSheetMarkdown(markdown, [], lang).file;
     sheets.push({
       name,
       display,
       ...(group === undefined ? {} : { group }),
+      ...(deployed === undefined ? {} : { file_path: deployed }),
       instances: declaredInstances(markdown) ?? [],
       categories: markdownToCategories(markdown, declaredInstances(markdown) ?? [], lang) as unknown[],
-      document: { html: "", markdown, mode: "sheet" },
+      document: { html: "", markdown: deployed === undefined ? markdown : withoutDeployedPath(markdown), mode: "sheet" },
     });
   }
 

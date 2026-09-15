@@ -109,6 +109,14 @@ export type MarkdownSheet = {
   // string. Carried on the document, not per row: one rendering, one language.
   lang: Lang;
   sections: MarkdownSection[];
+  // WHERE this sheet's rows land on the host, when the sheet is about a
+  // deployed file. Written as a lone code span under the title, which is the
+  // same thing the sheet's own page shows under its heading — a set that left
+  // it out made one document say two different things about itself depending
+  // on whether it was opened from the model or read back out of a folder. Not
+  // prose: a reader may write prose here, and a fact this projection is
+  // responsible for must not be mixed into text nobody parses.
+  file?: string;
   // Prose before the first heading.
   prose: string;
 };
@@ -371,7 +379,7 @@ export function toMarkdownSheet(
     }
   };
   walk(sheet.categories, []);
-  return { sheet: sheet.name, instances, lang: l, sections, prose: "" };
+  return { sheet: sheet.name, instances, lang: l, sections, ...(sheet.file_path === undefined ? {} : { file: sheet.file_path }), prose: "" };
 }
 
 // The column a value goes in. A Pattern A row has one; a Pattern B sheet has one
@@ -546,6 +554,7 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
   // The sheet's name, so a file that has been saved and reopened still says
   // which sheet it is — and so a reviewer editing two of them cannot mix them up.
   out.push(`# ${doc.title ?? doc.sheet}`, "");
+  if (doc.file) out.push(`\`${doc.file}\``, "");
   if (doc.prose) out.push(doc.prose, "");
   for (const section of doc.sections) {
     out.push(`${"#".repeat(Math.min(6, section.path.length + 1))} ${section.path[section.path.length - 1]}`, "");
@@ -1001,6 +1010,17 @@ export function tableShape(head: string[], instances: string[], l: Lang = "ja"):
 // that dies takes the whole edit with it. A line that does not read as a table
 // row stays PROSE, which is preserved and reported — the diff then says "this
 // section has prose the original did not", which is exactly what happened.
+// A lone code span on a line of its own — what `renderSheetMarkdown` writes the
+// deployed path as.
+const DEPLOYED_PATH = /^`([^`\n]+)`$/;
+
+// …and the same page with that line taken out, for a reader that shows the
+// field itself. Only the one this projection wrote: the first lone code span
+// under the title, and nothing else.
+export function withoutDeployedPath(text: string): string {
+  return text.replace(/^(#[^\n]*\n\n)`[^`\n]+`\n\n/, "$1");
+}
+
 export function parseSheetMarkdown(text: string, instances: string[], l: Lang = "ja"): MarkdownSheet {
   const lines = text.split("\n");
   const doc: MarkdownSheet = { sheet: "", instances, lang: l, sections: [], prose: "" };
@@ -1011,6 +1031,17 @@ export function parseSheetMarkdown(text: string, instances: string[], l: Lang = 
 
   const flushProse = (): void => {
     const text = prose.join("\n").replace(/^\n+|\n+$/g, "");
+    // The line under the title, when it is a lone code span and nothing has
+    // been read yet: that is where this projection writes the deployed path,
+    // so it is read back as the FIELD rather than left in the prose for the
+    // reader to meet twice — once as the page's own subtitle and once as a
+    // paragraph of its body.
+    const only = DEPLOYED_PATH.exec(text);
+    if (only !== null && section === null && doc.file === undefined && doc.prose === "") {
+      doc.file = only[1];
+      prose = [];
+      return;
+    }
     if (section) section.prose = [section.prose, text].filter(Boolean).join("\n\n");
     else doc.prose = [doc.prose, text].filter(Boolean).join("\n\n");
     prose = [];

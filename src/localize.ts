@@ -95,7 +95,14 @@ export function localizeCategory(c: CategoryData, lang: Lang): CategoryData {
     // `name` is identity and is never touched; `display` is what the reader
     // sees, resolved here alongside every other LangText so the language
     // toggle switches a component's heading live — see types.ts's Category.
-    display: (c.label ? pickLang(c.label, lang) : undefined) ?? c.name,
+    // A `display` ALREADY THERE is kept, because falling through to `name` is
+    // only right where nobody has answered. A set read back out of a folder
+    // names a page by its PATH — two chapters may hold a page with one title —
+    // and carries the title it read off the page in `display`; overwriting that
+    // with the identity put a chapter path in the reader's heading, where the
+    // same document built from the model shows the title. One document, two
+    // appearances, decided by which half of a delivery was opened.
+    display: (c.label ? pickLang(c.label, lang) : undefined) ?? c.display ?? c.name,
     // Resolved here with every other LangText, so what reaches the render is a
     // plain string and the language toggle re-resolves it live.
     note: pickLang(c.note, lang),
@@ -110,7 +117,7 @@ export function localizeGroups(groups: SheetData["groups"], lang: Lang): SheetDa
   // meant to see.
   return groups?.map((g) => ({
     ...g,
-    display: (g.label ? pickLang(g.label, lang) : undefined) ?? g.name,
+    display: (g.label ? pickLang(g.label, lang) : undefined) ?? g.display ?? g.name,
     ...(g.groups ? { groups: localizeGroups(g.groups, lang) } : {}),
   }));
 }
@@ -126,7 +133,7 @@ export function localizeSheets(sheets: SheetData["sheets"], lang: Lang): SheetDa
     // Same split as a category's: `name` is identity and is never touched (it
     // is the review target, the diff key and the outline's search text), while
     // `display` is what the reader sees and switches with the language toggle.
-    display: (s.label ? pickLang(s.label, lang) : undefined) ?? s.name,
+    display: (s.label ? pickLang(s.label, lang) : undefined) ?? s.display ?? s.name,
     categories: s.categories.map((c) => localizeCategory(c, lang)),
   }));
 }

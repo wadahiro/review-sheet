@@ -120,7 +120,13 @@ function MarkdownTable({
   // Which leading columns stay put while the values scroll — the sheet's own
   // control, on the sheet's own classes. 1 is the key, 2 adds the description,
   // 3 adds the default.
-  const [freeze, setFreeze] = useState(1);
+  // …and how many lead columns are frozen. The sheet's own default: the key,
+  // and the description beside it when the table has one — a key alone scrolls
+  // away from the sentence that says what it is.
+  const [freeze, setFreeze] = useState(() => (tableShape(block.head, instances, lang).description >= 0 ? 2 : 1));
+  // …and which way round the table is read. The sheet's own control, with the
+  // sheet's own default.
+  const [view, setView] = useState<"normal" | "transposed">("normal");
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const headRef = useRef<HTMLDivElement | null>(null);
 
@@ -205,6 +211,22 @@ function MarkdownTable({
       `;
     })}</tr>`;
 
+  // A VALUE wears the code face, on the sheet and here alike: a value is a
+  // string a machine reads, and set in the page's own type it reads as prose
+  // about one. The sheet puts a key, a value and a default in `code` and leaves
+  // a description and a remark in the body face; this is that, applied to text
+  // instead of to a model.
+  //
+  // A rendering rule, not something written into the file: the markdown says
+  // `8080`, because that is the value. Backticking every value would put a
+  // mechanism into text a recipient edits by hand, to say something the column
+  // it is in already says. A cell that ALREADY carries markup of its own is
+  // rendered as written — somebody meant that.
+  const faced = (cls: string, cell: string): string =>
+    (cls === "rs-col-value" || cls === "rs-col-default") && !/[`\[*]/.test(cell)
+      ? `<code>${inlineMarkdown(cell.trim())}</code>`
+      : inlineMarkdown(cell);
+
   // What a cell SAYS, as text: the markdown taken off it. This is what a copy
   // yields, and what is compared against the default — the value as the table
   // means it, not as it is written.
@@ -232,11 +254,27 @@ function MarkdownTable({
           // this is what the copy button yields, and a copied key with a
           // markdown link stuck to the end of it is not a key.
           const raw = row.cells[c.at] ?? "";
-          const text = plain(c.cls === "rs-col-key" ? splitKeyCell(raw).key : raw);
+          const split = c.cls === "rs-col-key" ? splitKeyCell(raw) : undefined;
+          const text = plain(split === undefined ? raw : split.key);
           // The three statements the sheet's own value cells make, read off the
           // text: nothing is set here, it is set to what the default already
           // says, or it is a value of this project's own.
           const dflt = shape.default >= 0 ? plain(row.cells[shape.default] ?? "") : "";
+          // …and whether it is the SAME value in every environment, which is
+          // what the sheet marks with a border and a muted face. The model says
+          // it with `origin: "common"`; a set carries no origin by design, so
+          // it is read off the table — one value repeated across every
+          // environment column is exactly what that origin asserts, and it is
+          // the same equality `alignValues` already treats as equivalence.
+          //
+          // Its limit, stated rather than hidden: a per-environment row whose
+          // environments happen to agree everywhere is marked too. The table
+          // cannot tell the two apart, and a reader looking at identical values
+          // across every column is being told something true either way.
+          const shared =
+            c.cls === "rs-col-value" &&
+            visibleValues.length > 1 &&
+            visibleValues.every((n) => plain(row.cells[n] ?? "") === text);
           const state =
             c.cls !== "rs-col-value"
               ? ""
@@ -244,7 +282,7 @@ function MarkdownTable({
                 ? "rs-cell-unset"
                 : text === dflt
                   ? "rs-same-as-default"
-                  : "rs-changed";
+                  : `rs-changed${shared ? " rs-cell-common" : ""}`;
           // Copying a value is worth as much here as on the sheet, and it is the
           // one cell action a document can offer: the floating toolbar is the
           // sheet's own (cell-tool.ts), told that copy is all there is.
@@ -269,15 +307,40 @@ function MarkdownTable({
                   means here is something: nobody set this, so the product's
                   default applies — which the default column beside it states.
                   Left blank, "not set" and "set to nothing" read the same. */ ""}
+            ${/* A default column with nothing in it reads as "this row has no
+                  default", and the sheet's own table says that with a dash —
+                  so this one does too. Left blank, the same document showed a
+                  dash when it was built from the model and an empty cell when
+                  it was read back out of a folder. The dash is a RENDERING
+                  rule and is not written into the markdown: the file says what
+                  the product documents, which is nothing. */ ""}
             ${state === "rs-cell-unset"
               ? html`<span class="rs-unset-label">${t.usesDefault}</span>`
-              : html`<span dangerouslySetInnerHTML=${{ __html: inlineMarkdown(row.cells[c.at] ?? "") }}></span>`}
+              : c.cls === "rs-col-default" && text === ""
+                ? html`<span><code>-</code></span>`
+                : html`<span dangerouslySetInnerHTML=${{ __html: faced(c.cls, split === undefined ? (row.cells[c.at] ?? "") : split.key) }}></span>`}
+            ${/* The way into the file the row is a line of, in ONE shape.
+                  It reaches this cell two ways — the model answers it through
+                  the artifact index, and a set read back out of a folder wrote
+                  it into the key cell as a link (md-set.ts) — and the same
+                  document must not look like two depending on which of them the
+                  reader opened. So the address is taken OUT of the cell's text
+                  (which is the row's identity, and what the copy button yields)
+                  and put under it wearing the chip either way. The link stays a
+                  link, because the delegated handler on `<main>` already opens
+                  every address a set carries and a second answer to that is a
+                  second thing to keep in step. */ ""}
             ${c.cls === "rs-col-key" && previewId !== undefined && html`
               <span class="rs-key-subline">
                 <button class="rs-artifact-chip" title=${t.artifactOpen}
                         onClick=${(e: Event) => { e.stopPropagation(); artifact!.open(previewId, modelKey!); }}>
                   ${t.artifactTitle}
                 </button>
+              </span>
+            `}
+            ${c.cls === "rs-col-key" && previewId === undefined && split?.preview !== undefined && html`
+              <span class="rs-key-subline">
+                <a class="rs-artifact-chip" href=${split.preview} title=${t.artifactOpen}>${t.artifactTitle}</a>
               </span>
             `}
           </td>
@@ -290,8 +353,9 @@ function MarkdownTable({
   // A split table is laid out from fixed widths on BOTH halves; an unsplit one
   // sizes to its content, as the sheet's own tables do.
   const cls = `rs-param-table rs-param-table-wide ${splitHeader ? "rs-param-table-fixed " : ""}rs-freeze-${effFreeze}`;
-  return splitHeader
-    ? html`
+  const renderNormal = () =>
+    splitHeader
+      ? html`
         <div class="rs-table-split">
           <div class="rs-sticky-head" ref=${headRef}>
             <table class=${cls}><thead>${headerRow}</thead></table>
@@ -301,7 +365,7 @@ function MarkdownTable({
           </div>
         </div>
       `
-    : html`
+      : html`
         <div class="rs-table-wrapper" ref=${wrapperRef}>
           <table class=${cls}>
             <thead>${headerRow}</thead>
@@ -309,6 +373,89 @@ function MarkdownTable({
           </table>
         </div>
       `;
+
+  // The other orientation, on the sheet's own classes: rows become columns, and
+  // one environment reads down a column of its own. Attributes first and
+  // instances after, the order the sheet's own transposed table uses.
+  //
+  // It is here because the sheet has it. A document that offered one reading of
+  // its own table and the same document built from the model two is one
+  // document with two appearances — the thing this whole projection exists not
+  // to be — and the reading it dropped is the one an environment-by-environment
+  // check is actually done in.
+  const attrCols = columns.filter((c) => c.cls !== "rs-col-key" && c.cls !== "rs-col-value");
+  const valueCols = columns.filter((c) => c.cls === "rs-col-value");
+  const renderTransposed = () => html`
+    <div class="rs-table-wrapper" ref=${wrapperRef}>
+      <table class="rs-param-table rs-param-table-transposed">
+        <thead>
+          <tr>
+            <th class="rs-row-label rs-corner">${t.instanceHeader}</th>
+            ${rows.map(({ row, address }) => html`
+              <th key=${address} class="rs-col-key">
+                <span dangerouslySetInnerHTML=${{ __html: inlineMarkdown(splitKeyCell(row.cells[shape.key] ?? "").key) }}></span>
+              </th>
+            `)}
+          </tr>
+        </thead>
+        <tbody>
+          ${[...attrCols, ...valueCols].map((c) => html`
+            <tr key=${c.at} class=${c.cls === "rs-col-value" ? "" : "rs-attr-row"}>
+              <th scope="row" class=${`rs-row-label ${c.cls === "rs-col-value" ? "rs-row-label-instance" : ""}`}>
+                ${c.cls === "rs-col-value" ? html`<code>${block.head[c.at] ?? ""}</code>` : (block.head[c.at] ?? "")}
+              </th>
+              ${rows.map(({ row, address }) => {
+                const raw = row.cells[c.at] ?? "";
+                const text = plain(raw);
+                const dflt = shape.default >= 0 ? plain(row.cells[shape.default] ?? "") : "";
+                const shared =
+                  c.cls === "rs-col-value" && visibleValues.length > 1 && visibleValues.every((n) => plain(row.cells[n] ?? "") === text);
+                const state =
+                  c.cls !== "rs-col-value"
+                    ? ""
+                    : text === ""
+                      ? "rs-cell-unset"
+                      : text === dflt
+                        ? "rs-same-as-default"
+                        : `rs-changed${shared ? " rs-cell-common" : ""}`;
+                return html`
+                  <td key=${address} class=${`${c.cls} ${state}`}>
+                    ${state === "rs-cell-unset"
+                      ? html`<span class="rs-unset-label">${t.usesDefault}</span>`
+                      : c.cls === "rs-col-default" && text === ""
+                        ? html`<span><code>-</code></span>`
+                        : html`<span dangerouslySetInnerHTML=${{ __html: faced(c.cls, raw) }}></span>`}
+                  </td>
+                `;
+              })}
+            </tr>
+          `)}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  return html`
+    <div class="rs-table-block" style=${`--rs-depth:${path.length}`}>
+      ${splitHeader && html`
+        <div class="rs-table-toolbar">
+          <div class="rs-view-toggle" role="group" aria-label=${t.viewToggleLabel}>
+            <button type="button" class=${`rs-view-btn ${view === "normal" ? "rs-view-btn-active" : ""}`}
+                    aria-pressed=${view === "normal"} onClick=${() => setView("normal")} title=${t.viewNormalTip}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+              <span>${t.viewNormal}</span>
+            </button>
+            <button type="button" class=${`rs-view-btn ${view === "transposed" ? "rs-view-btn-active" : ""}`}
+                    aria-pressed=${view === "transposed"} onClick=${() => setView("transposed")} title=${t.viewTransposeTip}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+              <span>${t.viewTranspose}</span>
+            </button>
+          </div>
+        </div>
+      `}
+      ${view === "transposed" ? renderTransposed() : renderNormal()}
+    </div>
+  `;
 }
 
 // The sheet's body: its sections, nested as the sheet nests them.
