@@ -3252,3 +3252,38 @@ describe("a source preview's title in a delivery", () => {
     expect(await openPanel("artifact", true)).toBe("/etc/thing.conf");
   });
 });
+
+// A description is PROSE the product wrote, and what a product writes is
+// markdown: `Indicates if this EIP is for use in VPC (`vpc`)`.
+describe("prose in a cell", () => {
+  const mount = (over: Record<string, unknown>): HTMLElement => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const payload = {
+      metadata: { title: "t", version: "1" },
+      versions: [{ version: "current", sheets: [{ name: "s", categories: [{ name: "c", params: [{ key: "domain", value: "vpc", ...over }] }] }] }],
+    };
+    render(h(Root, { payload: payload as never, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    return host;
+  };
+
+  it("renders a code span instead of printing its backticks", () => {
+    const host = mount({ description: "Indicates if this EIP is for use in VPC (`vpc`)." });
+    const cell = host.querySelector("tbody .rs-col-description")!;
+    expect(cell.querySelector("code")?.textContent).toBe("vpc");
+    expect(cell.textContent).not.toContain("`");
+  });
+
+  it("does the same for a remark", () => {
+    const host = mount({ description: "d", remarks: "Set to `on` here." });
+    expect(host.querySelector("tbody .rs-col-remarks")!.querySelector("code")?.textContent).toBe("on");
+  });
+
+  it("leaves a VALUE alone — there a backtick is a character of a file", () => {
+    const host = mount({ value: "a`b", description: "d" });
+    const cell = host.querySelector("tbody .rs-col-value")!;
+    expect(cell.textContent).toContain("a`b");
+    expect(cell.querySelector("code")?.textContent).toBe("a`b");
+  });
+});

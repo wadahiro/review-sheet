@@ -27,7 +27,7 @@ import { isEdit, targetKey } from "../edits.js";
 import { toMarkdownSheet, renderSheetMarkdown, parseSheetMarkdown } from "../sheet-markdown.js";
 import { getMarkdownRenderer } from "./markdown-runtime.js";
 import { EVIDENCE_SCHEME } from "../evidence.js";
-import { MarkdownSheetBody } from "./md-sheet.js";
+import { MarkdownSheetBody, inlineMarkdown } from "./md-sheet.js";
 import { NavTree, chapterPath } from "./nav-tree.js";
 import { sectionize } from "./doc-sections.js";
 import { navAnchorId, paramAnchorId, encodeIdPart } from "./anchors.js";
@@ -1167,8 +1167,19 @@ function MenuItem({ label, onClick, danger }: { label: string; onClick: () => vo
 // Reviewable cell component
 // ============================================================
 
-function ReviewableCell({ value, display, target, field, reviews, reviewEnabled, onOpenReview, className, isCode, badge, subline, unsetLabel, valueLabel, sharedRow, t }: {
+function ReviewableCell({ value, display, target, field, reviews, reviewEnabled, onOpenReview, className, isCode, badge, subline, unsetLabel, valueLabel, sharedRow, prose, t }: {
   value: string;
+  // This cell holds PROSE somebody wrote, not a value a file holds — a
+  // description, a remark. It is markdown, because that is what the product's
+  // own documentation is (`Indicates if this EIP is for use in VPC (\`vpc\`)`)
+  // and what the markdown projection of this same sheet renders it as. Printed
+  // as plain text the backticks showed, and the two readings of one document
+  // disagreed about the same sentence.
+  //
+  // Display only: `value` stays the string a review records, the copy button
+  // yields and the search index holds. And never on a VALUE cell — there a
+  // backtick is a character of a config file, not markup.
+  prose?: boolean;
   // What to SHOW in place of `value`, when the two differ. The key cell of a
   // row inside a block shows only its own last segment — the blocks above it
   // are rows of their own now, so repeating them in every descendant's key is
@@ -1248,7 +1259,9 @@ function ReviewableCell({ value, display, target, field, reviews, reviewEnabled,
       ? html`<code class=${hasSuggestion ? "rs-strikethrough" : ""}>${shown}</code>`
       : hasSuggestion
         ? html`<span class="rs-strikethrough">${shown}</span>`
-        : shown;
+        : prose === true
+          ? html`<span dangerouslySetInnerHTML=${{ __html: inlineMarkdown(shown) }}></span>`
+          : shown;
 
   // The product's own name for this value, as an annotation NEXT TO it — never
   // part of it. `value` is the same string the review dialog opens with, the
@@ -1734,7 +1747,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   // the parameter as the other axis. "values" expands to one column per instance
   // (Pattern B) or a single "value" column (Pattern A).
   type CellSpec =
-    | { kind: "review"; value: string; target: ReviewItem["target"]; field: string; className: string; isCode: boolean; copyable: boolean; unsetLabel?: string; valueLabel?: string; display?: string; sharedRow?: boolean }
+    | { kind: "review"; value: string; target: ReviewItem["target"]; field: string; className: string; isCode: boolean; copyable: boolean; unsetLabel?: string; valueLabel?: string; display?: string; sharedRow?: boolean; prose?: boolean }
     | { kind: "plain"; content: string | VNode; className: string; style: string };
 
   type TableLine = {
@@ -1782,6 +1795,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
         className: "rs-col-description",
         isCode: false,
         copyable: false,
+        prose: true,
       }),
     });
   }
@@ -1940,7 +1954,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   if (remarksPresent) {
     trailingLines.push({
       key: "__remarks", label: t.remarksHeader, lineKind: "attr", colClass: "rs-col-remarks", colStyle: "",
-      cell: (param) => ({ kind: "review", value: pickLang(param.remarks, "en") ?? "", target: baseTarget(param), field: "remarks", className: "rs-col-remarks", isCode: false, copyable: false }),
+      cell: (param) => ({ kind: "review", value: pickLang(param.remarks, "en") ?? "", target: baseTarget(param), field: "remarks", className: "rs-col-remarks", isCode: false, copyable: false, prose: true }),
     });
   }
   // "under_key" columns are not columns at all — they render as a muted sub-line
@@ -1968,7 +1982,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
           reviews=${reviews} reviewEnabled=${reviewEnabled}
           onOpenReview=${onOpenReview}
           className=${spec.className} isCode=${spec.isCode} copyable=${spec.copyable}
-          unsetLabel=${spec.unsetLabel} valueLabel=${spec.valueLabel} display=${spec.display} sharedRow=${spec.sharedRow} t=${t} />`
+          unsetLabel=${spec.unsetLabel} valueLabel=${spec.valueLabel} display=${spec.display} sharedRow=${spec.sharedRow} prose=${spec.prose} t=${t} />`
       : html`<td key=${cellKey} class=${spec.className} style=${spec.style}>${spec.content}</td>`;
 
   // Freeze boundary (normal view): pin icons in the leading-column headers.
