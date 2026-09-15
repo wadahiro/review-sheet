@@ -25,6 +25,7 @@ import type { SheetData, CategoryData, ParamData } from "./prompt.js";
 import type { Sheet } from "./types.js";
 import { pickLang } from "./types.js";
 import type { Lang } from "./html/i18n.js";
+import { controlGroups, withControlsTogether, modeOf as controlMode, defaultModeOf as controlDefaultMode } from "./composite.js";
 
 // ---------------------------------------------------------------------------
 // The projection
@@ -36,6 +37,18 @@ import type { Lang } from "./html/i18n.js";
 // state nobody can see.
 export type MarkdownRow = {
   key: string;
+  // This row is a CONTROL of the product's screen, not a parameter (types.ts's
+  // `composite`): the rows under it are what the files hold, and this is the
+  // one thing an operator actually set. It has no key, no source and no review
+  // target, so it is written WITHOUT the code span every real row's key carries
+  // — which is what the reader skips it by (`isControlRow`). Without that it
+  // would come back as a row the model does not have, and every read of a
+  // delivered set would report one invented row per control.
+  //
+  // It exists because the viewer shows it and, until it did, a delivered
+  // markdown set did not — one model read two ways depending on which half of
+  // this tool the reader was holding.
+  control?: true;
   // One entry per column the table has: per environment on a sheet that has
   // them, and `{ "": value }` on one that does not. A row holding a single
   // SHARED value repeats it across the columns, which is what the sheet's own
@@ -224,13 +237,66 @@ function rowOf(p: ParamData, instances: string[], l: Lang, path: string[], opts:
 //
 // They are not rows: no value, no description, nothing keyed by them. They
 // appear and disappear with their contents, here as on the sheet.
+// The control a set of rows spells, as a row of the same table, above them —
+// the reading the sheet's own viewer puts there (composite.ts). Written here so
+// a handed-over set says what the viewer says; without it the control was the
+// one thing a reader saw on screen and not in the document they were given.
+//
+// It is not a parameter: no key, no address, no review target (`control: true`,
+// which is also what the reader skips it by). Its value columns hold the choice
+// each environment's tuple spells, and its default column what a fresh install
+// spells — both read off the rows beneath it, every time, so the two cannot
+// drift.
+function controlRowOf(group: ParamData[], instances: string[], l: Lang): MarkdownRow {
+  const c = group[0]!.composite!;
+  const cols = instances.length > 0 ? instances : [""];
+  const values: Record<string, string> = {};
+  for (const col of cols) values[col] = controlMode(group, col === "" ? undefined : col, l)?.label ?? "";
+  return {
+    key: pickLang(c.control, l) ?? "",
+    control: true as const,
+    values,
+    default: controlDefaultMode(group, l)?.label ?? "",
+    description: pickLang(c.description, l) ?? "",
+    remarks: "",
+  };
+}
+
 function rowsOf(params: ParamData[], instances: string[], l: Lang, path: string[], opts: ProjectionOptions): MarkdownRow[] {
+  const groups = controlGroups(params, l);
+  // Brought together at the first of them, exactly as the viewer does: the
+  // product's screen shows them as one control, and the dictionary's order
+  // scatters them.
+  const ordered = withControlsTogether(params, groups);
+  const emitted = new Set<ParamData[]>();
+  const withControls = (rows: MarkdownRow[], from: ParamData[]): MarkdownRow[] => {
+    const out: MarkdownRow[] = [];
+    from.forEach((p, n) => {
+      const g = groups.get(p);
+      if (g !== undefined && !emitted.has(g)) {
+        emitted.add(g);
+        out.push(controlRowOf(g, instances, l));
+      }
+      const row = rows[n];
+      if (row !== undefined) out.push(row);
+    });
+    return out;
+  };
   const out: MarkdownRow[] = [];
-  if (opts.indent !== true) return params.map((p) => rowOf(p, instances, l, path, opts));
+  if (opts.indent !== true)
+    return withControls(
+      ordered.map((p) => rowOf(p, instances, l, path, opts)),
+      ordered
+    );
   const cols = instances.length > 0 ? instances : [""];
   const blank = Object.fromEntries(cols.map((c) => [c, ""]));
   const drawn = new Set<string>();
-  for (const p of params) {
+  for (const p of ordered) {
+    const g = groups.get(p);
+    if (g !== undefined && !emitted.has(g)) {
+      emitted.add(g);
+      out.push(controlRowOf(g, instances, l));
+    }
     (p.container_path ?? []).forEach((b, depth) => {
       if (drawn.has(b.path)) return;
       drawn.add(b.path);
@@ -238,7 +304,7 @@ function rowsOf(params: ParamData[], instances: string[], l: Lang, path: string[
       // drawn twice.
       // A container ROW's own key IS the block's address, so that is what says
       // "this block already has a row of its own".
-      if (params.some((q) => q.container !== undefined && q.key === b.path)) return;
+      if (ordered.some((q) => q.container !== undefined && q.key === b.path)) return;
       out.push({
         key: INDENT.repeat(depth) + cell(containerLeaf(b.path)),
         values: { ...blank },
@@ -491,7 +557,9 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
           ? ""
           : `<br>[${PREVIEW}](${(row.preview ?? "").replace(/\|/g, "\\|")})`;
       const cells = [
-        `${indent}\`${escapeCell(row.key.slice(indent.length))}\`${address}`,
+        row.control === true
+          ? `${indent}**${escapeCell(row.key.slice(indent.length))}**`
+          : `${indent}\`${escapeCell(row.key.slice(indent.length))}\`${address}`,
         ...(shown.description ? [escapeCell(row.description)] : []),
         escapeCell(row.default),
         ...cols.map((c) => escapeCell(row.values[c] ?? "")),
@@ -564,6 +632,12 @@ export function splitKeyCell(cell: string): { key: string; preview?: string } {
   if (m === null) return { key: cell };
   return { key: `${cell.slice(0, m.index)}\``, preview: m[1] };
 }
+
+// A row of a table this projection wrote that is NOT a parameter — see
+// MarkdownRow.control. Told by the absence of the code span every real row's
+// key carries, which is structural rather than a convention about wording: the
+// writer above puts one on every key it writes, and only here does it not.
+export const isControlRow = (cell: string): boolean => !cell.includes("`");
 
 const stripKey = (cell: string): string => {
   const indent = /^ */.exec(cell)![0];
@@ -644,6 +718,10 @@ export function markdownToCategories(text: string, instances: string[], l: Lang 
     // exists.
     const shown = visibleRows(block.rows, shape.values, false);
     for (const [n, row] of block.rows.entries()) {
+      // A control of the product's screen, not a parameter: it has no key, so
+      // reading it as a row would put one the model does not have into every
+      // read of a delivered set.
+      if (isControlRow((row.cells[0] ?? "").trim())) continue;
       const name = splitKeyCell((row.cells[0] ?? "").trim()).key.replace(/^`(.*)`$/s, "$1").trim();
       chain.length = Math.min(row.indent, chain.length);
       chain[row.indent] = name;
@@ -963,6 +1041,9 @@ export function parseSheetMarkdown(text: string, instances: string[], l: Lang = 
       i += 1;
       while (i + 1 < lines.length && TABLE_ROW.test(lines[i + 1]) && !SEPARATOR.test(lines[i + 1])) {
         const cells = splitCells(lines[++i]);
+        // …and the same here: a control is display, and a read-back set is the
+        // model. See MarkdownRow.control.
+        if (isControlRow((cells[0] ?? "").trim())) continue;
         const values: Record<string, string> = {};
         cols.forEach((c, n) => (values[c] = unescapeCell(cells[at.values + n] ?? "")));
         const row: MarkdownRow = {

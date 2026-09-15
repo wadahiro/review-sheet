@@ -256,3 +256,63 @@ describe("what an edit to the markdown is seen as", () => {
     expect(sees(base.text.replace(/\n\n/g, "\n\n\n"))).toBe(false);
   });
 });
+
+// One control of the product's screen, written into a handed-over set — the
+// same reading the sheet's own viewer puts above the rows that spell it
+// (composite.ts). Until this existed the control was the one thing a reader saw
+// on screen and not in the document they were given.
+describe("a control in a handed-over set", () => {
+  const CONTROL = {
+    control: { ja: "検知モード" },
+    description: { ja: "検出時に何が起きるかを指定します。" },
+    of: ["detect", "permanent"],
+    modes: [
+      { label: { ja: "無効" }, values: { detect: "false", permanent: "false" } },
+      { label: { ja: "一時的に停止" }, values: { detect: "true", permanent: "false" } },
+    ],
+  };
+  const sheet = (params: unknown[], instances?: string[]) =>
+    ({ name: "s", ...(instances === undefined ? {} : { instances }), categories: [{ name: "c", params }] }) as unknown as SheetData["sheets"][number];
+
+  const pair = [
+    { key: "detect", value: "true", default: "false", description: { ja: "d" }, composite: CONTROL },
+    { key: "permanent", default: "false", description: { ja: "p" }, composite: CONTROL },
+  ];
+
+  it("writes the control as a row, with the choice the rows spell", () => {
+    const md = renderSheetMarkdown(toMarkdownSheet(sheet(pair), "ja"));
+    const line = md.split("\n").find((l) => l.includes("検知モード"))!;
+    expect(line).toContain("**検知モード**");
+    // Its value is the mode; its default is what a fresh install spells.
+    expect(line).toContain("一時的に停止");
+    expect(line).toContain("無効");
+    expect(line).toContain("検出時に何が起きるかを指定します。");
+    // No code span: that is what marks it as not a parameter.
+    expect(line.split("|")[1]).not.toContain("`");
+  });
+
+  it("does not come back as a row", () => {
+    // It has no key and no address. Read as a row it would be one the model
+    // does not have, reported as added on every read of a delivered set.
+    const doc = toMarkdownSheet(sheet(pair), "ja");
+    const back = parseSheetMarkdown(renderSheetMarkdown(doc), [], "ja");
+    expect(back.sections[0]!.rows.map((r) => r.key)).toEqual(["detect", "permanent"]);
+  });
+
+  it("writes nothing where the set carries only part of the tuple", () => {
+    const md = renderSheetMarkdown(toMarkdownSheet(sheet([pair[0]]), "ja"));
+    expect(md).not.toContain("**検知モード**");
+    expect(md).toContain("detect");
+  });
+
+  it("answers per environment", () => {
+    const perEnv = [
+      { key: "detect", description: { ja: "d" }, default: "false", composite: CONTROL, instances: [{ name: "stg", value: "true" }, { name: "prod", value: "false" }] },
+      { key: "permanent", default: "false", description: { ja: "p" }, composite: CONTROL },
+    ];
+    const md = renderSheetMarkdown(toMarkdownSheet(sheet(perEnv, ["stg", "prod"]), "ja"));
+    const line = md.split("\n").find((l) => l.includes("**検知モード**"))!;
+    const cells = line.split("|").map((c) => c.trim());
+    expect(cells.slice(-3, -1)).toEqual(["一時的に停止", "無効"]);
+  });
+});

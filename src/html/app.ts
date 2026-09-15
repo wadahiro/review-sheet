@@ -5,6 +5,7 @@ import { h, render, type VNode } from "preact";
 import { createPortal } from "preact/compat";
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "preact/hooks";
 import htm from "htm";
+import { controlGroups, withControlsTogether, modeOf as controlMode, defaultModeOf as controlDefaultMode, controlKey } from "../composite.js";
 import { getMessages, type Lang, type Messages } from "./i18n.js";
 import { localizeSheets, localizeGroups, localizeColumns } from "../localize.js";
 import {
@@ -1670,29 +1671,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
   // one sheet holds the same control once per component (two realms both have a
   // brute force mode), and reading those as one tuple mixes two deployments'
   // values into a combination neither of them has.
-  const compositeKey = (p: ParamData): string =>
-    p.composite === undefined ? "" : `${p.composite.control ?? ""}\u0000${p.composite.of.join(",")}`;
-  const compositeGroups = new Map<ParamData, ParamData[]>();
-  {
-    const byControl = new Map<string, ParamData[]>();
-    for (const p of params) {
-      const ck = compositeKey(p);
-      if (ck === "") continue;
-      const at = byControl.get(ck);
-      if (at === undefined) byControl.set(ck, [p]);
-      else at.push(p);
-    }
-    for (const run of byControl.values()) {
-      // Only a group carrying EVERY field the control writes. A sheet scoped to
-      // part of a product has some of them and not the rest, and a tuple missing
-      // a member matches no choice — which would put "no matching choice" over a
-      // row whose screen is perfectly ordinary (measured on a real upgrade sheet
-      // that carries one of the three). The rows render as themselves instead:
-      // what the sheet cannot read, it does not claim.
-      const of = run[0]!.composite!.of;
-      if (of.every((k) => run.some((p) => p.key === k))) for (const p of run) compositeGroups.set(p, run);
-    }
-  }
+  const compositeGroups = controlGroups(params, t.lang);
 
   // Visible params under the "commented only" / "hide out-of-scope" /
   // "undecided only" filters.
@@ -2072,98 +2051,11 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
         .flat()
     : shown;
 
-  // A control's fields, brought together at the first of them. The product's
-  // own screen shows them as ONE control; the sheet files them by the
-  // dictionary's order, which on a real realm put `failureFactor`,
-  // `bruteForceStrategy` and four others between the three that spell the mode.
-  // Scattered, the control heads a block that is not one.
-  //
-  // Only within the group: everything else keeps its place, and a category with
-  // no control is returned unchanged.
-  const withControlsTogether = (rows: ParamData[]): ParamData[] => {
-    if (compositeGroups.size === 0) return rows;
-    const here = new Set(rows);
-    const placed = new Set<ParamData>();
-    const out: ParamData[] = [];
-    for (const p of rows) {
-      if (placed.has(p)) continue;
-      const g = compositeGroups.get(p);
-      if (g === undefined) {
-        out.push(p);
-        continue;
-      }
-      const members = g.filter((m) => here.has(m));
-      // In the order the product's own source sets them, which is the order a
-      // reader compares them in (types.ts's `composite.of`).
-      const byKey = new Map(members.map((m) => [m.key, m]));
-      for (const k of p.composite!.of) {
-        const m = byKey.get(k);
-        if (m !== undefined && !placed.has(m)) {
-          out.push(m);
-          placed.add(m);
-        }
-      }
-      for (const m of members)
-        if (!placed.has(m)) {
-          out.push(m);
-          placed.add(m);
-        }
-    }
-    return out;
-  };
-
-  const ordered = withControlsTogether(bySubHead);
-
-  // One control of the product's UI whose value is a TUPLE over several rows.
-  //
-  // The rows stay rows — each keeps its own source, its own review target and
-  // its own place in the test plan (see types.ts's `composite`). What is added
-  // is the reading a reviewer actually wants: which of the control's choices
-  // the combination in front of them spells, once, above the rows that spell
-  // it. Display only, computed here, stored nowhere.
+  // A control's fields are brought together at the first of them — see
+  // composite.ts. The screen shows them as one thing; the sheet files them by
+  // the dictionary's order, which scatters them.
+  const ordered = withControlsTogether(bySubHead, compositeGroups);
   const composed = shown.some((p) => p.composite !== undefined);
-
-
-  // What a row of the tuple HOLDS, for an environment. A row nobody set holds
-  // its default — which is the whole point here: two of Keycloak's three brute
-  // force fields are normally unset, and reading them as empty would leave
-  // every realm unresolvable.
-  const heldValue = (p: ParamData, instance: string | undefined): string | undefined => {
-    const own = instance === undefined ? p.value : (p.instances?.find((i) => i.name === instance)?.value ?? p.value);
-    if (own !== undefined && own !== "") return own;
-    return defaultOf(p);
-  };
-
-  // What a row of the tuple holds when nobody has set it.
-  const defaultOf = (p: ParamData): string | undefined => p.baseline ?? p.default;
-
-  // The choice a tuple spells, or undefined when it spells none of them.
-  //
-  // NEVER the nearest match. A realm configured through the API can hold a
-  // combination the console cannot produce, and naming that after a screen the
-  // product would not show is the sheet inventing one.
-  const modeSpelledBy = (
-    rows: ParamData[],
-    held: Map<string, string | undefined>
-  ): { label: string; other?: string } | undefined => {
-    const c = rows[0]?.composite;
-    if (c === undefined) return undefined;
-    for (const m of c.modes) {
-      if (c.of.every((k) => held.get(k) !== undefined && held.get(k) === m.values[k]))
-        return { label: String(m.label), ...(m.label_other === undefined ? {} : { other: m.label_other }) };
-    }
-    return undefined;
-  };
-
-  const modeOf = (rows: ParamData[], instance: string | undefined) =>
-    modeSpelledBy(rows, new Map(rows.map((r) => [r.key, heldValue(r, instance)])));
-
-  // The choice a FRESH install spells — the control's own default, read off the
-  // three rows' defaults exactly as the value columns are read off their values.
-  // Nothing in the dictionary states it: "Disabled" is what false/false/0 comes
-  // to, and computing it is how the two can never disagree.
-  const defaultModeOf = (rows: ParamData[]) =>
-    modeSpelledBy(rows, new Map(rows.map((r) => [r.key, defaultOf(r)])));
 
   // The control as a ROW, with the product's own choice in the VALUE column.
   //
@@ -2180,9 +2072,9 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     const c = rows[0]!.composite!;
     const control = (c.control as string) ?? "";
     const unmatched = normalLines.some(
-      (line) => line.lineKind === "instance" && modeOf(rows, line.label) === undefined
+      (line) => line.lineKind === "instance" && controlMode(rows, line.label, t.lang) === undefined
     );
-    const single = modeOf(rows, undefined);
+    const single = controlMode(rows, undefined, t.lang);
     return html`<tr key=${`comp:${id}`} class=${`rs-param-row rs-row-composite ${unmatched || (!hasInstances && single === undefined) ? "rs-composite-unmatched" : ""}`}>
       <td class="rs-col-key">
         <span class="rs-composite-control">${control}</span>
@@ -2197,9 +2089,9 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
         if (line.key === "__description")
           return html`<td class=${line.colClass}>${c.description ?? ""}</td>`;
         if (line.key === "__default")
-          return html`<td class=${line.colClass}>${defaultModeOf(rows)?.label ?? ""}</td>`;
+          return html`<td class=${line.colClass}>${controlDefaultMode(rows, t.lang)?.label ?? ""}</td>`;
         if (line.lineKind !== "instance" && !(line.key === "__value")) return html`<td class=${line.colClass}></td>`;
-        const mode = modeOf(rows, line.lineKind === "instance" ? line.label : undefined);
+        const mode = controlMode(rows, line.lineKind === "instance" ? line.label : undefined, t.lang);
         return html`<td class=${`${line.colClass} rs-composite-cell`}>
           <span class=${`rs-composite-mode ${mode === undefined ? "rs-composite-mode-unmatched" : ""}`}
                 title=${mode?.other}>
@@ -2221,7 +2113,7 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     const out: VNode[] = [];
     // The control's own line, once, before the first row it is spelled by.
     if (composed) {
-      const ck = compositeKey(param);
+      const ck = controlKey(param, t.lang);
       if (ck !== lastComposite) {
         lastComposite = ck;
         const group = compositeGroups.get(param);

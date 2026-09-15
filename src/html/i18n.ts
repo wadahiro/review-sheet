@@ -3,6 +3,11 @@
 export type Lang = "ja" | "en";
 
 type Messages = {
+  // WHICH language this table is. Carried on the messages rather than threaded
+  // as a prop of its own: `t` already reaches every component that renders
+  // text, and the few places that need the language itself (resolving a
+  // product's own words through `pickLang`) are exactly those places.
+  lang: Lang;
   // Default title
   defaultTitle: string;
   // Overview tab
@@ -240,6 +245,7 @@ type Messages = {
 };
 
 const ja: Messages = {
+  lang: "ja",
   defaultTitle: "パラメータシート",
   overview: "概要",
   project: "プロジェクト",
@@ -409,6 +415,7 @@ const ja: Messages = {
 };
 
 const en: Messages = {
+  lang: "en",
   defaultTitle: "Parameter Sheet",
   overview: "Overview",
   project: "Project",
