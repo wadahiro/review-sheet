@@ -448,6 +448,22 @@ describe("a committed set that no longer describes the model", () => {
     expect(r.out).toContain("describes this model");
   });
 
+  // What is left in the directory that this run did not write — a renamed
+  // sheet, a chapter that moved — travels with the delivery, and a recipient
+  // cannot tell it from a current one. Said, never deleted: `-o` names a
+  // directory this tool does not own.
+  it("names a file this run did not write", () => {
+    run("generate", "-i", "input.json", "--format", "md", "-o", set);
+    writeFileSync(join(set, SET_DIR, "an old sheet.md"), "# gone\n", "utf-8");
+    // …and NOT the file manager's own bookkeeping, which is invisible, comes
+    // back the moment anybody opens the folder, and is nothing a reader could
+    // act on — a warning on every regeneration that says nothing.
+    writeFileSync(join(set, SET_DIR, ".DS_Store"), "x", "utf-8");
+    const r = run("generate", "-i", "input.json", "--format", "md", "-o", set);
+    expect(r.out).toContain("an old sheet.md");
+    expect(r.out).not.toContain(".DS_Store");
+  });
+
   // What the stamp deliberately cannot see.
   //
   // It is taken over the MODEL so it survives the editing this set exists for

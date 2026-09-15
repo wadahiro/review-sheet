@@ -96,7 +96,14 @@ function openSheetTab(): void {
 // The viewer keys its localStorage by the embedded data, so tests share one key
 // space; clear between cases.
 beforeEach(() => localStorage.clear());
+// UNMOUNTED, not just emptied. Clearing `innerHTML` detaches a tree without
+// telling Preact, so every effect it registered stays live — and the scroll-spy
+// registers one on `window`. By the end of this file dozens of dead Apps were
+// still answering every scroll event a later test dispatched, each of them
+// walking the document; the one test that measures what a scroll produced
+// failed about one run in three, and passed on its own every time.
 afterEach(() => {
+  for (const el of [...document.body.children]) render(null, el as HTMLElement);
   document.body.innerHTML = "";
   localStorage.clear();
 });
@@ -2273,9 +2280,18 @@ describe("viewer: two documents with the same heading", () => {
     return host;
   }
 
+  // WAITED FOR, not timed. The spy runs in an effect, and Preact defers those
+  // to after paint — which in this environment means a fallback timer, not the
+  // frame a browser would give it. A fixed 30ms was sometimes enough and
+  // sometimes not, so this test failed about one run in three and passed on its
+  // own every time; the mark it is about had simply not been made yet. What is
+  // asserted is that exactly one entry ends up current, never how soon.
   async function currentCount(host: HTMLElement): Promise<number> {
     window.dispatchEvent(new Event("scroll"));
-    await new Promise((r) => setTimeout(r, 30));
+    for (let i = 0; i < 100; i++) {
+      if (host.querySelector(".rs-navtree-here") !== null) break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
     return host.querySelectorAll(".rs-navtree-here").length;
   }
 

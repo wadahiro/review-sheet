@@ -395,6 +395,16 @@ function parseAllow(spec: string | undefined): Set<string> | undefined {
 // Every file under `dir`, relative to it, that is not in `written`. Walks
 // rather than using a recursive readdir option so the traversal is the same on
 // every runtime this ships to.
+// The file manager's own bookkeeping, which is not a stale sheet.
+//
+// The report below exists for a file a RECIPIENT cannot tell from a current one
+// — a renamed sheet, a chapter that moved, a whole earlier layout. `.DS_Store`
+// is none of those: it is invisible, it is the operating system's, and it comes
+// back the moment anybody opens the folder, so reporting it is a warning that
+// fires on every regeneration and says nothing a reader could act on. Named
+// rather than pattern-matched, so nothing else slips through with it.
+const HOUSEKEEPING = new Set([".DS_Store", "Thumbs.db", "desktop.ini"]);
+
 function leftInDirectory(dir: string, written: Set<string>): string[] {
   const out: string[] = [];
   const walk = (at: string, prefix: string): void => {
@@ -407,7 +417,7 @@ function leftInDirectory(dir: string, written: Set<string>): string[] {
     for (const e of entries) {
       const rel = prefix === "" ? e.name : `${prefix}/${e.name}`;
       if (e.isDirectory()) walk(join(at, e.name), rel);
-      else if (!written.has(rel)) out.push(rel);
+      else if (!written.has(rel) && !HOUSEKEEPING.has(e.name)) out.push(rel);
     }
   };
   walk(dir, "");
