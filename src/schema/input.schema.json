@@ -321,12 +321,6 @@
                 "sheet"
               ]
             },
-            "row_keys": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            },
             "html": {
               "type": "string"
             },

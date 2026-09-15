@@ -379,15 +379,12 @@ export type SheetDocument = {
   // them out as such, so a delivered document looks like the sheet it replaced
   // rather than like a markdown file about it.
   mode?: "prose" | "sheet";
-  // For a "sheet" document: which row of the MODEL each row of the markdown was
-  // written from, keyed by the address the document itself states (its heading
-  // path and the chain of names that leads to the row).
-  //
-  // It is a lens, never data: the artifact preview is offered through it, and
-  // nothing else reads it. A row somebody edits or writes themselves simply has
-  // no entry, and gets no affordance — which is the rule the sheet already
-  // follows for a row no file has a line for.
-  row_keys?: Record<string, string>;
+  // The prose above the first heading of a markdown-backed sheet, DERIVED from
+  // that markdown when the document is prepared for rendering (`liftMarkdownSheet`)
+  // and never authored. It has no category to be a note of, and with one
+  // renderer the model is what is drawn — so a paragraph somebody wrote under
+  // the title needs a field or it is simply gone.
+  lead?: string;
   html: string;
   // The markdown the html was rendered FROM, and the images it embeds, carried
   // only when the document is meant to be editable in the browser

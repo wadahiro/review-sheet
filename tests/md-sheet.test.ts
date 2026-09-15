@@ -10,11 +10,14 @@ if (typeof (globalThis as { document?: unknown }).document === "undefined") Glob
 
 import { describe, it, expect, afterEach } from "bun:test";
 import { h, render } from "preact";
-import { MarkdownSheetBody, inlineMarkdown, rowIsUnset } from "../src/html/md-sheet";
+import { Root } from "../src/html/app";
+import { inlineMarkdown } from "../src/html/inline-markdown";
+import { rowIsUnset } from "../src/sheet-markdown";
 import {
   parseMarkdownBlocks,
   tableShape,
   markdownToCategories,
+  liftMarkdownSheet,
   declaredInstances,
   withEnvironment,
   withoutEnvironment,
@@ -49,23 +52,90 @@ const MD = sheetToMarkdown(SHEET as never, "ja");
 
 afterEach(() => {
   document.body.innerHTML = "";
+  localStorage.clear();
 });
 
-function mount(markdown = MD, showDefaults = false): HTMLElement {
+// The reader's own control for the rows nobody set — reached the way a reader
+// reaches it, since the page is the sheet's own now and the toggle is the
+// sheet's own too.
+async function showUnsetRows(host: HTMLElement): Promise<void> {
+  const menu = [...host.querySelectorAll("button")].find((b) => /絞り込み/.test(b.textContent ?? ""));
+  (menu as HTMLElement | undefined)?.click();
+  await Promise.resolve();
+  const check = [...host.querySelectorAll(".rs-menu-check")].find((l) => /未設定の行を表示/.test(l.textContent ?? ""));
+  // Absent when the page has no unset row to show — which is what a reader
+  // meets too, so it is not a failure, it is nothing to do.
+  if (!check) {
+    (menu as HTMLElement | undefined)?.click();
+    return;
+  }
+  (check.querySelector("input") as HTMLInputElement).click();
+  await Promise.resolve();
+}
+
+// Mounted through the REAL page, because there is no second renderer to mount:
+// a sheet whose model is markdown is lifted into categories and drawn by the
+// sheet's own table (`liftMarkdownSheet`), which is the whole reason the two
+// readings of a delivery look alike. So what these assert is what a reader
+// meets, reached the way a reader reaches it.
+async function mount(markdown = MD, showDefaults = false): Promise<HTMLElement> {
+  localStorage.clear();
+  location.hash = "#1";
   const host = document.createElement("div");
   document.body.appendChild(host);
   render(
-    h(MarkdownSheetBody, {
-      markdown,
-      instances: ["staging", "production"],
-      lang: "ja",
-      sheetIndex: 0,
-      hiddenInstances: new Set<string>(),
-      showDefaults,
-      t: getMessages("ja"),
-    }),
+    h(Root as never, {
+      payload: {
+        metadata: { title: "t" },
+        versions: [
+          {
+            version: "current",
+            sheets: [{ name: "os", instances: ["staging", "production"], categories: [], document: { html: "", markdown, mode: "sheet" } }],
+          },
+        ],
+      },
+      reviewEnabled: false,
+      initialLang: "ja",
+      server: false,
+    } as never),
     host
   );
+  if (showDefaults) await showUnsetRows(host);
+  return host;
+}
+
+
+// The same page, for a case that needs its own markdown, environments or
+// artifacts. One door in, because there is one renderer.
+async function mountPage(opts: {
+  markdown: string;
+  instances?: string[];
+  showDefaults?: boolean;
+  artifacts?: unknown[];
+}): Promise<HTMLElement> {
+  localStorage.clear();
+  location.hash = "#1";
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  render(
+    h(Root as never, {
+      payload: {
+        metadata: { title: "t" },
+        versions: [
+          {
+            version: "current",
+            sheets: [{ name: "os", instances: opts.instances ?? [], categories: [], document: { html: "", markdown: opts.markdown, mode: "sheet" } }],
+            ...(opts.artifacts === undefined ? {} : { artifacts: opts.artifacts }),
+          },
+        ],
+      },
+      reviewEnabled: false,
+      initialLang: "ja",
+      server: false,
+    } as never),
+    host
+  );
+  if (opts.showDefaults === true) await showUnsetRows(host);
   return host;
 }
 
@@ -117,8 +187,8 @@ describe("the sheet as markdown, written", () => {
 });
 
 describe("the sheet as markdown, rendered", () => {
-  it("lays the columns out as the sheet does", () => {
-    const host = mount();
+  it("lays the columns out as the sheet does", async () => {
+    const host = await mount();
     // The leading columns carry the pin control, so their class says whether
     // they are currently frozen — the text is what is compared here.
     const heads = [...host.querySelectorAll("th")].map((e) => [
@@ -141,7 +211,7 @@ describe("the sheet as markdown, rendered", () => {
   // at all — a key alone scrolls away from the sentence saying what it is. The
   // two readings of one document are held to each other by `set-parity`.
   it("freezes the key and its description, and lets them go", async () => {
-    const host = mount();
+    const host = await mount();
     expect(host.querySelector("table")?.className).toContain("rs-freeze-2");
     const tick = async (): Promise<void> => {
       (host.querySelector(".rs-pin") as HTMLElement).click();
@@ -154,11 +224,14 @@ describe("the sheet as markdown, rendered", () => {
     expect(host.querySelector("table")?.className).toContain("rs-freeze-0");
   });
 
-  it("carries the indent onto the key cell, as a depth", () => {
-    const host = mount();
-    const keys = [...host.querySelectorAll("td.rs-col-key")].map((e) => [
-      (e as HTMLElement).style.getPropertyValue("--rs-block-depth"),
-      e.textContent,
+  // On the ROW, which is where the sheet's own table carries it — the document
+  // says the depth with an indent and the page says it with this, and a row
+  // holding others shows its kind rather than its address.
+  it("carries the indent onto the row, as a depth", async () => {
+    const host = await mount();
+    const keys = [...host.querySelectorAll("tr.rs-param-row")].map((r) => [
+      (r as HTMLElement).style.getPropertyValue("--rs-block-depth") || "0",
+      r.querySelector("td.rs-col-key")?.textContent,
     ]);
     expect(keys).toEqual([
       ["0", "Unit"],
@@ -168,25 +241,25 @@ describe("the sheet as markdown, rendered", () => {
     ]);
   });
 
-  it("hides the rows nobody set, and shows them when asked", () => {
-    expect(mount(MD, false).textContent).not.toContain("Nice");
-    expect(mount(MD, true).textContent).toContain("Nice");
+  it("hides the rows nobody set, and shows them when asked", async () => {
+    expect((await mount(MD, false)).textContent).not.toContain("Nice");
+    expect((await mount(MD, true)).textContent).toContain("Nice");
   });
 
   // A block has no value of its own — `Unit`, `<Directory>` — so the "hide what
   // nobody set" rule would take it and leave its contents indented under
   // nothing. It stays for as long as anything under it does, and goes when
   // everything under it is gone.
-  it("keeps a block for as long as it holds something", () => {
-    const host = mount();
+  it("keeps a block for as long as it holds something", async () => {
+    const host = await mount();
     expect(host.textContent).toContain("Unit");
     const allUnset = MD.replace("| Keycloak | Keycloak |", "|  |  |").replace("| always | always |", "|  |  |");
-    expect(mount(allUnset).textContent).not.toContain("Unit");
+    expect((await mount(allUnset)).textContent).not.toContain("Unit");
   });
 
   // A heading is a category heading, with the sheet's own sticky depth.
-  it("renders a heading as the sheet's category header", () => {
-    const host = mount();
+  it("renders a heading as the sheet's category header", async () => {
+    const host = await mount();
     const head = host.querySelector(".rs-category-header");
     expect(head?.textContent).toBe("keycloak.service");
     expect(head?.closest(".rs-category")?.className).toContain("rs-depth-1");
@@ -194,11 +267,11 @@ describe("the sheet as markdown, rendered", () => {
 
   // A column the reviewer adds by hand is a column: the header row is what says
   // what a table has.
-  it("shows a column somebody added", () => {
+  it("shows a column somebody added", async () => {
     const edited = MD.replace("| staging | production |", "| staging | production | 備考 |")
       .replace("| --- | --- | --- | --- | --- |", "| --- | --- | --- | --- | --- | --- |")
       .replace("| `Unit` | ユニット |  |  |  |", "| `Unit` | ユニット |  |  |  | 要確認 |");
-    const host = mount(edited);
+    const host = await mount(edited);
     expect([...host.querySelectorAll("th")].map((e) => e.textContent)).toContain("備考");
     expect(host.querySelector("td.rs-col-remarks")?.textContent).toBe("要確認");
   });
@@ -228,42 +301,37 @@ describe("the rows the derived index states", () => {
   });
 });
 
-// The preview panel is a LENS on the file a row's line lives in, and a document
-// keeps it: `row_keys` says which model row each document row was written from,
-// so the affordance survives the model going away. A row somebody wrote
-// themselves is in no such map and gets none — a button that opens nothing is
-// worse than no button.
+// The preview panel is a LENS on the file a row's line lives in, and a set
+// carries that address under the row's key — so the affordance survives the
+// model going away. A row nothing has a line for gets none: a button that opens
+// nothing is worse than no button.
+//
+// Reached through the artifact index, exactly as a modelled sheet reaches it:
+// the page is drawn by the sheet's own renderer either way, so there is nothing
+// here that only a markdown page does.
 describe("the file a row's line is in", () => {
-  const opened: string[][] = [];
-  const artifact = {
-    idFor: (sheet: string, category: string, key: string) =>
-      sheet === "os" && category === "keycloak.service" && key === "Unit.Description" ? "preview-1" : undefined,
-    open: (id: string, key: string) => opened.push([id, key]),
-  };
-  const rowKeys = { "keycloak.service Unit.Description": "Unit.Description" };
+  const PREVIEWS = [
+    {
+      id: "preview-1",
+      sheet: "os",
+      component: "keycloak.service",
+      source_file: "/etc/systemd/system/keycloak.service",
+      lines: [
+        { text: "[Unit]", kind: "verbatim" },
+        { text: "Description=Keycloak", kind: "substituted", key: "Unit.Description" },
+      ],
+    },
+  ];
 
-  it("is offered on the row it has a line for, and on no other", () => {
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    render(
-      h(MarkdownSheetBody, {
-        markdown: MD,
-        instances: ["staging", "production"],
-        lang: "ja",
-        sheetIndex: 0,
-        hiddenInstances: new Set<string>(),
-        showDefaults: false,
-        rowKeys,
-        sheetName: "os",
-        artifact,
-        t: getMessages("ja"),
-      }),
-      host
-    );
+  it("is offered on the row it has a line for, and on no other", async () => {
+    const host = await mountPage({ markdown: MD, instances: ["staging", "production"], artifacts: PREVIEWS });
     const chips = [...host.querySelectorAll(".rs-artifact-chip")];
     expect(chips).toHaveLength(1);
     (chips[0] as HTMLElement).click();
-    expect(opened).toEqual([["preview-1", "Unit.Description"]]);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(host.querySelector(".rs-artifact-panel"), "the chip opened nothing").not.toBeNull();
+    const here = host.querySelector(".rs-artifact-line.rs-here");
+    expect(here?.textContent).toContain("Description=Keycloak");
   });
 });
 
@@ -271,8 +339,8 @@ describe("the file a row's line is in", () => {
 // stick to — so the header is lifted out of the table and kept aligned with the
 // body's horizontal scroll, exactly as the sheet's own tables do it.
 describe("the header that follows a wide table", () => {
-  it("splits the header from the body on a sheet with environments", () => {
-    const host = mount();
+  it("splits the header from the body on a sheet with environments", async () => {
+    const host = await mount();
     expect(host.querySelector(".rs-table-split")).not.toBeNull();
     expect(host.querySelector(".rs-sticky-head thead")).not.toBeNull();
     expect(host.querySelector(".rs-split-body tbody")).not.toBeNull();
@@ -294,7 +362,7 @@ describe("the header that follows a wide table", () => {
 
   // A sheet with no environments is narrow enough to stay in flow, where the
   // CSS sticky header works and a lifted one would only be a second mechanism.
-  it("leaves a narrow table in one piece", () => {
+  it("leaves a narrow table in one piece", async () => {
     const narrow = [
       "# s",
       "",
@@ -305,20 +373,7 @@ describe("the header that follows a wide table", () => {
       "| `k` |  | 1 |",
       "",
     ].join("\n");
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    render(
-      h(MarkdownSheetBody, {
-        markdown: narrow,
-        instances: [],
-        lang: "ja",
-        sheetIndex: 0,
-        hiddenInstances: new Set<string>(),
-        showDefaults: true,
-        t: getMessages("ja"),
-      }),
-      host
-    );
+    const host = await mountPage({ markdown: narrow, showDefaults: true });
     expect(host.querySelector(".rs-table-split")).toBeNull();
     expect(host.querySelector("thead")).not.toBeNull();
   });
@@ -328,7 +383,7 @@ describe("the header that follows a wide table", () => {
 // off `--rs-depth` on the ANCESTOR — so a nested section has to be inside its
 // parent's element, not beside it.
 describe("how the sections nest", () => {
-  it("puts a section inside the one it belongs to", () => {
+  it("puts a section inside the one it belongs to", async () => {
     const nested = [
       "# s",
       "",
@@ -341,20 +396,7 @@ describe("how the sections nest", () => {
       "| `k` |  | 1 |",
       "",
     ].join("\n");
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    render(
-      h(MarkdownSheetBody, {
-        markdown: nested,
-        instances: [],
-        lang: "ja",
-        sheetIndex: 0,
-        hiddenInstances: new Set<string>(),
-        showDefaults: true,
-        t: getMessages("ja"),
-      }),
-      host
-    );
+    const host = await mountPage({ markdown: nested, showDefaults: true });
     const child = [...host.querySelectorAll(".rs-category")].find((e) => (e.textContent ?? "").startsWith("child"))!;
     expect(child.className).toContain("rs-depth-2");
     expect(child.parentElement?.className).toContain("rs-depth-1");
@@ -366,8 +408,8 @@ describe("how the sections nest", () => {
 // numbered its headings and rows differently, every entry would point at
 // nothing — so both sides use anchors.ts and this is the check that they do.
 describe("what the outline jumps to", () => {
-  it("puts the same ids on a heading and a row that the index expects", () => {
-    const host = mount(MD, true);
+  it("puts the same ids on a heading and a row that the index expects", async () => {
+    const host = await mount(MD, true);
     const cats = markdownToCategories(MD, ["staging", "production"], "ja");
     expect(host.querySelector(`#${CSS?.escape ? CSS.escape(navAnchorId(0, cats[0].name)) : navAnchorId(0, cats[0].name)}`)).not.toBeNull();
     const first = cats[0].params![0];
@@ -379,16 +421,21 @@ describe("what the outline jumps to", () => {
 // Which column is which is decided by NAME — the environment names the sheet
 // declares — and everything else follows from where they start. What matters
 // most is the other half of that rule: a column no role claims is still shown,
-// in the place the author put it. It used to fall between the roles and be
-// rendered nowhere, while the document still held it.
+// under its own heading, rather than folded into a neighbour's.
+//
+// At the END, which is what changed when the page stopped having a renderer of
+// its own: the sheet's table lays a declared column out where the model can put
+// one (`place: "trailing"`), and the model has no way to say "between the
+// description and the default". The heading and every value survive; the
+// position does not, and that is the cost of one renderer rather than two.
 describe("a column nobody predicted", () => {
-  it("is shown, in the order the document writes it", () => {
+  it("is shown, under its own heading", async () => {
     const md = MD.replace("| 設定項目 | 説明 | デフォルト値 |", "| 設定項目 | 説明 | 出荷時 | デフォルト値 |")
       .replace("| --- | --- | --- | --- | --- |", "| --- | --- | --- | --- | --- | --- |")
       .replace(/^\|(\s*)`([^`]*)` \|/gm, "|$1`$2` | 旧 |");
-    const host = mount(md, true);
+    const host = await mount(md, true);
     const heads = [...host.querySelectorAll("th")].map((e) => (e.querySelector("span") ?? e).textContent);
-    expect(heads).toEqual(["設定項目", "説明", "出荷時", "デフォルト値", "staging", "production"]);
+    expect(heads).toEqual(["設定項目", "説明", "デフォルト値", "staging", "production", "出荷時"]);
     expect(host.querySelector("tbody tr")?.textContent).toContain("旧");
   });
 });
@@ -418,21 +465,21 @@ describe("a section whose rows are all hidden", () => {
   const headings = (host: HTMLElement): string[] =>
     [...host.querySelectorAll(".rs-category-header")].map((e) => (e.textContent ?? "").trim());
 
-  it("goes with them, heading and all", () => {
-    expect(headings(mount(md, false))).toEqual(["SELinux"]);
-    expect(headings(mount(md, true))).toEqual(["SELinux", "製品既定のみ"]);
+  it("goes with them, heading and all", async () => {
+    expect(headings(await mount(md, false))).toEqual(["SELinux"]);
+    expect(headings(await mount(md, true))).toEqual(["SELinux", "製品既定のみ"]);
   });
 
   // A section that holds only a paragraph is not empty: what it has to show is
   // the paragraph.
-  it("stays when it holds a note", () => {
+  it("stays when it holds a note", async () => {
     const noted = md.replace("## 製品既定のみ\n", "## 製品既定のみ\n\n本番のみ有効。\n");
-    expect(headings(mount(noted, false))).toEqual(["SELinux", "製品既定のみ"]);
+    expect(headings(await mount(noted, false))).toEqual(["SELinux", "製品既定のみ"]);
   });
 
   // …and a heading whose own table is empty but whose CHILD has rows stays,
   // because the child is under it.
-  it("stays when something under it does", () => {
+  it("stays when something under it does", async () => {
     const nested = [
       "# os",
       "",
@@ -449,7 +496,7 @@ describe("a section whose rows are all hidden", () => {
       "| `set` |  | 1 |",
       "",
     ].join("\n");
-    expect(headings(mount(nested, false))).toEqual(["親", "子"]);
+    expect(headings(await mount(nested, false))).toEqual(["親", "子"]);
   });
 });
 
@@ -476,29 +523,16 @@ describe("what a value cell says about itself", () => {
     return [...row.querySelectorAll("td.rs-col-value")].map((e) => e.className.replace("rs-col-value", "").trim());
   };
 
-  const mountMd = (): HTMLElement => {
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    render(
-      h(MarkdownSheetBody, {
-        markdown: md,
-        instances: ["staging", "production"],
-        lang: "ja",
-        sheetIndex: 0,
-        hiddenInstances: new Set<string>(),
-        showDefaults: true,
-        t: getMessages("ja"),
-      }),
-      host
-    );
+  const mountMd = async (): Promise<HTMLElement> => {
+    const host = await mountPage({ markdown: md, instances: ["staging", "production"], showDefaults: true });
     return host;
   };
 
   // "Nothing is set here" and "set to nothing" are different facts, and an empty
   // cell says the second unless it is told to say the first. The sheet's own
   // cells have always said it; the document's did not.
-  it("says that a row nobody set uses the default", () => {
-    const host = mountMd();
+  it("says that a row nobody set uses the default", async () => {
+    const host = await mountMd();
     const row = [...host.querySelectorAll("tbody tr")].find((r) => (r.textContent ?? "").includes("unset"))!;
     expect([...row.querySelectorAll("td.rs-col-value")].map((e) => e.textContent)).toEqual([
       getMessages("ja").usesDefault,
@@ -508,14 +542,14 @@ describe("what a value cell says about itself", () => {
 
   // …and a value somebody wrote that happens to equal the default is NOT that:
   // writing it was a decision, and a sheet that shows the two alike hides it.
-  it("shows a written value that equals the default as the value it is", () => {
-    const host = mountMd();
+  it("shows a written value that equals the default as the value it is", async () => {
+    const host = await mountMd();
     const row = [...host.querySelectorAll("tbody tr")].find((r) => (r.textContent ?? "").includes("same"))!;
     expect([...row.querySelectorAll("td.rs-col-value")].map((e) => e.textContent)).toEqual(["off", "off"]);
   });
 
-  it("marks a value of its own, one that equals the default, and one nobody set", () => {
-    const host = mountMd();
+  it("marks a value of its own, one that equals the default, and one nobody set", async () => {
+    const host = await mountMd();
     // `rs-cell-common` beside it: one value repeated across every environment
     // is what `origin: "common"` asserts, and the sheet marks it. A set carries
     // no origin by design, so it is read off the table — see md-sheet.ts.
@@ -526,8 +560,8 @@ describe("what a value cell says about itself", () => {
 
   // Copying a value is worth as much in a document as on a sheet, and it is the
   // one cell action a document can offer.
-  it("offers the value to be copied", () => {
-    const host = mountMd();
+  it("offers the value to be copied", async () => {
+    const host = await mountMd();
     const cell = [...host.querySelectorAll("td.rs-col-value")].find((e) => (e.textContent ?? "").trim() === "on")!;
     let shown: unknown = null;
     setCellToolSetter((c) => (shown = c));
@@ -537,11 +571,17 @@ describe("what a value cell says about itself", () => {
   });
 });
 
-// The link a delivered set writes under a row's key, as the page reads it.
+// The address a delivered set writes under a row's key, as the page reads it.
 //
 // It shares the cell with the row's IDENTITY, which is the whole hazard: every
 // reader of that cell has to split it first, and the copy button is the one
 // that shows up in a reviewer's clipboard rather than in a diff.
+//
+// What the reader MEETS is the key and, where the page also holds the file, the
+// sheet's own chip — the address itself is carried out of the cell by the lift
+// (`liftMarkdownSheet`) and spent on the artifact index, which is what makes a
+// dropped set's rows open their files (tests/viewer.test.ts). A page holding no
+// such file shows no affordance at all rather than one that opens nothing.
 describe("the address under a row's key", () => {
   const md = [
     "# os",
@@ -554,38 +594,26 @@ describe("the address under a row's key", () => {
     "",
   ].join("\n");
 
-  const mount = (): HTMLElement => {
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    render(
-      h(MarkdownSheetBody, {
-        markdown: md,
-        instances: ["staging", "production"],
-        lang: "ja",
-        sheetIndex: 0,
-        hiddenInstances: new Set<string>(),
-        showDefaults: true,
-        t: getMessages("ja"),
-      }),
-      host
-    );
-    return host;
-  };
+  const mount = async (): Promise<HTMLElement> =>
+    await mountPage({ markdown: md, instances: ["staging", "production"] });
 
-  it("shows the key and, under it, a link to the file", () => {
-    const cell = mount().querySelector("td.rs-col-key")!;
+  it("is taken out of the cell, which says the key and nothing else", async () => {
+    const cell = (await mount()).querySelector("td.rs-col-key")!;
     expect(cell.querySelector("code")!.textContent).toBe("Listen");
-    const a = cell.querySelector("a")!;
-    expect(a.textContent).toBe("プレビュー");
-    // Relative, and left to the page's own delegated handler to open — the
-    // address only reaches the panel if it is still there to be compared.
-    expect(a.getAttribute("href")).toBe("artifacts/staging/httpd.conf#L34");
+    expect(cell.textContent).not.toContain("プレビュー");
+    expect(cell.querySelector("a")).toBeNull();
+  });
+
+  it("is what the lift hands out, so something can still open the file", () => {
+    expect(liftMarkdownSheet(md, ["staging", "production"], "ja").addresses).toEqual([
+      { key: "Listen", href: "artifacts/staging/httpd.conf#L34" },
+    ]);
   });
 
   // What the cell SAYS is the key. A copied key with a markdown link stuck to
   // the end of it is not a key.
-  it("offers the key to be copied, and not the address with it", () => {
-    const cell = mount().querySelector("td.rs-col-key")! as HTMLElement;
+  it("offers the key to be copied, and not the address with it", async () => {
+    const cell = (await mount()).querySelector("td.rs-col-key")! as HTMLElement;
     let shown: unknown = null;
     setCellToolSetter((c) => (shown = c));
     cell.dispatchEvent(new Event("mouseenter", { bubbles: false }));
@@ -595,28 +623,15 @@ describe("the address under a row's key", () => {
 
   // The row is the row the model wrote, whatever is under its key — the
   // document's anchors and its change set are both built from this name.
-  it("names the row by its key alone", () => {
-    expect(mount().querySelector("tr.rs-param-row")!.id).toBe(paramAnchorId(0, "httpd.conf", "Listen"));
+  it("names the row by its key alone", async () => {
+    expect((await mount()).querySelector("tr.rs-param-row")!.id).toBe(paramAnchorId(0, "httpd.conf", "Listen"));
   });
 
   // A cell somebody typed into, so the address no longer stands alone. It is
   // not an address any more and is not read as one — the whole cell is the
   // key, which is what a document nobody generated has always meant.
-  it("reads a cell with writing after the link as all key", () => {
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    render(
-      h(MarkdownSheetBody, {
-        markdown: md.replace("#L34)", "#L34) and then some"),
-        instances: ["staging", "production"],
-        lang: "ja",
-        sheetIndex: 0,
-        hiddenInstances: new Set<string>(),
-        showDefaults: true,
-        t: getMessages("ja"),
-      }),
-      host
-    );
+  it("reads a cell with writing after the link as all key", async () => {
+    const host = await mountPage({ markdown: md.replace("#L34)", "#L34) and then some"), instances: ["staging", "production"] });
     expect(host.querySelectorAll("tr.rs-param-row")).toHaveLength(1);
   });
 });

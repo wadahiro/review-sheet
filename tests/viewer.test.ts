@@ -2857,10 +2857,10 @@ describe("a dropped set, opened at a row's line", () => {
 
   // Written and read back exactly as the CLI does it: the same projection, the
   // same carried documents, the same address rule.
-  function droppedPage(): HTMLElement {
+  function writtenSet(): ReturnType<typeof toMarkdownSet> {
     const carried = carriedDocuments(MODEL.artifacts as never, ["staging"]);
     const index = buildArtifactIndex(MODEL.artifacts as never);
-    const { files } = toMarkdownSet(MODEL as never, "ja", {
+    return toMarkdownSet(MODEL as never, "ja", {
       documents: carried,
       preview: (sheet) => (row, categoryPath) => {
         const hit = index.previewFor(sheet.name, categoryPath.join("/"), row.key);
@@ -2868,6 +2868,10 @@ describe("a dropped set, opened at a row's line", () => {
         return doc === undefined ? undefined : addressOf([doc], row.key);
       },
     });
+  }
+
+  function droppedPage(): HTMLElement {
+    const { files } = writtenSet();
     const read = readMarkdownSet(files.map((f) => ({ path: `${f.path}`, text: f.text })), "ja");
     expect(read.problems).toEqual([]);
     const host = document.createElement("div");
@@ -2886,22 +2890,27 @@ describe("a dropped set, opened at a row's line", () => {
     return host;
   }
 
-  it("puts the address under the key, as a link into the set", () => {
-    const a = droppedPage().querySelector("td.rs-col-key a") as HTMLAnchorElement | null;
-    expect(a).not.toBeNull();
-    expect(a!.textContent).toBe("プレビュー");
-    // Rebased on the SET — the page is one document for the whole folder, so an
-    // address left relative to the sheet resolves against the wrong place.
-    // Percent-encoded, and the fragment carried through — the page decodes it
-    // back and compares it against what it is holding, so both halves have to
-    // survive the climb out of the chapter.
-    expect(decodeURI(a!.getAttribute("href")!)).toBe("Detailed design/Web tier/artifacts/common/etc/httpd/conf/httpd.conf#L3");
+  // The address the page carries, checked where it is WRITTEN rather than where
+  // it is rendered: the page draws the sheet's own chip from the lifted model
+  // (the two readings of a document are one renderer now), so the address is no
+  // longer an `<a>` in the cell — but it is still the string the whole chain
+  // rests on, and it still has to survive the climb out of the chapter.
+  it("writes the address into the set, rebased on it", () => {
+    const { files } = writtenSet();
+    const page = files.find((f) => f.path.endsWith("web.md"))!;
+    expect(page.text).toContain("[プレビュー](artifacts/common/etc/httpd/conf/httpd.conf#L3)");
+  });
+
+  it("offers the file under the row's key", () => {
+    const chip = droppedPage().querySelector("td.rs-col-key .rs-artifact-chip");
+    expect(chip, "no way into the file under the key").not.toBeNull();
+    expect(chip!.textContent?.trim()).toBe("プレビュー");
   });
 
   it("opens the file beside the sheet, at that line", async () => {
     const host = droppedPage();
     expect(host.querySelector(".rs-artifact-panel")).toBeNull();
-    const a = host.querySelector("td.rs-col-key a") as HTMLAnchorElement;
+    const a = host.querySelector("td.rs-col-key .rs-artifact-chip") as HTMLElement;
     a.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
     await new Promise((r) => setTimeout(r, 30));
 

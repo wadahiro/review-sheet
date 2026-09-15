@@ -24,10 +24,10 @@ import {
 } from "../prompt.js";
 import { buildDiffModel, rowKey, instKey, catKey, sheetKey, type DiffStatusMap } from "../diffview.js";
 import { isEdit, targetKey } from "../edits.js";
-import { toMarkdownSheet, renderSheetMarkdown, parseSheetMarkdown } from "../sheet-markdown.js";
+import { toMarkdownSheet, renderSheetMarkdown, parseSheetMarkdown, liftMarkdownSheet } from "../sheet-markdown.js";
 import { getMarkdownRenderer } from "./markdown-runtime.js";
 import { EVIDENCE_SCHEME, parseEvidenceRef } from "../evidence.js";
-import { MarkdownSheetBody, inlineMarkdown } from "./md-sheet.js";
+import { inlineMarkdown } from "./inline-markdown.js";
 import { NavTree, chapterPath } from "./nav-tree.js";
 import { sectionize } from "./doc-sections.js";
 import { navAnchorId, paramAnchorId, encodeIdPart } from "./anchors.js";
@@ -48,7 +48,7 @@ import { buildArtifactIndex } from "../artifact-index.js";
 import { SET_BLOCK_ID, setBlockJson, spliceSetBlock, FOLDER_INPUT_ID } from "../set-block.js";
 import { setShowSources, showSources } from "./display-config.js";
 import type { DiffStatus } from "../diff.js";
-import { pickLang, type OutOfScope, type Capabilities, type ArtifactPreview, PRESENCE_VALUE } from "../types.js";
+import { pickLang, type OutOfScope, type Capabilities, type ArtifactPreview, type ColumnDefinition, PRESENCE_VALUE } from "../types.js";
 
 const html = htm.bind(h);
 
@@ -3653,15 +3653,23 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   const data = useMemo<SheetData>(() => {
     const base = baseData;
     // A sheet whose model is its markdown carries no categories — the text is the
-    // model. They are DERIVED here, from that text, so everything that asks
-    // "what rows does this sheet have" (the outline, the search palette, the
-    // side-by-side comparison) keeps working with no second implementation and
-    // no chance of disagreeing with the page. The BODY still renders from the
-    // text itself: this is an index, not a model.
+    // model. They are DERIVED here, from that text, and this is the ONE reading
+    // of it: the outline, the search palette, the side-by-side comparison and
+    // the PAGE ITSELF all render from what this produces. The body used to read
+    // the text a second time through a renderer of its own, and six visible
+    // differences came out of the two — so the second one is gone and anything
+    // the lift does not carry is carried now (`lead`).
     if (!base.sheets.some((s) => s.document?.mode === "sheet")) return base;
-    return {
-      ...base,
-      sheets: base.sheets.map((s) => {
+    // A column the page has and this tool has no field for is DECLARED, so the
+    // sheet's own table shows it under its own heading instead of folding it
+    // into a neighbour. Document-level, as every other column declaration is,
+    // and deduped by field — two pages carrying the same heading carry one
+    // column.
+    const added: ColumnDefinition[] = [];
+    // The sheets FIRST: `added` is filled while they are lifted, and an object
+    // literal evaluates its properties in order — written above `sheets:` it
+    // was read while still empty, and the column never reached the table.
+    const sheets = base.sheets.map((s) => {
         if (s.document?.mode !== "sheet") return s;
         const markdown = s.document.markdown ?? "";
         // The environments the DOCUMENT declares. The model's list is what it
@@ -3673,9 +3681,16 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
         // decide which of them it has. Both are needed: the first to read a
         // header, the second to know what this sheet covers.
         const here = (declaredInstances(markdown) ?? []).filter((n) => environments.includes(n));
-        return { ...s, instances: here, categories: markdownToCategories(markdown, environments, lang) };
-      }),
-    };
+        const lifted = liftMarkdownSheet(markdown, environments, lang);
+        for (const c of lifted.columns) if (!added.some((x) => x.field === c.field) && !(base.columns ?? []).some((x) => x.field === c.field)) added.push(c);
+        return {
+          ...s,
+          instances: here,
+          categories: lifted.categories,
+          ...(lifted.lead === "" ? {} : { document: { ...s.document, lead: lifted.lead } }),
+        };
+    });
+    return { ...base, sheets, ...(added.length === 0 ? {} : { columns: [...(base.columns ?? []), ...added] }) };
   }, [baseData, lang, environments]);
   const hasMetadataInit = !!(data.metadata?.project || data.metadata?.version || data.metadata?.generated_at || data.metadata?.changelog?.length || data.metadata?.extra);
 
@@ -4613,21 +4628,35 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                   `}
                 </p>
               `}
+              ${/* The prose above this page's first heading, when the page IS
+                    markdown. It belongs to the sheet rather than to any
+                    category, so it is rendered here, between the sheet's own
+                    heading and its sections — where it sits in the text. */ ""}
+              ${sheet.document?.lead && html`
+                <div class="rs-md-prose"
+                     dangerouslySetInnerHTML=${{ __html: getMarkdownRenderer()?.(sheet.document.lead, {}, {}).html ?? "" }}></div>
+              `}
 
+                ${/* A sheet whose model is MARKDOWN falls THROUGH to the walk
+                     below and is drawn by the sheet's own renderer, from the
+                     categories its text was lifted into (markdownToCategories).
+                     It used to have a second renderer, and six visible
+                     differences came out of that: a heading, a subtitle, an
+                     orientation toggle, a type face, a shared-value mark and
+                     the shape of one affordance. None of them was anybody's
+                     mistake — they are what two implementations of one
+                     appearance do — and a seventh was free to arrive with the
+                     next change to either. The lift was already computed for
+                     every such page: the outline and the search have read it
+                     all along, and only the drawing was still asking the text a
+                     second time. */ ""}
               ${sheet.document?.mode === "sheet" && pivoted.has(sheet.name)
                 ? html`<${PivotView} sheet=${sheet}
                                      sheetIndex=${idx} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
                                      reviews=${[]} reviewEnabled=${false}
                                      onOpenReview=${() => {}}
                                      onLeave=${alwaysPivoted.has(sheet.name) ? undefined : () => setPivoted((prev) => { const next = new Set(prev); next.delete(sheet.name); return next; })} t=${t} />`
-                : sheet.document?.mode === "sheet"
-                ? html`<${MarkdownSheetBody}
-                          markdown=${sheet.document.markdown ?? ""}
-                          instances=${sheet.instances ?? []} lang=${lang} sheetIndex=${idx}
-                          hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
-                          rowKeys=${sheet.document.row_keys} sheetName=${sheet.name} artifact=${artifactAccess}
-                          t=${t} />`
-                : sheet.document
+                : sheet.document && sheet.document.mode !== "sheet"
                 ? html`<${DocumentBody} sheet=${sheet}
                                         onEvidence=${(artifacts ?? []).some((a) => a.nature === "observed")
                                           ? (id: string, line?: number) => setArtifactTarget({ id, line })

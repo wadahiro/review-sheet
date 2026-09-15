@@ -15,7 +15,7 @@
 //
 // Pure: it is given the files, it does not read them.
 
-import { markdownToCategories, declaredInstances, looksLikeParamSheet, renamedKeyColumns, parseSheetMarkdown, withoutDeployedPath } from "./sheet-markdown.js";
+import { liftMarkdownSheet, declaredInstances, looksLikeParamSheet, renamedKeyColumns, parseSheetMarkdown, withoutDeployedPath } from "./sheet-markdown.js";
 import type { Lang } from "./html/i18n.js";
 import type { ArtifactPreview } from "./types.js";
 
@@ -39,7 +39,14 @@ export type ReadSet = {
   // authored sources, the collected evidence. Carried so a page that embeds the
   // set can OPEN them — a link into the folder resolves by itself while the
   // folder is there, and stops the moment the document is somewhere else.
-  documents: { path: string; text: string }[];
+  //
+  // `sheet` and `keys` are how a row gets its "show me this line in the file"
+  // back. A set writes that address under the row's key; the lift takes it off
+  // (it is not part of the key) and hands it here, so the artifact index can be
+  // built over these documents exactly as it is over a model's previews — which
+  // is what lets the sheet's own renderer draw the chip with nothing new told
+  // to it. `keys` is by 1-based line, as the address names it.
+  documents: { path: string; text: string; sheet?: string; keys?: Record<number, string> }[];
   problems: string[];
 };
 
@@ -139,6 +146,9 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
   };
 
   const sheets: ReadSet["sheets"] = [];
+  // Which document each page's rows point into, and at which line — see
+  // `ReadSet["documents"]`.
+  const keyed = new Map<string, { sheet: string; keys: Record<number, string> }>();
   const named = new Set<string>();
   for (const f of sorted) {
     const parts = f.path.split("/");
@@ -184,15 +194,27 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
     // read twice — as the page's subtitle and again as a paragraph of its body
     // — which is the one thing a page built from the model does not do.
     const deployed = parseSheetMarkdown(markdown, [], lang).file;
+    const lifted = liftMarkdownSheet(markdown, declaredInstances(markdown) ?? [], lang);
     sheets.push({
       name,
       display,
       ...(group === undefined ? {} : { group }),
       ...(deployed === undefined ? {} : { file_path: deployed }),
       instances: declaredInstances(markdown) ?? [],
-      categories: markdownToCategories(markdown, declaredInstances(markdown) ?? [], lang) as unknown[],
+      categories: lifted.categories as unknown[],
       document: { html: "", markdown: deployed === undefined ? markdown : withoutDeployedPath(markdown), mode: "sheet" },
     });
+    for (const { key, href } of lifted.addresses) {
+      const [at = "", frag = ""] = decodeURI(href).split("#");
+      const line = /^L(\d+)$/.exec(frag);
+      if (line === null) continue;
+      const held = keyed.get(at) ?? { sheet: name, keys: {} as Record<number, string> };
+      // FIRST wins, the same rule the artifact index takes: two rows claiming
+      // one line is one line holding two settings, and the index already
+      // resolves that from the model's side.
+      held.keys[Number(line[1])] ??= key;
+      keyed.set(at, held);
+    }
   }
 
   // Never silent where prose is the wrong answer: "this page has no rows" and
@@ -219,7 +241,9 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
     metadata: { ...(index === undefined ? {} : { title: titleOf(index.text, INDEX) }) },
     groups: prune(groups),
     sheets,
-    documents: files.filter((f) => !f.path.endsWith(".md")).map((f) => ({ path: f.path, text: f.text })),
+    documents: files
+      .filter((f) => !f.path.endsWith(".md"))
+      .map((f) => ({ path: f.path, text: f.text, ...(keyed.get(f.path) ?? {}) })),
     problems,
   };
 }
@@ -230,7 +254,7 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
 // `sources`, `evidence` — which is the same thing that put it there
 // (`md-set.ts`). A file in none of them is still shown; what is unknown is only
 // the sentence in the panel's header.
-export function documentPreviews(documents: { path: string; text: string }[]): ArtifactPreview[] {
+export function documentPreviews(documents: ReadSet["documents"]): ArtifactPreview[] {
   return documents.map((d) => {
     const segs = d.path.split("/");
     const kind = segs.find((s) => s === "artifacts" || s === "sources" || s === "evidence");
@@ -251,14 +275,26 @@ export function documentPreviews(documents: { path: string; text: string }[]): A
       // The PATH is the id, because that is what a link names — the panel is
       // opened by matching one against the other.
       id: d.path,
-      sheet: "",
+      // …and WHOSE rows are in it, which is what the artifact index is keyed
+      // by. Empty where no page's rows point into this file — an authored
+      // source the plan never reproduces as a row, a piece of evidence — and
+      // then the index simply holds nothing for it, which is the same answer a
+      // model gives for a file with no line of any row's.
+      sheet: d.sheet ?? "",
       source_file: file.length > 0 ? file.join("/") : d.path,
       // …and which environments it covers, where the folder says so. `common`
       // covers every one, which is what carrying no list already means.
       ...(covers === undefined || covers === "common" ? {} : { instances: covers.split("+") }),
       nature: kind === "sources" ? ("source" as const) : kind === "evidence" ? ("observed" as const) : ("artifact" as const),
       ...(observed === undefined ? {} : { observed: { host: observed.host, at: observed.at }, instances: [observed.instance] }),
-      lines: d.text.replace(/\n$/, "").split("\n").map((text) => ({ text, kind: "verbatim" as const })),
+      // The rows each line IS, where a page said so. This is what gives a row
+      // back its "show me this line in the file" — the artifact index reads
+      // exactly this from a model's previews, so nothing downstream of it has
+      // to know which half of the delivery it is looking at.
+      lines: d.text
+        .replace(/\n$/, "")
+        .split("\n")
+        .map((text, i) => ({ text, kind: "verbatim" as const, ...(d.keys?.[i + 1] === undefined ? {} : { key: d.keys[i + 1] }) })),
     };
   });
 }

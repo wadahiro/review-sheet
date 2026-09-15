@@ -22,7 +22,7 @@
 // it requires that nothing a person writes is thrown away.
 
 import type { SheetData, CategoryData, ParamData } from "./prompt.js";
-import type { Sheet } from "./types.js";
+import type { Sheet, ColumnDefinition } from "./types.js";
 import { pickLang } from "./types.js";
 import type { Lang } from "./html/i18n.js";
 import { controlGroups, withControlsTogether, modeOf as controlMode, defaultModeOf as controlDefaultMode } from "./composite.js";
@@ -711,7 +711,53 @@ export function visibleRows(
 // Everything the model carries and the text does not (origin, source, options,
 // out-of-scope) is simply absent, which is what makes it safe: a view built
 // from this can only show what the document says.
+// …and, optionally, where each row said its line is. The address is written
+// under the key (`md-set.ts`) and is taken OFF the key before the row is built,
+// so it would be lost here — and it is the one thing the lifted model cannot
+// otherwise recover: a page read back out of a folder has no source map, so
+// without it every row loses its "show me this line in the file".
+//
+// Handed out through the SAME walk that decides the key rather than by a second
+// pass, because a row's key is a chain over the rows above it — a second walk
+// deriving it again is a second place for the two to disagree about which row
+// an address belongs to.
+export type RowAddress = { key: string; href: string };
+
 export function markdownToCategories(text: string, instances: string[], l: Lang = "ja"): CategoryData[] {
+  return liftMarkdownSheet(text, instances, l).categories;
+}
+
+// …and everything else the page says, in one walk.
+//
+// `lead` is the prose above the first heading. It used to be dropped, which was
+// invisible while a second renderer drew these pages from the text — it showed
+// the paragraph and nothing else knew it existed. With one renderer the model
+// IS what is drawn, so anything the lift drops is gone from the page, and a
+// paragraph somebody wrote under the title is exactly the kind of thing this
+// project does not lose quietly.
+//
+// `columns` is the other half of not losing anything: a page may carry a column
+// this projection has no field for — a recipient added one, or renamed the one
+// it does have — and the sheet's own table shows what the MODEL says, so a
+// column with nowhere to go would come out under another column's heading.
+// Every table column past the first unrecognised one becomes a declared
+// trailing column, carried on the rows as `extra`, which is the model's own way
+// of saying "a column this document has and this tool did not predict".
+export type LiftedSheet = {
+  categories: CategoryData[];
+  lead: string;
+  addresses: RowAddress[];
+  columns: ColumnDefinition[];
+};
+
+// A column's field name, from its heading. Stable, so the same heading on two
+// tables of one page is one column rather than two that look alike.
+const columnField = (head: string): string => `md:${head}`;
+
+export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "ja"): LiftedSheet {
+  const addresses: RowAddress[] = [];
+  const columns: ColumnDefinition[] = [];
+  const lead: string[] = [];
   const root: CategoryData[] = [];
   const stack: CategoryData[] = [];
   const cols = instances.length > 0 ? instances : [""];
@@ -731,8 +777,11 @@ export function markdownToCategories(text: string, instances: string[], l: Lang 
     if (block.kind === "prose") {
       // A paragraph beside a table is the section's own note — the same field a
       // modelled sheet carries it in, so it is searched and shown the same way.
+      // One above the first heading belongs to the SHEET and has no category to
+      // be a note of, so it is carried out separately rather than dropped.
       const into = stack[stack.length - 1];
-      if (into !== undefined) into.note = [into.note, block.text].filter(Boolean).join("\n\n");
+      if (into === undefined) lead.push(block.text);
+      else into.note = [into.note, block.text].filter(Boolean).join("\n\n");
       continue;
     }
     if (block.kind !== "table") continue;
@@ -746,20 +795,51 @@ export function markdownToCategories(text: string, instances: string[], l: Lang 
     // still holds something, or the outline and the page disagree about what
     // exists.
     const shown = visibleRows(block.rows, shape.values, false);
+    // WHICH unclaimed column is the remarks one: the one wearing that heading,
+    // in either language, and no other.
+    const remarksAt = shape.rest.find(
+      (at) => (block.head[at] ?? "").trim() === HEAD_BY_LANG.ja.remarks || (block.head[at] ?? "").trim() === HEAD_BY_LANG.en.remarks
+    ) ?? -1;
     for (const [n, row] of block.rows.entries()) {
       // A control of the product's screen, not a parameter: it has no key, so
       // reading it as a row would put one the model does not have into every
       // read of a delivered set.
       if (isControlRow((row.cells[0] ?? "").trim())) continue;
-      const name = splitKeyCell((row.cells[0] ?? "").trim()).key.replace(/^`(.*)`$/s, "$1").trim();
+      const split = splitKeyCell((row.cells[0] ?? "").trim());
+      const name = split.key.replace(/^`(.*)`$/s, "$1").trim();
       chain.length = Math.min(row.indent, chain.length);
       chain[row.indent] = name;
       const values = shape.values.map((n) => (row.cells[n] ?? "").trim());
       const names = shape.values.map((n) => block.head[n]);
       const same = new Set(values).size <= 1;
       const key = chain.slice(0, row.indent + 1).join(".");
+      if (split.preview !== undefined) addresses.push({ key, href: split.preview });
+      // The blocks this row sits in, and whether it IS one. The document says
+      // both with its indent: the rows above it at shallower indents are the
+      // blocks, and a row something is indented UNDER is a block itself. The
+      // sheet's own renderer reads exactly these two fields to indent a row and
+      // to show it by its leaf — without them a nested row came out at the left
+      // margin wearing its whole dotted address, which is the redundancy the
+      // block rows exist to remove.
+      const holds = (block.rows[n + 1]?.indent ?? 0) > row.indent;
+      // Every other column, under its OWN heading rather than under the
+      // remarks one. The first unclaimed column used to become remarks
+      // whatever it was called, which reads as this tool renaming a column
+      // somebody wrote — and then two of them would have collided in it.
+      let extra: Record<string, string> | undefined;
+      for (const at of shape.rest) {
+        if (at === remarksAt) continue;
+        const head = (block.head[at] ?? "").trim();
+        const text = (row.cells[at] ?? "").trim();
+        if (head === "") continue;
+        if (!columns.some((c) => c.field === columnField(head))) columns.push({ field: columnField(head), header: head });
+        if (text === "") continue;
+        extra = { ...extra, [columnField(head)]: text };
+      }
       params.push({
         key,
+        ...(row.indent > 0 ? { container_path: chain.slice(0, row.indent).map((p) => ({ path: p })) } : {}),
+        ...(holds ? { container: { name } } : {}),
         // Named by the column's own header: which environments a table carries
         // is the table's business, and a name read off a list somewhere else
         // would put a value under the wrong one the moment they differ.
@@ -772,9 +852,10 @@ export function markdownToCategories(text: string, instances: string[], l: Lang 
         ...(shape.description >= 0 && (row.cells[shape.description] ?? "").trim() !== ""
           ? { description: (row.cells[shape.description] ?? "").trim() }
           : {}),
-        ...(shape.rest.length > 0 && (row.cells[shape.rest[0]] ?? "").trim() !== ""
-          ? { remarks: (row.cells[shape.rest[0]] ?? "").trim() }
+        ...(remarksAt >= 0 && (row.cells[remarksAt] ?? "").trim() !== ""
+          ? { remarks: (row.cells[remarksAt] ?? "").trim() }
           : {}),
+        ...(extra === undefined ? {} : { extra }),
         // Nothing is set here: the document says so by leaving every value cell
         // empty, and this is that fact in the shape the viewer knows it by.
         ...(shown[n] ? {} : { origin: "default" as const }),
@@ -782,7 +863,7 @@ export function markdownToCategories(text: string, instances: string[], l: Lang 
     }
     into.params = params;
   }
-  return root;
+  return { categories: root, lead: lead.join("\n\n"), addresses, columns };
 }
 
 // ---------------------------------------------------------------------------
