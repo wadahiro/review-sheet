@@ -26,6 +26,12 @@ export type TestDocLang = "ja" | "en";
 
 type Words = {
   no: string;
+  // The summary's two columns. Markdown REQUIRES a header row, so a table
+  // written with empty ones renders an empty row — which is what a reader meets
+  // at the top of the 集計 block, and reads as a record with a hole in it
+  // rather than as a table that needs no heading.
+  summaryItem: string;
+  summaryValue: string;
   item: string;
   expected: string;
   verdict: string;
@@ -60,6 +66,8 @@ type Words = {
 const T: Record<TestDocLang, Words> = {
   ja: {
     no: "No.",
+    summaryItem: "項目",
+    summaryValue: "値",
     item: "小項目(テスト項目)",
     major: "大項目",
     middle: "中項目",
@@ -117,6 +125,8 @@ const T: Record<TestDocLang, Words> = {
   },
   en: {
     no: "No.",
+    summaryItem: "Item",
+    summaryValue: "Value",
     major: "Unit",
     middle: "Component",
     subject: "Subject",
@@ -448,7 +458,7 @@ export function renderTestDoc(
     [t.todo, String(total - answered.length - fAnswered.length)],
     [t.result, `${t.pass} ${ok} / ${t.fail} ${ng}`],
   ];
-  const summaryBlock = [table(["", ""], summary)];
+  const summaryBlock = [table([t.summaryItem, t.summaryValue], summary)];
   if (defaults.length > 0 && opts.includeDefaults !== true) {
     const dAnswered = defaults.map((i) => answerFor(index, i)).filter((r): r is TestResult => r !== undefined && r.status !== "not_run");
     summaryBlock.push(

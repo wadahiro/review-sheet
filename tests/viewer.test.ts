@@ -3357,3 +3357,55 @@ describe("a control's way into the file", () => {
     expect(host.querySelector("tr.rs-row-composite .rs-artifact-chip")).toBeNull();
   });
 });
+
+// Evidence is bytes a HOST was found holding, and where it held them is the
+// content — never this repository's plumbing.
+describe("an observed document's path in a delivery", () => {
+  const REF = "rs-evidence:observed%20local%20kc-node2%20%2Fopt%2Fkeycloak%2Fconf%2Fkeycloak.conf%23L1";
+  const open = async (sources: boolean): Promise<string> => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const payload = {
+      metadata: { title: "t", version: "1" },
+      versions: [
+        {
+          version: "current",
+          // A RECORD, which is how evidence is ever reached: a verdict names an
+          // address and the link beside it opens the bytes.
+          sheets: [{ name: "rec", categories: [], document: { html: `<p><a href="${REF}">evidence</a></p>` } }],
+          artifacts: [
+            {
+              id: "observed local kc-node2 /opt/keycloak/conf/keycloak.conf",
+              sheet: "rec",
+              nature: "observed",
+              observed: { host: "kc-node2", at: "2026-09-14T08:42:55Z" },
+              source_file: "/opt/keycloak/conf/keycloak.conf",
+              lines: [{ text: "db=postgres", kind: "verbatim" as const }],
+            },
+          ],
+        },
+      ],
+    };
+    render(h(Root, { payload: payload as never, reviewEnabled: true, showSources: sources, initialLang: "ja", server: false }), host);
+    (host.querySelector(`a[href="${REF}"]`) as HTMLElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+    return (host.querySelector(".rs-artifact-path")?.textContent ?? "").trim();
+  };
+
+  it("keeps the whole path under --no-sources", async () => {
+    // Shortening it to `keycloak.conf` threw away the half a reader checks the
+    // verdict against: which file on which host held these bytes.
+    expect(await open(false)).toBe("/opt/keycloak/conf/keycloak.conf");
+  });
+
+  it("says the same thing in our own build", async () => {
+    expect(await open(true)).toBe("/opt/keycloak/conf/keycloak.conf");
+  });
+
+  it("names the host and the moment beside it", async () => {
+    await open(false);
+    const meta = (document.querySelector(".rs-artifact-meta")?.textContent ?? "").trim();
+    expect(meta).toContain("kc-node2");
+  });
+});

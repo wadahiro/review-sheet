@@ -4590,7 +4590,17 @@ tr.rs-jump-flash th {
      holding a single word became vertical strips. Scrolling a table sideways
      is ordinary; reading a word downwards is not. */
   word-break: keep-all;
-  overflow-wrap: normal;
+  /* …and a token with no break in it at all may break rather than leave the
+     cell. A JDBC URL has no space and no CJK, so keep-all alone had nothing to
+     act on and it ran out past the border.
+
+     break-word and deliberately not anywhere: the two differ in whether they
+     change a cell's MIN-CONTENT width, and that width is what produced the
+     vertical strips above — anywhere makes it one character, so the layout is
+     free to squeeze every column to nothing again. break-word leaves the
+     intrinsic width alone and breaks only a word that still does not fit, which
+     is this case and no other. */
+  overflow-wrap: break-word;
 }
 .rs-doc th {
   background: var(--rs-subtle);

@@ -3494,6 +3494,13 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, dock, onD
           <span class="rs-artifact-path">${(() => {
             const deployed = shown.nature === "source" ? undefined : shown.deployed_path;
             if (deployed !== undefined) return deployed;
+            // An OBSERVED document's path is the HOST's, not this repository's:
+            // it is where the bytes in front of the reader were found, which is
+            // the whole content of a piece of evidence. `--no-sources` hides
+            // where THIS PROJECT keeps a value and has no business here — and
+            // shortening it to `keycloak.conf` threw away the half a reader
+            // checks the verdict against.
+            if (shown.nature === "observed") return shown.source_file;
             return showSources() ? shown.source_file : (shown.source_file.split("/").pop() ?? shown.source_file);
           })()}</span>
         </div>
@@ -3510,7 +3517,12 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, dock, onD
                names — the file it was read from, or the command it is the
                output of — so repeating it puts the same string on screen
                twice, once as a heading and once as evidence of itself. */ ""}
-          ${showSources()
+          ${/* An OBSERVED document's provenance is WHICH HOST held these bytes
+               and WHEN — a fact about the evidence, not about where this project
+               keeps a value, so `--no-sources` has no business hiding it. It is
+               the half a reader checks a verdict against: a path with no host
+               beside it does not say whose machine was read. */ ""}
+          ${showSources() || shown.nature === "observed"
             ? html`${artifactProvenance(shown, t)}${(shown.deployed_path ?? shown.source_file) === shown.source_file && shown.nature === "observed"
                 ? null
                 : html`: <code>${shown.source_file}</code>`}`
