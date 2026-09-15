@@ -3410,3 +3410,86 @@ describe("an observed document's path in a delivery", () => {
   });
 });
 
+
+// A dropped set's record, opened at the bytes a verdict was read from.
+//
+// The whole chain is equalities between strings computed in different modules:
+// the projection rewrites the record's link to the document's path, `rebase`
+// climbs it out of its chapter, `documentPreviews` names the same file by that
+// very path, and the delegated handler compares the two. Any link of it can be
+// off while every part looks right on its own — a link that is there, reads
+// correctly and opens nothing, which is what the whole set did before this.
+describe("a dropped set's record, opened at its evidence", () => {
+  const ID = "observed local web01 /etc/hosts";
+  // In a NESTED chapter on purpose: a top-level page leaves `rebase` nothing to
+  // climb, and the address would match without ever exercising it.
+  const MODEL = {
+    metadata: { title: "d", project: "p" },
+    groups: [{ name: "v", display: "Verification", groups: [{ name: "u", display: "Unit tests" }] }],
+    sheets: [
+      {
+        name: "rec",
+        group: "u",
+        instances: [],
+        categories: [],
+        document: { markdown: `# Record\n\n| No. | Evidence |\n| --- | --- |\n| 1 | [web01 /etc/hosts:2](rs-evidence:${encodeURIComponent(`${ID}#L2`)}) |\n` },
+      },
+    ],
+    artifacts: [
+      {
+        id: ID,
+        sheet: "rec",
+        source_file: "/etc/hosts",
+        nature: "observed",
+        observed: { host: "web01", at: "2026-09-08T00:11:22Z" },
+        instances: ["local"],
+        lines: [
+          { text: "127.0.0.1 localhost", kind: "verbatim" },
+          { text: "10.0.0.9 web01", kind: "verbatim" },
+        ],
+      },
+    ],
+  };
+
+  function droppedRecord(): HTMLElement {
+    setMarkdownRenderer((source, images, opts) => renderMarkdown(source, () => null, opts));
+    const { files } = toMarkdownSet(MODEL as never, "ja", { documents: carriedDocuments(MODEL.artifacts as never, ["local"]) });
+    const read = readMarkdownSet(files.map((f) => ({ path: f.path, text: f.text })), "ja");
+    expect(read.problems).toEqual([]);
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    openSheetTab();
+    render(h(Root, { payload: payloadOfSet({ title: "d" } as never, read), reviewEnabled: false, initialLang: "ja", server: false, dropped: "…" }), host);
+    return host;
+  }
+
+  // The verdict's own cell, which is the link a reader follows.
+  const verdictLink = (host: HTMLElement): HTMLAnchorElement =>
+    [...host.querySelectorAll(".rs-doc td a")].find((x) => (x.textContent ?? "").endsWith(":2")) as HTMLAnchorElement;
+
+  it("carries an address a plain markdown reader could follow", () => {
+    const host = droppedRecord();
+    const a = verdictLink(host);
+    expect(a).not.toBeUndefined();
+    expect(decodeURI(a.getAttribute("href")!)).toBe("Verification/Unit tests/evidence/local/web01/etc/hosts#L2");
+    // The list of files under the record's title is the same address without a
+    // line — the same handler takes it, so the list opens the panel too.
+    const listed = [...host.querySelectorAll(".rs-doc li a")].map((x) => decodeURI(x.getAttribute("href") ?? ""));
+    expect(listed).toContain("Verification/Unit tests/evidence/local/web01/etc/hosts");
+  });
+
+  it("opens the collected bytes, at the line the verdict names", async () => {
+    const host = droppedRecord();
+    // Nothing is open yet — without this the click could be credited with a
+    // panel something else put there.
+    expect(host.querySelector(".rs-artifact-panel")).toBeNull();
+    const a = verdictLink(host);
+    a.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 30));
+    const panel = host.querySelector(".rs-artifact-panel");
+    expect(panel, "the link did not open the panel").not.toBeNull();
+    const here = panel!.querySelector(".rs-artifact-line.rs-here");
+    expect(here, "no line is marked").not.toBeNull();
+    expect(here!.textContent).toContain("10.0.0.9 web01");
+  });
+});

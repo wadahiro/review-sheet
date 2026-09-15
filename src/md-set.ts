@@ -19,6 +19,7 @@ import type { SheetData, ParamData } from "./prompt.js";
 import type { Lang } from "./html/i18n.js";
 import { createHash } from "crypto";
 import { sheetToMarkdown } from "./sheet-markdown.js";
+import { EVIDENCE_SCHEME, parseEvidenceRef } from "./evidence.js";
 
 export type MarkdownFile = { path: string; text: string };
 
@@ -63,7 +64,10 @@ export type MarkdownSetOptions = {
   // root would be a second, type-shaped arrangement laid over the chapters —
   // and the reader who opened a chapter would have to leave it to see what
   // that chapter is describing.
-  documents?: { path: string; text: string; sheet: string; label: string }[];
+  //
+  // `id` is the PREVIEW the document was written from, which is what a
+  // record's in-text evidence links name — see `withDocumentLinks`.
+  documents?: { id: string; path: string; text: string; sheet: string; label: string }[];
 };
 
 // A path segment that survives a filesystem, a zip and a URL — and stays the
@@ -156,7 +160,10 @@ export function toMarkdownSet(
       problems.push(`sheet "${sheet.name}" was written as its title and nothing else — it carries neither rows nor prose`);
     }
     const mine = (opts.documents ?? []).filter((d) => d.sheet === sheet.name);
-    sheets.push({ path: finalPath, text: withDocuments(body, finalPath, mine, lang) });
+    const linked = withDocumentLinks(body, mine, (id) => problems.push(
+      `sheet "${sheet.name}" links to evidence this set does not carry (${id}) — the link is left as it was and opens nothing here`
+    ));
+    sheets.push({ path: finalPath, text: withDocuments(linked, finalPath, mine, lang) });
     const under = dir.join("/");
     for (const d of mine) carried.push({ path: under === "" ? d.path : `${under}/${d.path}`, text: d.text });
   }
@@ -185,6 +192,42 @@ export function toMarkdownSet(
     files: [{ path: "README.md", text: index(data, paths, lang, opts.stamp, opts.instances) }, ...sheets, ...documents],
     problems,
   };
+}
+
+// A record's evidence links, as PATHS in this set.
+//
+// The links are written by `evidenceCell` over the DOCUMENT's own id
+// (`rs-evidence:observed <env> <host> <file>`), which is right for a page built
+// from the model: the viewer holds those documents and opens them by that name.
+// A set holds them as FILES, and nothing in a set knows that name — a page read
+// back out of a folder identifies a document by where it is (`md-read.ts`), so
+// every one of those links resolved to nothing. Measured on a real delivery:
+// 347 of them, in the one document the evidence exists for.
+//
+// Rewritten to the same kind of address every row of every sheet already
+// carries — relative to the file the link is in, which is what makes a
+// handed-over set navigable. Two things follow from that and neither is a side
+// effect: the record opens its evidence in a plain markdown reader, with no
+// viewer at all, and the viewer resolves it by the one name a set has for a
+// document instead of needing a second one reconstructed from the path — which
+// a command's file name cannot carry anyway (`commandFile` cuts and slugs it).
+//
+// A link naming a document this set does NOT carry is left exactly as it was
+// and reported: there is nothing to point it at, and a path invented for it
+// would be the affordance-that-opens-nothing wearing a working link's clothes.
+function withDocumentLinks(body: string, mine: { id: string; path: string }[], missing: (id: string) => void): string {
+  const at = new Map(mine.map((d) => [d.id, d.path]));
+  return body.replace(new RegExp(`\\]\\(${EVIDENCE_SCHEME}([^)]*)\\)`, "g"), (whole, ref: string) => {
+    const { id, line } = parseEvidenceRef(`${EVIDENCE_SCHEME}${ref}`);
+    const to = at.get(id);
+    if (to === undefined) {
+      missing(id);
+      return whole;
+    }
+    // The fragment stays OUTSIDE the encoding: `md-read`'s rebase splits on it,
+    // and an encoded `#` would make the line number part of the file name.
+    return `](${href(to)}${line === undefined ? "" : `#L${line}`})`;
+  });
 }
 
 // A sheet whose model is a DOCUMENT is written as that document.

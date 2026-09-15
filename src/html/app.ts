@@ -26,7 +26,7 @@ import { buildDiffModel, rowKey, instKey, catKey, sheetKey, type DiffStatusMap }
 import { isEdit, targetKey } from "../edits.js";
 import { toMarkdownSheet, renderSheetMarkdown, parseSheetMarkdown } from "../sheet-markdown.js";
 import { getMarkdownRenderer } from "./markdown-runtime.js";
-import { EVIDENCE_SCHEME } from "../evidence.js";
+import { EVIDENCE_SCHEME, parseEvidenceRef } from "../evidence.js";
 import { MarkdownSheetBody, inlineMarkdown } from "./md-sheet.js";
 import { NavTree, chapterPath } from "./nav-tree.js";
 import { sectionize } from "./doc-sections.js";
@@ -761,6 +761,12 @@ function DocumentBody({ sheet, onEvidence, t }: {
   // Open the document a verdict's evidence cell cites. Absent when this page
   // carries no evidence, and then the cell was never a link either — the
   // rule is decided once, where the cell is written (evidence.ts).
+  //
+  // Only ever sees its OWN scheme. A record read back out of a markdown set
+  // names its evidence by path instead (md-set.ts), and a path is already
+  // opened by the delegated handler on `<main>` that every address in a set
+  // goes through — teaching this one to do it too would be a second answer to
+  // one question.
   onEvidence?: (id: string, line?: number) => void;
   t: Messages;
 }) {
@@ -3406,14 +3412,9 @@ type ArtifactTarget = {
   line?: number;
 };
 
-// `<preview id>#L<n>` — what an evidence cell puts in `data-rs-evidence`
-// (evidence.ts). Parsed rather than split blind: an id contains spaces and
-// slashes, and the line suffix is the only part with a fixed shape.
-export function parseEvidenceRef(value: string): { id: string; line?: number } {
-  const raw = value.startsWith(EVIDENCE_SCHEME) ? decodeURIComponent(value.slice(EVIDENCE_SCHEME.length)) : value;
-  const m = /^(.*?)(?:#L(\d+))?$/.exec(raw);
-  return { id: m?.[1] ?? raw, ...(m?.[2] === undefined ? {} : { line: Number(m[2]) }) };
-}
+// Re-exported so the viewer's own importers keep one name for it; it lives in
+// `evidence.ts` because the markdown projection reads the same links back.
+export { parseEvidenceRef };
 
 // What a row needs in order to offer "show me this line in the file".
 export type ArtifactAccess = {

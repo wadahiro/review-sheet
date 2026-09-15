@@ -120,8 +120,8 @@ describe("the documents a sheet carries", () => {
   const carried = () =>
     toMarkdownSet(doc(), "ja", {
       documents: [
-        { sheet: "httpd", path: "artifacts/etc/httpd/conf/httpd.conf", text: "Listen 80\n", label: "/etc/httpd/conf/httpd.conf" },
-        { sheet: "loose", path: "evidence/local/web01/etc/hosts", text: "127.0.0.1\n", label: "web01 /etc/hosts" },
+        { id: "x", sheet: "httpd", path: "artifacts/etc/httpd/conf/httpd.conf", text: "Listen 80\n", label: "/etc/httpd/conf/httpd.conf" },
+        { id: "x", sheet: "loose", path: "evidence/local/web01/etc/hosts", text: "127.0.0.1\n", label: "web01 /etc/hosts" },
       ],
     });
 
@@ -145,8 +145,8 @@ describe("the documents a sheet carries", () => {
   it("keeps the first of two documents written at one path, and says so", () => {
     const { problems } = toMarkdownSet(doc(), "ja", {
       documents: [
-        { sheet: "httpd", path: "artifacts/a", text: "one", label: "a" },
-        { sheet: "httpd", path: "artifacts/a", text: "two", label: "a" },
+        { id: "x", sheet: "httpd", path: "artifacts/a", text: "one", label: "a" },
+        { id: "x", sheet: "httpd", path: "artifacts/a", text: "two", label: "a" },
       ],
     });
     expect(problems.join(" ")).toContain("two documents are written at");
@@ -569,5 +569,42 @@ describe("the environment level under artifacts/", () => {
       ["staging", "production"]
     );
     expect(docs.map((d) => d.path)).toEqual(["artifacts/staging/app.conf", "artifacts/common/staging/app.conf"]);
+  });
+});
+
+// A record's in-text evidence links, as addresses in the SET.
+//
+// `evidenceCell` writes them over the DOCUMENT's own id, which a page built
+// from the model resolves and a set has no name for at all. Rewritten to the
+// same kind of relative address every row already carries, so the record opens
+// its evidence in a plain markdown reader and in the page that reads the folder
+// back — both by the one name a set has for a document, its path.
+describe("a record's evidence links in a set", () => {
+  const ID = "observed local web01 /etc/hosts";
+  const record = (dest: string): SheetData =>
+    ({
+      metadata: { title: "t" },
+      groups: [{ name: "tests", display: "Unit tests" }],
+      sheets: [{ name: "rec", group: "tests", instances: [], categories: [], document: { markdown: `# Record\n\nread [web01 /etc/hosts:3](${dest}) today\n` } }],
+    }) as never as SheetData;
+  const carried = [{ id: ID, sheet: "rec", path: "evidence/local/web01/etc/hosts", text: "127.0.0.1\n", label: "web01 /etc/hosts" }];
+  const written = (dest: string, docs = carried) =>
+    toMarkdownSet(record(dest), "ja", { documents: docs });
+  const page = (out: ReturnType<typeof written>): string =>
+    out.files.find((f) => f.path === "Unit tests/rec.md")!.text;
+
+  it("names the file the set carries, and keeps the line", () => {
+    const out = written(`rs-evidence:${encodeURIComponent(`${ID}#L3`)}`);
+    expect(page(out)).toContain("](evidence/local/web01/etc/hosts#L3)");
+    expect(page(out)).not.toContain("rs-evidence:");
+    expect(out.problems).toEqual([]);
+  });
+
+  it("leaves a link to evidence this set does not carry, and says so", () => {
+    // There is nothing to point it at. A path invented for it would be the
+    // affordance-that-opens-nothing wearing a working link's clothes.
+    const out = written(`rs-evidence:${encodeURIComponent("observed local web01 /etc/other")}`, carried);
+    expect(page(out)).toContain("rs-evidence:");
+    expect(out.problems.join(" ")).toContain("links to evidence this set does not carry");
   });
 });

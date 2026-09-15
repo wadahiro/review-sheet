@@ -200,3 +200,18 @@ const ref = (id: string): string => encodeURIComponent(id).replace(/\(/g, "%28")
 // nothing outside this page can resolve it, which is the point — the click is
 // handled here or it does nothing.
 export const EVIDENCE_SCHEME = "rs-evidence:";
+
+// `<document id>#L<n>` — what an evidence link carries. Parsed rather than
+// split blind: an id contains spaces and slashes, and the line suffix is the
+// only part with a fixed shape. The id is encoded WITH its suffix as one
+// component, so it is decoded first and split after.
+//
+// Lives here rather than in the viewer because the markdown projection reads
+// these links back too, to rewrite them (md-set.ts) — and a second parser for
+// one spelling is how the two halves start disagreeing about it.
+export function parseEvidenceRef(value: string): { id: string; line?: number } {
+  const raw = value.startsWith(EVIDENCE_SCHEME) ? decodeURIComponent(value.slice(EVIDENCE_SCHEME.length)) : value;
+  const m = /^(.*?)(?:#L(\d+))?$/.exec(raw);
+  return { id: m?.[1] ?? raw, ...(m?.[2] === undefined ? {} : { line: Number(m[2]) }) };
+}
+

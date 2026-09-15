@@ -50,6 +50,12 @@ function commandFile(command: string): string {
 // not written out — so a second count kept somewhere else would be right until
 // the first template with a `{% if %}` in it, and wrong from then on, silently.
 export type CarriedDocument = {
+  // The preview this document was written from, so a link naming that preview
+  // can be turned into a link naming this FILE. One for one with `previews`,
+  // and carried rather than looked up: an id identifies one file only as far as
+  // its producer troubled to make it (see `artifact-index.ts`), and this is the
+  // one place that already knows which document came from which preview.
+  id: string;
   path: string;
   text: string;
   sheet: string;
@@ -120,10 +126,10 @@ function carriedDocumentsRaw(previews: ArtifactPreview[], instances: string[]): 
       // asked for and one write that failed outright.
       const isFile = from.startsWith("/");
       const named = isFile ? strip(from) : `commands/${commandFile(from)}`;
-      return { sheet: p.sheet, path: `${under}/${named}`, text, label: `${host} ${from}`, lineOf };
+      return { id: p.id, sheet: p.sheet, path: `${under}/${named}`, text, label: `${host} ${from}`, lineOf };
     }
     if (p.nature === "source") {
-      return { sheet: p.sheet, path: `sources/${strip(p.source_file)}`, text, label: p.source_file, lineOf };
+      return { id: p.id, sheet: p.sheet, path: `sources/${strip(p.source_file)}`, text, label: p.source_file, lineOf };
     }
     // An artifact rendered identically everywhere is written once; one that
     // differs per environment is written per environment, under the names it
@@ -143,6 +149,7 @@ function carriedDocumentsRaw(previews: ArtifactPreview[], instances: string[]): 
     const everywhere = covers.length === 0 || instances.every((i) => covers.includes(i));
     const to = strip(p.deployed_path ?? p.source_file);
     return {
+      id: p.id,
       sheet: p.sheet,
       path: `artifacts/${everywhere ? COMMON : covers.join("+")}/${to}`,
       text,
