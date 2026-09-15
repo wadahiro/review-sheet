@@ -58,6 +58,15 @@ const MODEL = {
         { name: "b", params: [{ key: "x", value: "2", description: "X" }] },
       ],
     },
+    // A second sheet pointing into the SAME file. In a folder one file is one
+    // file, so it belongs to neither in particular — and naming one of them
+    // would leave the other's rows with no way in.
+    {
+      name: "also",
+      group: "srv",
+      instances: ["staging", "production"],
+      categories: [{ name: "Basic", params: [{ key: "Listen", value: "8080", description: "Port", default: "80" }] }],
+    },
     {
       name: "web",
       group: "srv",
@@ -131,6 +140,17 @@ const MODEL = {
       lines: [
         { text: 'resource "aws_lb" "this" {', kind: "verbatim" },
         { text: "  idle_timeout = 60", kind: "verbatim", key: "idle" },
+      ],
+    },
+    {
+      id: "web-also",
+      sheet: "also",
+      source_file: "roles/web/templates/httpd.conf.j2",
+      deployed_path: "/etc/httpd/conf/httpd.conf",
+      instances: ["staging", "production"],
+      lines: [
+        { text: "# managed", kind: "verbatim" },
+        { text: "Listen 8080", kind: "substituted", key: "Listen" },
       ],
     },
     {

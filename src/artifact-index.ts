@@ -113,7 +113,19 @@ export function buildArtifactIndex(previews: readonly ArtifactPreview[] | undefi
       known.find(([name]) => categoryPath === name || categoryPath.startsWith(`${name}/`))?.[1] ??
       categoryPath.split("/")[0] ??
       "";
-    return byRow.get([sheet, head, key].join(SEP)) ?? byRow.get([sheet, "", key].join(SEP));
+    return (
+      byRow.get([sheet, head, key].join(SEP)) ??
+      byRow.get([sheet, "", key].join(SEP)) ??
+      // …and a document that does not say which sheet it belongs to answers for
+      // any of them. That is never a model's preview — a producer always names
+      // the sheet, and the scoping above exists because two components of one
+      // sheet share a key space. It is what a set read back out of a FOLDER
+      // has: one file is one file there, and seven sheets of one real delivery
+      // point into the same realm document, so naming a sheet at all would give
+      // six of them nothing. The keys are collected from every page that points
+      // into it, so the answer is the same whichever asks.
+      byRow.get(["", "", key].join(SEP))
+    );
   };
 
   return { previewFor, idFor: (sheet, categoryPath, key) => previewFor(sheet, categoryPath, key)?.id };

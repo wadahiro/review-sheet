@@ -50,7 +50,7 @@ export type ReadSet = {
   // built over these documents exactly as it is over a model's previews — which
   // is what lets the sheet's own renderer draw the chip with nothing new told
   // to it. `keys` is by 1-based line, as the address names it.
-  documents: { path: string; text: string; sheet?: string; keys?: Record<number, string> }[];
+  documents: { path: string; text: string; keys?: Record<number, string> }[];
   problems: string[];
 };
 
@@ -152,7 +152,11 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
   const sheets: ReadSet["sheets"] = [];
   // Which document each page's rows point into, and at which line — see
   // `ReadSet["documents"]`.
-  const keyed = new Map<string, { sheet: string; keys: Record<number, string> }>();
+  // …from EVERY page that points into it. One file is one file here, and a
+  // realm document is pointed into by seven sheets of one real delivery — so it
+  // belongs to none of them in particular, and the index answers for any (see
+  // `artifact-index.ts`).
+  const keyed = new Map<string, { keys: Record<number, string> }>();
   const named = new Set<string>();
   for (const f of sorted) {
     const parts = f.path.split("/");
@@ -214,7 +218,7 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
       const [at = "", frag = ""] = decodeURI(href).split("#");
       const line = /^L(\d+)$/.exec(frag);
       if (line === null) continue;
-      const held = keyed.get(at) ?? { sheet: name, keys: {} as Record<number, string> };
+      const held = keyed.get(at) ?? { keys: {} as Record<number, string> };
       // FIRST wins, the same rule the artifact index takes: two rows claiming
       // one line is one line holding two settings, and the index already
       // resolves that from the model's side.
@@ -281,12 +285,10 @@ export function documentPreviews(documents: ReadSet["documents"]): ArtifactPrevi
       // The PATH is the id, because that is what a link names — the panel is
       // opened by matching one against the other.
       id: d.path,
-      // …and WHOSE rows are in it, which is what the artifact index is keyed
-      // by. Empty where no page's rows point into this file — an authored
-      // source the plan never reproduces as a row, a piece of evidence — and
-      // then the index simply holds nothing for it, which is the same answer a
-      // model gives for a file with no line of any row's.
-      sheet: d.sheet ?? "",
+      // No sheet: a file in a folder belongs to whichever pages point into it,
+      // which is often several — see `artifact-index.ts` for what the index
+      // does with that.
+      sheet: "",
       source_file: file.length > 0 ? file.join("/") : d.path,
       // …and which environments it covers, where the folder says so. `common`
       // covers every one, which is what carrying no list already means.
