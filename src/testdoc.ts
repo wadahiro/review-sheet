@@ -199,10 +199,17 @@ const verdictOf = (t: Words, r: TestResult | undefined): string =>
 // answer, because a functional answer names one and has no `target` to dig in —
 // and reaching into a shape only half the callers have is how this threw on the
 // first record that had both.
+//
+// The escaping `cell` applies is KEPT. A pipe inside the link's TEXT — an
+// address naming a command with one in it — ends the table cell, so the row
+// loses everything after it: the link, the remaining columns, and the document
+// the delivery would have carried because that link named it. Measured on a
+// real record: one journalctl pipeline, whose bytes were dropped as uncited.
+// Escaped, the reader still reads a plain `|` — the renderer puts it back.
 const evidenceOf = (
   r: { instance: string; evidence?: TestResult["evidence"] } | undefined,
   carried: NonNullable<TestResults["evidence"]>
-): string => cell(evidenceCell(r, carried)).replace(/\\\|/g, "|");
+): string => cell(evidenceCell(r, carried));
 
 // WHEN this row got the answer it shows — said only where the section's own
 // heading does not already say it.

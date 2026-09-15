@@ -625,3 +625,25 @@ describe("a record read in the reader's own zone", () => {
     expect(utc).toContain("2026-09-15");
   });
 });
+
+// A table cell ends at a `|`, and an address is free to hold one.
+describe("an address with a pipe in it", () => {
+  const piped = "journalctl -u keycloak | grep X | tail -1";
+  const carried = [{ instance: "local", host: "web01", at: "2026-09-07T07:36:49Z", sheet: "os", command: piped, text: "x\n" }];
+  const withCommand = (): TestResults => {
+    const r = results();
+    r.results[0] = { target: { sheet: "os", key: "Listen", instance: "local" }, status: "pass", evidence: { host: "web01", command: piped } };
+    return { ...r, evidence: carried };
+  };
+
+  it("does not end the row it is written in", () => {
+    const row = renderTestDoc(plan(), withCommand(), "server", { includeDefaults: true })
+      ["test:items"].split("\n")
+      .find((l) => l.includes("Listen") && l.includes("journalctl"))!;
+    // The columns after the evidence one are still there — an unescaped pipe
+    // takes the rest of the row with it, the link included.
+    expect(row.split(/(?<!\\)\|/).length).toBe(renderTestDoc(plan(), results(), "server", { includeDefaults: true })
+      ["test:items"].split("\n").find((l) => l.includes("Listen") && l.includes("web01"))!.split(/(?<!\\)\|/).length);
+    expect(row).toContain("rs-evidence:");
+  });
+});
