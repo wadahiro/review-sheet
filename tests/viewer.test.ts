@@ -2993,6 +2993,25 @@ describe("a dropped set's prose page", () => {
     }).headings[0]!.id;
     expect(host.querySelector(`[id="${id}"]`), `the outline points at ${id}, which the page does not have`).not.toBeNull();
   });
+
+  // EVERY level, not the two a default would take. A set carries the text and
+  // not the depth its author declared, and the records this exists for put each
+  // item at h4 — a tree stopping at h2 leaves the page it matters most on with
+  // four entries out of thirty-five.
+  it("reaches a heading as deep as the page goes", () => {
+    setMarkdownRenderer((source, images, opts) => renderMarkdown(source, () => null, opts));
+    const deep = ["# Record", "", "## Env", "", "### Host", "", "#### Item 12", "", "text", ""].join("\n");
+    const read = readMarkdownSet([{ path: "Records/Deep.md", text: deep }], "ja");
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(
+      h(Root, { payload: payloadOfSet({ title: "d" } as never, read), reviewEnabled: false, initialLang: "ja", server: false, dropped: "…" }),
+      host
+    );
+    const labels = [...host.querySelectorAll(".rs-navtree-item")].map((e) => (e.textContent ?? "").trim());
+    expect(labels).toContain("Item 12");
+  });
 });
 
 // One control of the product's screen whose value is a TUPLE over several rows

@@ -20,6 +20,7 @@ import type { Lang } from "./html/i18n.js";
 import { createHash } from "crypto";
 import { sheetToMarkdown } from "./sheet-markdown.js";
 import { EVIDENCE_SCHEME, parseEvidenceRef } from "./evidence.js";
+import { NO_NAV_MARKER } from "./markdown.js";
 
 export type MarkdownFile = { path: string; text: string };
 
@@ -294,7 +295,51 @@ function documentBody(sheet: SheetData["sheets"][number], title: string): string
     first !== null && first[1] === "#"
       ? text.slice(0, first.index) + text.slice(first.index + first[0].length)
       : text;
-  return `# ${title}\n\n${without.replace(/^\s*\n+/, "")}`;
+  return `# ${title}\n\n${withNavMarkers(without.replace(/^\s*\n+/, ""), sheet.document?.headings)}`;
+}
+
+// …and which of its headings the outline leaves out, marked at the heading.
+//
+// The model states that as a DEPTH (`nav_depth`), and a set carries the text
+// and not the model — so a page read back out of a folder had to guess, and
+// both guesses are wrong in one direction or the other (markdown.ts's `notNav`
+// has the numbers). The fact belongs to one heading, so it is written beside
+// that heading: it moves when the heading moves, a recipient deletes the line
+// to put a heading in the outline and adds it to take one out, and a heading
+// they write themselves is IN — which is the right default for a document
+// somebody maintains by hand, since a heading that silently fails to appear is
+// not something they would think to look for.
+//
+// WHICH ones, read off the model's own list rather than from a declaration this
+// function would have to be told: the build selects by depth and nothing else,
+// so the deepest heading it listed IS the depth. A list it did not carry at all
+// (a page whose outline is empty) marks nothing — there is no depth to read,
+// and guessing one would take entries away from a page that never had any.
+//
+// Fences are tracked, because `#` inside one is code and a marker inserted
+// there would be written INTO the code the reader is meant to see.
+function withNavMarkers(text: string, headings: { level: number }[] | undefined): string {
+  if (headings === undefined || headings.length === 0) return text;
+  const depth = Math.max(...headings.map((h) => h.level));
+  const out: string[] = [];
+  let fence: string | undefined;
+  for (const line of text.split("\n")) {
+    const open = /^\s*(```+|~~~+)/.exec(line);
+    if (fence !== undefined) {
+      if (open !== null && open[1]!.startsWith(fence)) fence = undefined;
+      out.push(line);
+      continue;
+    }
+    if (open !== null) {
+      fence = open[1]!.slice(0, 3);
+      out.push(line);
+      continue;
+    }
+    const head = /^(#{1,6})[ \t]/.exec(line);
+    if (head !== null && head[1]!.length > depth) out.push(NO_NAV_MARKER);
+    out.push(line);
+  }
+  return out.join("\n");
 }
 
 // The index: the chapter tree, in the order the document declares it, as links.

@@ -14,6 +14,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync, w
 import { tmpdir } from "os";
 import { join, dirname, resolve as resolvePath } from "path";
 import { toMarkdownSet, slug } from "../src/md-set";
+import { renderMarkdown } from "../src/markdown";
 import { addressOf, type CarriedDocument } from "../src/md-documents";
 import { SET_DIR } from "../src/set-block";
 import type { SheetData } from "../src/prompt";
@@ -622,5 +623,52 @@ describe("a record's evidence links in a set", () => {
     const out = written(`rs-evidence:${encodeURIComponent("observed local web01 /etc/other")}`, carried);
     expect(page(out)).toContain("rs-evidence:");
     expect(out.problems.join(" ")).toContain("links to evidence this set does not carry");
+  });
+});
+
+// Which of a prose page's headings the outline leaves out, marked at the
+// heading rather than carried as a number.
+//
+// The model says it as a DEPTH and a set carries the text, not the model — so a
+// page read back had to guess, and both guesses are wrong in one direction: too
+// shallow loses the entries a unit-test record exists for, too deep shows the
+// ones its author kept out. The fact belongs to one heading, so it is written
+// beside it — where a hand edit moves it, and where deleting one line is the
+// whole operation.
+describe("a prose page's outline, in the page", () => {
+  const page = (headings: { level: number; text: string; id: string }[]): string => {
+    const md = ["# Record", "", "## Env", "", "### Host", "", "```sh", "#### not a heading", "```", "", "#### Item", ""].join("\n");
+    const doc = {
+      metadata: { title: "t" },
+      groups: [{ name: "g", display: "G" }],
+      sheets: [{ name: "rec", group: "g", instances: [], categories: [], document: { html: "", markdown: md, headings } }],
+    } as never as SheetData;
+    return toMarkdownSet(doc, "ja", {}).files.find((f) => f.path === "G/rec.md")!.text;
+  };
+
+  it("marks a heading deeper than the outline goes, and only that", () => {
+    const out = page([{ level: 2, text: "Env", id: "a" }]);
+    expect(out).toContain("<!-- rs:no-nav -->\n### Host");
+    expect(out).toContain("<!-- rs:no-nav -->\n#### Item");
+    // The `#` inside the fence is code, not a heading.
+    expect(out).toContain("```sh\n#### not a heading\n```");
+    expect(out.split("<!-- rs:no-nav -->").length - 1).toBe(2);
+  });
+
+  it("marks nothing when the outline goes all the way down", () => {
+    const out = page([
+      { level: 2, text: "Env", id: "a" },
+      { level: 3, text: "Host", id: "b" },
+      { level: 4, text: "Item", id: "c" },
+    ]);
+    expect(out).not.toContain("rs:no-nav");
+  });
+
+  // …and the page reads back to the outline the model had. This is the whole
+  // claim: written, read, and the same entries either way.
+  it("reads back to the outline it was written from", () => {
+    const written = page([{ level: 2, text: "Env", id: "a" }]);
+    const body = written.slice(written.indexOf("\n\n") + 2);
+    expect(renderMarkdown(body, () => null, { navDepth: 6 }).headings.map((h) => h.text)).toEqual(["Env"]);
   });
 });

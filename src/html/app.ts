@@ -3693,11 +3693,22 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
         if (proseHere(s)) {
           const render_ = getMarkdownRenderer();
           if (render_ === null) return s;
-          // The depth is the one this projection defaults to: a set carries the
-          // text and not the project's own `nav_depth`, so a document that
-          // declared a deeper outline gets the default here and says so by
-          // showing fewer levels — never by pointing at an id that is not there.
-          const out = render_(s.document!.markdown ?? "", {}, { idPrefix: docIdPrefix(s.name) });
+          // EVERY heading the page has. A set carries the text and not the
+          // project's own `nav_depth`, and the two ways of not knowing it are
+          // not equal: the default (h2 and no deeper) drops 31 of one real
+          // delivery's 50 entries, all of them on the two unit-test records,
+          // where each item is an h4 and jumping to one is the whole reason the
+          // tree is there. Taking every level costs the other direction — two
+          // pages gain the 4 headings their author deliberately kept out of the
+          // outline — and that is the cheaper way to be wrong: an entry too
+          // many is reachable, an entry missing is not.
+          //
+          // It is also what a page read back out of a folder does everywhere
+          // else: the chapters come from the directories that are THERE, not
+          // from what an index says about them (md-read.ts). A recipient who
+          // adds a heading gets it in the tree, which is what editing a
+          // document means.
+          const out = render_(s.document!.markdown ?? "", {}, { idPrefix: docIdPrefix(s.name), navDepth: 6 });
           return { ...s, document: { ...s.document!, html: out.html, ...(out.headings.length > 0 ? { headings: out.headings } : {}) } };
         }
         if (s.document?.mode !== "sheet") return s;

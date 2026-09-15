@@ -175,6 +175,12 @@ const CJK_FOLD = new RegExp(`([${CJK}])\\n(?=[${CJK}])`, "g");
 
 const foldCjkBreaks = (text: string): string => text.replace(CJK_FOLD, "$1");
 
+// The marker that keeps one heading out of the outline. An HTML comment, so it
+// is invisible in any markdown reader — and it passes through `sanitizeFragment`
+// untouched, since that only rewrites TAGS.
+export const NO_NAV_MARKER = "<!-- rs:no-nav -->";
+const NO_NAV = /<!--\s*rs:no-nav\s*-->/;
+
 export function renderMarkdown(source: string, resolveImage: ImageResolver, opts: MarkdownOptions = {}): RenderedDocument {
   const navDepth = opts.navDepth ?? 2;
   const idPrefix = opts.idPrefix ?? "rs-doc-";
@@ -242,6 +248,45 @@ export function renderMarkdown(source: string, resolveImage: ImageResolver, opts
   };
 
   const marked = new Marked({ gfm: true });
+
+  // Which headings are marked OUT of the outline, by their position.
+  //
+  // `navDepth` is a number the MODEL states, and a set carries the text and not
+  // the model — so a page read back out of a folder had to guess, and both
+  // guesses are wrong: stop at h2 and a unit-test record loses the entries for
+  // every item it has, take everything and two pages gain the headings their
+  // author kept out on purpose. The exclusion is a fact about ONE heading, so
+  // it is written beside that heading (`md-set.ts`) rather than as a number
+  // somebody has to carry, and it survives the editing a handed-over document
+  // is for: move the heading and the marker moves with it, delete the marker
+  // and the heading is in the outline, which is a rule a recipient can act on
+  // without a toolchain.
+  //
+  // Marking the EXCLUDED ones rather than the included ones is the cheaper and
+  // the safer polarity: measured on a real delivery, 4 markers against 50, and
+  // a heading somebody adds is IN the outline rather than silently absent.
+  //
+  // Read off the token stream and not by scanning lines: a `#` inside a fenced
+  // block is not a heading, and a marker counted against it would take the
+  // outline entry off some later heading instead.
+  const notNav = new Set<number>();
+  {
+    let n = 0;
+    let marker = false;
+    for (const token of marked.lexer(source)) {
+      if (token.type === "space") continue;
+      if (token.type === "html" && NO_NAV.test(token.raw)) {
+        marker = true;
+        continue;
+      }
+      if (token.type === "heading") {
+        n += 1;
+        if (marker) notNav.add(n);
+      }
+      marker = false;
+    }
+  }
+
   marked.use({
     // Before rendering, so the headings collected below see the same text the
     // page does — an outline entry and its heading must not differ by a space.
@@ -270,7 +315,7 @@ export function renderMarkdown(source: string, resolveImage: ImageResolver, opts
         // Listing is all that changes: the id below is still emitted, so
         // search can land here and a link to it still resolves.
         const isTitle = ordinal === 1 && token.depth === 1;
-        if (token.depth <= navDepth && !isTitle) headings.push({ level: token.depth, text, id });
+        if (token.depth <= navDepth && !isTitle && !notNav.has(ordinal)) headings.push({ level: token.depth, text, id });
         // …and it is not written into the BODY either. The page already shows
         // its name: the sheet's own heading, which carries the label (per
         // language, which a markdown h1 is not) and the sheet-level comment and
@@ -377,6 +422,45 @@ export function imageRefs(source: string): string[] {
     out.push(href);
   };
   const marked = new Marked({ gfm: true });
+
+  // Which headings are marked OUT of the outline, by their position.
+  //
+  // `navDepth` is a number the MODEL states, and a set carries the text and not
+  // the model — so a page read back out of a folder had to guess, and both
+  // guesses are wrong: stop at h2 and a unit-test record loses the entries for
+  // every item it has, take everything and two pages gain the headings their
+  // author kept out on purpose. The exclusion is a fact about ONE heading, so
+  // it is written beside that heading (`md-set.ts`) rather than as a number
+  // somebody has to carry, and it survives the editing a handed-over document
+  // is for: move the heading and the marker moves with it, delete the marker
+  // and the heading is in the outline, which is a rule a recipient can act on
+  // without a toolchain.
+  //
+  // Marking the EXCLUDED ones rather than the included ones is the cheaper and
+  // the safer polarity: measured on a real delivery, 4 markers against 50, and
+  // a heading somebody adds is IN the outline rather than silently absent.
+  //
+  // Read off the token stream and not by scanning lines: a `#` inside a fenced
+  // block is not a heading, and a marker counted against it would take the
+  // outline entry off some later heading instead.
+  const notNav = new Set<number>();
+  {
+    let n = 0;
+    let marker = false;
+    for (const token of marked.lexer(source)) {
+      if (token.type === "space") continue;
+      if (token.type === "html" && NO_NAV.test(token.raw)) {
+        marker = true;
+        continue;
+      }
+      if (token.type === "heading") {
+        n += 1;
+        if (marker) notNav.add(n);
+      }
+      marker = false;
+    }
+  }
+
   marked.use({
     walkTokens(token) {
       if (token.type === "image") add((token as Tokens.Image).href);
