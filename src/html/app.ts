@@ -2153,12 +2153,21 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
     // (sheet.yml's under_key label, in both languages); it was being thrown
     // away at render time. Resolved to the active language up front, like every
     // other LangText in this file (see localizeColumns).
-    const underKeyLines = underKeyCols
-      .map((col) => ({
-        head: col.header,
-        value: resolveColumnValue(param, col.field),
-      }))
-      .filter((x) => x.value.length > 0);
+    //
+    // Hidden by `--no-sources`, with the sheet's own "rendered from" line and a
+    // row's file: they are one fact in three places — where THIS PROJECT keeps
+    // the value — and a delivered document is read by someone judging what the
+    // settings are, not where a role files them. `httpd_listen` under `Listen`
+    // is a name the reader has never seen and cannot act on; the row's own key
+    // is the product's, and that is the one they are checking against a screen.
+    const underKeyLines = !showSources()
+      ? []
+      : underKeyCols
+          .map((col) => ({
+            head: col.header,
+            value: resolveColumnValue(param, col.field),
+          }))
+          .filter((x) => x.value.length > 0);
     // Nearest-wins: a param-level out_of_scope overrides the category's;
     // otherwise the enclosing (possibly out-of-scope) category's applies.
     const oos = rowOutOfScope(param);
@@ -2292,7 +2301,9 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
           <tr>
             <th class="rs-row-label rs-corner">${t.instanceHeader}</th>
             ${shown.map((param) => {
-              const sub = underKeyCols.map((col) => resolveColumnValue(param, col.field)).filter((v) => v.length > 0).join(" · ");
+              const sub = !showSources()
+                ? ""
+                : underKeyCols.map((col) => resolveColumnValue(param, col.field)).filter((v) => v.length > 0).join(" · ");
               const oos = rowOutOfScope(param);
               const tag = originTag(param, t);
               return html`

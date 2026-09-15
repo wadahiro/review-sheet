@@ -316,6 +316,15 @@ const ALLOWED_CAPS = ["review", "prompt"] as const;
 // file name under a row's key, until that stopped being written at all: the
 // row's own preview link opens the file, so the name beside it was the same
 // answer twice (see app.ts's `originTag`).
+//
+// It also hides the under_key sub-line — the Ansible variable a row's value
+// comes from. That is the same fact in a fourth place, and the reason it is
+// under one flag rather than beside a second is that a reader either wants this
+// project's plumbing or does not: `httpd_listen` under `Listen` is a name the
+// recipient of a delivered document has never seen and cannot act on, while the
+// row's own key is the PRODUCT's and is what they check against a screen. The
+// markdown projection never wrote it at all, so the flag also closes a gap
+// between the two readings rather than opening one.
 // The source map itself stays in the document; apply and verify resolve every
 // change through it.
 //
@@ -584,7 +593,7 @@ program
   // Same behaviour, so nothing breaks.
   .option("--no-review", "Deprecated spelling of --readonly")
   .option("--allow <caps>", "What the recipient may do: review, optionally with prompt. Omitted, the default is review,prompt (overrides --no-review)")
-  .option("--no-sources", "Hide where each value is written (the file name under a row, the sheet's rendered-from line, a preview's source line). The source map stays in the file — apply and verify still work")
+  .option("--no-sources", "Hide where each value is written (the file name under a row, the Ansible variable or other under_key sub-line, the sheet's rendered-from line, a preview's source line). The source map stays in the file — apply and verify still work")
   .option("--lang <lang>", "UI language: ja | en (default: ja)", "ja")
   .option("--no-previews", "Leave the previewed files out: the panel that shows a row's line in its deployed file, and the affordance that opens it. They are the file as it was AT GENERATION — a document maintained by hand afterwards keeps its values current and the preview does not, so a delivery that will be edited for a long time may prefer not to carry a picture that quietly ages. Also the biggest single part of the file (measured on a real document: 1.1 MB of payload against 0.6 MB without)")
   .option("--sheets <names...>", "Make this document out of these sheets only. A requirements note, a parameter sheet and a test record are separate documents in the world — approved separately, revised on their own cycles — and one build can produce each of them. The sheets keep the document's own order; what is left out is reported")

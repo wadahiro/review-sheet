@@ -3159,3 +3159,45 @@ describe("a control and the rows it writes", () => {
     expect(composed).not.toContain("after");
   });
 });
+
+// Where THIS PROJECT keeps a value, as opposed to what the value is.
+describe("--no-sources and a row's backing variable", () => {
+  const SHEET = {
+    metadata: { title: "t", version: "1" },
+    versions: [
+      {
+        version: "current",
+        // Declared on the VERSION, which is where a document's columns live.
+        columns: [{ field: "extra.var", header: "Ansible 変数", place: "under_key" }],
+        sheets: [
+          {
+            name: "web",
+            categories: [
+              { name: "c", params: [{ key: "Listen", value: "80", description: "d", extra: { var: "httpd_listen" } }] },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const mount = (sources: boolean): HTMLElement => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: SHEET as never, reviewEnabled: true, showSources: sources, initialLang: "ja", server: false }), host);
+    return host;
+  };
+
+  it("shows it by default", () => {
+    expect(mount(true).querySelector("tbody .rs-col-key")!.textContent).toContain("httpd_listen");
+  });
+
+  it("hides it under --no-sources, with the other places the same fact appears", () => {
+    // `httpd_listen` is a name the recipient of a delivered document has never
+    // seen and cannot act on; `Listen` is the product's own, and the one they
+    // are checking against a screen.
+    const host = mount(false);
+    expect(host.querySelector("tbody .rs-col-key")!.textContent).not.toContain("httpd_listen");
+    expect(host.querySelector("tbody .rs-col-key")!.textContent).toContain("Listen");
+  });
+});
