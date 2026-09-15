@@ -1034,7 +1034,21 @@ program
   .option("-r, --results <file>", "The answers (omit for the specification before any run: every item reads as not yet run)")
   .option("--lang <lang>", "ja | en (default: ja)", "ja")
   .option("--include-defaults", "Print the unset-parameter items as rows too, instead of one line counting them")
-  .action((opts: { input: string; unit?: string; doc?: string; results?: string; lang: string; includeDefaults?: boolean }) => {
+  .option(
+    "--timezone <zone>",
+    "Read the recorded instants in this IANA zone (Asia/Tokyo), offset kept. The instant is the fact and the zone is how it is read, so it is decided here rather than recorded; omitted, times print exactly as the results file holds them. It moves the per-row date too — that one was not merely raw but wrong, taking the date off the UTC instant, so a run at 23:30Z showed the day before the one the operator was standing in"
+  )
+  .action((opts: { input: string; unit?: string; doc?: string; results?: string; lang: string; includeDefaults?: boolean; timezone?: string }) => {
+    if (opts.timezone !== undefined) {
+      // A zone nobody recognises must not fall back to UTC silently: the whole
+      // point is that the reader trusts the time in front of them.
+      try {
+        new Intl.DateTimeFormat("en-CA", { timeZone: opts.timezone });
+      } catch {
+        console.error(`unknown timezone: ${opts.timezone} — use an IANA name such as Asia/Tokyo or UTC`);
+        process.exit(1);
+      }
+    }
     try {
       if ((opts.unit === undefined) !== (opts.doc === undefined)) {
         throw new Error(`--unit and --doc name one unit's document together; pass both, or neither to write every unit's`);
@@ -1065,7 +1079,11 @@ program
           ? [{ unit: opts.unit, path: opts.doc }]
           : unitDocuments(plan, model.sheets);
       for (const t of targets) {
-        const blocks = renderTestDoc(plan, results, t.unit, { lang, includeDefaults: opts.includeDefaults === true });
+        const blocks = renderTestDoc(plan, results, t.unit, {
+          lang,
+          includeDefaults: opts.includeDefaults === true,
+          ...(opts.timezone === undefined ? {} : { timezone: opts.timezone }),
+        });
         blocks["test:excluded"] = renderExcluded(report.excluded, t.unit, lang);
         const before = readFileSync(t.path, "utf-8");
         // The item tables are the run; a document that takes none of them has
