@@ -3,8 +3,9 @@
 // This is the other half of the delivery. A recipient with no repository and no
 // toolchain holds a folder of markdown, edits it (or has an assistant edit it),
 // and then has to be able to LOOK at it — and markdown in a plain reader is a
-// wall of pipe characters. The viewer already knows how to lay a markdown table
-// out as the sheet it is (`document.mode: "sheet"`, html/md-sheet.ts), so what
+// wall of pipe characters. The viewer already knows how to draw such a page as
+// the sheet it is — it lifts the text into the model and hands it to the
+// sheet's own renderer (`liftMarkdownSheet`, `document.mode: "sheet"`) — so what
 // is missing is only the step that turns a folder into the shape it renders:
 // chapters, sheets, and the text of each.
 //

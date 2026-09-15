@@ -559,7 +559,8 @@ describe("what a value cell says about itself", () => {
     const host = await mountMd();
     // `rs-cell-common` beside it: one value repeated across every environment
     // is what `origin: "common"` asserts, and the sheet marks it. A set carries
-    // no origin by design, so it is read off the table — see md-sheet.ts.
+    // no origin by design, so it is read off the table — see the `perenv`
+    // marker for the one case the table states ambiguously.
     expect(cellsOf(host, "own")).toEqual(["rs-changed rs-cell-common", "rs-changed rs-cell-common"]);
     expect(cellsOf(host, "same")).toEqual(["rs-same-as-default", "rs-same-as-default"]);
     expect(cellsOf(host, "unset")).toEqual(["rs-cell-unset", "rs-cell-unset"]);

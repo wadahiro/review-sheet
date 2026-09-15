@@ -884,8 +884,9 @@ function splitCells(line: string): string[] {
 // Split before EITHER is read. The key is the row's identity, so an address
 // left stuck to it would make every row a row the model does not have, and the
 // change set would report the whole sheet rewritten. Every reader of the cell
-// goes through here, including the viewer's (`html/md-sheet.ts`), so there is
-// one answer to "what is this row called" rather than one per reader.
+// goes through here — the change set, the lift that turns a page into rows, the
+// copy button — so there is one answer to "what is this row called" rather than
+// one per reader.
 //
 // Anchored on the closing backtick, which is what the key is always written
 // inside: a cell that does not end in a complete link after one is left whole,
