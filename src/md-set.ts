@@ -391,6 +391,14 @@ function index(
   // again — and it lands wherever the browser puts a download, not here. And it
   // is not replaced by a rebuild, because nothing here writes it: a rebuild
   // replaces `viewer.html`, which is the only page this set ships.
+  //
+  // The last line said editing the HTML changes nothing, which is simply false
+  // — the page carries the model, and a page that has been GIVEN the folder
+  // carries the folder, so editing either would change what it shows. The
+  // reason not to is not that it fails: it is that a rebuild overwrites
+  // `viewer.html` and a saved copy is a snapshot, so the edit is lost either
+  // way and the `.md` — the thing everything else is built from — still says
+  // the old value.
   out.push(
     ...(lang === "ja"
       ? [
@@ -400,7 +408,7 @@ function index(
           "- **読むのは `viewer.html`** です。ダブルクリックで開きます。",
           "- **`.md` を修正したら、`viewer.html` の「フォルダを開く」で `sheet` フォルダを選びます。** 修正した内容が表示されます。`viewer.html` は開くたびに一度選ぶ必要があります。",
           "- **「1ファイルで保存」** を押すと、そのとき表示していた内容を取り込んだ `sheet.html` がダウンロードされます。フォルダを選ばずに読めますが、**保存した時点の内容のまま**です。`.md` を修正したら、選び直して保存し直してください。",
-          "- HTML を直接編集しても表示は変わりません。表示は `.md` から作られます。",
+          "- **HTML そのものは編集しないでください。** 作り直すと `viewer.html` は上書きされ、保存した `sheet.html` はその時点のままです。どちらも `.md` から作られるので、修正は `.md` に入れてください。",
           "",
         ]
       : [
@@ -410,7 +418,7 @@ function index(
           "- **Read it with `viewer.html`.** Double-click to open it.",
           "- **After editing, press \"Open folder\" in `viewer.html` and choose the `sheet` folder.** It shows what you changed. `viewer.html` asks for the folder each time it is opened.",
           "- **\"Save as one file\"** downloads a `sheet.html` holding what is on screen. That one opens without choosing a folder — but it holds what it held when you saved it, so edit a `.md` again and you choose the folder and save again.",
-          "- Editing the HTML changes nothing. What it shows is built from the `.md`.",
+          "- **Do not edit the HTML itself.** A rebuild overwrites `viewer.html`, and a saved `sheet.html` holds the moment it was saved. Both are built from the `.md`, so put the change there.",
           "",
         ])
   );

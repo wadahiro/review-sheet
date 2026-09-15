@@ -111,10 +111,32 @@ export function orderOf(indexText: string): string[] {
   return out;
 }
 
-export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
+// The set's ROOT is the directory its index is in, and every path is read from
+// there.
+//
+// Whoever is choosing a folder is a person, and the folder they mean is not
+// always the one they pick: the delivery holds the page beside the set, so
+// picking the level ABOVE is the obvious mistake and it did not look like one —
+// the set read fine and quietly grew a chapter named after its own directory,
+// which renumbered every chapter under it. A wrong document rather than a
+// refusal, which is the failure this project spends most of its effort on.
+//
+// Named by nothing: whatever the directory is CALLED, the index is what says a
+// set is there — a recipient is free to rename the folder, and one of them will.
+function fromTheIndex(files: SetFile[]): SetFile[] {
+  const index = files.find((f) => f.path === INDEX || f.path.endsWith(`/${INDEX}`));
+  if (index === undefined || index.path === INDEX) return files;
+  const root = index.path.slice(0, index.path.length - INDEX.length);
+  // Anything outside it is not part of this set — a sibling of the folder that
+  // was meant, which is exactly what picking the level above sweeps in.
+  return files.filter((f) => f.path.startsWith(root)).map((f) => ({ ...f, path: f.path.slice(root.length) }));
+}
+
+export function readMarkdownSet(all: SetFile[], lang: Lang = "ja"): ReadSet {
   const problems: string[] = [];
   const prose: string[] = [];
-  const index = files.find((f) => f.path === INDEX || f.path.endsWith(`/${INDEX}`));
+  const files = fromTheIndex(all);
+  const index = files.find((f) => f.path === INDEX);
   // Everything else in the folder — the artifacts, the evidence — is carried,
   // not read as a sheet. A sheet is a `.md` that is not the index.
   const pages = files.filter((f) => f !== index && f.path.endsWith(".md"));

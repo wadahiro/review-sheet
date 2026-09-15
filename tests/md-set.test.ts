@@ -257,6 +257,11 @@ describe("the index", () => {
     expect(readme).not.toContain("ドラッグ");
     expect(readme).toContain("保存した時点の内容のまま");
     expect(readme).not.toContain("`sheet.html` 自身");
+    // …and does not claim editing the HTML has no effect, which is false: the
+    // page carries the model, and one that has been given the folder carries
+    // the folder. The reason not to is that the edit is lost either way.
+    expect(readme).not.toContain("HTML を直接編集しても表示は変わりません");
+    expect(readme).toContain("HTML そのものは編集しないでください");
     const en = toMarkdownSet(doc(), "en").files[0]!.text;
     expect(en).not.toContain("Drag");
     expect(en).not.toContain("the next rebuild replaces");

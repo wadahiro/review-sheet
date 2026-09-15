@@ -277,3 +277,34 @@ describe("telling a sheet from a document", () => {
     expect(readMarkdownSet([{ path: "os.md", text: renamed }]).problems.join("\n")).toContain("read as prose");
   });
 });
+
+
+// Which folder the reader actually picked.
+//
+// The delivery holds the page beside the set, so picking the level ABOVE is the
+// obvious mistake — and it did not look like one: the set read fine and quietly
+// grew a chapter named after its own directory, which renumbered every chapter
+// under it. A wrong document rather than a refusal.
+describe("a set read from the folder above it", () => {
+  const files = (prefix: string): { path: string; text: string }[] => [
+    { path: `${prefix}README.md`, text: "# d\n\n- [A](%E7%AB%A0/a.md)\n" },
+    { path: `${prefix}章/a.md`, text: "# a\n\n## c\n\n| 設定項目 | デフォルト値 | v |\n| --- | --- | --- |\n| `k` |  | 1 |\n" },
+    { path: `${prefix}章/artifacts/common/etc/x.conf`, text: "x\n" },
+  ];
+
+  it("reads the same document whichever level was chosen", () => {
+    const inside = readMarkdownSet(files(""), "ja");
+    const above = readMarkdownSet([...files("sheet/"), { path: "viewer.html", text: "<html>" }], "ja");
+    expect(above.problems).toEqual(inside.problems);
+    expect(above.groups.map((g) => g.name)).toEqual(inside.groups.map((g) => g.name));
+    expect(above.sheets.map((s) => s.name)).toEqual(inside.sheets.map((s) => s.name));
+    expect(above.documents.map((d) => d.path)).toEqual(inside.documents.map((d) => d.path));
+  });
+
+  // …whatever the folder is called. A recipient is free to rename it, and one
+  // of them will; the index is what says a set is there.
+  it("does not care what the folder is called", () => {
+    const renamed = readMarkdownSet(files("パラメータシート 2026/"), "ja");
+    expect(renamed.sheets.map((s) => s.name)).toEqual(["章/a"]);
+  });
+});
