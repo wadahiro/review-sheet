@@ -3472,10 +3472,10 @@ describe("a dropped set's record, opened at its evidence", () => {
     const a = verdictLink(host);
     expect(a).not.toBeUndefined();
     expect(decodeURI(a.getAttribute("href")!)).toBe("Verification/Unit tests/evidence/local/web01/etc/hosts#L2");
-    // The list of files under the record's title is the same address without a
-    // line — the same handler takes it, so the list opens the panel too.
-    const listed = [...host.querySelectorAll(".rs-doc li a")].map((x) => decodeURI(x.getAttribute("href") ?? ""));
-    expect(listed).toContain("Verification/Unit tests/evidence/local/web01/etc/hosts");
+    // …and it is the ONLY link on the page: a set that opened its pages with a
+    // list of the files it carries showed that list in the folder reading and
+    // nowhere else, which is one document with two appearances.
+    expect([...host.querySelectorAll(".rs-doc a")].length).toBe(1);
   });
 
   it("opens the collected bytes, at the line the verdict names", async () => {

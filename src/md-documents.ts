@@ -59,7 +59,6 @@ export type CarriedDocument = {
   path: string;
   text: string;
   sheet: string;
-  label: string;
   lineOf: (key: string) => number | undefined;
 };
 
@@ -126,10 +125,10 @@ function carriedDocumentsRaw(previews: ArtifactPreview[], instances: string[]): 
       // asked for and one write that failed outright.
       const isFile = from.startsWith("/");
       const named = isFile ? strip(from) : `commands/${commandFile(from)}`;
-      return { id: p.id, sheet: p.sheet, path: `${under}/${named}`, text, label: `${host} ${from}`, lineOf };
+      return { id: p.id, sheet: p.sheet, path: `${under}/${named}`, text, lineOf };
     }
     if (p.nature === "source") {
-      return { id: p.id, sheet: p.sheet, path: `sources/${strip(p.source_file)}`, text, label: p.source_file, lineOf };
+      return { id: p.id, sheet: p.sheet, path: `sources/${strip(p.source_file)}`, text, lineOf };
     }
     // An artifact rendered identically everywhere is written once; one that
     // differs per environment is written per environment, under the names it
@@ -153,7 +152,6 @@ function carriedDocumentsRaw(previews: ArtifactPreview[], instances: string[]): 
       sheet: p.sheet,
       path: `artifacts/${everywhere ? COMMON : covers.join("+")}/${to}`,
       text,
-      label: `${p.deployed_path ?? p.source_file}${everywhere ? "" : ` (${covers.join(", ")})`}`,
       lineOf,
     };
   });

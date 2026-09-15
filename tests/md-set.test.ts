@@ -120,8 +120,8 @@ describe("the documents a sheet carries", () => {
   const carried = () =>
     toMarkdownSet(doc(), "ja", {
       documents: [
-        { id: "x", sheet: "httpd", path: "artifacts/etc/httpd/conf/httpd.conf", text: "Listen 80\n", label: "/etc/httpd/conf/httpd.conf" },
-        { id: "x", sheet: "loose", path: "evidence/local/web01/etc/hosts", text: "127.0.0.1\n", label: "web01 /etc/hosts" },
+        { id: "x", sheet: "httpd", path: "artifacts/etc/httpd/conf/httpd.conf", text: "Listen 80\n" },
+        { id: "x", sheet: "loose", path: "evidence/local/web01/etc/hosts", text: "127.0.0.1\n" },
       ],
     });
 
@@ -134,19 +134,35 @@ describe("the documents a sheet carries", () => {
     expect(paths).toContain("evidence/local/web01/etc/hosts");
   });
 
-  it("lists them under the sheet's title, linked from where the sheet is", () => {
+  // The set used to open every page with a list of them. It stopped being the
+  // way in — a row carries the address of the line it is written at and a
+  // verdict the address of the bytes it was read from — so the list became 65
+  // of 65 files something already reached, above the content on every page.
+  // Measured on a real delivery.
+  //
+  // It also mattered that the two readings of one document looked the SAME. The
+  // list was written into the markdown, so it appeared on the page read back
+  // out of a folder and nowhere else: one document with two appearances,
+  // decided by which half of the delivery the reader happened to open.
+  it("does not open the page with a list of them", () => {
     const page = carried().files.find((f) => f.path === "構築/OS/httpd.md")!;
-    expect(page.text).toContain("- [/etc/httpd/conf/httpd.conf](artifacts/etc/httpd/conf/httpd.conf)");
-    // Before the first section: this is about the whole sheet, and a heading
-    // here would become one of its categories.
-    expect(page.text.indexOf("artifacts/etc")).toBeLessThan(page.text.indexOf("## c"));
+    expect(page.text).not.toContain("このシートが記述するファイル");
+    expect(page.text.split("\n")[0]).toBe("# httpd");
+  });
+
+  // What the list also did, silently, was make an unreachable file look
+  // reachable — so the thing it was hiding is said instead.
+  it("says when nothing on any page can reach one", () => {
+    const { problems } = carried();
+    expect(problems.join(" ")).toContain("no page linking to them");
+    expect(problems.join(" ")).toContain("artifacts/etc/httpd/conf/httpd.conf");
   });
 
   it("keeps the first of two documents written at one path, and says so", () => {
     const { problems } = toMarkdownSet(doc(), "ja", {
       documents: [
-        { id: "x", sheet: "httpd", path: "artifacts/a", text: "one", label: "a" },
-        { id: "x", sheet: "httpd", path: "artifacts/a", text: "two", label: "a" },
+        { id: "x", sheet: "httpd", path: "artifacts/a", text: "one" },
+        { id: "x", sheet: "httpd", path: "artifacts/a", text: "two" },
       ],
     });
     expect(problems.join(" ")).toContain("two documents are written at");
@@ -257,7 +273,7 @@ describe("the index", () => {
 // Which copy of a file a row's link names, when the file differs by environment.
 describe("the address under a row's key", () => {
   const doc = (path: string, at: Record<string, number>): CarriedDocument =>
-    ({ path, text: "", sheet: "s", label: path, lineOf: (k: string) => at[k] }) as CarriedDocument;
+    ({ id: path, path, text: "", sheet: "s", lineOf: (k: string) => at[k] }) as CarriedDocument;
 
   it("names the line, in the copy it resolved to", () => {
     expect(addressOf([doc("artifacts/staging/x.conf", { Listen: 12 })], "Listen")).toBe("artifacts/staging/x.conf#L12");
@@ -587,7 +603,7 @@ describe("a record's evidence links in a set", () => {
       groups: [{ name: "tests", display: "Unit tests" }],
       sheets: [{ name: "rec", group: "tests", instances: [], categories: [], document: { markdown: `# Record\n\nread [web01 /etc/hosts:3](${dest}) today\n` } }],
     }) as never as SheetData;
-  const carried = [{ id: ID, sheet: "rec", path: "evidence/local/web01/etc/hosts", text: "127.0.0.1\n", label: "web01 /etc/hosts" }];
+  const carried = [{ id: ID, sheet: "rec", path: "evidence/local/web01/etc/hosts", text: "127.0.0.1\n" }];
   const written = (dest: string, docs = carried) =>
     toMarkdownSet(record(dest), "ja", { documents: docs });
   const page = (out: ReturnType<typeof written>): string =>

@@ -67,7 +67,7 @@ export type MarkdownSetOptions = {
   //
   // `id` is the PREVIEW the document was written from, which is what a
   // record's in-text evidence links name — see `withDocumentLinks`.
-  documents?: { id: string; path: string; text: string; sheet: string; label: string }[];
+  documents?: { id: string; path: string; text: string; sheet: string }[];
 };
 
 // A path segment that survives a filesystem, a zip and a URL — and stays the
@@ -163,7 +163,7 @@ export function toMarkdownSet(
     const linked = withDocumentLinks(body, mine, (id) => problems.push(
       `sheet "${sheet.name}" links to evidence this set does not carry (${id}) — the link is left as it was and opens nothing here`
     ));
-    sheets.push({ path: finalPath, text: withDocuments(linked, finalPath, mine, lang) });
+    sheets.push({ path: finalPath, text: linked });
     const under = dir.join("/");
     for (const d of mine) carried.push({ path: under === "" ? d.path : `${under}/${d.path}`, text: d.text });
   }
@@ -185,6 +185,44 @@ export function toMarkdownSet(
     }
     seen.add(d.path);
     documents.push(d);
+  }
+
+  // …and whether anything can REACH each of them.
+  //
+  // The set used to open every page with a list of the files it carries, which
+  // is how a plain markdown reader got to one at all. It stopped being the way
+  // in — a row carries the address of the line it is written at, and a verdict
+  // the address of the bytes it was read from — and once both were true the
+  // list was 65 of 65 files that some row or verdict already reached, sitting
+  // above the content on every page. Measured on a real delivery.
+  //
+  // What the list also did, silently, was make an unreachable file look
+  // reachable. A file no row points at — an artifact whose lines carry no row
+  // keys, evidence no verdict cites — has no way in at all now, and that is
+  // worth SAYING rather than papering over with a link nobody asked for. Asked
+  // of the pages this run actually wrote, never of the model, because a page is
+  // the only thing that can answer it.
+  const reached = new Set<string>();
+  for (const page of sheets) {
+    const at = page.path.split("/").slice(0, -1);
+    for (const m of page.text.matchAll(/\]\(([^)]+)\)/g)) {
+      const raw = decodeURI((m[1] ?? "").split("#")[0] ?? "");
+      if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("/") || raw === "") continue;
+      const out: string[] = [...at];
+      for (const seg of raw.split("/")) {
+        if (seg === "" || seg === ".") continue;
+        if (seg === ".." && out.length > 0 && out[out.length - 1] !== "..") out.pop();
+        else out.push(seg);
+      }
+      reached.add(out.join("/"));
+    }
+  }
+  const stranded = documents.filter((d) => !reached.has(d.path)).map((d) => d.path);
+  if (stranded.length > 0) {
+    problems.push(
+      `${stranded.length} carried file(s) are in the set with no page linking to them, so a reader has no way to reach them: ` +
+        `${stranded.slice(0, 5).join(", ")}${stranded.length > 5 ? `, +${stranded.length - 5} more` : ""}`
+    );
   }
 
   const paths = new Map(placed.map((p, i) => [p.sheet.name, sheets[i]!.path]));
@@ -257,29 +295,6 @@ function documentBody(sheet: SheetData["sheets"][number], title: string): string
       ? text.slice(0, first.index) + text.slice(first.index + first[0].length)
       : text;
   return `# ${title}\n\n${without.replace(/^\s*\n+/, "")}`;
-}
-
-// The files this sheet describes, listed under its title as ordinary prose.
-//
-// Not a heading of its own: the sheet's categories are the `##` level and a
-// heading here would become one of them — a section with no rows, in the parse
-// and in every reading of it. Prose before the first section is exactly where
-// something about the whole sheet belongs.
-function withDocuments(
-  body: string,
-  sheetPath: string,
-  mine: NonNullable<MarkdownSetOptions["documents"]>,
-  lang: Lang
-): string {
-  if (mine.length === 0) return body;
-  const lead = lang === "ja" ? "このシートが記述するファイル:" : "The files this sheet describes:";
-  const block = [lead, "", ...mine.map((d) => `- [${d.label}](${href(d.path)})`), ""].join("\n");
-  // The title is the first line and is followed by a blank one — that is what
-  // `sheetToMarkdown` writes, and if it ever stops writing it this must be
-  // seen to fail rather than quietly put the list somewhere else.
-  const m = /^(# [^\n]*\n\n)/.exec(body);
-  if (m === null) throw new Error(`${sheetPath}: no title to put the file list under`);
-  return body.slice(0, m[1]!.length) + block + "\n" + body.slice(m[1]!.length);
 }
 
 // The index: the chapter tree, in the order the document declares it, as links.
