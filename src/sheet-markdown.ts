@@ -80,6 +80,25 @@ export type MarkdownRow = {
   // `artifactTitle` — and the set must not call it one while the viewer does
   // not. Absent means the ordinary word for the document's language.
   previewWord?: string;
+  // Three facts a table cannot state, written into the cell they are about as
+  // an invisible comment (`cellMark`). All three are about the PRODUCT, never
+  // about this installation's values — which is what makes them safe in a
+  // document somebody maintains by hand: an edit to a value cannot make them
+  // wrong, because they do not describe a value.
+  //
+  //   label     the product's own name for the setting, which the sheet shows
+  //             above the key. 677 of one real delivery's 1557 rows have one.
+  //   product   the documented default, when the DEFAULT COLUMN is showing the
+  //             distribution's shipped value instead (`ParameterBase.baseline`)
+  //             — two different facts that share one column, and the sheet
+  //             compares the value against this one to decide whether anybody
+  //             decided anything. Without it a value the project set read as
+  //             "same as the default" and lost its mark.
+  //   options   what the product CALLS each value (`ParamOption`), so a stored
+  //             `1` still reads as "One Level".
+  label?: string;
+  product?: string;
+  options?: { value: string; label: string }[];
 };
 
 // A heading and the rows under it. The heading path IS the category path, so
@@ -235,10 +254,21 @@ function rowOf(p: ParamData, instances: string[], l: Lang, path: string[], opts:
   const observed = shared ? p.value : p.instances?.[0]?.value;
   const applies = p.baseline ?? p.default ?? (blank ? observed : undefined);
   const depth = opts.indent === true ? (p.container_path ?? []).length : 0;
+  const label = lang(p.label, l);
+  const options = (p.options ?? [])
+    .map((o) => ({ value: o.value, label: lang(o.label, l) }))
+    .filter((o) => o.label !== "" && o.label !== o.value);
   return {
     key: INDENT.repeat(depth) + cell(opts.indent === true ? leafKey(p) : p.key),
     values,
     ...(shared ? { shared: true as const } : {}),
+    // The product's own name for the setting, and for each of its values. Only
+    // where it differs from the key: the same string twice is one question, and
+    // the sheet does not print it twice either.
+    ...(label !== "" && label !== p.key ? { label } : {}),
+    ...(options.length > 0 ? { options } : {}),
+    // …and the documented default, when the column is showing the vendor's.
+    ...(p.baseline !== undefined && p.default !== undefined ? { product: p.default } : {}),
     default: cell(applies ?? ""),
     description: saysWhatItsControlSays(p, l) ? "" : lang(p.description, l),
     remarks: lang(p.remarks, l),
@@ -613,12 +643,17 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
         (row.preview ?? "") === ""
           ? ""
           : `<br>[${row.previewWord ?? PREVIEW}](${(row.preview ?? "").replace(/\|/g, "\\|")})`;
+      // The product's own words, after the address, so the reader that splits
+      // the key off the address never sees them — they are taken out first.
+      const about =
+        (row.label === undefined ? "" : cellMark("label", row.label)) +
+        (row.options ?? []).map((o) => cellMark("option", `${o.value}=${o.label}`)).join("");
       const cells = [
         row.control === true
           ? `${indent}**${escapeCell(row.key.slice(indent.length))}**`
-          : `${indent}\`${escapeCell(row.key.slice(indent.length))}\`${address}`,
+          : `${indent}\`${escapeCell(row.key.slice(indent.length))}\`${address}${about}`,
         ...(shown.description ? [escapeCell(row.description)] : []),
-        escapeCell(row.default),
+        escapeCell(row.default) + (row.product === undefined ? "" : cellMark("product", row.product)),
         ...cols.map((c) => escapeCell(row.values[c] ?? "")),
         ...(shown.remarks ? [escapeCell(row.remarks)] : []),
       ];
@@ -742,10 +777,41 @@ function splitCells(line: string): string[] {
 // the written form failed silently in exactly one of its two callers.
 const PREVIEW_LINK = /`(?:(?:<br\s*\/?>|\r?\n)\[[^\]]*\]\(([^)]*)\))\s*$/i;
 
-export function splitKeyCell(cell: string): { key: string; preview?: string } {
-  const m = PREVIEW_LINK.exec(cell);
-  if (m === null) return { key: cell };
-  return { key: `${cell.slice(0, m.index)}\``, preview: m[1] };
+// A fact about ONE CELL, written inside it.
+//
+// The same idea as the marker above a heading, where a heading is not what the
+// fact is about. A row cannot have one written above it — a comment between two
+// table rows ends the table — so it goes in the cell, invisible in any markdown
+// reader and stripped before anything reads what the cell SAYS.
+//
+// That last part is why this is a comment rather than more text: the key cell's
+// text is the row's identity, the string the copy button yields and the one a
+// change set targets. The product's own name for the setting is a second thing
+// to say about the row, and a cell saying two things is a cell that cannot be
+// copied.
+//
+// `>` is encoded, because the value is inside `<!-- -->` and a `-->` in it would
+// close the comment early; `|` is left to `escapeCell`, which every cell goes
+// through and which the reader undoes before this runs.
+const CELL_MARK = /<!--\s*rs:([a-z]+)=([^]*?)\s*-->/g;
+export const cellMark = (kind: string, value: string): string =>
+  `<!-- rs:${kind}=${escapeCell(value).replace(/>/g, "&gt;")} -->`;
+
+export function cellMarks(cell: string): { text: string; marks: { kind: string; value: string }[] } {
+  const marks: { kind: string; value: string }[] = [];
+  CELL_MARK.lastIndex = 0;
+  const text = cell.replace(CELL_MARK, (_whole, kind: string, value: string) => {
+    marks.push({ kind, value: value.replace(/&gt;/g, ">") });
+    return "";
+  });
+  return { text: text.trimEnd(), marks };
+}
+
+export function splitKeyCell(cell: string): { key: string; preview?: string; marks: { kind: string; value: string }[] } {
+  const { text, marks } = cellMarks(cell);
+  const m = PREVIEW_LINK.exec(text);
+  if (m === null) return { key: text, marks };
+  return { key: `${text.slice(0, m.index)}\``, preview: m[1], marks };
 }
 
 // A row of a table this projection wrote that is NOT a parameter — see
@@ -897,6 +963,17 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
       if (isControlRow((row.cells[0] ?? "").trim())) continue;
       const split = splitKeyCell((row.cells[0] ?? "").trim());
       const name = split.key.replace(/^`(.*)`$/s, "$1").trim();
+      // The product's own words, taken back off the cells they were written
+      // into. `label` shows above the key; `option` names a value; `product` is
+      // the documented default, which means the column beside it is showing the
+      // vendor's shipped value instead — see `cellMark`.
+      const label = split.marks.find((m) => m.kind === "label")?.value;
+      const options = split.marks
+        .filter((m) => m.kind === "option")
+        .map((m) => ({ value: m.value.slice(0, m.value.indexOf("=")), label: m.value.slice(m.value.indexOf("=") + 1) }))
+        .filter((o) => o.value !== "");
+      const dflt = shape.default >= 0 ? cellMarks(row.cells[shape.default] ?? "") : { text: "", marks: [] };
+      const product = dflt.marks.find((m) => m.kind === "product")?.value;
       chain.length = Math.min(row.indent, chain.length);
       chain[row.indent] = name;
       const values = shape.values.map((n) => (row.cells[n] ?? "").trim());
@@ -936,15 +1013,23 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
         ...(names.some((n) => n !== "") && !same
           ? { instances: names.map((name, i) => ({ name, value: values[i] ?? "" })) }
           : { value: values[0] ?? "" }),
-        ...(shape.default >= 0 && (row.cells[shape.default] ?? "").trim() !== ""
-          ? { default: (row.cells[shape.default] ?? "").trim() }
-          : {}),
+        // What the column SHOWS is the vendor's shipped value when a documented
+        // default came with it, and the documented default otherwise — the two
+        // share one column on the sheet, and which of them is in it is what
+        // decides the column's own heading and whether a value counts as set.
+        ...(dflt.text.trim() === ""
+          ? {}
+          : product === undefined
+            ? { default: dflt.text.trim() }
+            : { baseline: dflt.text.trim(), default: product }),
         ...(shape.description >= 0 && (row.cells[shape.description] ?? "").trim() !== ""
           ? { description: (row.cells[shape.description] ?? "").trim() }
           : {}),
         ...(remarksAt >= 0 && (row.cells[remarksAt] ?? "").trim() !== ""
           ? { remarks: (row.cells[remarksAt] ?? "").trim() }
           : {}),
+        ...(label === undefined ? {} : { label }),
+        ...(options.length === 0 ? {} : { options }),
         ...(extra === undefined ? {} : { extra }),
         // Nothing is set here: the document says so by leaving every value cell
         // empty, and this is that fact in the shape the viewer knows it by.

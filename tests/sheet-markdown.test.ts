@@ -168,9 +168,16 @@ describe("the address under a row's key", () => {
   it("leaves a key that merely looks like one whole", () => {
     // Anchored on the closing backtick and a COMPLETE link after it. A key
     // holding brackets of its own is still just a key.
-    expect(splitKeyCell("`attributes[\"a.b\"]`")).toEqual({ key: '`attributes["a.b"]`' });
-    expect(splitKeyCell("`k`<br>[プレビュー](a/b#L3)")).toEqual({ key: "`k`", preview: "a/b#L3" });
-    expect(splitKeyCell("`k`<br>[プレビュー](a/b")).toEqual({ key: "`k`<br>[プレビュー](a/b" });
+    expect(splitKeyCell("`attributes[\"a.b\"]`")).toEqual({ key: '`attributes["a.b"]`', marks: [] });
+    expect(splitKeyCell("`k`<br>[プレビュー](a/b#L3)")).toEqual({ key: "`k`", preview: "a/b#L3", marks: [] });
+    expect(splitKeyCell("`k`<br>[プレビュー](a/b")).toEqual({ key: "`k`<br>[プレビュー](a/b", marks: [] });
+    // …and a fact written into the cell is taken out before any of that: the
+    // key is what the cell SAYS, and a marker is not something it says.
+    expect(splitKeyCell("`k`<br>[プレビュー](a/b#L3)<!-- rs:label=SELINUX -->")).toEqual({
+      key: "`k`",
+      preview: "a/b#L3",
+      marks: [{ kind: "label", value: "SELINUX" }],
+    });
   });
 
   // A header this projection wrote once and writes no more.

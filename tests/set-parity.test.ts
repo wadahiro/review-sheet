@@ -75,6 +75,18 @@ const MODEL = {
           name: "Basic",
           params: [
             { key: "Listen", value: "8080", description: "Port", default: "80", remarks: "note" },
+            // The product's own name for the setting, its own name for a value,
+            // and a default column showing what the DISTRIBUTION shipped rather
+            // than what the product documents — three facts a table cannot say.
+            {
+              key: "selinux",
+              label: { ja: "SELINUX" },
+              value: "disabled",
+              default: "enforcing",
+              options: [{ value: "disabled", label: { ja: "読み込まない" } }],
+              description: "Mode",
+            },
+            { key: "ServerRoot", value: "/etc/httpd", default: "/usr/local/apache", baseline: "/etc/httpd", description: "Root" },
             { key: "Timeout", value: "60", default: "60", origin: "default", description: "Idle timeout" },
             { key: "ServerName", description: "Name", instances: [{ name: "staging", value: "a" }, { name: "production", value: "b" }] },
           ],
