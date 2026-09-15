@@ -50,7 +50,7 @@ export type ReadSet = {
   // built over these documents exactly as it is over a model's previews — which
   // is what lets the sheet's own renderer draw the chip with nothing new told
   // to it. `keys` is by 1-based line, as the address names it.
-  documents: { path: string; text: string; keys?: Record<number, string[]> }[];
+  documents: { path: string; text: string; keys?: Record<number, string[]>; keyless?: string[] }[];
   problems: string[];
 };
 
@@ -156,7 +156,7 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
   // realm document is pointed into by seven sheets of one real delivery — so it
   // belongs to none of them in particular, and the index answers for any (see
   // `artifact-index.ts`).
-  const keyed = new Map<string, { keys: Record<number, string[]> }>();
+  const keyed = new Map<string, { keys: Record<number, string[]>; keyless: string[] }>();
   const named = new Set<string>();
   for (const f of sorted) {
     const parts = f.path.split("/");
@@ -217,8 +217,16 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
     for (const { key, href } of lifted.addresses) {
       const [at = "", frag = ""] = decodeURI(href).split("#");
       const line = /^L(\d+)$/.exec(frag);
-      if (line === null) continue;
-      const held = keyed.get(at) ?? { keys: {} as Record<number, string[]> };
+      const held = keyed.get(at) ?? { keys: {} as Record<number, string[]>, keyless: [] };
+      // An address with no line: the row's only line is one this environment
+      // does not render, and a carried file does not have those (md-set.ts). So
+      // the document is the row's and has no line for it — which is a way into
+      // the file, just not into a line of it.
+      if (line === null) {
+        if (!held.keyless.includes(key)) held.keyless.push(key);
+        keyed.set(at, held);
+        continue;
+      }
       // EVERY row the line is, not the first of them. One line IS several rows
       // often enough to matter: a `count`ed resource writes one line that every
       // one of its copies is addressed by, and a directive holding two settings
@@ -297,6 +305,7 @@ export function documentPreviews(documents: ReadSet["documents"]): ArtifactPrevi
       // …and which environments it covers, where the folder says so. `common`
       // covers every one, which is what carrying no list already means.
       ...(covers === undefined || covers === "common" ? {} : { instances: covers.split("+") }),
+      ...(d.keyless === undefined || d.keyless.length === 0 ? {} : { keyless: d.keyless }),
       nature: kind === "sources" ? ("source" as const) : kind === "evidence" ? ("observed" as const) : ("artifact" as const),
       ...(observed === undefined ? {} : { observed: { host: observed.host, at: observed.at }, instances: [observed.instance] }),
       // The rows each line IS, where a page said so. This is what gives a row

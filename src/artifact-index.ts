@@ -73,6 +73,13 @@ export function buildArtifactIndex(previews: readonly ArtifactPreview[] | undefi
         if (!byRow.has(at)) byRow.set(at, a);
       }
     }
+    // …and the rows this document is about that it has no LINE for (`keyless`).
+    // After the lines, so a document that has a line for the key answers first:
+    // opening at a line beats opening at the top, wherever both are on offer.
+    for (const k of a.keyless ?? []) {
+      const at = [a.sheet, a.component ?? "", k].join(SEP);
+      if (!byRow.has(at)) byRow.set(at, a);
+    }
   }
 
   // Every name a sheet's outermost category could be wearing, against the

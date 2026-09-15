@@ -231,6 +231,10 @@ const MODEL = {
       lines: [
         { text: "# managed", kind: "verbatim" },
         { text: "Listen 8080", kind: "substituted", key: "Listen" },
+        // A line this environment does not render. The preview keeps it,
+        // marked; the file a set carries does not — so the row has a document
+        // and no line in it.
+        { text: "Debug on", kind: "absent", key: "only-staging" },
       ],
     },
   ],

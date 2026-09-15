@@ -175,6 +175,18 @@ export type ArtifactLine = {
 // review. Putting the file beside the sheet answers that without pretending a
 // structural line is a parameter.
 export type ArtifactPreview = {
+  // Rows this document is ABOUT that it has no line for.
+  //
+  // A preview keeps a conditional line an environment does not render, marked
+  // `absent`; the FILE a set carries does not, because the point of carrying it
+  // is that it can be diffed against the real one. So a row whose only line is
+  // one of those has a document and no line in it — and reached through the
+  // lines alone it had no way into the file at all, on the page where "which
+  // environment has this at all" is the question being asked.
+  //
+  // Set by a document read back out of a folder (`md-read.ts`) and by nothing
+  // else: a model's preview keeps the line, so it has no use for this.
+  keyless?: string[];
   // Stable identity of ONE PREVIEWED FILE: `<sheet>::<component>`, or
   // `<sheet>` when the sheet has no components, optionally followed by
   // `::<file>` (see `previewId` in preview.ts) when a sheet/component has more
