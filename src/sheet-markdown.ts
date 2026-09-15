@@ -121,7 +121,7 @@ export type MarkdownSheet = {
   // responsible for must not be mixed into text nobody parses.
   file?: string;
   // Read side by side, one column per component — see COMPARE_MARKER.
-  compare?: true;
+  compare?: boolean | "always";
   // Prose before the first heading.
   prose: string;
 };
@@ -397,7 +397,9 @@ export function toMarkdownSheet(
     lang: l,
     sections,
     ...(sheet.file_path === undefined ? {} : { file: sheet.file_path }),
-    ...(sheet.compare_components === "always" ? { compare: true as const } : {}),
+    ...(sheet.compare_components === undefined || sheet.compare_components === false
+      ? {}
+      : { compare: sheet.compare_components }),
     prose: "",
   };
 }
@@ -574,8 +576,11 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
   // The sheet's name, so a file that has been saved and reopened still says
   // which sheet it is — and so a reviewer editing two of them cannot mix them up.
   out.push(`# ${doc.title ?? doc.sheet}`, "");
-  if (doc.compare) out.push(COMPARE_MARKER_TEXT, "");
+  // The deployed path stays the FIRST thing under the title: that is how it is
+  // told apart from prose when the page is read back, and a marker written
+  // between the two put it back into the body as a paragraph.
   if (doc.file) out.push(`\`${doc.file}\``, "");
+  if (doc.compare !== undefined) out.push(compareMarker(doc.compare), "");
   if (doc.prose) out.push(doc.prose, "");
   for (const section of doc.sections) {
     const id = section.names?.[section.path.length - 1];
@@ -648,6 +653,17 @@ const HEADING = /^(#{1,6})\s+(.*?)\s*$/;
 // Written ONLY when the two differ, so a document whose headings are their own
 // identity carries nothing at all.
 const NAME_MARKER = /^\s*<!--\s*rs:name=(.*?)\s*-->\s*$/;
+
+// ANY of this projection's markers, on a line of its own.
+//
+// Every reader of a page has to step over them, and one that does not is not
+// merely ignoring a fact — it reads the line as PROSE, and prose reaches the
+// page as the words it is. The general rule rather than one test per marker:
+// the readers here were taught `rs:name` and a `rs:compare` written two lines
+// later still landed in the lead, taking the deployed path into the same block
+// and stopping THAT from being lifted. One rule, so a marker added later is
+// stepped over by everything that predates it.
+const MARKER_LINE = /^\s*<!--\s*rs:[^>]*-->\s*$/;
 export const nameMarker = (name: string): string => `<!-- rs:name=${name} -->`;
 
 // …and how this SHEET is read: side by side, one column per component, rather
@@ -660,9 +676,22 @@ export const nameMarker = (name: string): string => `<!-- rs:name=${name} -->`;
 // At the top of the page, because it is about the whole page, and in the same
 // spelling as every other fact this projection writes beside the thing it is
 // about.
-const COMPARE_MARKER = /^\s*<!--\s*rs:compare\s*-->\s*$/m;
-export const COMPARE_MARKER_TEXT = "<!-- rs:compare -->";
-export const comparesComponents = (text: string): boolean => COMPARE_MARKER.test(text);
+//
+// TWO readings, because the model has two: a sheet that exists only to compare
+// opens that way (`always`), and one that merely offers it keeps its stacked
+// reading and puts a control on the heading. Carrying only the first left ten
+// sheets of one real delivery opening stacked and two more without the control
+// — the same fact, wrong in two different directions.
+const COMPARE_MARKER = /^\s*<!--\s*rs:compare(?:=(always|offer))?\s*-->\s*$/m;
+export const compareMarker = (how: boolean | "always"): string =>
+  `<!-- rs:compare=${how === "always" ? "always" : "offer"} -->`;
+
+export function comparesComponents(text: string): boolean | "always" | undefined {
+  const m = COMPARE_MARKER.exec(text);
+  if (m === null) return undefined;
+  // A marker with no value predates the two spellings and meant `always`.
+  return m[1] === "offer" ? true : "always";
+}
 const TABLE_ROW = /^\s*\|(.*)\|\s*$/;
 const SEPARATOR = /^\s*\|[\s:|-]+\|\s*$/;
 
@@ -976,9 +1005,9 @@ export function parseMarkdownBlocks(text: string): MarkdownBlock[] {
   // note is shown as the words it is rather than as markup.
   let named: string | undefined;
   for (let i = 0; i < lines.length; i++) {
-    const marker = NAME_MARKER.exec(lines[i]);
-    if (marker !== null) {
-      named = marker[1];
+    if (MARKER_LINE.test(lines[i])) {
+      const marker = NAME_MARKER.exec(lines[i]);
+      if (marker !== null) named = marker[1];
       continue;
     }
     const h = HEADING.exec(lines[i]);
@@ -1207,9 +1236,9 @@ export function parseSheetMarkdown(text: string, instances: string[], l: Lang = 
   let names: (string | undefined)[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const marker = NAME_MARKER.exec(line);
-    if (marker !== null) {
-      named = marker[1];
+    if (MARKER_LINE.test(line)) {
+      const marker = NAME_MARKER.exec(line);
+      if (marker !== null) named = marker[1];
       continue;
     }
     const h = HEADING.exec(line);

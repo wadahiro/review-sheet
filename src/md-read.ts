@@ -33,7 +33,7 @@ export type ReadSet = {
     // Where this sheet's rows land, and how the page is read — both stated by
     // the page itself, so a set carries no number the reader cannot see.
     file_path?: string;
-    compare_components?: "always";
+    compare_components?: boolean | "always";
     // `mode: "sheet"` on a page whose markdown IS a parameter table, absent on
     // one that is prose — the viewer switches on exactly this, and a set holds
     // both kinds (see `looksLikeParamSheet`).
@@ -205,7 +205,7 @@ export function readMarkdownSet(files: SetFile[], lang: Lang = "ja"): ReadSet {
       ...(group === undefined ? {} : { group }),
       ...(deployed === undefined ? {} : { file_path: deployed }),
       // …and how the page is READ, which the page says itself.
-      ...(comparesComponents(markdown) ? { compare_components: "always" as const } : {}),
+      ...(comparesComponents(markdown) === undefined ? {} : { compare_components: comparesComponents(markdown)! }),
       instances: declaredInstances(markdown) ?? [],
       categories: lifted.categories as unknown[],
       document: { html: "", markdown: deployed === undefined ? markdown : withoutDeployedPath(markdown), mode: "sheet" },

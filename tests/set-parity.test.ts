@@ -46,6 +46,19 @@ const MODEL = {
       ],
     },
     {
+      name: "offered",
+      group: "srv",
+      instances: ["staging"],
+      // …and a deployed path, so the ORDER of the two things written under the
+      // title is exercised: the path is told from prose by being first.
+      file_path: "/etc/app.conf",
+      compare_components: true,
+      categories: [
+        { name: "a", params: [{ key: "x", value: "1", description: "X" }] },
+        { name: "b", params: [{ key: "x", value: "2", description: "X" }] },
+      ],
+    },
+    {
       name: "web",
       group: "srv",
       instances: ["staging", "production"],
@@ -194,7 +207,7 @@ describe("the same model, carried and read back", () => {
   it("…and the same page in the other orientation", async () => {
     // The toggle is part of it: a reading the set could not offer is a
     // difference the first comparison cannot see, because it never gets there.
-    const { embedded, folder } = await bothWays(2, (host) => {
+    const { embedded, folder } = await bothWays(3, (host) => {
       const btn = [...host.querySelectorAll("button.rs-view-btn")].find((b) => (b.textContent ?? "").includes("転置")) as HTMLButtonElement;
       expect(btn, "no orientation toggle on this page").not.toBeUndefined();
       btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));

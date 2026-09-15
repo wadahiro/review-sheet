@@ -4630,21 +4630,13 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                 <h2 ...${sheet.document === undefined ? {} : { "data-rs-line": 1 }}>
                   <span class=${diff?.get(sheetKey(sheet.name)) === "removed" ? "rs-diff-strike" : ""}>${sheet.display ?? sheet.name}</span>
                   ${diff && diffBadge(diff.get(sheetKey(sheet.name)))}
-                  ${/* A hand-maintained sheet has no category heading to hang
-                        the side-by-side switch on, so it lives in the sheet's
-                        own heading — the comparison is about the whole sheet
-                        either way. */ ""}
-                  ${sheet.document?.mode === "sheet" && sheet.compare_components && !alwaysPivoted.has(sheet.name) && html`
-                    <span class="rs-header-actions">
-                      <${CompareToggle} on=${pivoted.has(sheet.name)} t=${t}
-                                        onToggle=${() => setPivoted((prev) => {
-                                          const next = new Set(prev);
-                                          if (next.has(sheet.name)) next.delete(sheet.name);
-                                          else next.add(sheet.name);
-                                          return next;
-                                        })} />
-                    </span>
-                  `}
+                  ${/* The side-by-side switch used to live here as well, for a
+                        hand-maintained sheet — which had no category heading to
+                        hang it on while it was drawn by a renderer of its own.
+                        It is drawn by the sheet's now, category headings and
+                        all, so putting it here too gave that one sheet the
+                        control twice: once on its name and once on the heading
+                        every other sheet carries it on. */ ""}
                   ${effReviewEnabled && html`
                     <span class="rs-header-actions ${sheetReviewCount > 0 ? "rs-has-comment" : ""}">
                       <button class="rs-head-tool ${sheetReviewCount > 0 ? "rs-head-tool-on" : ""}"
