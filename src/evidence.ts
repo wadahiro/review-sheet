@@ -22,12 +22,18 @@ import type { TestResults } from "./testresults.js";
 const idOf = (e: { instance: string; host: string; path?: string; command?: string }): string =>
   `observed ${e.instance} ${e.host} ${e.path ?? e.command ?? ""}`;
 
+// Which document CITES each evidence id, by sheet name. Two things at once,
+// and deliberately one map rather than two: the set of ids decides what has to
+// travel whatever `instances` says (see the narrowing below), and the sheet
+// each is under decides WHERE it travels to (see `sheet` below). Both are
+// answers to "who points at this", and splitting them would let a delivery
+// carry a document it then files away from the record that named it.
+export type CitedBy = ReadonlyMap<string, string>;
+
 export function evidencePreviews(
   results: TestResults,
   instances: string[] | undefined,
-  // Evidence ids some CARRIED document already links to, whatever `instances`
-  // says. See the narrowing below.
-  cited?: ReadonlySet<string>
+  cited?: CitedBy
 ): ArtifactPreview[] {
   const out: ArtifactPreview[] = [];
   // Two documents at one address is a judge bug, and a silent one: the link a
@@ -64,7 +70,26 @@ export function evidencePreviews(
     if (instances !== undefined && !instances.includes(e.instance) && cited?.has(idOf(e)) !== true) continue;
     out.push({
       id: idOf(e),
-      sheet: e.sheet,
+      // BESIDE THE RECORD THAT CITES IT — never beside the rows it is about.
+      //
+      // `e.sheet` is the parameter sheet whose values this evidence answers
+      // for, and for everything the judge does that is the right anchor. It is
+      // the wrong one for a document SET, where a carried file is written under
+      // its sheet's own chapter: the bytes then land in the design chapter
+      // while the unit-test record holding every link to them sits in another,
+      // so the reader follows a link out of the chapter they are reading and
+      // the record's own directory holds nothing it refers to.
+      //
+      // The rule the set already follows is "artifacts beside the chapter that
+      // describes the file, evidence beside the record that cites it"
+      // (md-set.ts); this is the half that was stated and not implemented.
+      // Moving it also gives the record a route a plain markdown reader can
+      // follow — the file list under its title becomes relative links into its
+      // own chapter — which the inline `rs-evidence:` links never were.
+      //
+      // Evidence NOTHING cites keeps `e.sheet`: there is no record to sit
+      // beside, and the rows it answers for are the only anchor left.
+      sheet: cited?.get(idOf(e)) ?? e.sheet,
       ...(e.component === undefined ? {} : { component: e.component }),
       // A collected file's source IS the path it was read from — literally
       // true, and what the panel's header shows beside the host and the moment.

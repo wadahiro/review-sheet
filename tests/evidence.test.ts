@@ -206,7 +206,7 @@ describe("evidence a carried record already cites", () => {
   });
 
   it("keeps it when a carried document links to it", () => {
-    const docs = evidencePreviews(results(), ["prod"], new Set([localId]));
+    const docs = evidencePreviews(results(), ["prod"], new Map([[localId, "record"]]));
     expect(docs.map((d) => d.id)).toContain(localId);
     // …and the one it does cover is there either way.
     expect(docs.some((d) => (d.instances ?? []).includes("prod"))).toBe(true);
@@ -216,7 +216,31 @@ describe("evidence a carried record already cites", () => {
     // Citing one document is not a reason to widen the delivery to every file
     // that environment holds.
     const wide = { ...results(), evidence: [...(results().evidence ?? []), { instance: "local", host: "web01", at: "2026-09-08T00:11:22Z", sheet: "web", path: "/etc/other.conf", text: "x\n" }] } as TestResults;
-    const docs = evidencePreviews(wide, ["prod"], new Set([localId]));
+    const docs = evidencePreviews(wide, ["prod"], new Map([[localId, "record"]]));
     expect(docs.map((d) => d.id).filter((id) => id.startsWith("observed local"))).toEqual([localId]);
+  });
+});
+
+// Where a carried document LANDS, which for evidence is not where its rows are.
+//
+// A set writes a carried file under its sheet's own chapter. An evidence
+// document's rows are a parameter sheet's, so it used to land in the design
+// chapter — while the unit-test record holding every link to it sits in
+// another. The set's own rule is "evidence beside the record that cites it",
+// and only the citing record can answer which one that is.
+describe("which sheet an evidence document is filed under", () => {
+  const id = "observed local web01 /etc/httpd/conf/httpd.conf";
+  const sheetOf = (cited?: Map<string, string>): string | undefined =>
+    evidencePreviews(results(), undefined, cited).find((d) => d.id === id)?.sheet;
+
+  it("is the record that cites it, not the rows it is about", () => {
+    expect(sheetOf(new Map([[id, "unit tests"]]))).toBe("unit tests");
+  });
+
+  it("falls back to the rows when no record cites it", () => {
+    // Nothing points at it, so there is no record to sit beside — the sheet
+    // whose values it answers for is the only anchor left.
+    expect(sheetOf(new Map([["observed local web01 /etc/other.conf", "unit tests"]]))).toBe("web");
+    expect(sheetOf(undefined)).toBe("web");
   });
 });

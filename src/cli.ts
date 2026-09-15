@@ -684,20 +684,36 @@ program
       // nothing about the sheet's own previews changes (types.ts).
       if (opts.evidence !== undefined) {
         const carried = validateResults(JSON.parse(readFileSync(opts.evidence, "utf-8")));
-        // Which evidence the DOCUMENTS this build carries already link to. A
-        // record's links are baked in at import and `--instances` never
-        // narrowed them, so they decide what evidence has to travel — see
-        // evidencePreviews.
-        const cited = new Set<string>();
+        // Which evidence the DOCUMENTS this build carries already link to, AND
+        // which document each link is in. A record's links are baked in at
+        // import and `--instances` never narrowed them, so they decide what
+        // evidence has to travel — and, being the only thing that points at it,
+        // where it travels to. See evidencePreviews.
+        const cited = new Map<string, string>();
+        const contested: string[] = [];
         for (const v of "versions" in input ? input.versions : [input]) {
           for (const sheet of v.sheets) {
             const html = (sheet as { document?: { html?: string } }).document?.html;
             if (html === undefined) continue;
             for (const m of html.matchAll(/href="rs-evidence:([^"]*)"/g)) {
               const raw = decodeURIComponent(m[1] ?? "");
-              cited.add(raw.replace(/#L\d+$/, ""));
+              const id = raw.replace(/#L\d+$/, "");
+              const already = cited.get(id);
+              if (already === undefined) cited.set(id, sheet.name);
+              // One document, two records citing it: it can only be written in
+              // one place, and the first in model order gets it. Reported
+              // rather than resolved — which record it belongs beside is not
+              // this tool's to decide, and quietly picking one is the failure
+              // it would be hiding.
+              else if (already !== sheet.name && !contested.includes(id)) contested.push(id);
             }
           }
+        }
+        if (contested.length > 0) {
+          console.error(
+            `evidence: ${contested.length} document(s) are cited by more than one record and are written beside the first — ` +
+              contested.slice(0, 3).join(", ") + (contested.length > 3 ? ", …" : "")
+          );
         }
         const docs = evidencePreviews(carried, opts.instances, cited).map((d) =>
           // WHEN a host was read, in the reader's zone. Resolved here, like the
