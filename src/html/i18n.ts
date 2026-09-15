@@ -12,8 +12,6 @@ type Messages = {
   defaultTitle: string;
   // Overview tab
   overview: string;
-  project: string;
-  version: string;
   generatedAt: string;
   changelog: string;
   changelogVersion: string;
@@ -256,8 +254,6 @@ const ja: Messages = {
   lang: "ja",
   defaultTitle: "パラメータシート",
   overview: "概要",
-  project: "プロジェクト",
-  version: "バージョン",
   generatedAt: "作成日時",
   changelog: "改版履歴",
   changelogVersion: "版数",
@@ -427,8 +423,6 @@ const en: Messages = {
   lang: "en",
   defaultTitle: "Parameter Sheet",
   overview: "Overview",
-  project: "Project",
-  version: "Version",
   generatedAt: "Created at",
   changelog: "Changelog",
   changelogVersion: "Version",

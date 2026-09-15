@@ -4548,19 +4548,17 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
           <section class="rs-overview">
             <h1>${title}</h1>
 
+            ${/* The project and the version are NOT here. The title above
+                  already names the project, and the version a document carries
+                  is the model's own bookkeeping — `current` on every single-
+                  version document, which is every document that is not a
+                  comparison. Two cards, one repeating the heading and one
+                  saying nothing, at the top of the first page a reader opens.
+                  They are still in the model: the stamp is taken over it, the
+                  markdown set's index carries them, and a version history is
+                  ordered by them. */ ""}
+            ${(data.metadata?.generated_at || data.metadata?.extra) && html`
             <div class="rs-overview-grid">
-              ${data.metadata?.project && html`
-                <div class="rs-overview-item">
-                  <dt>${t.project}</dt>
-                  <dd>${data.metadata.project}</dd>
-                </div>
-              `}
-              ${data.metadata?.version && html`
-                <div class="rs-overview-item">
-                  <dt>${t.version}</dt>
-                  <dd>${data.metadata.version}</dd>
-                </div>
-              `}
               ${data.metadata?.generated_at && html`
                 <div class="rs-overview-item">
                   <dt>${t.generatedAt}</dt>
@@ -4574,6 +4572,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                 </div>
               `)}
             </div>
+            `}
 
             ${data.metadata?.changelog && data.metadata.changelog.length > 0 && html`
               <div class="rs-changelog-section">

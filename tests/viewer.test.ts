@@ -3606,3 +3606,64 @@ describe("the order the sheets are in", () => {
     expect([titleAt(1), titleAt(2), titleAt(3)]).toEqual(["earlier", "later", "loose"]);
   });
 });
+
+
+// The first page a reader opens.
+//
+// It used to lead with two cards: the project, which the title above it already
+// names, and the version, which is the model's own bookkeeping — `current` on
+// every document that is not a comparison. What a reader comes to this page for
+// is the list of sheets.
+describe("the overview page", () => {
+  const draw = (metadata: Record<string, unknown>): HTMLElement => {
+    document.body.innerHTML = "";
+    location.hash = "#overview";
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(
+      h(Root, {
+        payload: {
+          metadata,
+          versions: [
+            {
+              version: "current",
+              // WHEN is the version's, not the metadata's: a document carries one
+              // per version and the overview shows the one on screen.
+              ...(metadata.generated_at === undefined ? {} : { date: metadata.generated_at }),
+              sheets: [{ name: "web", instances: [], categories: [{ name: "c", params: [{ key: "k", value: "1" }] }] }],
+            },
+          ],
+        } as never,
+        reviewEnabled: false,
+        initialLang: "ja",
+        server: false,
+      }),
+      host
+    );
+    return host;
+  };
+
+  it("does not repeat the project or state a version nobody set", () => {
+    const host = draw({ title: "t", project: "iam-platform-poc", version: "current" });
+    const text = host.querySelector(".rs-overview")?.textContent ?? "";
+    expect(text).not.toContain("iam-platform-poc");
+    expect(text).not.toContain("バージョン");
+    // …and what the page IS for is still there.
+    expect(host.querySelector(".rs-overview-sheets")?.textContent).toContain("web");
+  });
+
+  it("keeps what a project chose to put there, and when it was generated", () => {
+    const host = draw({ title: "t", generated_at: "2026-09-16T00:00:00Z", extra: { 担当: "SRE" } });
+    const text = host.querySelector(".rs-overview-grid")?.textContent ?? "";
+    expect(text).toContain("担当");
+    expect(text).toContain("SRE");
+    expect(text).toContain("2026");
+  });
+
+  // An empty box is worse than no box: the grid is the only thing between the
+  // title and the sheet list, and a document with neither of those two has
+  // nothing to put in it.
+  it("draws no box when there is nothing for it", () => {
+    expect(draw({ title: "t", project: "p", version: "current" }).querySelector(".rs-overview-grid")).toBeNull();
+  });
+});
