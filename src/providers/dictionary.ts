@@ -131,7 +131,18 @@ export type DictionaryParam = {
   // this ("Tokens / Access tokens", "Sessions / Access tokens"), which reads as
   // a hierarchy and is one flat name: nothing folds or sorts by "Tokens",
   // because no such category exists. A bare string is the one-segment case.
-  group?: string | string[];
+  // `null` is the THIRD state, and it is a statement: the product has this
+  // field, and edits it OUTSIDE its own tab structure — Keycloak's `enabled`
+  // lives on the page header above the tab strip, and `protocol` only in the
+  // create-client wizard. Absent means the extraction found no grouping, which
+  // is a gap; `null` means it looked and there is none to find.
+  //
+  // Without the distinction a project has to supply the placement itself, and
+  // measured on one real project it did — three sheets each discovering the
+  // same fact about `enabled` independently, and writing it two different ways
+  // (`category: null` on one, an arbitrary tab on the others). The fact is the
+  // product's; only the product can state it once.
+  group?: string | string[] | null;
   docs_url?: string;
   // Which sub-product of this dictionary the option belongs to, when the
   // dictionary covers more than one. A Terraform provider is the case: one

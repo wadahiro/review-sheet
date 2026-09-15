@@ -758,7 +758,7 @@ const UNCATEGORIZED = "Uncategorized";
 // a list as written, a bare string as its one segment, and UNCATEGORIZED when
 // the entry declares none. An empty or all-blank list is treated as none rather
 // than producing a category with no name.
-function groupPath(group: string | string[] | undefined): string[] {
+function groupPath(group: string | string[] | undefined | null): string[] {
   if (Array.isArray(group)) {
     const segs = group.filter((g) => typeof g === "string" && g.trim() !== "");
     return segs.length > 0 ? segs : [UNCATEGORIZED];
@@ -797,7 +797,9 @@ function bindingOrFallback(
   depth?: number
 ): string[] | undefined {
   if (fallbackWins && fallback !== undefined) return fallback;
-  if (binding && binding.entry.group !== undefined) {
+  // `null` is the product saying this field is edited outside its tabs — the
+  // caller files it under the component itself, so there is no path to return.
+  if (binding && binding.entry.group !== undefined && binding.entry.group !== null) {
     const path = groupPath(binding.entry.group);
     // `slice` already returns the whole path for a depth past its end, so no
     // length test is needed — one was written here and removed after breaking
@@ -810,7 +812,8 @@ function bindingOrFallback(
 // Just the tab: the first segment of the path above, or undefined when the
 // entry declares no group at all (which `groups:` filters and the ghost-tab
 // guard both need to tell apart from "grouped under the empty string").
-function groupHead(group: string | string[] | undefined): string | undefined {
+function groupHead(group: string | string[] | undefined | null): string | undefined {
+  if (group === null) return undefined;
   if (Array.isArray(group)) return group.find((g) => typeof g === "string" && g.trim() !== "");
   return group;
 }
@@ -1412,6 +1415,9 @@ function materializeDrafts(
   const dirs = opts.metadataDirs ?? [];
   const found = findDictionary(binding.product, binding.version, dirs, opts.readFile);
   // Whether this dictionary groups anything at all (see the note at `opt`).
+  // `null` counts as STATED: a dictionary whose every entry says "outside the
+  // tabs" has an arrangement and is describing it, unlike one that simply never
+  // grouped anything.
   const dictStatesNoGrouping = Object.values(found?.parameters ?? {}).every((e) => e.group === undefined);
   // The other door into a dictionary. materialize reads `default` to give a row
   // its value, so an unresolved per-variant map would land in the sheet as
@@ -2105,7 +2111,27 @@ function fileDrafts(
     //
     // It has to be declared and can never be fallen into — see the empty-path
     // error below, which is what makes an undeclared row an error again.
+    // NO category at all: the row is about the component as a whole and files
+    // directly under its heading, above every tab.
+    //
+    // Two ways to arrive, and they are the same fact from two sides. The
+    // project declares it (`category: null`), or the bound dictionary does
+    // (`group: null` — the product edits this field outside its own tabs: a
+    // page-header toggle, a create-time wizard). The project still wins where
+    // it speaks, exactly as it wins over a dictionary's group.
     const declaredNoCategory = meta?.category === null;
+    // …and the same fact stated by the PRODUCT rather than by the project: the
+    // bound dictionary says this field is edited outside its own tabs.
+    //
+    // Kept apart from the project's own declaration for one reason: what
+    // happens when the sheet has no component level to file under. A project
+    // that DECLARED `category: null` gets an error — they asked for something
+    // this sheet cannot do. A project that declared nothing must not have its
+    // build broken by a dictionary it merely upgraded, so the row falls through
+    // to the grouping it had before (`bindingOrFallback` returns UNCATEGORIZED
+    // for a bound row with no usable group, exactly as it did while `null` was
+    // not expressible).
+    const dictSaysOutsideTabs = meta?.category === undefined && categoryBinding?.entry.group === null;
     // The artifact the row is written in, `.j2` stripped: a template is named
     // for the file it produces, and that file is what a reviewer is holding. A
     // row with no file of its own — a product default nobody set — resolves to
@@ -2135,7 +2161,11 @@ function fileDrafts(
         : // No file recorded for it: fall back to the names, which is all
           // there is to go on for a component that is not a file at all.
           (fileNames.get(d.component ?? "") ?? d.component) === derivedFile?.[0]);
-    const inner = declaredNoCategory
+    // `componentCount > 1` is `showComponent`'s own test, asked here because
+    // this is where the answer is needed: with no component level there is
+    // nowhere above the tabs, so the product's statement has nowhere to land.
+    const outsideTabsLands = dictSaysOutsideTabs && componentCount > 1 && d.component !== undefined;
+    const inner = declaredNoCategory || outsideTabsLands
       ? []
       : meta?.category
         ? // A list is a path (project.ts's ProjectMetaParam.category); a bare

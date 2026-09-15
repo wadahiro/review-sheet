@@ -164,6 +164,7 @@
           "minLength": 1
         },
         "group": {
+          "description": "The product's own grouping. A string or a path; `null` states that the product edits this field OUTSIDE its tab structure (a page-header toggle, a create-time wizard) \u2014 absent means no grouping was found, which is a gap, while null means there is none to find.",
           "anyOf": [
             {
               "type": "string",
@@ -176,6 +177,9 @@
                 "type": "string",
                 "minLength": 1
               }
+            },
+            {
+              "type": "null"
             }
           ]
         },

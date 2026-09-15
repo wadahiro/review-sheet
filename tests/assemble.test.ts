@@ -2065,3 +2065,105 @@ sheets:
     expect(unbound.projectOverlap).toEqual({ redundant: [], overrides: [], gaps: [] });
   });
 });
+
+// A field the product HAS and edits outside its own tabs — Keycloak's
+// `enabled` is a toggle on the page header, above the tab strip; `protocol` is
+// only in the create-client wizard. Absent grouping is a gap; `group: null` is
+// the product saying there is none to find.
+describe("assembleSheets — a dictionary that says a field sits outside the tabs", () => {
+  const DICT = `
+product: widget
+version: "1"
+provenance: official
+parameters:
+  enabled:
+    description: On or off.
+    group: null
+  timeout:
+    description: How long.
+    group: Networking
+`;
+  const PROJECT = `
+sheets:
+  app:
+    categories: [Networking]
+    params: {}
+`;
+  const io = (p: string): string | null => (p === "p.yml" ? PROJECT : p === "meta/widget@1.yml" ? DICT : null);
+  const build = (over: Record<string, unknown> = {}) =>
+    assembleSheetsWithReport(
+      [
+        {
+          name: "app",
+          instances: [],
+          layers: [{ kind: "base", entries: new Map() }],
+          // TWO components, so the component level survives for a row that
+          // belongs above the tabs to be filed under.
+          embedded: [
+            { key: "enabled", value: "true", component: "alpha", origin: "embedded" as const },
+            { key: "timeout", value: "30", component: "alpha", origin: "embedded" as const },
+            { key: "timeout", value: "60", component: "beta", origin: "embedded" as const },
+          ],
+          ...over,
+        } as unknown as SheetInputs,
+      ],
+      {
+        projectPath: "p.yml",
+        readFile: io,
+        strictMetadata: false,
+        metadataDirs: ["meta"],
+        dictionaries: { app: [{ product: "widget", version: "1" }] },
+      }
+    );
+
+  it("files it above the tabs, while a grouped sibling keeps its tab", () => {
+    const sheet = build().input.sheets[0]!;
+    const alpha = (sheet.categories ?? []).find((c) => c.name === "alpha")!;
+    // Directly under the component, above every tab — where the product's own
+    // page-header toggle is.
+    expect((alpha.params ?? []).map((p) => p.key)).toEqual(["enabled"]);
+    // …and the sibling the dictionary DOES group keeps its tab.
+    expect((alpha.categories ?? []).map((c) => c.name)).toEqual(["Networking"]);
+    expect((alpha.categories![0]!.params ?? []).map((p) => p.key)).toEqual(["timeout"]);
+  });
+
+  it("is not read as a tab by the ghost-tab guard", () => {
+    // `categories:` declares only Networking. A `null` group that counted as a
+    // category would make the build report a tab nobody declared.
+    expect(build().categoryWarnings.join(" ")).not.toContain("enabled");
+  });
+
+  it("is not reported as a dictionary gap", () => {
+    // The project wrote no `category:` for it and did not have to — which is
+    // the whole point. Nothing to report.
+    expect(build().projectOverlap.gaps).toEqual([]);
+  });
+});
+
+// …and the case a dictionary upgrade must not break: the same claim on a sheet
+// with nowhere above the tabs to put it.
+describe("assembleSheets — a dictionary saying outside-the-tabs where there is no level for it", () => {
+  const DICT = `
+product: widget
+version: "1"
+provenance: official
+parameters:
+  enabled:
+    description: On or off.
+    group: null
+`;
+  const io = (p: string): string | null => (p === "p.yml" ? "sheets: {app: {params: {}}}" : p === "meta/widget@1.yml" ? DICT : null);
+
+  it("keeps the grouping it had rather than failing a build nobody changed", () => {
+    // A single-component sheet IS that component, so the level is collapsed and
+    // there is nothing above its categories. The PROJECT declared nothing here
+    // — breaking its build because it upgraded a dictionary would be the tool
+    // punishing it for someone else's statement.
+    const { input } = assembleSheetsWithReport(
+      [{ name: "app", instances: [], layers: [{ kind: "base", entries: map([["enabled", entry("true")]]) }], embedded: [] }],
+      { projectPath: "p.yml", readFile: io, strictMetadata: false, metadataDirs: ["meta"], dictionaries: { app: [{ product: "widget", version: "1" }] } }
+    );
+    const keys = (input.sheets[0]!.categories ?? []).flatMap((c) => (c.params ?? []).map((p) => p.key));
+    expect(keys).toEqual(["enabled"]);
+  });
+});
