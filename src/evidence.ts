@@ -181,8 +181,20 @@ export function evidenceCell(
   // `&lt;a href=…` in the cell, which is worse than the plain address it
   // replaced. The scheme is what the viewer listens for; the id holds spaces
   // and slashes, so it is encoded whole.
-  return `[${text}](${EVIDENCE_SCHEME}${encodeURIComponent(`${idOf(doc)}${at}`)})`;
+  return `[${text}](${EVIDENCE_SCHEME}${ref(`${idOf(doc)}${at}`)})`;
 }
+
+// An id, as a markdown link destination.
+//
+// `encodeURIComponent` leaves PARENTHESES alone and a destination ends at the
+// first `)`, so an id with a bracket in it produced a link that stopped inside
+// itself — measured on a real record: one HTTP request whose id names the Host
+// header it was sent with, whose link therefore opened nothing AND whose
+// truncated id matched no document, so the bytes it named were dropped from the
+// delivery as uncited. The same fix `md-set.ts`'s `href` makes for a path, for
+// the same reason; separate because that one encodes a PATH and this encodes
+// one whole component.
+const ref = (id: string): string => encodeURIComponent(id).replace(/\(/g, "%28").replace(/\)/g, "%29");
 
 // The href an evidence link carries. Not a real scheme and not meant to be:
 // nothing outside this page can resolve it, which is the point — the click is

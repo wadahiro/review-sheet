@@ -269,3 +269,28 @@ describe("the model a stamp is taken over", () => {
     expect(withoutEvidence({ versions: [{ ...one, artifacts: [rendered, observed] }] })).toEqual({ versions: [one] });
   });
 });
+
+// A markdown destination ends at the first `)`, and an id is free to contain
+// one. Two things went wrong at once when it did, which is what makes this a
+// dropped document rather than an ugly link.
+describe("an evidence id with a bracket in it", () => {
+  const carried = [
+    { instance: "local", host: "web01", at: "2026-09-08T00:11:22Z", sheet: "web", command: "GET / (Host: x)", text: "200\n" },
+  ];
+  const cell = evidenceCell({ instance: "local", evidence: { host: "web01", command: "GET / (Host: x)" } }, carried);
+
+  it("is escaped, so the link holds the whole id", () => {
+    const [, dest = ""] = /\]\(([^)]*)\)/.exec(cell) ?? [];
+    expect(parseEvidenceRef(dest).id).toBe("observed local web01 GET / (Host: x)");
+  });
+
+  it("…which is also what keeps its document in the delivery", () => {
+    // The scan that decides what evidence has to travel reads these links back.
+    // A destination cut at the bracket names no document, so the bytes were
+    // dropped as uncited — a record citing a file the delivery does not carry.
+    const [, dest = ""] = /\]\(([^)]*)\)/.exec(cell) ?? [];
+    const cited = new Map([[parseEvidenceRef(dest).id, "record"]]);
+    const docs = evidencePreviews({ results: [], evidence: carried } as TestResults, ["prod"], cited);
+    expect(docs.map((d) => d.id)).toEqual(["observed local web01 GET / (Host: x)"]);
+  });
+});
