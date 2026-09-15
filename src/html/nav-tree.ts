@@ -74,7 +74,16 @@ export function treeEntries(
         kind: "group",
         name: g.name,
         key: `group:${g.name}`,
-        label: pickLang(g.label, lang) ?? g.name,
+        // A `display` already answered is kept — falling through to the name is
+        // only right where nobody answered. A set read back out of a folder
+        // names a chapter by its PATH (two chapters may hold a page with one
+        // title) and carries the directory's own name in `display`; without
+        // this the tree and the breadcrumb showed `詳細設計/SSO サーバ` where
+        // the same document built from the model shows `SSO サーバ`. The same
+        // fall-through localize.ts had, one layer over — and the reason the
+        // comparison that was meant to catch it did not is that it only ever
+        // read the main column.
+        label: pickLang(g.label, lang) ?? g.display ?? g.name,
         number: number.join("."),
         depth,
         contains: [],

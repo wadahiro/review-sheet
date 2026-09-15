@@ -3836,9 +3836,6 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // as a row filtered out — more, since nothing on screen hints at its absence.
   const activeFilters = [filterCommented, hideOutOfScope, allInstances.some((n) => hiddenInstances.has(n))].filter(Boolean).length;
   // Every unset row in the document, for the toggle's own label.
-  // Does this document hand its sheets over as markdown? Read once: several
-  // controls exist or not depending on it.
-  const markdownSheets = data.sheets.some((s) => s.document?.mode === "sheet");
   const defaultRowCount = data.sheets.reduce((n, sheet) => {
     const walk = (cats: CategoryData[]): number =>
       cats.reduce(
@@ -4308,16 +4305,18 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
             </nav>`}
         <div class="rs-tabs-right">
           ${
-            // Filters stay while comparing. They were gated on review being on,
-            // which diff mode switches off — taking with it the only control
-            // that reveals unset rows, and a version comparison finds most of
-            // what it finds among exactly those (the product default moved
-            // under a value nobody set). Reviewing is what diff mode disables;
-            // deciding which rows are on screen is not reviewing.
-            // …and in a markdown-backed sheet, where reviewing may be off:
-            // hiding the rows nobody set is what makes a 1500-row sheet
-            // readable, and it is not a review affordance.
-            (effReviewEnabled || diffMode || markdownSheets) && html`
+            // ALWAYS. Deciding which rows are on screen is not reviewing, and
+            // the gate here said otherwise three times over: it was review-only
+            // until a comparison switched review off and took with it the only
+            // control that reveals unset rows (which is most of what a version
+            // comparison finds), then it gained markdown-backed sheets for the
+            // same reason one layer over. Each widening was right and each left
+            // the same rule half-stated — and the last of them made ONE document
+            // show the control in the folder reading and not in the page,
+            // because the two differ in exactly the shape that gate tested.
+            // The menu always holds at least the out-of-scope toggle, so there
+            // is no case where it opens on nothing.
+            html`
             <${ToolbarMenu} label=${activeFilters > 0 ? t.filterMenuCount(activeFilters) : t.filterMenu}
                             active=${activeFilters > 0}
                             icon=${html`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>` as VNode}>

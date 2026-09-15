@@ -82,12 +82,24 @@ function draw(payload: unknown): HTMLElement {
 // The TAG is deliberately not compared, only the class and the text: the
 // preview chip is a button where the model answers it and a link where the set
 // carries the address, which is one appearance and two mechanisms.
+//
+// THE WHOLE PAGE, not the main column. Scoped to `.rs-main` this compared the
+// table and nothing around it, and a seventh difference sat in the half it did
+// not read for as long as it existed: the chapter tree and the breadcrumb named
+// a chapter by its PATH in one reading and by its own name in the other. It was
+// found by opening the file — which is what a comparison is supposed to make
+// unnecessary.
+//
+// The chrome that is ABOUT the reading rather than the document is left out,
+// and only that: a page holding a folder says so, and offers to open another.
+const CHROME = /^(表示中|フォルダを開く|1ファイルで保存)/;
+
 function seen(host: HTMLElement): string[] {
-  const main = host.querySelector(".rs-main") ?? host;
   const out: string[] = [];
-  for (const el of main.querySelectorAll("h1,h2,h3,h4,th,td,p,li,button,a,code")) {
+  for (const el of host.querySelectorAll("h1,h2,h3,h4,th,td,p,li,button,a,code,summary,label")) {
     const text = (el.textContent ?? "").replace(/\s+/g, " ").trim();
-    if (text !== "") out.push(`${String(el.className).replace(/\s+/g, " ").trim() || el.tagName.toLowerCase()}: ${text}`);
+    if (text === "" || CHROME.test(text)) continue;
+    out.push(`${String(el.className).replace(/\s+/g, " ").trim() || el.tagName.toLowerCase()}: ${text}`);
   }
   return out;
 }
