@@ -16,6 +16,7 @@
 // silently lost its results table would be the exact failure this file exists
 // to prevent, and it would look like an empty section.
 
+import { inZone, dateIn } from "./instant.js";
 import type { LangText } from "./types.js";
 import { pickLang } from "./types.js";
 import type { FunctionalTestItem, TestItem, TestPlan, TestUnit } from "./testplan.js";
@@ -339,42 +340,6 @@ export type TestDocOptions = {
   // the operator was standing in.
   timezone?: string;
 };
-
-// An instant, as a reader in `zone` meets it — with the offset, always.
-//
-// A local time with no offset is the one thing worse than UTC here: a record
-// that says "17:42" and nothing else cannot be lined up with a log on the host,
-// which is the whole reason a test record carries a time at all.
-function inZone(iso: string, zone: string | undefined): string {
-  if (zone === undefined) return iso;
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return iso;
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: zone,
-    hour12: false,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    timeZoneName: "longOffset",
-  }).formatToParts(at);
-  const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? "";
-  // "GMT+09:00" → "+09:00"; a zone that is exactly GMT formats as "GMT".
-  const offset = get("timeZoneName").replace(/^GMT/, "") || "+00:00";
-  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")} ${offset}`;
-}
-
-// …and just the DATE a reader in `zone` was standing in.
-function dateIn(iso: string, zone: string | undefined): string {
-  if (iso === "") return "";
-  if (zone === undefined) return iso.slice(0, 10);
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return iso.slice(0, 10);
-  // en-CA formats as YYYY-MM-DD, which is what every other date here is.
-  return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
-}
 
 // One rendered block per marker name.
 

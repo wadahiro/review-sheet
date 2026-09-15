@@ -23,6 +23,7 @@ import { listProbeRules } from "./channel.js";
 import { collectHost, reachWith } from "./collect.js";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, ArtifactPreview } from "./types.js";
 import { evidencePreviews } from "./evidence.js";
+import { inZone, knownZone } from "./instant.js";
 import { computeApply } from "./apply.js";
 import { verifySources } from "./verify.js";
 import { diffSheets, type CategoryDiff, type DiffResult } from "./diff.js";
@@ -606,8 +607,16 @@ program
   .option("--sheets <names...>", "Make this document out of these sheets only. A requirements note, a parameter sheet and a test record are separate documents in the world — approved separately, revised on their own cycles — and one build can produce each of them. The sheets keep the document's own order; what is left out is reported")
   .option("--instances <names...>", "Deliver only these environments: the columns, the per-environment values and the previews rendered for the others are left out of the document. Not every environment a build knows belongs to the same handover — one of them is usually the one an engineer keeps in order to build the others. What it drops is reported, including rows left with nothing to show")
   .option("--evidence <file>", "Carry the RAW material the test results point at — the deployed files as the hosts held them, the output of the commands that were run — as documents in the page, beside the verdicts that cite them. Without it a verdict names an address on a machine the reader cannot reach. The judge that wrote the results decided what may travel; this only carries it, and --instances narrows it exactly as it narrows values")
-  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; lang: string; format: string; instances?: string[]; sheets?: string[]; evidence?: string }) => {
+  .option(
+    "--timezone <zone>",
+    "Read the instants this document carries in this IANA zone (Asia/Tokyo), offset kept — today, when each piece of evidence was collected. Decided here for the same reason --lang is: a document has one reader, and an instant resolved once is one the viewer never has to think about. Omitted, they print exactly as recorded"
+  )
+  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; lang: string; format: string; instances?: string[]; sheets?: string[]; evidence?: string; timezone?: string }) => {
     try {
+      if (opts.timezone !== undefined && !knownZone(opts.timezone)) {
+        console.error(`unknown timezone: ${opts.timezone} — use an IANA name such as Asia/Tokyo or UTC`);
+        process.exit(1);
+      }
       const files = opts.input;
       let input: ParameterSheetInput | VersionedSheetInput;
       if (files.length === 1) {
@@ -690,7 +699,13 @@ program
             }
           }
         }
-        const docs = evidencePreviews(carried, opts.instances, cited);
+        const docs = evidencePreviews(carried, opts.instances, cited).map((d) =>
+          // WHEN a host was read, in the reader's zone. Resolved here, like the
+          // prose `localize.ts` resolves, so the viewer prints what it is given.
+          d.observed === undefined || opts.timezone === undefined
+            ? d
+            : { ...d, observed: { ...d.observed, at: inZone(d.observed.at, opts.timezone) } }
+        );
         for (const v of "versions" in input ? input.versions : [input]) {
           (v as { artifacts?: ArtifactPreview[] }).artifacts = [...((v as { artifacts?: ArtifactPreview[] }).artifacts ?? []), ...docs];
         }
@@ -1042,9 +1057,7 @@ program
     if (opts.timezone !== undefined) {
       // A zone nobody recognises must not fall back to UTC silently: the whole
       // point is that the reader trusts the time in front of them.
-      try {
-        new Intl.DateTimeFormat("en-CA", { timeZone: opts.timezone });
-      } catch {
+      if (!knownZone(opts.timezone)) {
         console.error(`unknown timezone: ${opts.timezone} — use an IANA name such as Asia/Tokyo or UTC`);
         process.exit(1);
       }

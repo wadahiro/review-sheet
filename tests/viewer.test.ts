@@ -3409,3 +3409,4 @@ describe("an observed document's path in a delivery", () => {
     expect(meta).toContain("kc-node2");
   });
 });
+

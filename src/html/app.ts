@@ -850,7 +850,14 @@ function splitHead(wrapper: HTMLElement): void {
     split.insertBefore(head, wrapper);
     // The header now lives above; leaving it in the body too would show it
     // twice while the top of the table is on screen.
-    (thead as HTMLElement).style.visibility = "hidden";
+    //
+    // `display: none` and not `visibility: hidden`: the second hides the text
+    // and KEEPS THE BOX, so every document table opened with a blank row where
+    // its header used to be — which reads as a record with a hole in it. Safe
+    // to remove outright because the columns are no longer sized by content:
+    // `apply` has just pinned every width in a colgroup and set
+    // `table-layout: fixed`, so the body measures the same with the head gone.
+    (thead as HTMLElement).style.display = "none";
     wrapper.addEventListener("scroll", () => { if (head !== null) head.scrollLeft = wrapper.scrollLeft; }, { passive: true });
   }
   apply(table as HTMLElement);
