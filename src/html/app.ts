@@ -219,11 +219,24 @@ function copyToClipboard(value: string, btn: HTMLElement): void {
 // threw the arrangement away every time the document was regenerated or saved —
 // which, while a sheet is being built, is many times an hour.
 //
+// What this tool calls itself in a key, an attribute or a comment: `rs`, the
+// same prefix as every class, every marker a document carries and every other
+// key here. One vocabulary — the full name was in two places and the short one
+// everywhere else, which is two names for one tool in a namespace a reader can
+// see.
+//
+// `LEGACY_KEY` is read once when the short one holds nothing: a key is the
+// address of somebody's review in progress, and renaming it without looking
+// there would throw their findings away silently, which is the one thing this
+// storage exists not to do.
+const KEY = "rs:";
+const LEGACY_KEY = "review-sheet:";
+
 // The document's own identity instead: project, version and title. Two
 // documents of one project keep their own arrangements (their titles differ),
 // and a new build of either walks back into the room it left.
 export function navStateKey(data: SheetData): string {
-  return "review-sheet:" + [data.metadata?.project ?? "", data.metadata?.version ?? "", data.metadata?.title ?? ""].join(":");
+  return KEY + [data.metadata?.project ?? "", data.metadata?.version ?? "", data.metadata?.title ?? ""].join(":");
 }
 
 export function getStorageKey(data: SheetData): string {
@@ -232,7 +245,7 @@ export function getStorageKey(data: SheetData): string {
     data.metadata?.version ?? "",
     data.metadata?.generated_at ?? "",
   ];
-  return "review-sheet:" + parts.join(":");
+  return KEY + parts.join(":");
 }
 
 
@@ -251,7 +264,12 @@ function forEachParam(
 
 function loadReviews(storageKey: string): ReviewItem[] {
   try {
-    const raw = localStorage.getItem(storageKey);
+    const raw =
+      localStorage.getItem(storageKey) ??
+      // …and what the same document was stored under before the rename. Read
+      // only when the current key holds nothing, so a review written since is
+      // never displaced by an older one.
+      localStorage.getItem(storageKey.replace(KEY, LEGACY_KEY));
     if (raw) return JSON.parse(raw);
   } catch { /* empty */ }
   return [];

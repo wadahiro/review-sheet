@@ -15,11 +15,25 @@
 
 // The folder the document is in, beside the page that reads it.
 //
-// Two things at the top of a delivery, with one role each: the file you open
-// and the folder you drag. They used to be one folder, so the thing to drag was
-// the folder holding the page you were looking at — which works and reads as a
-// riddle. A ROLE rather than a chapter, so it is named in neither language.
-export const SET_DIR = "sheet";
+// Three things at the top of a delivery, with one role each: the page you open,
+// the note that says what this is, and the folder you edit. They used to be one
+// folder, so the thing to open was inside the thing to edit — which works and
+// reads as a riddle.
+//
+// The PAGE stays out of it, which is a version-control decision and not a
+// tidiness one: it is 1.8 MB against the set's 1.3 MB and it is rewritten byte
+// for byte on every regeneration (the model is gzipped into it), so a recipient
+// who commits this document and reviews `git diff docs/` would be reading one
+// enormous binary change instead of the line somebody corrected. Outside it,
+// that diff is the text and nothing else — which is the whole reason this
+// format exists. What it costs is stated rather than hidden: a checkout of
+// `docs/` alone has no reader in it. The delivery is the folder, the archive
+// wraps that folder, and the page can be regenerated; the text cannot.
+//
+// `docs` in English in both languages: it is a ROLE, and a recipient's own
+// tooling, their assistant and this tool's own documentation all have to be
+// able to say it without asking which delivery they are in.
+export const SET_DIR = "docs";
 
 export const SET_BLOCK_ID = "sheet-md-set";
 

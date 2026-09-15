@@ -55,7 +55,11 @@ export type ReadSet = {
   problems: string[];
 };
 
-const INDEX = "README.md";
+const INDEX = "index.md";
+// What a set written before the split called its index. Recognised for as long
+// as those sets exist: forgetting it would make one unreadable rather than
+// merely out of date.
+const LEGACY_INDEX = "README.md";
 
 // A page's links, rebased on the SET rather than on the page.
 //
@@ -111,6 +115,34 @@ export function orderOf(indexText: string): string[] {
   return out;
 }
 
+// WHICH file is the index — the one carrying the stamp, not the one wearing the
+// name.
+//
+// A name is a convention and this set carries other people's files: the sources
+// it hands over are harvested from real repositories, and a repository is
+// exactly the kind of place that has a `README.md` in it. Resolved by name, the
+// set's root would then be wherever that vendored file happened to be, decided
+// by the order a folder picker enumerated — which is not a decision at all.
+//
+// The stamp is what a set actually asserts about itself (`md-set.ts`'s
+// `index`), so it is what says "a set is here". The NAME is the fallback, for a
+// set written before this and for one whose stamp a hand-edit removed.
+const STAMPED = /<!--\s*(?:rs|review-sheet):model\s/;
+
+function indexOf(files: SetFile[]): { index?: SetFile; many?: SetFile[] } {
+  const stamped = files.filter((f) => f.path.endsWith(".md") && STAMPED.test(f.text));
+  // TWO stamped indexes is a delivery inside a delivery, or a folder chosen
+  // above several of them. Never guessed at: the two are different documents
+  // and picking one silently shows a reader the wrong one.
+  if (stamped.length > 1) return { many: stamped };
+  if (stamped.length === 1) return { index: stamped[0] };
+  const named = files.filter((f) => f.path === INDEX || f.path.endsWith(`/${INDEX}`) || f.path === LEGACY_INDEX || f.path.endsWith(`/${LEGACY_INDEX}`));
+  // Shallowest wins where a name is all there is: a vendored one is inside the
+  // set, and the set's own is at its root.
+  const best = [...named].sort((a, b) => a.path.split("/").length - b.path.split("/").length)[0];
+  return best === undefined ? {} : { index: best };
+}
+
 // The set's ROOT is the directory its index is in, and every path is read from
 // there.
 //
@@ -123,10 +155,11 @@ export function orderOf(indexText: string): string[] {
 //
 // Named by nothing: whatever the directory is CALLED, the index is what says a
 // set is there — a recipient is free to rename the folder, and one of them will.
-function fromTheIndex(files: SetFile[]): SetFile[] {
-  const index = files.find((f) => f.path === INDEX || f.path.endsWith(`/${INDEX}`));
-  if (index === undefined || index.path === INDEX) return files;
-  const root = index.path.slice(0, index.path.length - INDEX.length);
+function fromTheIndex(files: SetFile[], index: SetFile | undefined): SetFile[] {
+  if (index === undefined) return files;
+  const at = index.path.lastIndexOf("/");
+  if (at < 0) return files;
+  const root = index.path.slice(0, at + 1);
   // Anything outside it is not part of this set — a sibling of the folder that
   // was meant, which is exactly what picking the level above sweeps in.
   return files.filter((f) => f.path.startsWith(root)).map((f) => ({ ...f, path: f.path.slice(root.length) }));
@@ -135,11 +168,38 @@ function fromTheIndex(files: SetFile[]): SetFile[] {
 export function readMarkdownSet(all: SetFile[], lang: Lang = "ja"): ReadSet {
   const problems: string[] = [];
   const prose: string[] = [];
-  const files = fromTheIndex(all);
-  const index = files.find((f) => f.path === INDEX);
-  // Everything else in the folder — the artifacts, the evidence — is carried,
-  // not read as a sheet. A sheet is a `.md` that is not the index.
-  const pages = files.filter((f) => f !== index && f.path.endsWith(".md"));
+  const found = indexOf(all);
+  if (found.many !== undefined) {
+    return {
+      metadata: {},
+      groups: [],
+      sheets: [],
+      documents: [],
+      problems: [
+        `this folder holds ${found.many.length} documents, not one — ${found.many.map((f) => f.path).join(", ")}. ` +
+          `Choose the folder one of them is in.`,
+      ],
+    };
+  }
+  const files = fromTheIndex(all, found.index);
+  // The same file, at its path within the set.
+  const at = found.index?.path.lastIndexOf("/") ?? -1;
+  const indexPath = found.index === undefined ? undefined : found.index.path.slice(at + 1);
+  const index = indexPath === undefined ? undefined : files.find((f) => f.path === indexPath);
+  // Everything else in the folder — the artifacts, the sources, the evidence —
+  // is CARRIED, not read as a sheet.
+  //
+  // "A `.md` that is not the index" was the whole test, and the carried files
+  // are other people's: a module handed over under `sources/` brings its own
+  // `README.md`, and a config sample can be markdown. Read as a page, such a
+  // file becomes a sheet the model does not have, filed under a chapter named
+  // after the directory it was carried in — and it looks exactly like a sheet
+  // somebody added. The three directory names are the same discriminator
+  // `documentPreviews` below already reads a carried file's KIND from, so
+  // nothing new decides it.
+  const carriedFile = (path: string): boolean =>
+    path.split("/").some((seg) => seg === "artifacts" || seg === "sources" || seg === "evidence");
+  const pages = files.filter((f) => f !== index && f.path.endsWith(".md") && !carriedFile(f.path));
   if (pages.length === 0) problems.push("this folder holds no sheet — a set is an index and one .md per sheet");
 
   const order = index === undefined ? [] : orderOf(index.text);
@@ -287,7 +347,7 @@ export function readMarkdownSet(all: SetFile[], lang: Lang = "ja"): ReadSet {
     groups: prune(groups),
     sheets,
     documents: files
-      .filter((f) => !f.path.endsWith(".md"))
+      .filter((f) => f !== index && (!f.path.endsWith(".md") || carriedFile(f.path)))
       .map((f) => ({ path: f.path, text: f.text, ...(keyed.get(f.path) ?? {}) })),
     problems,
   };

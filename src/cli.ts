@@ -6,7 +6,7 @@ import { resolve, relative, join, dirname, basename } from "path";
 import { createInterface } from "node:readline/promises";
 import { generateHtml, assembleVersions, allDated } from "./html/generate.js";
 import { langFallbacks, localizeVersions } from "./localize.js";
-import { toMarkdownSet, href, modelStamp, stampOf, hasBody } from "./md-set.js";
+import { toMarkdownSet, href, modelStamp, stampOf, hasBody, frontDoor, INDEX } from "./md-set.js";
 import { getMessages } from "./html/i18n.js";
 import type { Lang } from "./html/i18n.js";
 import { buildArtifactIndex } from "./artifact-index.js";
@@ -405,6 +405,31 @@ function parseAllow(spec: string | undefined): Set<string> | undefined {
 // rather than pattern-matched, so nothing else slips through with it.
 const HOUSEKEEPING = new Set([".DS_Store", "Thumbs.db", "desktop.ini"]);
 
+// Every `.md` under a directory that says a set is here — see `md-read.ts`'s
+// `indexOf` for why the stamp and not the name.
+function stampedIndexes(dir: string): string[] {
+  const out: string[] = [];
+  const walk = (at: string): void => {
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = readdirSync(at, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const path = join(at, e.name);
+      if (e.isDirectory()) walk(path);
+      else if (e.name.endsWith(".md")) {
+        try {
+          if (/<!--\s*(?:rs|review-sheet):model\s/.test(readFileSync(path, "utf-8"))) out.push(path);
+        } catch { /* unreadable is not an index */ }
+      }
+    }
+  };
+  walk(dir);
+  return out.sort();
+}
+
 function leftInDirectory(dir: string, written: Set<string>): string[] {
   const out: string[] = [];
   const walk = (at: string, prefix: string): void => {
@@ -543,13 +568,13 @@ async function writeMarkdownSet(
   // what they have since edited. Reviewing is off in it: what it shows then is
   // the folder, and the rows are no longer the model's.
   const viewer = await generateHtml(input, { review: false, prompt: false, sources, lang, markdownRuntime: true });
-  // TWO things at the top, with one role each: the file you open, and the
-  // folder you drag. The document used to sit beside the page, so the thing to
-  // drag was the folder containing the page you were looking at — which works
-  // and reads as a riddle. `SET_DIR` is a role, not a chapter, which is why it
-  // is named in neither language.
+  // THREE things at the top, with one role each: the page you open, the note
+  // that says what this is, and the folder you edit. See `set-block.ts` for why
+  // the page stays out of the folder, and `md-set.ts`'s `frontDoor` for why the
+  // note and the set's own index are two files rather than one.
   const whole = [
     ...files.map((f) => ({ path: `${SET_DIR}/${f.path}`, text: f.text.endsWith("\n") ? f.text : `${f.text}\n` })),
+    { path: "README.md", text: `${frontDoor(data, lang)}\n`.replace(/\n+$/, "\n") },
     { path: "viewer.html", text: viewer },
   ];
 
@@ -1900,16 +1925,23 @@ program
         // The delivery, or the set inside it: a reader who points at either
         // means the same thing, and being told "that is not a set" about the
         // directory the set is in is a riddle rather than a check.
-        const candidates = [join(opts.md, SET_DIR, "README.md"), join(opts.md, "README.md")];
-        let index = candidates[0]!;
-        let text: string | null = null;
-        for (const c of candidates) {
-          try {
-            text = readFileSync(c, "utf-8");
-            index = c;
-            break;
-          } catch { /* the other one, then */ }
+        // FOUND, not probed. A set is where its stamped index is, and neither
+        // the folder's name nor the depth it sits at is this check's to assume
+        // — a recipient renames the folder, and a delivery holds the set one
+        // level down while a committed copy of it is the top level itself.
+        // Probing two fixed paths made both of those "that is not a set".
+        const stamped = stampedIndexes(opts.md);
+        if (stamped.length > 1) {
+          console.error(
+            `Error: ${opts.md}/ holds ${stamped.length} documents, not one — ${stamped.join(", ")}. Point --md at one of them.`
+          );
+          process.exit(1);
         }
+        const index = stamped[0] ?? join(opts.md, SET_DIR, INDEX);
+        let text: string | null = null;
+        try {
+          text = readFileSync(index, "utf-8");
+        } catch { /* reported below */ }
         if (text === null) {
           console.error(`Error: no set under ${opts.md}/ — --md takes the directory generate --format md wrote`);
           process.exit(1);

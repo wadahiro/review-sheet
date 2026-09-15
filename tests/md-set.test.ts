@@ -13,7 +13,7 @@ import type { ArtifactPreview } from "../src/types";
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, dirname, resolve as resolvePath } from "path";
-import { toMarkdownSet, slug } from "../src/md-set";
+import { toMarkdownSet, slug, INDEX, frontDoor } from "../src/md-set";
 import { renderMarkdown } from "../src/markdown";
 import { addressOf, type CarriedDocument } from "../src/md-documents";
 import { SET_DIR } from "../src/set-block";
@@ -46,7 +46,7 @@ describe("where each sheet lands", () => {
   it("mirrors the chapter tree as directories, one file per sheet", () => {
     const { files } = toMarkdownSet(doc(), "ja");
     expect(files.map((f) => f.path)).toEqual([
-      "README.md",
+      INDEX,
       "基本設計/overview (all).md",
       "構築/OS/httpd.md",
       "loose.md",
@@ -239,12 +239,28 @@ describe("the index", () => {
   // obvious in three lines what to edit, what to read it with and what not to
   // touch, the folder loses to the spreadsheet it replaced — not on any
   // argument about formats, but because nobody could tell what it was for.
-  it("says what to do with the folder, before the contents", () => {
+  // The instructions are NOT in here. They are the human front door, at the
+  // delivery's root beside the page; this file is the set's own index, and one
+  // file doing both had nowhere to live — see `frontDoor`.
+  it("is the order and the stamp, and says nothing about how to use the folder", () => {
     const readme = toMarkdownSet(doc(), "ja").files[0]!.text;
-    expect(readme).toContain("修正するのはこのフォルダの `.md`");
-    expect(readme).toContain("1ファイルで保存");
-    expect(readme).toContain("viewer.html");
-    expect(readme.indexOf("この文書の使い方")).toBeLessThan(readme.indexOf("## 目次"));
+    expect(readme).toContain("## 目次");
+    expect(readme).not.toContain("使い方");
+    expect(readme).not.toContain("viewer.html");
+  });
+
+  // …and the front door is the other half: what to do, and nothing a machine
+  // resolves the set by.
+  it("says what to do with the folder, in a file of its own", () => {
+    const front = frontDoor(doc(), "ja");
+    expect(front).toContain("修正するのは `docs/` の中の `.md`");
+    expect(front).toContain("1ファイルで保存");
+    expect(front).toContain("viewer.html");
+    // Named by CONTENT, because the delivery's own name is whatever `-o` said.
+    expect(front).toContain("このファイルがあるフォルダを選びます");
+    // No stamp, no order: two files, two roles.
+    expect(front).not.toContain("rs:model");
+    expect(front).not.toContain("## 目次");
   });
 
   // …and says nothing that is not true of what the reader will do. Three lines
@@ -253,24 +269,19 @@ describe("the index", () => {
   // which holds whatever was on screen when it was saved; and a rebuild
   // replacing that file, which nothing here writes.
   it("does not name a gesture the browser refuses, or a file a rebuild replaces", () => {
-    const readme = toMarkdownSet(doc(), "ja").files[0]!.text;
-    expect(readme).not.toContain("ドラッグ");
-    expect(readme).toContain("保存した時点の内容のまま");
-    expect(readme).not.toContain("`sheet.html` 自身");
-    // …and does not claim editing the HTML has no effect, which is false: the
-    // page carries the model, and one that has been given the folder carries
-    // the folder. The reason not to is that the edit is lost either way.
-    expect(readme).not.toContain("HTML を直接編集しても表示は変わりません");
-    expect(readme).toContain("HTML そのものは編集しないでください");
-    const en = toMarkdownSet(doc(), "en").files[0]!.text;
-    expect(en).not.toContain("Drag");
-    expect(en).not.toContain("the next rebuild replaces");
+    const front = frontDoor(doc(), "ja");
+    expect(front).not.toContain("ドラッグ");
+    expect(front).toContain("保存した時点の内容のまま");
+    expect(front).not.toContain("HTML を直接編集しても表示は変わりません");
+    expect(front).toContain("HTML そのものは編集しないでください");
+    expect(frontDoor(doc(), "en")).not.toContain("Drag");
+    expect(frontDoor(doc(), "en")).not.toContain("the next rebuild replaces");
   });
 
   it("lists the chapters in the order the document declares, as links", () => {
     const { files } = toMarkdownSet(doc(), "ja");
     const readme = files[0]!.text;
-    expect(files[0]!.path).toBe("README.md");
+    expect(files[0]!.path).toBe(INDEX);
     expect(readme.indexOf("基本設計")).toBeLessThan(readme.indexOf("構築"));
     // Every bracket encoded: the destination must not end where the NAME has a
     // closing bracket of its own.
@@ -284,7 +295,7 @@ describe("the index", () => {
     // …and which LANGUAGE it was written in, beside it: the file names are
     // resolved per language, so `verify --md` has to project the model the
     // same way to know which files to expect.
-    expect(files[0]!.text).toContain("<!-- review-sheet:model abc123 lang=ja -->");
+    expect(files[0]!.text).toContain("<!-- rs:model abc123 lang=ja -->");
     expect(files.slice(1).some((f) => f.text.includes("review-sheet:model"))).toBe(false);
   });
 });
@@ -459,7 +470,7 @@ describe("a committed set that no longer describes the model", () => {
     const r = Bun.spawnSync(["bun", "run", cli, ...args], { cwd: project });
     return { code: r.exitCode, out: r.stdout.toString() + r.stderr.toString() };
   };
-  const write = (text: string): void => writeFileSync(join(set, SET_DIR, "README.md"), text, "utf-8");
+  const write = (text: string): void => writeFileSync(join(set, SET_DIR, INDEX), text, "utf-8");
 
   it("passes while the set is the model's own", () => {
     expect(run("generate", "-i", "input.json", "--format", "md", "-o", set).code).toBe(0);
@@ -539,7 +550,7 @@ describe("a committed set that no longer describes the model", () => {
     // — a page found under either spelling is a page that is there.
     it("still finds the pages of a set whose stamp predates lang=", () => {
       run("generate", "-i", "input.json", "--format", "md", "-o", set);
-      const readme = join(set, SET_DIR, "README.md");
+      const readme = join(set, SET_DIR, INDEX);
       writeFileSync(readme, readFileSync(readme, "utf-8").replace(/ lang=(ja|en)/, ""), "utf-8");
       const r = run("verify", "-i", "input.json", "--md", set);
       expect(r.out).not.toContain("are gone or empty");
@@ -549,7 +560,7 @@ describe("a committed set that no longer describes the model", () => {
 
   it("fails, naming both models, once they are not the same one", () => {
     run("generate", "-i", "input.json", "--format", "md", "-o", set);
-    const readme = readFileSync(join(set, SET_DIR, "README.md"), "utf-8");
+    const readme = readFileSync(join(set, SET_DIR, INDEX), "utf-8");
     write(readme.replace(/model [0-9a-f]+/, "model deadbeefdeadbeef"));
     const r = run("verify", "-i", "input.json", "--md", set);
     expect(r.code).not.toBe(0);
@@ -562,7 +573,7 @@ describe("a committed set that no longer describes the model", () => {
   // acts on and one they learn to pass.
   it("warns rather than fails when the index carries no stamp", () => {
     run("generate", "-i", "input.json", "--format", "md", "-o", set);
-    const readme = readFileSync(join(set, SET_DIR, "README.md"), "utf-8");
+    const readme = readFileSync(join(set, SET_DIR, INDEX), "utf-8");
     write(readme.replace(/<!--[\s\S]*?-->\n\n/, ""));
     const r = run("verify", "-i", "input.json", "--md", set);
     expect(r.code).toBe(0);
@@ -576,7 +587,7 @@ describe("a committed set that no longer describes the model", () => {
   it("narrows the same way a delivery was narrowed", () => {
     const narrowed = join(work, "delivery");
     expect(run("generate", "-i", "input.json", "--instances", "production", "--format", "md", "-o", narrowed).code).toBe(0);
-    expect(readFileSync(join(narrowed, SET_DIR, "README.md"), "utf-8")).toContain("instances=production");
+    expect(readFileSync(join(narrowed, SET_DIR, INDEX), "utf-8")).toContain("instances=production");
     const r = run("verify", "-i", "input.json", "--md", narrowed);
     expect(r.code).toBe(0);
     expect(r.out).toContain("(production)");

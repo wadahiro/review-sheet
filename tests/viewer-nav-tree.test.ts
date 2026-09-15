@@ -79,7 +79,9 @@ const mount = (input: ParameterSheetInput, hash = "#1"): HTMLElement => {
 // no generated_at and no save revision in it: those identify a REVISION, which
 // is right for an unsaved edit and wrong for how a reader has arranged the
 // room — keyed that way, every rebuild threw the arrangement away.
-const collapseKey = (): string => "rs-nav-collapsed:review-sheet::current:t";
+// `rs:` — the same prefix as every other key, class and marker this tool
+// writes. It was the tool's full name here and its short one everywhere else.
+const collapseKey = (): string => "rs-nav-collapsed:rs::current:t";
 const closedNow = (): string[] => JSON.parse(localStorage.getItem(collapseKey()) ?? "{}").closed ?? [];
 
 // The whole ROW: the fold is a button beside the link rather than inside it (a

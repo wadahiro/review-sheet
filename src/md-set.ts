@@ -17,6 +17,12 @@
 
 import type { SheetData, ParamData } from "./prompt.js";
 import { sheetsInOrder } from "./prompt.js";
+import { SET_DIR } from "./set-block.js";
+
+// The set's own index: the chapter order and the stamp, inside the thing it
+// describes. `index.md` and not `README.md`, so the file a person is told to
+// read and the file a machine resolves the set by never share a name.
+export const INDEX = "index.md";
 import type { Lang } from "./html/i18n.js";
 import { createHash } from "crypto";
 import { sheetToMarkdown } from "./sheet-markdown.js";
@@ -216,7 +222,7 @@ export function toMarkdownSet(
 
   const paths = new Map(placed.map((p, i) => [p.sheet.name, sheets[i]!.path]));
   return {
-    files: [{ path: "README.md", text: index(data, paths, lang, opts.stamp, opts.instances) }, ...sheets, ...documents],
+    files: [{ path: INDEX, text: index(data, paths, lang, opts.stamp, opts.instances) }, ...sheets, ...documents],
     problems,
   };
 }
@@ -330,6 +336,77 @@ function withNavMarkers(text: string, headings: { level: number }[] | undefined)
   return out.join("\n");
 }
 
+// The front door: what this folder is, and what to do with it.
+//
+// Its own file, at the ROOT of the delivery beside the page — because it is the
+// first thing a person meets and the index is the first thing a machine meets,
+// and one file doing both had nowhere to live. Inside the set, the human note
+// is buried under a folder nobody has been told to open yet; at the root, the
+// ORDER and the stamp would be outside the thing they describe, and a set
+// committed on its own would lose both.
+//
+// So they are two files with two names. Not two `README.md` discriminated by
+// content: a recipient telling their assistant "fix the README" must not have
+// to know which one is real.
+//
+// The recipient has no toolchain and did not ask for one. If it is not obvious
+// in a few lines what to edit, what to read it with, and what NOT to touch, the
+// folder loses to the spreadsheet it replaced — not on any argument about
+// formats, but because nobody could tell what it was for.
+//
+// Which means every line has to be TRUE of what the reader will do, and three
+// were not. Dragging the folder onto the window is named nowhere: the page is
+// opened by double-clicking it, which makes it a `file://` page, and Chrome
+// refuses to list a dropped directory on one outright — the gesture the whole
+// hand-over rests on does nothing in exactly the setting these lines describe
+// (drop-set.ts). The saved single file is not "open that from now on": it holds
+// what was on screen when it was saved. And editing the HTML does not fail; it
+// is simply lost, because a rebuild overwrites the page and a saved copy is a
+// snapshot, while the `.md` everything is built from still says the old value.
+//
+// WHICH folder to choose is named by CONTENT and not by name — "the folder this
+// file is in" — because the delivery's own name is whatever `-o` was called,
+// and because under this layout either answer is right: the index carries the
+// stamp that marks the set's root, so choosing the delivery or choosing `docs`
+// reaches the same document (md-read.ts).
+export function frontDoor(data: SheetData, lang: Lang): string {
+  const title = data.metadata?.title ?? (lang === "ja" ? "パラメータシート" : "Parameter sheet");
+  return (lang === "ja"
+    ? [
+        `# ${title}`,
+        "",
+        `このフォルダは、レビューと保守のためのパラメータシートです。中身は \`${SET_DIR}/\` の markdown で、\`viewer.html\` はそれを読むためのページです。`,
+        "",
+        "## 使い方",
+        "",
+        `- **修正するのは \`${SET_DIR}/\` の中の \`.md\`** です。`,
+        "- **読むのは `viewer.html`** です。ダブルクリックで開きます。",
+        "- **`.md` を修正したら、`viewer.html` の「フォルダを開く」で、このファイルがあるフォルダを選びます。** 修正した内容が表示されます。`viewer.html` は開くたびに一度選ぶ必要があります。",
+        "- **「1ファイルで保存」** を押すと、そのとき表示していた内容を取り込んだ `sheet.html` がダウンロードされます。フォルダを選ばずに読めますが、**保存した時点の内容のまま**です。`.md` を修正したら、選び直して保存し直してください。",
+        "- **HTML そのものは編集しないでください。** 作り直すと `viewer.html` は上書きされ、保存した `sheet.html` はその時点のままです。どちらも `.md` から作られるので、修正は `.md` に入れてください。",
+        "",
+        `目次は \`${SET_DIR}/index.md\` にあります。`,
+        "",
+      ]
+    : [
+        `# ${title}`,
+        "",
+        `This folder is a parameter sheet, to review and to keep. The document itself is the markdown under \`${SET_DIR}/\`; \`viewer.html\` is the page that reads it.`,
+        "",
+        "## How to use this",
+        "",
+        `- **Edit the \`.md\` files under \`${SET_DIR}/\`.**`,
+        "- **Read it with `viewer.html`.** Double-click to open it.",
+        "- **After editing, press \"Open folder\" in `viewer.html` and choose the folder this file is in.** It shows what you changed. `viewer.html` asks for the folder each time it is opened.",
+        "- **\"Save as one file\"** downloads a `sheet.html` holding what is on screen. That one opens without choosing a folder — but it holds what it held when you saved it, so edit a `.md` again and you choose the folder and save again.",
+        "- **Do not edit the HTML itself.** A rebuild overwrites `viewer.html`, and a saved `sheet.html` holds the moment it was saved. Both are built from the `.md`, so put the change there.",
+        "",
+        `The contents are in \`${SET_DIR}/index.md\`.`,
+        "",
+      ]
+  ).join("\n");
+}
+
 // The index: the chapter tree, in the order the document declares it, as links.
 //
 // This is where the ORDER lives, which is why the files carry no numbers. A
@@ -352,7 +429,7 @@ function index(
   // before this says nothing, and `verify` tries both spellings for it.
   if (stamp !== undefined)
     out.push(
-      `<!-- review-sheet:model ${stamp}${narrowed === undefined || narrowed.length === 0 ? "" : ` instances=${narrowed.join(",")}`} lang=${lang} -->`,
+      `<!-- rs:model ${stamp}${narrowed === undefined || narrowed.length === 0 ? "" : ` instances=${narrowed.join(",")}`} lang=${lang} -->`,
       ""
     );
   out.push(`# ${title}`, "");
@@ -372,56 +449,6 @@ function index(
     if (meta.generated_at !== undefined) out.push(`| ${label.at} | ${meta.generated_at} |`);
     out.push("");
   }
-
-  // What to do with this folder, before anything else in it.
-  //
-  // The recipient of a set like this has no toolchain and did not ask for one.
-  // If it is not obvious in a few lines what to edit, what to read it with, and
-  // what NOT to touch, the folder loses to the spreadsheet it replaced — not on
-  // any argument about formats, but because nobody could tell what it was for.
-  //
-  // Which means every line of it has to be TRUE of what the reader will do, and
-  // three of them were not. Dragging the folder onto the window is named
-  // nowhere now: this page is opened by double-clicking it, which makes it a
-  // `file://` page, and Chrome refuses to list a dropped directory on one
-  // outright — the gesture the whole hand-over rests on does nothing in exactly
-  // the setting these lines describe (drop-set.ts). The saved single file is
-  // not "open that from now on": it holds what was on screen when it was saved,
-  // so the next edit to a `.md` needs the folder chosen and the file saved
-  // again — and it lands wherever the browser puts a download, not here. And it
-  // is not replaced by a rebuild, because nothing here writes it: a rebuild
-  // replaces `viewer.html`, which is the only page this set ships.
-  //
-  // The last line said editing the HTML changes nothing, which is simply false
-  // — the page carries the model, and a page that has been GIVEN the folder
-  // carries the folder, so editing either would change what it shows. The
-  // reason not to is not that it fails: it is that a rebuild overwrites
-  // `viewer.html` and a saved copy is a snapshot, so the edit is lost either
-  // way and the `.md` — the thing everything else is built from — still says
-  // the old value.
-  out.push(
-    ...(lang === "ja"
-      ? [
-          "## この文書の使い方",
-          "",
-          "- **修正するのはこのフォルダの `.md`** です。",
-          "- **読むのは `viewer.html`** です。ダブルクリックで開きます。",
-          "- **`.md` を修正したら、`viewer.html` の「フォルダを開く」で `sheet` フォルダを選びます。** 修正した内容が表示されます。`viewer.html` は開くたびに一度選ぶ必要があります。",
-          "- **「1ファイルで保存」** を押すと、そのとき表示していた内容を取り込んだ `sheet.html` がダウンロードされます。フォルダを選ばずに読めますが、**保存した時点の内容のまま**です。`.md` を修正したら、選び直して保存し直してください。",
-          "- **HTML そのものは編集しないでください。** 作り直すと `viewer.html` は上書きされ、保存した `sheet.html` はその時点のままです。どちらも `.md` から作られるので、修正は `.md` に入れてください。",
-          "",
-        ]
-      : [
-          "## How to use this",
-          "",
-          "- **Edit the `.md` files in this folder.**",
-          "- **Read it with `viewer.html`.** Double-click to open it.",
-          "- **After editing, press \"Open folder\" in `viewer.html` and choose the `sheet` folder.** It shows what you changed. `viewer.html` asks for the folder each time it is opened.",
-          "- **\"Save as one file\"** downloads a `sheet.html` holding what is on screen. That one opens without choosing a folder — but it holds what it held when you saved it, so edit a `.md` again and you choose the folder and save again.",
-          "- **Do not edit the HTML itself.** A rebuild overwrites `viewer.html`, and a saved `sheet.html` holds the moment it was saved. Both are built from the `.md`, so put the change there.",
-          "",
-        ])
-  );
 
   out.push(lang === "ja" ? "## 目次" : "## Contents", "");
 
@@ -459,8 +486,14 @@ export function modelStamp(model: unknown): string {
 // The stamp a written-out index carries, or undefined for a set that predates
 // it — or one whose index somebody replaced. Read by scanning, because the
 // index is markdown and this is a comment in it.
+// …and read under EITHER spelling. The stamp was `review-sheet:model` and is
+// `rs:model`, the prefix every other thing this projection writes into a
+// document already uses (`cellMark`, `rs:no-nav`) — one vocabulary rather than
+// the tool's full name in one place and its short one everywhere else. A set
+// written before the change is still a set, so both are recognised on the way
+// in and only the short one is ever written.
 export function stampOf(indexText: string): { stamp: string; instances?: string[]; lang?: Lang } | undefined {
-  const m = /<!--\s*review-sheet:model\s+([0-9a-f]+)(?:\s+instances=([^\s>-]+))?(?:\s+lang=(ja|en))?\s*-->/.exec(indexText);
+  const m = /<!--\s*(?:rs|review-sheet):model\s+([0-9a-f]+)(?:\s+instances=([^\s>-]+))?(?:\s+lang=(ja|en))?\s*-->/.exec(indexText);
   if (m === null) return undefined;
   return {
     stamp: m[1]!,

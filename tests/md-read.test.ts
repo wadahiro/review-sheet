@@ -12,7 +12,7 @@ import { SET_DIR } from "../src/set-block";
 import { join, resolve as resolvePath } from "path";
 import { readMarkdownSet, orderOf, rebase, documentPreviews, type SetFile } from "../src/md-read";
 import { looksLikeParamSheet, renamedKeyColumns } from "../src/sheet-markdown";
-import { toMarkdownSet } from "../src/md-set";
+import { toMarkdownSet, INDEX } from "../src/md-set";
 import type { SheetData } from "../src/prompt";
 
 const page = (title: string, body = ""): string => `# ${title}\n\n${body}`;
@@ -27,7 +27,7 @@ const table = (envs: string[], rows: [string, string][]): string =>
 
 const set = (): SetFile[] => [
   {
-    path: "README.md",
+    path: INDEX,
     text: ["# The document", "", "- 詳細設計", "  - [OS](%E8%A9%B3%E7%B4%B0%E8%A8%AD%E8%A8%88/OS.md)", "- [まえがき](%E3%81%BE%E3%81%88%E3%81%8C%E3%81%8D.md)", ""].join("\n"),
   },
   { path: "詳細設計/OS.md", text: page("OS", `## ネットワーク\n\n${table(["staging", "production"], [["Listen", "80"]])}`) },
@@ -99,7 +99,7 @@ describe("reading a folder back as a document", () => {
   // silently: the link is there, it looks right, and it opens nothing.
   it("rebases a page's links on the set, so the viewer resolves them", () => {
     const deep: SetFile[] = [
-      { path: "README.md", text: "# d\n\n- [x](%E8%A9%B3%E7%B4%B0%E8%A8%AD%E8%A8%88/a/x.md)\n" },
+      { path: INDEX, text: "# d\n\n- [x](%E8%A9%B3%E7%B4%B0%E8%A8%AD%E8%A8%88/a/x.md)\n" },
       {
         path: "詳細設計/a/x.md",
         text: "# x\n\n- [conf](../../../roles/x/templates/y.j2#L4)\n- [art](artifacts/etc/y)\n- [web](https://e/x)\n- [abs](/a/b)\n",
@@ -279,22 +279,26 @@ describe("telling a sheet from a document", () => {
 });
 
 
-// Which folder the reader actually picked.
+// Which folder the reader actually picked, and which file says a set is there.
 //
-// The delivery holds the page beside the set, so picking the level ABOVE is the
-// obvious mistake — and it did not look like one: the set read fine and quietly
-// grew a chapter named after its own directory, which renumbered every chapter
-// under it. A wrong document rather than a refusal.
+// The delivery holds the page and a note beside the set, so picking the level
+// ABOVE is the obvious mistake — and it did not look like one: the set read fine
+// and quietly grew a chapter named after its own directory, which renumbered
+// every chapter under it. A wrong document rather than a refusal.
 describe("a set read from the folder above it", () => {
+  const STAMP = "<!-- rs:model abc123 lang=ja -->\n";
   const files = (prefix: string): { path: string; text: string }[] => [
-    { path: `${prefix}README.md`, text: "# d\n\n- [A](%E7%AB%A0/a.md)\n" },
+    { path: `${prefix}${INDEX}`, text: `${STAMP}\n# d\n\n- [A](%E7%AB%A0/a.md)\n` },
     { path: `${prefix}章/a.md`, text: "# a\n\n## c\n\n| 設定項目 | デフォルト値 | v |\n| --- | --- | --- |\n| `k` |  | 1 |\n" },
     { path: `${prefix}章/artifacts/common/etc/x.conf`, text: "x\n" },
   ];
 
   it("reads the same document whichever level was chosen", () => {
     const inside = readMarkdownSet(files(""), "ja");
-    const above = readMarkdownSet([...files("sheet/"), { path: "viewer.html", text: "<html>" }], "ja");
+    const above = readMarkdownSet(
+      [...files("docs/"), { path: "README.md", text: "# front door\n\nEdit the `.md` under `docs/`.\n" }],
+      "ja"
+    );
     expect(above.problems).toEqual(inside.problems);
     expect(above.groups.map((g) => g.name)).toEqual(inside.groups.map((g) => g.name));
     expect(above.sheets.map((s) => s.name)).toEqual(inside.sheets.map((s) => s.name));
@@ -302,9 +306,47 @@ describe("a set read from the folder above it", () => {
   });
 
   // …whatever the folder is called. A recipient is free to rename it, and one
-  // of them will; the index is what says a set is there.
+  // of them will; the stamp is what says a set is there.
   it("does not care what the folder is called", () => {
     const renamed = readMarkdownSet(files("パラメータシート 2026/"), "ja");
     expect(renamed.sheets.map((s) => s.name)).toEqual(["章/a"]);
+  });
+
+  // A NAME is a convention and this set carries other people's files: the
+  // sources it hands over come from real repositories, and a repository is
+  // exactly the kind of place with a README.md in it. Resolved by name, the
+  // set's root would be wherever that file happened to be — decided by the
+  // order a picker enumerated, which is not a decision at all.
+  it("is not fooled by somebody else's README", () => {
+    const read = readMarkdownSet(
+      [...files("docs/"), { path: "docs/章/sources/vendor/README.md", text: "# a module\n" }],
+      "ja"
+    );
+    expect(read.sheets.map((s) => s.name)).toEqual(["章/a"]);
+    expect(read.problems).toEqual([]);
+  });
+
+  // Two documents under one pick — a delivery inside a delivery, or a folder
+  // chosen above several. Never guessed at: they are different documents and
+  // showing one silently shows the reader the wrong one.
+  it("refuses two documents rather than picking one", () => {
+    const read = readMarkdownSet([...files("a/"), ...files("b/")], "ja");
+    expect(read.sheets).toEqual([]);
+    expect(read.problems.join(" ")).toContain("2 documents");
+    expect(read.problems.join(" ")).toContain(`a/${INDEX}`);
+    expect(read.problems.join(" ")).toContain(`b/${INDEX}`);
+  });
+
+  // A set written before the index had a name of its own is still a set.
+  it("still reads a set whose index is called README.md", () => {
+    const old = readMarkdownSet(
+      [
+        { path: "README.md", text: `${STAMP}\n# d\n\n- [A](%E7%AB%A0/a.md)\n` },
+        { path: "章/a.md", text: "# a\n\n## c\n\n| 設定項目 | デフォルト値 | v |\n| --- | --- | --- |\n| `k` |  | 1 |\n" },
+      ],
+      "ja"
+    );
+    expect(old.sheets.map((s) => s.name)).toEqual(["章/a"]);
+    expect(old.problems).toEqual([]);
   });
 });

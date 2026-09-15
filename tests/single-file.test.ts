@@ -51,8 +51,9 @@ describe("the block a page carries", () => {
   });
 
   // A role, not a chapter — so it is named in neither of the document's
-  // languages, and the two things at the top of a delivery have one job each.
+  // languages, and the three things at the top of a delivery have one job each:
+  // the page you open, the note that says what this is, and the folder you edit.
   it("names the folder the document is in", () => {
-    expect(SET_DIR).toBe("sheet");
+    expect(SET_DIR).toBe("docs");
   });
 });

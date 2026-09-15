@@ -12,6 +12,7 @@ import { tmpdir } from "os";
 import { join, resolve as resolvePath } from "path";
 import { zipOf, crc32 } from "../src/zip";
 import { SET_DIR } from "../src/set-block";
+import { INDEX } from "../src/md-set";
 
 const work = mkdtempSync(join(tmpdir(), "review-sheet-zip-"));
 afterAll(() => rmSync(work, { recursive: true, force: true }));
@@ -102,14 +103,16 @@ describe("the output's name chooses the envelope", () => {
       });
       expect(r.exitCode, r.stderr.toString().slice(0, 400)).toBe(0);
     }
-    // Two things at the top, with one role each: the page you open and the
-    // folder you drag.
+    // Three things at the top, with one role each: the page you open, the note
+    // that says what this is, and the folder you edit.
     expect(existsSync(join(dirAt, "viewer.html"))).toBe(true);
-    expect(existsSync(join(dirAt, SET_DIR, "README.md"))).toBe(true);
+    expect(existsSync(join(dirAt, "README.md"))).toBe(true);
+    expect(existsSync(join(dirAt, SET_DIR, INDEX))).toBe(true);
 
     const into = mkdtempSync(join(work, "cli-"));
     expect(Bun.spawnSync(["tar", "-xf", zipAt, "-C", into]).exitCode).toBe(0);
-    expect(readFileSync(join(into, SET_DIR, "README.md"), "utf-8")).toBe(readFileSync(join(dirAt, SET_DIR, "README.md"), "utf-8"));
+    expect(readFileSync(join(into, SET_DIR, INDEX), "utf-8")).toBe(readFileSync(join(dirAt, SET_DIR, INDEX), "utf-8"));
+    expect(readFileSync(join(into, "README.md"), "utf-8")).toBe(readFileSync(join(dirAt, "README.md"), "utf-8"));
     expect(existsSync(join(into, "viewer.html"))).toBe(true);
   });
 });
