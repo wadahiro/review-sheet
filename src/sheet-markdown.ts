@@ -99,6 +99,22 @@ export type MarkdownRow = {
   label?: string;
   product?: string;
   options?: { value: string; label: string }[];
+  // …and three the table states AMBIGUOUSLY rather than not at all.
+  //
+  //   perEnv    this row holds a value PER ENVIRONMENT, and they happen to
+  //             agree. One value repeated across every column is what a SHARED
+  //             row looks like too, and the sheet marks a shared value with a
+  //             border — so 168 rows of one real delivery wore a mark the model
+  //             does not give them. Written only where they agree, because a
+  //             row whose columns differ says it itself.
+  //   absent    where this row has no value, the environment's FILE does not
+  //             have the line — which is not the same as leaving it at the
+  //             default, and the sheet says so in the cell.
+  //   presence  the product's own word for "this is set", for a setting whose
+  //             value IS its presence.
+  perEnv?: true;
+  absent?: true;
+  presence?: string;
 };
 
 // A heading and the rows under it. The heading path IS the category path, so
@@ -267,6 +283,9 @@ function rowOf(p: ParamData, instances: string[], l: Lang, path: string[], opts:
     // the sheet does not print it twice either.
     ...(label !== "" && label !== p.key ? { label } : {}),
     ...(options.length > 0 ? { options } : {}),
+    ...(!shared && new Set(Object.values(values)).size <= 1 ? { perEnv: true as const } : {}),
+    ...(p.absent_where_unlisted === true ? { absent: true as const } : {}),
+    ...(lang(p.presence_label, l) === "" ? {} : { presence: lang(p.presence_label, l) }),
     // …and the documented default, when the column is showing the vendor's.
     // WHENEVER the column is showing the vendor's, even where the product
     // documents no default of its own: an empty marker still says which of the
@@ -658,7 +677,10 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
       // the key off the address never sees them — they are taken out first.
       const about =
         (row.label === undefined ? "" : cellMark("label", row.label)) +
-        (row.options ?? []).map((o) => cellMark("option", `${o.value}=${o.label}`)).join("");
+        (row.options ?? []).map((o) => cellMark("option", `${o.value}=${o.label}`)).join("") +
+        (row.perEnv === true ? cellMark("perenv", "") : "") +
+        (row.absent === true ? cellMark("absent", "") : "") +
+        (row.presence === undefined ? "" : cellMark("presence", row.presence));
       const cells = [
         row.control === true
           ? `${indent}**${escapeCell(row.key.slice(indent.length))}**`
@@ -985,11 +1007,19 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
         .filter((o) => o.value !== "");
       const dflt = shape.default >= 0 ? cellMarks(row.cells[shape.default] ?? "") : { text: "", marks: [] };
       const product = dflt.marks.find((m) => m.kind === "product")?.value;
+      const has = (kind: string): boolean => split.marks.some((m) => m.kind === kind);
+      const presence = split.marks.find((m) => m.kind === "presence")?.value;
       chain.length = Math.min(row.indent, chain.length);
       chain[row.indent] = name;
       const values = shape.values.map((n) => (row.cells[n] ?? "").trim());
       const names = shape.values.map((n) => block.head[n]);
-      const same = new Set(values).size <= 1;
+      // One value across every column is a SHARED row — unless the page says
+      // this row holds one per environment and they merely agree, which is the
+      // one case the table states ambiguously. Re-checked against the values
+      // rather than believed: an edit that makes two columns differ makes the
+      // row per-environment whatever the marker said, so a stale marker cannot
+      // outlive the edit that stales it.
+      const same = new Set(values).size <= 1 && !has("perenv");
       const key = chain.slice(0, row.indent + 1).join(".");
       if (split.preview !== undefined) addresses.push({ key, href: split.preview });
       // The blocks this row sits in, and whether it IS one. The document says
@@ -1022,7 +1052,16 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
         // is the table's business, and a name read off a list somewhere else
         // would put a value under the wrong one the moment they differ.
         ...(names.some((n) => n !== "") && !same
-          ? { instances: names.map((name, i) => ({ name, value: values[i] ?? "" })) }
+          ? {
+              // An environment with NOTHING in its cell is not in the list at
+              // all when the row says its absence is the FILE's — "this
+              // environment does not have the line" and "this environment
+              // leaves it at the default" are two different facts, and an
+              // empty entry states the second about the first.
+              instances: names
+                .map((name, i) => ({ name, value: values[i] ?? "" }))
+                .filter((x) => !has("absent") || x.value !== ""),
+            }
           : { value: values[0] ?? "" }),
         // What the column SHOWS is the vendor's shipped value when a documented
         // default came with it, and the documented default otherwise — the two
@@ -1041,6 +1080,8 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
           : {}),
         ...(label === undefined ? {} : { label }),
         ...(options.length === 0 ? {} : { options }),
+        ...(has("absent") ? { absent_where_unlisted: true as const } : {}),
+        ...(presence === undefined ? {} : { presence: true as const, presence_label: presence }),
         ...(extra === undefined ? {} : { extra }),
         // Nothing is set here: the document says so by leaving every value cell
         // empty, and this is that fact in the shape the viewer knows it by.

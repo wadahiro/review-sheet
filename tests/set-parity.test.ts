@@ -91,6 +91,27 @@ const MODEL = {
             // own — the column still holds the vendor's, and this project set
             // the value to the same string.
             { key: "Port", value: "80", baseline: "80", description: "Port" },
+            // Per environment, and they agree — which is what a SHARED row
+            // looks like too, and the sheet marks the two differently.
+            {
+              key: "region",
+              description: "Region",
+              instances: [
+                { name: "staging", value: "ap-northeast-1" },
+                { name: "production", value: "ap-northeast-1" },
+              ],
+            },
+            // A line one environment's FILE does not have, which is not the
+            // same as leaving it at the default.
+            {
+              key: "only-staging",
+              description: "Debug",
+              absent_where_unlisted: true,
+              instances: [{ name: "staging", value: "on" }],
+            },
+            // A setting whose value IS its presence, and the product's own word
+            // for it.
+            { key: "http", value: "true", presence: true, presence_label: { ja: "許可" }, default: "true", description: "Service" },
             { key: "Timeout", value: "60", default: "60", origin: "default", description: "Idle timeout" },
             { key: "ServerName", description: "Name", instances: [{ name: "staging", value: "a" }, { name: "production", value: "b" }] },
           ],
