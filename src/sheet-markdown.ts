@@ -85,7 +85,10 @@ export type MarkdownRow = {
 // A heading and the rows under it. The heading path IS the category path, so
 // moving a row between headings is how a reviewer says it belongs elsewhere.
 export type MarkdownSection = {
+  // What the headings SAY. The identity is `names`, one per level, and only
+  // where it differs from what is said — see NAME_MARKER.
   path: string[];
+  names?: (string | undefined)[];
   rows: MarkdownRow[];
   // Everything under this heading that is not the table: whatever the reviewer
   // wrote. Kept verbatim, never parsed for meaning.
@@ -360,25 +363,32 @@ export function toMarkdownSheet(
 ): MarkdownSheet {
   const instances = sheet.instances ?? [];
   const sections: MarkdownSection[] = [];
-  const walk = (cats: CategoryData[] | undefined, path: string[]): void => {
+  const walk = (cats: CategoryData[] | undefined, path: string[], ids: (string | undefined)[]): void => {
     for (const c of cats ?? []) {
-      const here = [...path, c.name];
+      // The heading says what the PAGE says. A component is free to be an alias
+      // for something the reader knows by another name, and the sheet's own
+      // heading shows that other name — so a page carrying the identity showed
+      // the reader a word the same document does not use anywhere else.
+      const shown = pickLang(c.label, l) ?? c.display ?? c.name;
+      const here = [...path, shown];
+      const named = [...ids, shown === c.name ? undefined : c.name];
       // EVERY category, including one whose rows are all in its children. Its
       // heading is what makes the structure self-describing: without it a
       // nested category is written at a depth whose parent was never named, and
       // reading the document back cannot recover which level it was on.
       sections.push({
         path: here,
+        ...(named.some((n) => n !== undefined) ? { names: named } : {}),
         rows: rowsOf(c.params ?? [], instances, l, here, opts),
         // The section's own paragraph, which is editable prose like a remark —
         // so it round-trips through this document rather than reading as
         // something the reviewer just wrote.
         prose: lang(c.note, l),
       });
-      walk(c.categories, here);
+      walk(c.categories, here, named);
     }
   };
-  walk(sheet.categories, []);
+  walk(sheet.categories, [], []);
   return { sheet: sheet.name, instances, lang: l, sections, ...(sheet.file_path === undefined ? {} : { file: sheet.file_path }), prose: "" };
 }
 
@@ -557,6 +567,8 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
   if (doc.file) out.push(`\`${doc.file}\``, "");
   if (doc.prose) out.push(doc.prose, "");
   for (const section of doc.sections) {
+    const id = section.names?.[section.path.length - 1];
+    if (id !== undefined) out.push(nameMarker(id));
     out.push(`${"#".repeat(Math.min(6, section.path.length + 1))} ${section.path[section.path.length - 1]}`, "");
     if (section.prose) out.push(section.prose, "");
     // A heading whose rows are all in its children gets no table. An empty one
@@ -606,6 +618,26 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
 // ---------------------------------------------------------------------------
 
 const HEADING = /^(#{1,6})\s+(.*?)\s*$/;
+
+// A fact about the heading on the next line, written beside it.
+//
+// The same shape `markdown.ts`'s `rs:no-nav` uses, and for the same reason: a
+// heading's IDENTITY is not its text — a project may name a component `alb` and
+// call it 「SSO 公開エンドポイント」 on the page — and the set has to carry both
+// or one of the two readings is wrong. The page used to carry the identity and
+// show it, so a delivered sheet said `alb` where the same document built from
+// the model said the name its author gave it.
+//
+// Beside the heading rather than in a table somewhere: it moves when the
+// heading moves, a recipient renaming a section changes the words and leaves
+// the identity alone, and there is no key to go stale. Invisible in every
+// markdown reader, and it passes `sanitizeFragment` untouched (that rewrites
+// TAGS).
+//
+// Written ONLY when the two differ, so a document whose headings are their own
+// identity carries nothing at all.
+const NAME_MARKER = /^\s*<!--\s*rs:name=(.*?)\s*-->\s*$/;
+export const nameMarker = (name: string): string => `<!-- rs:name=${name} -->`;
 const TABLE_ROW = /^\s*\|(.*)\|\s*$/;
 const SEPARATOR = /^\s*\|[\s:|-]+\|\s*$/;
 
@@ -766,7 +798,11 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
     if (block.kind === "heading") {
       if (block.depth === 1) continue;
       const depth = Math.max(1, block.depth - 1);
-      const cat: CategoryData = { name: block.text };
+      // The NAME is the identity — the anchors, the row addresses and a change
+      // set all resolve through it — and `display` is what the page says. A
+      // page carrying no marker is its own identity, which is every page
+      // written before this and every heading a reader adds.
+      const cat: CategoryData = { name: block.name ?? block.text, ...(block.name === undefined ? {} : { display: block.text }) };
       stack.length = depth - 1;
       const parent = stack[depth - 2];
       if (parent === undefined) root.push(cat);
@@ -888,7 +924,8 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
 // rendered text happened to match first. Required, not optional — a block this
 // parse produced always came from somewhere.
 export type MarkdownBlock =
-  | { kind: "heading"; depth: number; text: string; line: number }
+  // `name` is the heading's IDENTITY when it is not its text — see NAME_MARKER.
+  | { kind: "heading"; depth: number; text: string; name?: string; line: number }
   | { kind: "table"; head: string[]; rows: { indent: number; cells: string[]; line: number }[]; line: number }
   | { kind: "prose"; text: string; line: number };
 
@@ -909,13 +946,24 @@ export function parseMarkdownBlocks(text: string): MarkdownBlock[] {
     if (body !== "") out.push({ kind: "prose", text: body, line: proseAt + prose.findIndex((l) => l.trim() !== "") + 1 });
     prose = [];
   };
+  // The identity the NEXT heading carries, when a marker states one. Never
+  // prose: rendered as prose it would reach the page as text, since a category
+  // note is shown as the words it is rather than as markup.
+  let named: string | undefined;
   for (let i = 0; i < lines.length; i++) {
+    const marker = NAME_MARKER.exec(lines[i]);
+    if (marker !== null) {
+      named = marker[1];
+      continue;
+    }
     const h = HEADING.exec(lines[i]);
     if (h) {
       flush();
-      out.push({ kind: "heading", depth: h[1].length, text: h[2], line: i + 1 });
+      out.push({ kind: "heading", depth: h[1].length, text: h[2], ...(named === undefined ? {} : { name: named }), line: i + 1 });
+      named = undefined;
       continue;
     }
+    named = undefined;
     if (TABLE_ROW.test(lines[i]) && i + 1 < lines.length && SEPARATOR.test(lines[i + 1])) {
       flush();
       const head = splitCells(lines[i]).map((c) => c.trim());
@@ -1128,8 +1176,17 @@ export function parseSheetMarkdown(text: string, instances: string[], l: Lang = 
     prose = [];
   };
 
+  // The identity the next heading carries, when a marker states one. Kept out
+  // of the prose for the same reason `parseMarkdownBlocks` keeps it out.
+  let named: string | undefined;
+  let names: (string | undefined)[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const marker = NAME_MARKER.exec(line);
+    if (marker !== null) {
+      named = marker[1];
+      continue;
+    }
     const h = HEADING.exec(line);
     if (h) {
       flushProse();
@@ -1137,12 +1194,20 @@ export function parseSheetMarkdown(text: string, instances: string[], l: Lang = 
       if (depth === 1 && doc.sheet === "") {
         doc.sheet = h[2];
         section = null;
+        named = undefined;
         continue;
       }
       // Heading depth 2 is the top category level (the renderer writes
       // `path.length + 1`), so the path is the stack cut to this depth.
       path = [...path.slice(0, depth - 2), h[2]];
-      section = { path: [...path], rows: [], prose: "" };
+      names = [...names.slice(0, depth - 2), named];
+      section = {
+        path: [...path],
+        ...(names.some((n) => n !== undefined) ? { names: [...names] } : {}),
+        rows: [],
+        prose: "",
+      };
+      named = undefined;
       doc.sections.push(section);
       continue;
     }

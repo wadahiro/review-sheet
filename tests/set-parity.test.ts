@@ -40,6 +40,13 @@ const MODEL = {
       file_path: "/etc/httpd/conf/httpd.conf",
       categories: [
         {
+          // A component the project calls one thing and the page another — the
+          // identity is `alb`, the reader sees the name its author gave it.
+          name: "alb",
+          label: { ja: "SSO 公開エンドポイント" },
+          categories: [{ name: "Basic", params: [{ key: "idle", value: "60", description: "Idle", default: "60" }] }],
+        },
+        {
           name: "Basic",
           params: [
             { key: "Listen", value: "8080", description: "Port", default: "80", remarks: "note" },
@@ -104,14 +111,11 @@ function seen(host: HTMLElement): string[] {
   return out;
 }
 
-// Rendered ONE AT A TIME and read before the next: `draw` empties the document,
-// so holding both hosts and reading them afterwards reads one live tree and one
-// that has been torn out — which passes and compares nothing.
-async function bothWays(act: (host: HTMLElement) => void = () => {}): Promise<{ embedded: string[]; folder: string[] }> {
-  setMarkdownRenderer((source, images, opts) => renderMarkdown(source, () => null, opts));
+// The set, written from the model exactly as the CLI writes it.
+function writtenSet(): ReturnType<typeof toMarkdownSet> {
   const carried = carriedDocuments(MODEL.artifacts as never, ["staging", "production"]);
   const index = buildArtifactIndex(MODEL.artifacts as never);
-  const { files } = toMarkdownSet(MODEL as never, "ja", {
+  return toMarkdownSet(MODEL as never, "ja", {
     documents: carried,
     preview: (sheet) => (row, categoryPath) => {
       const hit = index.previewFor(sheet.name, categoryPath.join("/"), row.key);
@@ -119,6 +123,14 @@ async function bothWays(act: (host: HTMLElement) => void = () => {}): Promise<{ 
       return doc === undefined ? undefined : addressOf([doc], row.key);
     },
   });
+}
+
+// Rendered ONE AT A TIME and read before the next: `draw` empties the document,
+// so holding both hosts and reading them afterwards reads one live tree and one
+// that has been torn out — which passes and compares nothing.
+async function bothWays(act: (host: HTMLElement) => void = () => {}): Promise<{ embedded: string[]; folder: string[] }> {
+  setMarkdownRenderer((source, images, opts) => renderMarkdown(source, () => null, opts));
+  const { files } = writtenSet();
   const read = readMarkdownSet(files.map((f) => ({ path: f.path, text: f.text })), "ja");
   expect(read.problems).toEqual([]);
   // A state change redraws on a microtask, so what `act` asked for is not on
@@ -144,6 +156,21 @@ describe("the same model, carried and read back", () => {
   it("shows the reader the same page", async () => {
     const { embedded, folder } = await bothWays();
     expect(folder).toEqual(embedded);
+  });
+
+  // The heading says what the page says, and the IDENTITY comes back intact —
+  // which the comparison above cannot see, because identity is not appearance:
+  // it is what an anchor, a row address and a change set resolve through, and
+  // all three would keep working while quietly meaning another component.
+  it("keeps a component's identity under the name the page shows", () => {
+    setMarkdownRenderer((source, images, opts) => renderMarkdown(source, () => null, opts));
+    const { files } = writtenSet();
+    const page = files.find((f) => f.path.endsWith("web.md"))!;
+    expect(page.text).toContain("<!-- rs:name=alb -->\n## SSO 公開エンドポイント");
+    const read = readMarkdownSet(files.map((f) => ({ path: f.path, text: f.text })), "ja");
+    const top = (read.sheets[0]!.categories as { name: string; display?: string }[])[0]!;
+    expect(top.name).toBe("alb");
+    expect(top.display).toBe("SSO 公開エンドポイント");
   });
 
   it("…and the same page in the other orientation", async () => {
