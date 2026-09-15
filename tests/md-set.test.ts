@@ -241,10 +241,25 @@ describe("the index", () => {
   // argument about formats, but because nobody could tell what it was for.
   it("says what to do with the folder, before the contents", () => {
     const readme = toMarkdownSet(doc(), "ja").files[0]!.text;
-    expect(readme).toContain("直すのはこのフォルダの `.md`");
+    expect(readme).toContain("修正するのはこのフォルダの `.md`");
     expect(readme).toContain("1ファイルで保存");
     expect(readme).toContain("viewer.html");
     expect(readme.indexOf("この文書の使い方")).toBeLessThan(readme.indexOf("## 目次"));
+  });
+
+  // …and says nothing that is not true of what the reader will do. Three lines
+  // were not: dragging the folder onto the window, which the browser refuses on
+  // a page opened by double-clicking it; "open the saved file from now on",
+  // which holds whatever was on screen when it was saved; and a rebuild
+  // replacing that file, which nothing here writes.
+  it("does not name a gesture the browser refuses, or a file a rebuild replaces", () => {
+    const readme = toMarkdownSet(doc(), "ja").files[0]!.text;
+    expect(readme).not.toContain("ドラッグ");
+    expect(readme).toContain("保存した時点の内容のまま");
+    expect(readme).not.toContain("`sheet.html` 自身");
+    const en = toMarkdownSet(doc(), "en").files[0]!.text;
+    expect(en).not.toContain("Drag");
+    expect(en).not.toContain("the next rebuild replaces");
   });
 
   it("lists the chapters in the order the document declares, as links", () => {

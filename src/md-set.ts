@@ -376,31 +376,41 @@ function index(
   // What to do with this folder, before anything else in it.
   //
   // The recipient of a set like this has no toolchain and did not ask for one.
-  // If it is not obvious in three lines what to edit, what to read it with, and
+  // If it is not obvious in a few lines what to edit, what to read it with, and
   // what NOT to touch, the folder loses to the spreadsheet it replaced — not on
   // any argument about formats, but because nobody could tell what it was for.
+  //
+  // Which means every line of it has to be TRUE of what the reader will do, and
+  // three of them were not. Dragging the folder onto the window is named
+  // nowhere now: this page is opened by double-clicking it, which makes it a
+  // `file://` page, and Chrome refuses to list a dropped directory on one
+  // outright — the gesture the whole hand-over rests on does nothing in exactly
+  // the setting these lines describe (drop-set.ts). The saved single file is
+  // not "open that from now on": it holds what was on screen when it was saved,
+  // so the next edit to a `.md` needs the folder chosen and the file saved
+  // again — and it lands wherever the browser puts a download, not here. And it
+  // is not replaced by a rebuild, because nothing here writes it: a rebuild
+  // replaces `viewer.html`, which is the only page this set ships.
   out.push(
     ...(lang === "ja"
       ? [
           "## この文書の使い方",
           "",
-          "- **直すのはこのフォルダの `.md`** です。AI に「この表のこの値を直して」と頼めます。",
+          "- **修正するのはこのフォルダの `.md`** です。",
           "- **読むのは `viewer.html`** です。ダブルクリックで開きます。",
-          "- **`.md` を直したら、`viewer.html` の「フォルダを開く」から `sheet` フォルダを選んで**ください。直した内容が表示されます。",
-          "  （ウィンドウへのドラッグでも入りますが、ファイルとして開いたページではブラウザが拒否することがあります。）",
-          "- そのあと **「1ファイルで保存」** を押すと `sheet.html` が1枚できます。以後はそれを開くだけで、フォルダを選ぶ必要はありません。",
-          "- `viewer.html` や `sheet.html` 自身を編集しても意味がありません。次に作り直した時点で消えます。",
+          "- **`.md` を修正したら、`viewer.html` の「フォルダを開く」で `sheet` フォルダを選びます。** 修正した内容が表示されます。`viewer.html` は開くたびに一度選ぶ必要があります。",
+          "- **「1ファイルで保存」** を押すと、そのとき表示していた内容を取り込んだ `sheet.html` がダウンロードされます。フォルダを選ばずに読めますが、**保存した時点の内容のまま**です。`.md` を修正したら、選び直して保存し直してください。",
+          "- HTML を直接編集しても表示は変わりません。表示は `.md` から作られます。",
           "",
         ]
       : [
           "## How to use this",
           "",
-          "- **Edit the `.md` files in this folder.** You can ask an assistant to change a value in a table.",
+          "- **Edit the `.md` files in this folder.**",
           "- **Read it with `viewer.html`.** Double-click to open it.",
-          "- **When you have edited the `.md`, press \"Open folder\" in `viewer.html` and choose the `sheet` folder.** It shows what you changed.",
-          "  (Dragging the folder onto the window works too, but a page opened as a local file may have its drops refused by the browser.)",
-          "- Then press **Save as one file** for a single `sheet.html`. Open that from then on — no folder, no dragging.",
-          "- Editing `viewer.html` or `sheet.html` does nothing: the next rebuild replaces what they show.",
+          "- **After editing, press \"Open folder\" in `viewer.html` and choose the `sheet` folder.** It shows what you changed. `viewer.html` asks for the folder each time it is opened.",
+          "- **\"Save as one file\"** downloads a `sheet.html` holding what is on screen. That one opens without choosing a folder — but it holds what it held when you saved it, so edit a `.md` again and you choose the folder and save again.",
+          "- Editing the HTML changes nothing. What it shows is built from the `.md`.",
           "",
         ])
   );
