@@ -129,6 +129,18 @@ export type MarkdownRow = {
   // distribution ships disagree often enough that a default with no source
   // reads as broken.
   defaultFrom?: string;
+  // The grouping the sheet's own layout DISPLACED, kept on the row: a sheet
+  // headed by the file its rows land in still shows the product's own grouping,
+  // as sub-headings the page draws from this. 298 rows of one real delivery,
+  // and without it four such headings simply were not there.
+  subCategory?: string[];
+  // The CONTROL this row is, resolved to one language — see `ParameterBase
+  // .composite`. On the control's own row and nowhere else: it describes that
+  // row, and the model repeats it on every field of the tuple only because a
+  // field is where it is discovered. Written as one object because it IS one —
+  // a name, a help line, which fields it writes and what each of its choices
+  // writes into them — and there is no reading of that as a column.
+  composite?: string;
   // Every value cell is empty and the row is NOT one nobody set: its value is
   // in an environment this document does not carry. A delivery narrowed to some
   // of them produces exactly this, and reports it — 5 rows of one real delivery
@@ -334,6 +346,7 @@ function rowOf(p: ParamData, instances: string[], l: Lang, path: string[], opts:
     ...(p.absent_where_unlisted === true ? { absent: true as const } : {}),
     ...(p.presence === true ? { presence: lang(p.presence_label, l) } : {}),
     ...(p.default_from === undefined ? {} : { defaultFrom: p.default_from }),
+    ...(p.sub_category === undefined ? {} : { subCategory: p.sub_category }),
     // …and the documented default, when the column is showing the vendor's.
     // WHENEVER the column is showing the vendor's, even where the product
     // documents no default of its own: an empty marker still says which of the
@@ -383,6 +396,15 @@ function controlRowOf(group: ParamData[], instances: string[], l: Lang): Markdow
   return {
     key: pickLang(c.control, l) ?? "",
     control: true as const,
+    // The control's HELP is not in here: it is the description cell of this very
+    // row, and saying it twice is how one of the two starts being the stale
+    // one — which is exactly what the row under it already avoids by leaving
+    // its own description blank when the control's says the same thing.
+    composite: JSON.stringify({
+      control: pickLang(c.control, l) ?? "",
+      of: c.of,
+      modes: c.modes.map((m) => ({ label: pickLang(m.label, l) ?? "", values: m.values })),
+    }),
     values,
     default: controlDefaultMode(group, l)?.label ?? "",
     description: pickLang(c.description, l) ?? "",
@@ -745,10 +767,11 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
         (row.outOfScope === undefined ? "" : cellMark("oos", row.outOfScope)) +
         (row.outOfScopeOwner === undefined ? "" : cellMark("oosowner", row.outOfScopeOwner)) +
         (row.presence === undefined ? "" : cellMark("presence", row.presence)) +
-        (row.defaultFrom === undefined ? "" : cellMark("from", row.defaultFrom));
+        (row.defaultFrom === undefined ? "" : cellMark("from", row.defaultFrom)) +
+        (row.subCategory === undefined ? "" : cellMark("sub", row.subCategory.join(" / ")));
       const cells = [
         row.control === true
-          ? `${indent}**${escapeCell(row.key.slice(indent.length))}**`
+          ? `${indent}**${escapeCell(row.key.slice(indent.length))}**${row.composite === undefined ? "" : cellMark("composite", row.composite)}`
           : `${indent}\`${escapeCell(row.key.slice(indent.length))}\`${address}${about}`,
         ...(shown.description ? [escapeCell(row.description)] : []),
         escapeCell(row.default) + (row.product === undefined ? "" : cellMark("product", row.product)),
@@ -973,6 +996,16 @@ export function visibleRows(
 // an address belongs to.
 export type RowAddress = { key: string; href: string };
 
+// A control of the product's screen, as one page states it — see MarkdownRow's
+// `composite`. Already resolved to the page's language, which is why it is not
+// `ParameterBase["composite"]`: that one carries every language the model has.
+type CompositeControl = {
+  control: string;
+  description?: string;
+  of: string[];
+  modes: { label: string; values: Record<string, string> }[];
+};
+
 export function markdownToCategories(text: string, instances: string[], l: Lang = "ja"): CategoryData[] {
   return liftMarkdownSheet(text, instances, l).categories;
 }
@@ -1043,6 +1076,8 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
     const into = stack[stack.length - 1];
     if (into === undefined) continue;
     const chain: string[] = [];
+    // The control whose fields the rows below it are, until they are past.
+    let control: CompositeControl | undefined;
     // …and what each step of it SAYS, which is not what it is.
     const shownChain: string[] = [];
     const params: ParamData[] = into.params ?? [];
@@ -1060,8 +1095,21 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
       // A control of the product's screen, not a parameter: it has no key, so
       // reading it as a row would put one the model does not have into every
       // read of a delivered set.
-      if (isControlRow((row.cells[0] ?? "").trim())) continue;
       const split = splitKeyCell((row.cells[0] ?? "").trim());
+      if (isControlRow(cellMarks((row.cells[0] ?? "").trim()).text)) {
+        // A CONTROL of the product's screen. Not a row — it has no key and
+        // nothing the files hold — but it says what it is, and the rows under
+        // it are what the reader came to see it above. Kept until they are
+        // read, then put on each of them: that is where the model carries it,
+        // because a field is where the control is discovered.
+        const said = split.marks.find((m) => m.kind === "composite")?.value;
+        const help = shape.description >= 0 ? (row.cells[shape.description] ?? "").trim() : "";
+        control =
+          said === undefined
+            ? undefined
+            : { ...(JSON.parse(said) as CompositeControl), ...(help === "" ? {} : { description: help }) };
+        continue;
+      }
       const shownName = split.key.replace(/^`(.*)`$/s, "$1").trim();
       // A block's IDENTITY is its path and its heading is the leaf of it: three
       // `<IfModule>` openings are three blocks and one word. Every other row is
@@ -1172,6 +1220,10 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
         ...(split.marks.find((m) => m.kind === "from") === undefined
           ? {}
           : { default_from: split.marks.find((m) => m.kind === "from")!.value }),
+        ...(split.marks.find((m) => m.kind === "sub") === undefined
+          ? {}
+          : { sub_category: split.marks.find((m) => m.kind === "sub")!.value.split(" / ") }),
+        ...(control === undefined || !control.of.includes(key) ? {} : { composite: control }),
         ...(extra === undefined ? {} : { extra }),
         // Nothing is set here: the document says so by leaving every value cell
         // empty, and this is that fact in the shape the viewer knows it by.

@@ -188,6 +188,29 @@ const MODEL = {
             // Where the default was READ — a distribution's shipped file rather
             // than the product's documentation.
             { key: "driftfile", value: "/var/lib/chrony/drift", default: "/var/lib/chrony/drift", default_from: "/etc/chrony.conf", description: "Drift" },
+            // The grouping this sheet's layout displaced: the page draws a
+            // sub-heading from it.
+            { key: "db-url", value: "jdbc:x", description: "URL", sub_category: ["Database"] },
+            { key: "db-username", value: "kc", description: "User", sub_category: ["Database"] },
+            // One control of the product's screen whose value is a TUPLE over
+            // three rows: no one of them carries the choice.
+            ...[
+              { key: "bruteForceProtected", value: "true" },
+              { key: "maxTemporaryLockouts", value: "0" },
+              { key: "permanentLockout", value: "true" },
+            ].map((r) => ({
+              ...r,
+              description: "ブルートフォース攻撃が検出されたときの挙動。",
+              composite: {
+                control: { ja: "ブルートフォースモード" },
+                description: { ja: "ブルートフォース攻撃が検出されたときの挙動。" },
+                of: ["bruteForceProtected", "maxTemporaryLockouts", "permanentLockout"],
+                modes: [
+                  { label: { ja: "無効" }, values: { bruteForceProtected: "false", maxTemporaryLockouts: "0", permanentLockout: "false" } },
+                  { label: { ja: "恒久的にロックアウト" }, values: { bruteForceProtected: "true", maxTemporaryLockouts: "0", permanentLockout: "true" } },
+                ],
+              },
+            })),
             { key: "Timeout", value: "60", default: "60", origin: "default", description: "Idle timeout" },
             { key: "ServerName", description: "Name", instances: [{ name: "staging", value: "a" }, { name: "production", value: "b" }] },
           ],
