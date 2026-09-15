@@ -139,12 +139,27 @@ const MODEL = {
             // The vendor shipped it and this file dropped it — unset, but not
             // because nobody ever set it, and the sheet keeps it on the page.
             { key: "dropped", origin: "baseline", baseline: "On", description: "Dropped" },
+            // A BLOCK the vendor shipped and this file dropped. Its "value" is
+            // the block's own argument, which is what the block is.
+            {
+              key: 'Directory["/var/www"]',
+              container: { name: "Directory" },
+              value: '"/var/www"',
+              origin: "baseline",
+              description: "Block",
+            },
+            {
+              key: 'Directory["/var/www"].Options',
+              container_path: [{ path: 'Directory["/var/www"]' }],
+              value: "Indexes",
+              description: "Options",
+            },
             // …and one this project is deliberately not reviewing here.
             {
               key: "pw",
               value: "REF",
               description: "Secret",
-              out_of_scope: { reason: { ja: "デプロイ時に供給される" } },
+              out_of_scope: { reason: { ja: "デプロイ時に供給される" }, owner: "Platform / SRE" },
             },
             // A setting whose value IS its presence, and the product's own word
             // for it.

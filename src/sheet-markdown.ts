@@ -131,6 +131,10 @@ export type MarkdownRow = {
   // decision and the one thing the sheet prints under a key that is not the
   // product's (`OutOfScope.reason`).
   outOfScope?: string;
+  // …and WHO owns the thing excluded, where the exclusion names one. The sheet
+  // prints it beside the reason, so carrying one without the other is half an
+  // exclusion.
+  outOfScopeOwner?: string;
 };
 
 // A heading and the rows under it. The heading path IS the category path, so
@@ -273,7 +277,12 @@ function rowOf(p: ParamData, instances: string[], l: Lang, path: string[], opts:
   const values: Record<string, string> = {};
   const shared = !(p.instances && p.instances.length > 0);
   const cols = instances.length > 0 ? instances : [""];
-  const blank = opts.markUnset === true && unset(p);
+  // A CONTAINER is never blanked. Its "value" is the block's own argument —
+  // `Directory` / `"/var/www"` — which is what the block IS, not a setting
+  // anybody left unset, and the sheet shows it in the value column either way.
+  // Blanked, it moved to the default column, where the same string reads as
+  // something the product suggests.
+  const blank = opts.markUnset === true && unset(p) && p.container === undefined;
   for (const name of cols) {
     values[name] = blank
       ? ""
@@ -307,6 +316,7 @@ function rowOf(p: ParamData, instances: string[], l: Lang, path: string[], opts:
       : {}),
     ...(p.origin === "baseline" ? { vendor: true as const } : {}),
     ...(lang(p.out_of_scope?.reason, l) === "" ? {} : { outOfScope: lang(p.out_of_scope?.reason, l) }),
+    ...(p.out_of_scope?.owner === undefined ? {} : { outOfScopeOwner: p.out_of_scope.owner }),
     ...(p.absent_where_unlisted === true ? { absent: true as const } : {}),
     ...(lang(p.presence_label, l) === "" ? {} : { presence: lang(p.presence_label, l) }),
     // …and the documented default, when the column is showing the vendor's.
@@ -706,6 +716,7 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
         (row.elsewhere === true ? cellMark("elsewhere", "") : "") +
         (row.vendor === true ? cellMark("vendor", "") : "") +
         (row.outOfScope === undefined ? "" : cellMark("oos", row.outOfScope)) +
+        (row.outOfScopeOwner === undefined ? "" : cellMark("oosowner", row.outOfScopeOwner)) +
         (row.presence === undefined ? "" : cellMark("presence", row.presence));
       const cells = [
         row.control === true
@@ -1122,7 +1133,14 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
             : { origin: "default" as const }),
         ...(split.marks.find((m) => m.kind === "oos") === undefined
           ? {}
-          : { out_of_scope: { reason: split.marks.find((m) => m.kind === "oos")!.value } }),
+          : {
+              out_of_scope: {
+                reason: split.marks.find((m) => m.kind === "oos")!.value,
+                ...(split.marks.find((m) => m.kind === "oosowner") === undefined
+                  ? {}
+                  : { owner: split.marks.find((m) => m.kind === "oosowner")!.value }),
+              },
+            }),
       } as ParamData);
     }
     into.params = params;
