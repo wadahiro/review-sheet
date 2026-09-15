@@ -3287,3 +3287,73 @@ describe("prose in a cell", () => {
     expect(cell.querySelector("code")?.textContent).toBe("a`b");
   });
 });
+
+// The file, opened from the CONTROL rather than from one of its rows.
+describe("a control's way into the file", () => {
+  const CONTROL = {
+    control: "検知モード",
+    of: ["detect", "permanent"],
+    modes: [{ label: "入", values: { detect: "true", permanent: "false" } }],
+  };
+  const mount = (lines: { text: string; key?: string }[]): HTMLElement => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const payload = {
+      metadata: { title: "t", version: "1" },
+      versions: [
+        {
+          version: "current",
+          sheets: [
+            {
+              name: "s",
+              categories: [
+                {
+                  name: "c",
+                  params: [
+                    { key: "detect", value: "true", origin: "embedded", composite: CONTROL, description: "d" },
+                    { key: "permanent", value: "false", origin: "embedded", composite: CONTROL, description: "p" },
+                  ],
+                },
+              ],
+            },
+          ],
+          artifacts: [
+            {
+              id: "s",
+              sheet: "s",
+              deployed_path: "a.yml",
+              source_file: "a.yml",
+              lines: lines.map((l) => ({ text: l.text, kind: "verbatim" as const, ...(l.key === undefined ? {} : { key: l.key }) })),
+            },
+          ],
+        },
+      ],
+    };
+    render(h(Root, { payload: payload as never, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    return host;
+  };
+
+  it("marks every line the control writes, not just one", async () => {
+    const host = mount([
+      { text: "detect: true", key: "detect" },
+      { text: "unrelated: 1" },
+      { text: "permanent: false", key: "permanent" },
+    ]);
+    const chip = host.querySelector("tr.rs-row-composite .rs-artifact-chip") as HTMLElement;
+    expect(chip, "the control offers no way into the file").not.toBeNull();
+    chip.click();
+    await new Promise((r) => setTimeout(r, 0));
+    const marked = [...host.querySelectorAll(".rs-artifact-body .rs-here")].map((l) => l.textContent ?? "");
+    expect(marked.length).toBe(2);
+    expect(marked.join(" ")).toContain("detect: true");
+    expect(marked.join(" ")).toContain("permanent: false");
+  });
+
+  it("offers nothing where no row of the tuple has a line", async () => {
+    // A control whose fields are all unset has nothing to open, and an
+    // affordance that opens nothing is worse than none.
+    const host = mount([{ text: "unrelated: 1" }]);
+    expect(host.querySelector("tr.rs-row-composite .rs-artifact-chip")).toBeNull();
+  });
+});

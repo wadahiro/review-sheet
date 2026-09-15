@@ -2093,6 +2093,27 @@ function ParamTable({ params, sheetName, sheetInstances, sheetIndex, categoryPat
       <td class="rs-col-key">
         <span class="rs-composite-control">${control}</span>
         <span class="rs-key-subline rs-composite-writes">${t.compositeWrites(c.of)}</span>
+        ${/* The file, opened on ALL of the control's rows at once. A reader who
+             clicks the control came to see what it writes, and what it writes is
+             three lines — marking one of them would answer a question they did
+             not ask. Offered only where some row of the tuple HAS a line: a
+             control whose fields are all unset has nothing to open, and an
+             affordance that opens nothing is worse than none (the same rule
+             every row follows). */ ""}
+        ${(() => {
+          const first = rows.find((r) => artifact?.idFor(sheetName, categoryPath, r.key) !== undefined);
+          if (first === undefined || artifact === undefined) return null;
+          const id = artifact.idFor(sheetName, categoryPath, first.key)!;
+          const word = artifact.natureFor(sheetName, categoryPath, first.key) === "source" ? t.artifactTitleSource : t.artifactTitle;
+          return html`
+            <span class="rs-key-subline">
+              <button class="rs-artifact-chip" title=${t.artifactOpen}
+                      onClick=${(e: Event) => { e.stopPropagation(); artifact.open(id, first.key, rows.map((r) => r.key)); }}>
+                ${word}
+              </button>
+            </span>
+          `;
+        })()}
       </td>
       ${normalLines.map((line) => {
         // Three columns are the CONTROL's to answer and the rest are the rows'.
@@ -3365,7 +3386,18 @@ function PivotView({ sheet, pivot, sheetIndex, hiddenInstances, showDefaults, re
 // `line` is how the test record's evidence opens it: a verdict was read at a
 // line number, not at a key, and an observed document carries no keys at all
 // (types.ts) precisely so it can never be reached the other way.
-type ArtifactTarget = { id: string; key?: string; instance?: string; line?: number };
+type ArtifactTarget = {
+  id: string;
+  key?: string;
+  // EVERY row this opening is about, when it is about more than one — a
+  // control of the product's screen writes several (types.ts's `composite`),
+  // and a reader who opened the file from the control came to see all of them
+  // at once. `key` stays the one the panel SCROLLS to; these are the ones it
+  // marks. Absent for an ordinary row, which is its own only answer.
+  keys?: string[];
+  instance?: string;
+  line?: number;
+};
 
 // `<preview id>#L<n>` — what an evidence cell puts in `data-rs-evidence`
 // (evidence.ts). Parsed rather than split blind: an id contains spaces and
@@ -3382,7 +3414,9 @@ export type ArtifactAccess = {
   // What KIND of document the row routes to — see i18n's `artifactTitle`. The
   // index resolved the document, so it is the only thing that knows.
   natureFor: (sheetName: string, categoryPath: string, key: string) => ArtifactPreview["nature"];
-  open: (id: string, key: string) => void;
+  // `keys` marks every row this opening is about; `key` is the one to scroll
+  // to. One row passes neither.
+  open: (id: string, key: string, keys?: string[]) => void;
 };
 
 function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, dock, onDock, t }: {
@@ -3409,7 +3443,7 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, dock, onD
     const el = bodyRef.current?.querySelector(".rs-here");
     if (el) (el as HTMLElement).scrollIntoView({ block: "center" });
     else bodyRef.current?.scrollTo({ top: 0 });
-  }, [target.id, target.key, target.line, shown]);
+  }, [target.id, target.key, (target.keys ?? []).join("\u0000"), target.line, shown]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -3503,7 +3537,11 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, dock, onD
           const here =
             target.line !== undefined
               ? i + 1 === target.line
-              : (line.keys ?? (line.key === undefined ? [] : [line.key])).includes(target.key ?? "");
+              : (() => {
+                  const mine = line.keys ?? (line.key === undefined ? [] : [line.key]);
+                  const wanted = target.keys ?? (target.key === undefined ? [] : [target.key]);
+                  return mine.some((k) => wanted.includes(k));
+                })();
           const title =
             line.kind === "absent"
               ? t.artifactKindAbsent.replace("{reason}", line.reason ?? "")
@@ -4187,7 +4225,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
         : {
             idFor: artifactIndex.idFor,
             natureFor: (sheet, categoryPath, key) => artifactIndex.previewFor(sheet, categoryPath, key)?.nature,
-            open: (id, key) => setArtifactTarget({ id, key }),
+            open: (id, key, keys) => setArtifactTarget({ id, key, ...(keys === undefined ? {} : { keys }) }),
           },
     [artifacts, artifactIndex]
   );
