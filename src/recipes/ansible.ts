@@ -200,7 +200,26 @@ const schema = {
       items: {
         type: "object",
         required: ["path"],
-        properties: { path: { type: "string" }, format: { type: "string" }, component: { type: "string" } },
+        properties: {
+          path: { type: "string" },
+          format: { type: "string" },
+          component: { type: "string" },
+          // WHICH ENVIRONMENTS THIS FILE IS THE CONFIGURATION FOR.
+          //
+          // Declared, this entry stops being "a file of this sheet" and becomes
+          // one environment's slice of its component: its rows carry
+          // per-instance values, and the same key from another scoped entry of
+          // the same component joins them rather than opening a section of its
+          // own. That is what puts a legacy side's dev/prod beside a new side's
+          // local/poc in one comparison — the two sides need not share a single
+          // environment name, which in a migration they usually do not.
+          //
+          // Omitted, nothing changes: several unscoped files of one component
+          // stay several sections, one per file, which is what a legacy sheet
+          // built from a handful of recorded files wants. An entry opts in;
+          // the two shapes are not unified.
+          instances: { type: "array", items: { type: "string" }, minItems: 1 },
+        },
         additionalProperties: false,
       },
     },
@@ -373,6 +392,108 @@ function checkedFormat(raw: JsonValue, sheet: string, where: string): string {
     .sort()
     .join(", ");
   throw new Error(`ansible recipe: sheet "${sheet}" ${where}: no parser named "${format}" — known formats: ${known}`);
+}
+
+// Which environments each scoped `static_files` entry is the configuration for,
+// keyed by the path its rows will carry — both spellings, because a recipe
+// resolves a declared path and an entry records the resolved one.
+function staticFileScopes(
+  sheetSpec: Record<string, JsonValue>,
+  io: RecipeIO,
+  name: string
+): Map<string, { instances: string[]; component?: string }> {
+  const out = new Map<string, { instances: string[]; component?: string }>();
+  const list = Array.isArray(sheetSpec.static_files) ? sheetSpec.static_files : [];
+  for (const raw of list) {
+    const f = raw as Record<string, JsonValue>;
+    if (!Array.isArray(f.instances)) continue;
+    const instances = (f.instances as JsonValue[]).map((i) => asString(i, "static_files[].instances[]"));
+    // The same check `templates[].instances` gets: a name this sheet does not
+    // have is a typo that would otherwise scope the file to nothing and empty
+    // it in silence.
+    const stray = instances.filter((i) => !io.instances.includes(i));
+    if (stray.length > 0) {
+      throw new Error(
+        `ansible recipe: sheet "${name}": static file ${asString(f.path, "static_files[].path")} declares instances ` +
+          `${stray.join(", ")}, which this sheet does not have (${io.instances.join(", ")})`
+      );
+    }
+    const path = asString(f.path, "static_files[].path");
+    const at = { instances, ...(f.component === undefined ? {} : { component: asString(f.component, "static_files[].component") }) };
+    out.set(path, at);
+    out.set(io.resolve(path), at);
+  }
+  return out;
+}
+
+// One environment's slice of a component, folded into the row it is a slice of.
+//
+// An unscoped static file is a FILE of the sheet: its rows sit under its own
+// name, which is what a legacy sheet built from a handful of recorded files
+// wants. A scoped one is one ENVIRONMENT of a component, and its rows are the
+// same rows another environment's file also has — so they join, each carrying
+// its own value and its own site, and the comparison view stacks them in the
+// component's own cell.
+//
+// That is what lets a migration sheet put a legacy side's dev/prod beside a new
+// side's local/poc: the two need not share an environment name, which in a
+// migration they usually do not.
+function foldScopedStatic(
+  entries: EmbeddedEntry[],
+  scopes: Map<string, { instances: string[]; component?: string }>,
+  name: string
+): EmbeddedEntry[] {
+  if (scopes.size === 0) return entries;
+  const out: EmbeddedEntry[] = [];
+  const merged = new Map<string, EmbeddedEntry>();
+  // Which file gave a group each of its instances, so a contradiction can name
+  // both sides of itself.
+  const from = new Map<string, Map<string, string>>();
+  for (const e of entries) {
+    const at = e.source?.file === undefined ? undefined : scopes.get(e.source.file);
+    if (at === undefined) {
+      out.push(e);
+      continue;
+    }
+    const component = e.component ?? at.component;
+    const groupKey = `${component ?? ""}\u0000${e.key}`;
+    const seen = from.get(groupKey) ?? new Map<string, string>();
+    for (const instance of at.instances) {
+      const already = seen.get(instance);
+      if (already !== undefined) {
+        throw new Error(
+          `ansible recipe: sheet "${name}": ${already} and ${e.source.file} both give ${instance} a value for ` +
+            `"${e.key}"${component === undefined ? "" : ` (${component})`} — two files cannot both be that ` +
+            `environment's configuration`
+        );
+      }
+      seen.set(instance, e.source.file!);
+    }
+    from.set(groupKey, seen);
+    const slices = at.instances.map((instance) => ({ name: instance, value: e.value, source: e.source }));
+    const already = merged.get(groupKey);
+    if (already === undefined) {
+      // The row keeps the FIRST file as its own site, the way a template-driven
+      // row keeps one — each environment's own site is on its own slice, which
+      // is what apply and verify read. Where nothing else names a category the
+      // sheet falls back to that filename, exactly as it does for any row; a
+      // migration sheet binds a dictionary or declares one, and then the row
+      // sits under its group like every other.
+      const one: EmbeddedEntry = {
+        ...e,
+        // The fallback for a reader that ignores the per-environment list, the
+        // same way a template-driven row sets both.
+        value: e.value,
+        instances: slices,
+        ...(component === undefined ? {} : { component }),
+      };
+      merged.set(groupKey, one);
+      out.push(one);
+      continue;
+    }
+    already.instances = [...(already.instances ?? []), ...slices];
+  }
+  return out;
 }
 
 function readRequired(io: RecipeIO, path: string, what: string): { file: string; content: string } {
@@ -657,7 +778,9 @@ export const ansibleRecipe: SheetRecipe = {
     // comes through untouched.
     const artifacts: ArtifactPreview[] = [...(core.artifacts ?? [])];
 
-    const embedded: EmbeddedEntry[] = [...core.embedded]; // static_files' embedded entries
+    // static_files' embedded entries — with the SCOPED ones folded into rows
+    // that carry a value per environment. See `foldScopedStatic`.
+    const embedded: EmbeddedEntry[] = foldScopedStatic([...core.embedded], staticFileScopes(sheetSpec, io, name), name);
     const keyMap: KeyMapEntry[] = [];
     // Every variable the template(s) interpolate, filled by pass 1 — see the
     // return, and SheetInputs.templateVariables.

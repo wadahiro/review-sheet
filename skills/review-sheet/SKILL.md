@@ -1712,6 +1712,59 @@ value held still. In that same comparison it was one row —
 untouched value — which is exactly the row an upgrade review exists to find, and
 exactly the row that four translation diffs would have buried.
 
+##### Two releases whose environments are not the same environments
+
+An on-premises `dev`/`prod` becoming a cloud `local`/`poc` is what a migration
+usually looks like: the two sides share no environment NAME. There is one
+`instances:` and one `overlays:` per sheet, and that is enough — the names are
+globally distinct, so one overlay table holds all of them, and each side says
+which of them it is the configuration for.
+
+```yaml
+instances: [dev, prod, local, poc]          # the union; the names need not be shared
+sheets:
+  - name: sso server upgrade
+    recipe: ansible
+    rows: artifact
+    component_order: ["19.0.2", "26.7.3"]
+    overlays:
+      dev:   old/inventories/dev/group_vars/sso.yml
+      prod:  old/inventories/prod/group_vars/sso.yml
+      local: new/inventories/local/group_vars/sso.yml
+      poc:   new/inventories/poc/group_vars/sso.yml
+    templates:
+      - { path: old/templates/sso.conf.j2, component: "19.0.2", instances: [dev, prod] }
+      - { path: new/templates/sso.conf.j2, component: "26.7.3", instances: [local, poc] }
+```
+
+…and where the OLD side is not a template but the files as they were recorded,
+one per environment, a `static_files` entry says the same thing:
+
+```yaml
+    static_files:
+      - { path: recorded/dev/sso.conf,  component: "19.0.2", instances: [dev] }
+      - { path: recorded/prod/sso.conf, component: "19.0.2", instances: [prod] }
+```
+
+Either way the reading is the same: with `compare_components: always` each
+release is a column and its own environments stack inside its cell.
+
+```
+設定項目 | 19.0.2     | 26.7.3
+listen   | dev: 9090  | local: 8081
+         | prod: 80   | poc: 443
+```
+
+A `static_files` entry that names no `instances:` is unchanged — it is a FILE of
+the sheet, and several of them stay several sections, which is what a legacy
+sheet built from a handful of recorded files wants. An entry opts in to being an
+environment's slice; the two shapes are not unified. Two entries both claiming
+one environment fail the build rather than one of them quietly winning.
+
+There is no per-component `instances:`/`overlays:` block, and there will not be:
+the union belongs to the sheet and the subset to the entry that owns it, which
+is one home per fact.
+
 ##### A sheet that exists only to compare
 
 ```yaml
