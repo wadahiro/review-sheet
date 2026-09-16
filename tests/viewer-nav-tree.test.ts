@@ -692,3 +692,83 @@ describe("the place the marker is about", () => {
     } finally { w.restore(); }
   });
 });
+
+// ---------------------------------------------------------------------------
+// FILTERING REACHES THE HEADINGS, which is the deepest thing this tree shows.
+//
+// It matched a chapter's name and a sheet's and nothing below — so typing the
+// name of a section a reader could SEE in the panel filtered away the sheet
+// holding it. The filter hid the very row that answered it.
+describe("filtering the tree", () => {
+  const WITH_SECTIONS = {
+    metadata: { title: "t" },
+    groups: [{ name: "build", label: { ja: "構築", en: "Build" } }],
+    sheets: [
+      {
+        name: "OS 設定",
+        group: "build",
+        instances: [],
+        categories: [
+          { name: "ブルートフォース検知", params: [{ key: "a", description: { ja: "d", en: "d" }, value: "1" }] },
+          { name: "セッション", params: [{ key: "b", description: { ja: "d", en: "d" }, value: "1" }] },
+        ],
+      },
+      { name: "別のシート", group: "build", instances: [], categories: [{ name: "無関係", params: [{ key: "c", description: { ja: "d", en: "d" }, value: "1" }] }] },
+    ],
+  } as unknown as ParameterSheetInput;
+
+  const filtered = async (needle: string): Promise<string> => {
+    const host = mount(WITH_SECTIONS);
+    const field = host.querySelector(".rs-navtree-filter") as HTMLInputElement;
+    field.value = needle;
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    await Promise.resolve();
+    return host.querySelector(".rs-navtree")?.textContent ?? "";
+  };
+
+  it("keeps a sheet whose SECTION matches, not only one whose name does", async () => {
+    const said = await filtered("ブルートフォース");
+    expect(said).toContain("OS 設定");
+    expect(said).toContain("ブルートフォース検知");
+  });
+
+  it("drops the sheets that answer to nothing", async () => {
+    expect(await filtered("ブルートフォース")).not.toContain("別のシート");
+  });
+
+  // A reader who typed a section's name wants that section — a sheet's whole
+  // outline under it buries the one row they asked for.
+  it("shows only the sections that matched", async () => {
+    const said = await filtered("ブルートフォース");
+    expect(said).not.toContain("セッション");
+  });
+
+  // …unless the SHEET itself is what matched, in which case they found the
+  // document and its outline is what they came for.
+  it("keeps the whole outline when the sheet's own name matched", async () => {
+    const said = await filtered("OS 設定");
+    expect(said).toContain("ブルートフォース検知");
+    expect(said).toContain("セッション");
+  });
+
+  // A fold made BEFORE the reader typed is not an answer to what they typed.
+  it("shows what it found inside a sheet the reader had folded", async () => {
+    const host = mount(WITH_SECTIONS, "#2");
+    // Fold the sheet that holds the section, from the panel itself.
+    const row = [...host.querySelectorAll(".rs-navtree-row")].find((r) => (r.textContent ?? "").includes("OS 設定"));
+    (row?.querySelector(".rs-navtree-caret") as HTMLElement | null)?.click();
+    await Promise.resolve();
+    expect(host.querySelector(".rs-navtree")?.textContent ?? "").not.toContain("ブルートフォース検知");
+    const field = host.querySelector(".rs-navtree-filter") as HTMLInputElement;
+    field.value = "ブルートフォース";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    await Promise.resolve();
+    expect(host.querySelector(".rs-navtree")?.textContent ?? "").toContain("ブルートフォース検知");
+  });
+
+  it("still shows everything when nothing is typed", async () => {
+    const said = await filtered("");
+    expect(said).toContain("OS 設定");
+    expect(said).toContain("別のシート");
+  });
+});

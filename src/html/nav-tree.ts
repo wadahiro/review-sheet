@@ -422,15 +422,22 @@ export function NavTree({ sheets, groups, activeSheet, numbering, lang, headings
     entries.some((g) => g.kind === "group" && collapsed.has(g.key) && g.contains?.includes(e.key));
 
   const needle = filter.trim().toLowerCase();
+  // …AND THE HEADINGS INSIDE A SHEET, which is the deepest thing this tree
+  // shows. It matched a chapter's name and a sheet's and nothing below, so
+  // typing the name of a section a reader could SEE in the panel filtered the
+  // sheet holding it away — the filter hid the very row that answered it.
+  const inHeadings = (e: TreeEntry): boolean =>
+    e.kind === "sheet" && headings.some((h) => h.sheetIndex === e.index && h.name.toLowerCase().includes(needle));
+  const hit = (e: TreeEntry): boolean =>
+    e.label.toLowerCase().includes(needle) || e.number.startsWith(needle) || inHeadings(e);
   const matches = (e: TreeEntry): boolean =>
     needle === "" ||
-    e.label.toLowerCase().includes(needle) ||
-    e.number.startsWith(needle) ||
+    hit(e) ||
     // A chapter stays while anything inside it matches, or filtering a tree
     // would show a result with no idea of where it is.
     (e.contains ?? []).some((k) => {
       const inside = entries.find((x) => x.key === k);
-      return inside !== undefined && (inside.label.toLowerCase().includes(needle) || inside.number.startsWith(needle));
+      return inside !== undefined && hit(inside);
     });
 
   const shown = entries.filter((e) => matches(e) && (needle !== "" || !hidden(e)));
@@ -497,8 +504,16 @@ export function NavTree({ sheets, groups, activeSheet, numbering, lang, headings
           // — so what a document contains is visible without going to it. The
           // one being READ always shows them, whatever was folded, for the same
           // reason a jump opens the chapter it lands in.
-          const mine = e.kind === "sheet" ? headings.filter((h) => h.sheetIndex === e.index) : [];
-          const showHeadings = e.kind === "sheet" && (current || !collapsed.has(e.key));
+          // Narrowed while filtering, unless the SHEET itself is what matched:
+          // a reader who typed a section's name wants that section, and a
+          // sheet's whole outline under it buries the one row they asked for.
+          const all = e.kind === "sheet" ? headings.filter((h) => h.sheetIndex === e.index) : [];
+          const sheetItself = needle === "" || e.label.toLowerCase().includes(needle) || e.number.startsWith(needle);
+          const mine = sheetItself ? all : all.filter((h) => h.name.toLowerCase().includes(needle));
+          // …and shown even where the reader had folded this sheet: they are
+          // what the filter found, and a fold made before they typed is not an
+          // answer to what they typed.
+          const showHeadings = e.kind === "sheet" && (current || needle !== "" || !collapsed.has(e.key));
           return html`
             <div key=${e.key} style=${`--rs-parent-depth:${e.depth}`}>
             <div class=${`rs-navtree-row rs-navtree-d${Math.min(e.depth, 4)} ${current ? "rs-navtree-current" : ""}`}

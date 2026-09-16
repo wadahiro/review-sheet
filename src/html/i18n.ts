@@ -280,21 +280,33 @@ const ja: Messages = {
   freezeColumnTip: "この列まで固定する",
   unfreezeColumnTip: "この列の固定を解除",
   navOutline: "目次",
-  navFilter: "文書をしぼり込む…",
+  navFilter: "文書を絞り込む…",
   navHere: "現在位置へ",
   navCollapse: "閉じる",
   navExpand: "開く",
   navNoMatch: "該当する文書がありません",
   navOutlineTip: "目次を表示/非表示",
+  // THE RECIPIENT'S WORDS, not the build's.
+  //
+  // These are read by somebody who was handed a folder, and what they need is
+  // which folder and when to choose it again. Which command wrote it is this
+  // project's bookkeeping and answers nothing they came for — and the folder
+  // was named `sheet` here long after the set moved under `docs`, which is the
+  // shape a string nobody reads takes.
+  //
+  // DRAGGING IS NOT OFFERED. The delivery is opened as a local file, and a
+  // page opened that way has its drops refused by the browser; the folder
+  // picker is the way in and the README says so. Advertising a second way that
+  // does not work is worse than having one.
   pickFolder: "フォルダを開く",
-  pickFolderTip: "`generate --format md` が書き出した sheet フォルダを選びます。ドラッグでも入りますが、このページをファイルとして開いている場合はブラウザがドラッグを拒否することがあります",
+  pickFolderTip: "`viewer.html` があるフォルダを選びます。`.md` を修正するたびに選び直してください",
   saveSingle: "1ファイルで保存",
-  saveSingleTip: "このフォルダごと1枚のHTMLに書き出す。次からはそれを開くだけで、ドラッグは要りません",
-  dropNoSheets: "この中にシートの Markdown が見つかりませんでした。generate --format md が書き出したフォルダを入れてください。",
+  saveSingleTip: "いま表示している内容を1枚のHTMLに書き出します。フォルダを選ばずに読めますが、保存した時点の内容のままです",
+  dropNoSheets: "この中にシートの markdown が見つかりませんでした。`viewer.html` があるフォルダを選んでください。",
   dropFailed: (reason) =>
     `フォルダを読み取れませんでした（${reason}）。\n\n` +
     "ブラウザがこのフォルダの読み取りを拒否しています。zip を展開したフォルダで試すか、別のブラウザで開いてみてください。",
-  droppedFolder: (sheets: number) => `表示中: 落とされたフォルダ（${sheets} シート）。このファイル自身の内容ではありません`,
+  droppedFolder: (sheets: number) => `表示中: 選んだフォルダ（${sheets} シート）。このファイル自身の内容ではありません`,
   navSearchTip: "検索 — 見出し・設定項目・コメント (Cmd/Ctrl+K)",
   navSearchPlaceholder: "見出し・設定項目・コメントを検索…",
   navNoResults: "該当する見出しがありません",
@@ -456,14 +468,14 @@ const en: Messages = {
   navNoMatch: "No document matches",
   navOutlineTip: "Toggle outline",
   pickFolder: "Open folder",
-  pickFolderTip: "Choose the `sheet` folder that `generate --format md` wrote. Dragging works too, but a page opened as a local file may have its drops refused by the browser",
+  pickFolderTip: "Choose the folder `viewer.html` is in. Choose it again each time you edit the `.md` files",
   saveSingle: "Save as one file",
-  saveSingleTip: "Write this folder into one HTML. Open that from then on — no folder, no dragging",
-  dropNoSheets: "No sheet markdown in there. Drop the folder that `generate --format md` wrote.",
+  saveSingleTip: "Write what is on screen into one HTML. It opens with no folder to choose, and holds what was there when you saved it",
+  dropNoSheets: "No sheet markdown in there. Choose the folder `viewer.html` is in.",
   dropFailed: (reason) =>
     `The folder could not be read (${reason}).\n\n` +
     "The browser refused to read it. Try the folder from the unzipped archive, or open this page in another browser.",
-  droppedFolder: (sheets: number) => `Showing a dropped folder (${sheets} sheets) — not what this file was built from`,
+  droppedFolder: (sheets: number) => `Showing the folder you chose (${sheets} sheets) — not what this file was built from`,
   navSearchTip: "Search — headings, parameters, comments (Cmd/Ctrl+K)",
   navSearchPlaceholder: "Search headings, parameters, comments…",
   navNoResults: "No matching headings",
