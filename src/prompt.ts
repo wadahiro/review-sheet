@@ -203,6 +203,15 @@ export type SheetData = {
     file_path?: string;
     source_file?: string;
     categories: CategoryData[];
+    // THIS SHEET'S UNSET ROWS ARE ITS CONTENT.
+    //
+    // A sheet whose whole subject is the product's own defaults — the clients
+    // Keycloak ships with, which a project never touches and so never sets —
+    // has nothing else on it. The filter that hides unset rows is right about
+    // every other sheet and wrong about this one: it leaves a page showing its
+    // own title and nothing more. Declared per sheet because what a sheet is
+    // ABOUT is the sheet's own property.
+    unset_is_content?: boolean;
     // See types.ts's Sheet.document — prose instead of rows. Carried into the
     // viewer's own shape so a document sheet is a sheet everywhere (tab, group,
     // outline) and a special case only where it has to be: it has no rows, so

@@ -174,6 +174,20 @@ describe("a sheet the cut is told to spare", () => {
     expect(dropUnset(only, ["defaults only"]).report.emptied).toEqual([]);
   });
 
+  // SPARED AND MARKED — one decision, said once. A sheet that keeps its unset
+  // rows without saying they are its content is delivered with the viewer's own
+  // filter still hiding every one of them: the rows are in the file and the
+  // page is blank, which is the worst of both.
+  it("marks it so the page shows the rows it kept", () => {
+    const { input } = dropUnset(doc(), ["app"]);
+    expect((input.sheets[0] as { unset_is_content?: boolean }).unset_is_content).toBe(true);
+  });
+
+  it("leaves the mark off a sheet it cut", () => {
+    const { input } = dropUnset(doc());
+    expect((input.sheets[0] as { unset_is_content?: boolean }).unset_is_content).toBeUndefined();
+  });
+
   it("says which sheets it spared", () => {
     expect(formatUnsetReport(dropUnset(doc(), ["app"]).report)).toContain("kept in full, as named: app");
   });

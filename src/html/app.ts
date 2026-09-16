@@ -2808,6 +2808,7 @@ function keyLeaf(param: ParamData): string {
 
 // Flatten every sheet's categories (depth-first); used by the outline and search.
 function collectNav(data: SheetData, showDefaults: boolean, pivoted: Set<string>): NavEntry[] {
+  const showsUnset = (sheet: SheetData["sheets"][number]): boolean => showDefaults || sheet.unset_is_content === true;
   const out: NavEntry[] = [];
   data.sheets.forEach((sheet, sheetIndex) => {
     // A document's headings ARE its outline. They carry the ids the renderer
@@ -2883,7 +2884,7 @@ function collectNav(data: SheetData, showDefaults: boolean, pivoted: Set<string>
         // nothing but unset rows renders nothing while they are hidden, so an
         // entry for it would jump to a heading that is not there.
         const sum = categoryDefaultSummary(c);
-        if (!showDefaults && sum.allDefault && !sum.noted) return;
+        if (!showsUnset(sheet) && sum.allDefault && !sum.noted) return;
         out.push({
           kind: "category", sheetIndex, sheetName: sheet.name, path, name: c.display ?? c.name, depth,
           id: navAnchorId(sheetIndex, path),
@@ -2946,13 +2947,14 @@ function collectDocLines(data: SheetData): NavEntry[] {
 }
 
 function collectParams(data: SheetData, showDefaults: boolean): NavEntry[] {
+  const showsUnset = (sheet: SheetData["sheets"][number]): boolean => showDefaults || sheet.unset_is_content === true;
   const out: NavEntry[] = [];
   data.sheets.forEach((sheet, sheetIndex) => {
     const walk = (cats: CategoryData[], parentPath: string, depth: number) => {
       cats.forEach((c) => {
         const path = parentPath ? `${parentPath}/${c.name}` : c.name;
         (c.params ?? []).forEach((p) => {
-          if (!showDefaults && effectiveOrigin(p) === "default") return;
+          if (!showsUnset(sheet) && effectiveOrigin(p) === "default") return;
           const value = p.value ?? (p.instances ?? []).map((i) => `${i.name} ${i.value}`).join(" ");
           const extra = Object.values(p.extra ?? {}).join(" ");
           const text = `${p.key} = ${value} ${p.default ? `(default ${p.default})` : ""} ${pickLang(p.description, "en") ?? ""} ${pickLang(p.remarks, "en") ?? ""} ${extra}`.replace(/\s+/g, " ").trim();
@@ -3940,7 +3942,11 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // as a row filtered out — more, since nothing on screen hints at its absence.
   const activeFilters = [filterCommented, hideOutOfScope, allInstances.some((n) => hiddenInstances.has(n))].filter(Boolean).length;
   // Every unset row in the document, for the toggle's own label.
+  // …except on a sheet that shows them anyway. The label says how many rows
+  // turning it on would REVEAL, and counting rows already on screen makes a
+  // toggle that changes nothing look like it would change something.
   const defaultRowCount = data.sheets.reduce((n, sheet) => {
+    if (sheet.unset_is_content === true) return n;
     const walk = (cats: CategoryData[]): number =>
       cats.reduce(
         (m, c) =>
@@ -4743,7 +4749,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                                           ? (id: string, line?: number) => setArtifactTarget({ id, line })
                                           : undefined} t=${t} />`
                 : pivoted.has(sheet.name)
-                ? html`<${PivotView} sheet=${sheet} sheetIndex=${idx} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults}
+                ? html`<${PivotView} sheet=${sheet} sheetIndex=${idx} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults || sheet.unset_is_content === true}
                                      reviews=${reviews} reviewEnabled=${effReviewEnabled}
                                      onOpenReview=${openReview}
                                      onLeave=${alwaysPivoted.has(sheet.name) ? undefined : () => setPivoted((prev) => { const next = new Set(prev); next.delete(sheet.name); return next; })} t=${t} />`
@@ -4755,7 +4761,8 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                                       : null}
                                     sheetFilePath=${sheet.file_path} parentPath="" depth=${1}
                                     columns=${data.columns} reviews=${reviews} reviewEnabled=${effReviewEnabled}
-                                    showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope} showDefaults=${showDefaults}
+                                    showComments=${showComments} filterCommented=${filterCommented} hideOutOfScope=${hideOutOfScope}
+                                    showDefaults=${showDefaults || sheet.unset_is_content === true}
                                     onOpenReview=${openReview} artifact=${artifactAccess} diff=${diff}
                                     t=${t} />
               `)}

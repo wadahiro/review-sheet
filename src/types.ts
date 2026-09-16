@@ -363,6 +363,10 @@ export type Sheet = {
   // opens side by side and offers no toggle, for a sheet that exists only to
   // compare — there is nothing to go back TO. Declared either way, for the
   // reason above: the sheet is written by someone who already knows.
+  // This sheet's unset rows ARE its content — see the viewer's own comment on
+  // SheetData. Written by `generate --keep-unset`, which is the same decision
+  // said once: spare this sheet's unset rows from the cut, and show them.
+  unset_is_content?: boolean;
   compare_components?: boolean | "always";
   role?: string;
   // The review axis this sheet is organised along (environments, regions …),

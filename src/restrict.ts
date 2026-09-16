@@ -341,7 +341,11 @@ export function dropUnset<T extends ParameterSheetInput | VersionedSheetInput>(
   const apply = <S extends { sheets: Sheet[] }>(doc: S): S => ({
     ...doc,
     sheets: doc.sheets.map((s) => {
-      if (spared.has(s.name)) return s;
+      // Spared, and MARKED. The two are one decision — this sheet's unset rows
+      // are its content — and a sheet that keeps them without saying so is
+      // delivered with the viewer's filter still hiding every one of them: the
+      // rows are in the file and the page is blank, which is the worst of both.
+      if (spared.has(s.name)) return { ...s, unset_is_content: true };
       const seen = { rows: 0, some: [] as string[], categories: 0 };
       const categories = prune(s.categories ?? [], s.name, [], seen);
       if (seen.rows > 0 || seen.categories > 0) {

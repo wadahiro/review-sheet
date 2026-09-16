@@ -68,15 +68,47 @@
       "description": "Which document answers a sheet's rows, and where in it each row sits. `{component}` and `{key}` are the row's own.",
       "items": {
         "type": "object",
-        "required": ["sheet"],
+        "required": [
+          "sheet"
+        ],
         "additionalProperties": false,
-        "properties": { "sheet": { "type": "string" }, "document": { "type": "string" }, "address": { "type": "string" }, "substitute": { "type": "string" }, "router": { "type": "string" } },
-        "oneOf": [{ "required": ["document", "address"] }, { "required": ["router"] }]
+        "properties": {
+          "sheet": {
+            "type": "string"
+          },
+          "document": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "substitute": {
+            "type": "string"
+          },
+          "router": {
+            "type": "string"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "document",
+              "address"
+            ]
+          },
+          {
+            "required": [
+              "router"
+            ]
+          }
+        ]
       }
     },
     "id_fields": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "The identity fields a list of maps is addressed by. Carried so a document fetched later is read with the SAME list the sheet was built with."
     },
     "not_checked": {
@@ -84,13 +116,26 @@
       "description": "What to say about a row nothing in this process reaches, and what this process undertakes instead. `carried: true` names the rows whose value is judged inside the rows built from it.",
       "items": {
         "type": "object",
-        "required": ["reason"],
+        "required": [
+          "reason"
+        ],
         "additionalProperties": false,
         "properties": {
-          "sheet": { "type": "string" },
-          "keys": { "type": "array", "items": { "type": "string" } },
-          "carried": { "type": "boolean" },
-          "reason": { "type": "string" }
+          "sheet": {
+            "type": "string"
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "carried": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
         }
       }
     },
@@ -99,21 +144,56 @@
       "description": "Which product rule answers which functional item. A rule with no project fact in it — what a readiness body or `systemctl is-enabled` MEANS — ships with the tool and is bound to this project's own item id.",
       "items": {
         "type": "object",
-        "required": ["rule"],
+        "required": [
+          "rule"
+        ],
         "additionalProperties": false,
         "properties": {
-          "rule": { "enum": ["chrony", "keycloak", "logrotate", "systemd"] },
-          "sheet": { "type": "string" },
-          "health_ready": { "type": "string" },
-          "config_syntax": { "type": "string" },
-          "units_enabled": { "type": "string" },
-          "lifecycle": { "type": "string" },
-          "issuer_external": { "type": "string" },
-          "issuer_base": { "type": "string" },
-          "issuer_conf": { "type": "string" },
-          "issuer_scheme": { "type": "string", "enum": ["http", "https"] },
-          "sticky_session_cookie": { "type": "string" },
-          "time_synced": { "type": "string" }
+          "rule": {
+            "enum": [
+              "chrony",
+              "keycloak",
+              "logrotate",
+              "systemd"
+            ]
+          },
+          "sheet": {
+            "type": "string"
+          },
+          "health_ready": {
+            "type": "string"
+          },
+          "config_syntax": {
+            "type": "string"
+          },
+          "units_enabled": {
+            "type": "string"
+          },
+          "lifecycle": {
+            "type": "string"
+          },
+          "issuer_external": {
+            "type": "string"
+          },
+          "issuer_base": {
+            "type": "string"
+          },
+          "issuer_conf": {
+            "type": "string"
+          },
+          "issuer_scheme": {
+            "type": "string",
+            "enum": [
+              "http",
+              "https"
+            ]
+          },
+          "sticky_session_cookie": {
+            "type": "string"
+          },
+          "time_synced": {
+            "type": "string"
+          }
         }
       }
     },
@@ -122,15 +202,32 @@
       "description": "Which product plugin answers which functional item. The ids are the project's, so the project binds them.",
       "items": {
         "type": "object",
-        "required": ["channel"],
+        "required": [
+          "channel"
+        ],
         "additionalProperties": false,
         "properties": {
-          "channel": { "enum": ["keycloak", "aws-rds"] },
-          "sheet": { "type": "string" },
-          "login_page": { "type": "string" },
-          "login_assets": { "type": "string" },
-          "ldap_connection": { "type": "string" },
-          "parameters_authored": { "type": "string" }
+          "channel": {
+            "enum": [
+              "keycloak",
+              "aws-rds"
+            ]
+          },
+          "sheet": {
+            "type": "string"
+          },
+          "login_page": {
+            "type": "string"
+          },
+          "login_assets": {
+            "type": "string"
+          },
+          "ldap_connection": {
+            "type": "string"
+          },
+          "parameters_authored": {
+            "type": "string"
+          }
         }
       }
     },
@@ -139,9 +236,23 @@
       "description": "Which product build each sheet describes. A row saying the product's own default applies is a claim about that build and no other.",
       "items": {
         "type": "object",
-        "required": ["sheet", "product", "version"],
+        "required": [
+          "sheet",
+          "product",
+          "version"
+        ],
         "additionalProperties": false,
-        "properties": { "sheet": { "type": "string" }, "product": { "type": "string" }, "version": { "type": "string" } }
+        "properties": {
+          "sheet": {
+            "type": "string"
+          },
+          "product": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
       }
     },
     "defaults_checked_by": {
@@ -149,9 +260,28 @@
       "description": "What else decides whether a file's default-in-force row is true: a binary whose compiled-in default differs from its manual, and a file beside the configuration that injects options.",
       "items": {
         "type": "object",
-        "required": ["product", "file"],
+        "required": [
+          "product",
+          "file"
+        ],
         "additionalProperties": false,
-        "properties": { "product": { "enum": ["httpd", "keycloak"] }, "file": { "type": "string" }, "command": { "type": "string" }, "aside": { "type": "string" } }
+        "properties": {
+          "product": {
+            "enum": [
+              "httpd",
+              "keycloak"
+            ]
+          },
+          "file": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "aside": {
+            "type": "string"
+          }
+        }
       }
     },
     "channels": {
@@ -159,19 +289,79 @@
       "description": "Rows a deployed file cannot settle, and the command that can. Carried from the build spec; `collect-plan` says what to gather from these and `judge` answers from them.",
       "items": {
         "type": "object",
-        "required": ["channel", "sheet", "command", "read"],
+        "required": [
+          "channel",
+          "sheet",
+          "command",
+          "read"
+        ],
         "additionalProperties": false,
         "properties": {
-          "channel": { "const": "command" },
-          "sheet": { "type": "string" },
-          "keys": { "type": "array", "items": { "type": "string" } },
-          "key_prefix": { "type": "string" },
-          "command": { "type": "string" },
+          "channel": {
+            "const": "command"
+          },
+          "sheet": {
+            "type": "string"
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "key_prefix": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
           "read": {
             "oneOf": [
-              { "type": "object", "required": ["whole"], "additionalProperties": false, "properties": { "whole": { "const": true }, "lower": { "type": "boolean" } } },
-              { "type": "object", "required": ["pattern"], "additionalProperties": false, "properties": { "pattern": { "type": "string" }, "map": { "type": "object", "additionalProperties": { "type": "string" } } } },
-              { "type": "object", "required": ["member"], "additionalProperties": false, "properties": { "member": { "const": true } } }
+              {
+                "type": "object",
+                "required": [
+                  "whole"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "whole": {
+                    "const": true
+                  },
+                  "lower": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "pattern"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "pattern": {
+                    "type": "string"
+                  },
+                  "map": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "member"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "member": {
+                    "const": true
+                  }
+                }
+              }
             ]
           }
         }
@@ -314,6 +504,10 @@
           "items": {
             "$ref": "#/$defs/category"
           }
+        },
+        "unset_is_content": {
+          "type": "boolean",
+          "description": "This sheet's unset rows ARE its content. A sheet whose whole subject is the product's own defaults has nothing else on it, so the filter that hides unset rows leaves a page showing its own title and nothing more. Written by `generate --keep-unset`, and settable by a build that knows the same about one of its sheets."
         },
         "document": {
           "type": "object",
@@ -645,10 +839,17 @@
         "observed": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["host", "at"],
+          "required": [
+            "host",
+            "at"
+          ],
           "properties": {
-            "host": { "type": "string" },
-            "at": { "type": "string" }
+            "host": {
+              "type": "string"
+            },
+            "at": {
+              "type": "string"
+            }
           },
           "description": "Required by `nature: \"observed\"` and meaningless without it: which host it was read from and at what moment. A record whose evidence cannot say when it was taken cannot be re-checked."
         },
@@ -732,10 +933,19 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["level", "raised"],
+            "required": [
+              "level",
+              "raised"
+            ],
             "properties": {
-              "level": { "$ref": "#/$defs/langText", "description": "What this level is called." },
-              "raised": { "$ref": "#/$defs/langText", "description": "How this project raises the items at this level." }
+              "level": {
+                "$ref": "#/$defs/langText",
+                "description": "What this level is called."
+              },
+              "raised": {
+                "$ref": "#/$defs/langText",
+                "description": "How this project raises the items at this level."
+              }
             }
           },
           "description": "How this project raises its items, one entry per level, outermost first. The WORDS are the project's — an organisation's test standard states them, and a general-purpose tool quoting one organisation's sentences would publish them to every other project it builds. The tool adds the other half of each row: where that level is on the page it wrote."
@@ -744,29 +954,94 @@
           "type": "array",
           "items": {
             "oneOf": [
-              { "$ref": "#/$defs/langText" },
+              {
+                "$ref": "#/$defs/langText"
+              },
               {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["text"],
+                "required": [
+                  "text"
+                ],
                 "properties": {
-                  "id": { "type": "string", "description": "What a result joins on. The sentence is a label; an id is a join that survives rewording." },
-                  "text": { "$ref": "#/$defs/langText" },
-                  "sheet": { "type": "string", "description": "Which sheet the bytes this item was answered from are filed under — the chapter a reader of the verdict is standing in." },
-                  "intrusive": { "type": "boolean", "description": "Answering this item disturbs the running system (stopping a service to prove it stops). The runner gates on it; the record says so where such an item was not permitted." },
+                  "id": {
+                    "type": "string",
+                    "description": "What a result joins on. The sentence is a label; an id is a join that survives rewording."
+                  },
+                  "text": {
+                    "$ref": "#/$defs/langText"
+                  },
+                  "sheet": {
+                    "type": "string",
+                    "description": "Which sheet the bytes this item was answered from are filed under — the chapter a reader of the verdict is standing in."
+                  },
+                  "intrusive": {
+                    "type": "boolean",
+                    "description": "Answering this item disturbs the running system (stopping a service to prove it stops). The runner gates on it; the record says so where such an item was not permitted."
+                  },
                   "check": {
                     "type": "object",
-                    "required": ["command", "read", "expect"],
+                    "required": [
+                      "command",
+                      "read",
+                      "expect"
+                    ],
                     "additionalProperties": false,
                     "description": "How a command answers this item. `collect-plan` reads the command from here and `judge` reads its output — the per-host loop, the verdict and the evidence are the tool's.",
                     "properties": {
-                      "command": { "type": "string" },
-                      "expect": { "type": "string" },
+                      "command": {
+                        "type": "string"
+                      },
+                      "expect": {
+                        "type": "string"
+                      },
                       "read": {
                         "oneOf": [
-                          { "type": "object", "required": ["whole"], "additionalProperties": false, "properties": { "whole": { "const": true }, "lower": { "type": "boolean" } } },
-                          { "type": "object", "required": ["pattern"], "additionalProperties": false, "properties": { "pattern": { "type": "string" }, "map": { "type": "object", "additionalProperties": { "type": "string" } } } },
-                          { "type": "object", "required": ["member"], "additionalProperties": false, "properties": { "member": { "const": true } } }
+                          {
+                            "type": "object",
+                            "required": [
+                              "whole"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "whole": {
+                                "const": true
+                              },
+                              "lower": {
+                                "type": "boolean"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "pattern"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "pattern": {
+                                "type": "string"
+                              },
+                              "map": {
+                                "type": "object",
+                                "additionalProperties": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "member"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "member": {
+                                "const": true
+                              }
+                            }
+                          }
                         ]
                       }
                     }

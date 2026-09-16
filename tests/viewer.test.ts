@@ -3614,6 +3614,66 @@ describe("the order the sheets are in", () => {
 // names, and the version, which is the model's own bookkeeping — `current` on
 // every document that is not a comparison. What a reader comes to this page for
 // is the list of sheets.
+// A SHEET WHOSE UNSET ROWS ARE ITS CONTENT.
+//
+// The filter that hides unset rows is right about every sheet but one: a sheet
+// whose whole subject IS the product's own defaults — the clients Keycloak
+// ships with, which a project never touches and so never sets — has nothing
+// else on it, and the filter leaves a page showing its own title and nothing
+// more. Measured on a real delivery: two such pages, blank.
+describe("a sheet that says its unset rows are its content", () => {
+  const sheet = (name: string, over: Record<string, unknown> = {}) => ({
+    name,
+    instances: [],
+    categories: [{ name: "c", params: [{ key: `${name}-k`, value: "1", origin: "default" }] }],
+    ...over,
+  });
+  const draw = (): HTMLElement => {
+    document.body.innerHTML = "";
+    location.hash = "#1";
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(
+      h(Root, {
+        payload: {
+          metadata: { title: "t" },
+          versions: [{ version: "current", sheets: [sheet("theirs", { unset_is_content: true }), sheet("ours")] }],
+        } as never,
+        reviewEnabled: false,
+        initialLang: "ja",
+        server: false,
+      }),
+      host
+    );
+    return host;
+  };
+
+  it("shows them without the filter being turned on", () => {
+    expect(draw().textContent).toContain("theirs-k");
+  });
+
+  // …and says nothing about the sheets the filter is right about.
+  it("leaves every other sheet's unset rows hidden", () => {
+    location.hash = "#2";
+    expect(draw().textContent).not.toContain("ours-k");
+  });
+
+  // The toggle's label says how many rows turning it ON would REVEAL. Counting
+  // rows already on screen makes a toggle that changes nothing look like it
+  // would change something.
+  it("is not counted in what the toggle would reveal", async () => {
+    const host = draw();
+    const menu = [...host.querySelectorAll("button")].find((b) => /絞り込み/.test(b.textContent ?? ""));
+    (menu as HTMLElement | undefined)?.click();
+    await Promise.resolve();
+    const label = [...host.querySelectorAll(".rs-menu-check")].find((l) => /未設定の行を表示/.test(l.textContent ?? ""));
+    // One sheet's row is hidden and would be revealed; the other's is already
+    // on screen, and counting it makes a toggle that reveals one look like it
+    // reveals two.
+    expect(label?.textContent).toContain("1 件");
+  });
+});
+
 describe("the overview page", () => {
   const draw = (metadata: Record<string, unknown>): HTMLElement => {
     document.body.innerHTML = "";
