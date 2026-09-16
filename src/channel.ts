@@ -109,9 +109,22 @@ export type ProbeRule = {
   // A rule that only quotes what a product said can ignore it; one that says
   // anything of its own resolves its words from it (`wordsFor` in
   // src/channel-words.ts) rather than writing a sentence in one language.
+  //
+  // `observedHosts` is HOW MANY HOSTS THIS OBSERVATION CARRIES — the run's own
+  // shape, not the design's. It is not the node count the deployment is
+  // supposed to have: a project that collects its whole inventory every time
+  // sees the two agree and can read one as the other, and one that collects a
+  // single node of a multi-node design, or collects in several passes, sees
+  // them differ. Where a rule needs the DESIGN's number, that is a project fact
+  // and comes from the project — a constant in its own rule, or read out of
+  // `held` (the files this same run collected), which is the shape that keeps
+  // one number in one place.
+  //
+  // `hosts` is the same value under its old name, which said none of that. It
+  // warns once and will be removed.
   verdict: (
     probe: { how?: string; ran?: boolean; why?: string; ok?: boolean | null; text?: string },
-    ctx: { host: string; held: unknown; hosts: number; lang?: "ja" | "en" }
+    ctx: { host: string; held: unknown; observedHosts: number; hosts?: number; lang?: "ja" | "en" }
   ) => { ok: boolean | null; why?: string; line?: number };
 };
 

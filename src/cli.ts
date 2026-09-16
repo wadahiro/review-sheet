@@ -20,7 +20,7 @@ import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults }
 import { renderTestDoc, renderExcluded, injectBlocks, unitDocuments } from "./testdoc.js";
 import { judgeFiles, evidenceFrom, collectPlan, registerModelChannels, answerTheRest, judgeFunctional, rpmQuery, runsFrom } from "./judge.js";
 import { findBakedSecrets, formatBakedSecrets, findSecretsInEvidence, formatEvidenceLeaks } from "./secrets.js";
-import { listProbeRules } from "./channel.js";
+import { listProbeRules, listDocumentRouters } from "./channel.js";
 import { collectHost, reachWith } from "./collect.js";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, ArtifactPreview } from "./types.js";
 import { evidencePreviews, withoutEvidence } from "./evidence.js";
@@ -167,8 +167,15 @@ async function loadCustomProviders(dir?: string): Promise<number> {
 // when the answer is not a value at an address is code, and code that runs
 // inside this tool's own fold is code that does not need a second program, an
 // answers file, an exit-code protocol or a gate on whether it wrote anything.
+//
+// A DOCUMENT ROUTER counts too. This directory is where a project puts the code
+// a judge run needs, and a router is the other kind: where a row sits in what
+// an API returned, for a sheet the three `document:` placeholders cannot name.
+// Counting only probe rules made a plugin that registers one look like a plugin
+// that registered nothing — the warning below fired on a file that was working.
 async function loadCustomRules(dir?: string): Promise<number> {
-  return loadPluginModules(dir, join(process.cwd(), ".review-sheet", "rules"), "probe rule", () => listProbeRules().length);
+  const count = (): number => listProbeRules().length + listDocumentRouters().length;
+  return loadPluginModules(dir, join(process.cwd(), ".review-sheet", "rules"), "probe rule or document router", count);
 }
 
 async function loadCustomRecipes(dir?: string): Promise<number> {

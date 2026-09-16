@@ -150,7 +150,7 @@ describe("what a lifecycle run left behind", () => {
 });
 
 describe("the lifecycle rule a project binds", () => {
-  const ctx = { host: "h1", held: {}, hosts: 1 };
+  const ctx = { host: "h1", held: {}, observedHosts: 1 };
   const ruleFor = (id: string) => {
     registerSystemdRules({ lifecycle: id, sheet: "os" });
     const r = listProbeRules().find((x) => x.covers(id));

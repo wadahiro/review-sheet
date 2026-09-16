@@ -381,7 +381,7 @@
     "file": "tests/fixtures/plugin-resolve/.review-sheet/rules/probe.mjs",
     "parser": "generic",
     "count": 7,
-    "sha": "524c8104e3e93ec9"
+    "sha": "ec0594c34181f8c6"
   },
   {
     "file": "tests/fixtures/plugin-resolve/input.json",
@@ -400,6 +400,24 @@
     "parser": "json",
     "count": 7,
     "sha": "3153aa2b578565d5"
+  },
+  {
+    "file": "tests/fixtures/plugin-router/.review-sheet/rules/router.mjs",
+    "parser": "generic",
+    "count": 7,
+    "sha": "2f43f8691d5a366c"
+  },
+  {
+    "file": "tests/fixtures/plugin-router/input.json",
+    "parser": "json",
+    "count": 10,
+    "sha": "db0d4f84185eec82"
+  },
+  {
+    "file": "tests/fixtures/plugin-router/obs.json",
+    "parser": "json",
+    "count": 7,
+    "sha": "68b0afb85cb90795"
   },
   {
     "file": "tests/fixtures/projects/README.md",

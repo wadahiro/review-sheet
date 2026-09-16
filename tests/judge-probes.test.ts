@@ -7,7 +7,7 @@
 // "cannot be asked here" and "ran and failed" apart.
 
 import { describe, it, expect } from "bun:test";
-import { judgeProbes, type ProbeResult, type ObservedHost, type Observation } from "../src/judge";
+import { judgeProbes, type ProbeResult, type ObservedHost, type Observation, type ProbeContext } from "../src/judge";
 import type { TestPlan } from "../src/testplan";
 import { CHANNEL_WORDS } from "../src/channel-words";
 
@@ -157,6 +157,64 @@ describe("a rule the tool itself holds", () => {
     } as unknown as TestPlan;
     const obs = [{ environment: "stg", hosts: { web01: { files: {}, probes: { "service-enabled": { ran: true, text: "a enabled\nfw Failed to get unit file state for fw.service: No such file or directory\n" } } } } }] as unknown as Observation[];
     expect(judgeFunctional(plan, obs, { lang: "ja" }).answers[0]!.status).toBe("pass");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// How many hosts a rule is told about, and what that number is NOT.
+//
+// It is the hosts THIS observation carries. A project that collects its whole
+// inventory every time sees that agree with the design's node count and can
+// read one as the other; one that collects a single node of a multi-node
+// design, or collects in passes, sees them differ — and the old name, `hosts`,
+// said nothing either way.
+describe("the number of hosts a rule is told about", () => {
+  const ctxFor = (hosts: Record<string, ObservedHost>, name?: string): ProbeContext => {
+    let seen: ProbeContext | undefined;
+    judgeProbes(
+      { unit: "u", id: "x", text: "t", instance: "stg" },
+      hosts,
+      (_p, ctx) => {
+        seen = ctx;
+        return { ok: true };
+      },
+      { lang: "en", ...(name === undefined ? {} : { rule: name }) }
+    );
+    if (seen === undefined) throw new Error("the rule was never called");
+    return seen;
+  };
+  const two = {
+    h1: { files: {}, probes: { x: { ran: true, text: "a" } } },
+    h2: { files: {}, probes: { x: { ran: true, text: "a" } } },
+  } as unknown as Record<string, ObservedHost>;
+
+  it("counts the hosts this observation carries", () => {
+    expect(ctxFor(two).observedHosts).toBe(2);
+  });
+
+  // The old name still answers, and answers the SAME number: a renamed field
+  // reads as `undefined`, and a rule comparing a count against `undefined` does
+  // not fail — it passes or fails wrongly, which is worse than breaking.
+  it("still answers to its old name, with the same number", () => {
+    expect(ctxFor(two).hosts).toBe(2);
+  });
+
+  // …and says so, naming the rule, so a reader knows which plugin to change.
+  it("says which rule is reading the old name", () => {
+    const said: string[] = [];
+    const warn = console.warn;
+    console.warn = (...args: unknown[]) => void said.push(args.join(" "));
+    try {
+      // A name nothing else in the suite uses: the warning is once per process
+      // per rule, so a shared name would already have been spent.
+      const ctx = ctxFor(two, "some-project.a-rule");
+      expect(ctx.hosts).toBe(2);
+      expect(ctx.hosts).toBe(2);
+    } finally {
+      console.warn = warn;
+    }
+    expect(said.filter((l) => l.includes("some-project.a-rule"))).toHaveLength(1);
+    expect(said.join("\n")).toContain("ctx.observedHosts");
   });
 });
 

@@ -1,0 +1,51 @@
+{
+  "metadata": {
+    "title": "t"
+  },
+  "groups": [
+    {
+      "name": "directories",
+      "test": {
+        "method": {
+          "en": "read the product's API"
+        }
+      }
+    }
+  ],
+  "documents": [
+    {
+      "sheet": "directories",
+      "router": "store-and-mappers"
+    }
+  ],
+  "sheets": [
+    {
+      "name": "directories",
+      "categories": [
+        {
+          "name": "corp",
+          "params": [
+            {
+              "key": "config.connectionUrl",
+              "value": "ldaps://corp.example.com",
+              "source": {
+                "path": "config.connectionUrl"
+              }
+            },
+            {
+              "key": "mappers.first name.attribute",
+              "value": "givenName",
+              "source": {
+                "path": "mappers[name=first name].attribute"
+              }
+            }
+          ]
+        }
+      ],
+      "group": "directories",
+      "instances": [
+        "prod"
+      ]
+    }
+  ]
+}

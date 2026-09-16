@@ -12,6 +12,6 @@ registerProbeRule({
   verdict: (probe, ctx) => {
     const n = clusterMembers(probe.text);
     if (n === undefined) return { ok: false, why: "no cluster view in the output" };
-    return n === ctx.hosts ? { ok: true } : { ok: false, why: `${n} member(s), expected ${ctx.hosts}` };
+    return n === ctx.observedHosts ? { ok: true } : { ok: false, why: `${n} member(s), expected ${ctx.observedHosts}` };
   },
 });

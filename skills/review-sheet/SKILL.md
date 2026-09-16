@@ -2212,6 +2212,7 @@ loads them from an explicit flag and from a convention directory:
 | Recipe | `registerRecipe` | `--recipes-dir` | `./.review-sheet/recipes/` | `import --spec` |
 | Metadata provider | `registerMetadataProvider` | `--providers-dir` | `./.review-sheet/providers/` | `import` |
 | Probe rule | `registerProbeRule` | `--rules-dir` | `./.review-sheet/rules/` | `judge` |
+| Document router | `registerDocumentRouter` | `--rules-dir` | `./.review-sheet/rules/` | `judge` |
 
 Each command loads the kinds it can act on: `verify` / `apply` / `serve` resolve
 source maps, so they need parsers but never recipes or providers.
@@ -3658,6 +3659,59 @@ documents:
   - { sheet: keycloak realm,     document: "{component}" }   # address derived from the binding
   - { sheet: aws infrastructure, router: aws-rds }           # …or a plugin routes it
 ```
+
+### Routing documents from your own project
+
+`document:` is a template with three placeholders — `{component}`, `{key}`,
+`{address}` — matched against a document's `name`. That covers the case where a
+component and a key name the document between them. It does not cover a
+component holding several KINDS of document: a store's settings and the list of
+its mappers come back as two, under one component, and no combination of the
+three says which is which.
+
+The answer to that is not more placeholders. A router IS a function, and you can
+register one from your own project — the same module directory your probe rules
+live in (`--rules-dir`, default `./.review-sheet/rules/`), loaded by `judge`
+before anything is judged:
+
+```js
+// .review-sheet/rules/directories.mjs
+import { registerDocumentRouter } from "review-sheet/src/channel.ts";
+
+registerDocumentRouter({
+  name: "store-and-mappers",
+  route: (item) => {
+    if (item.target.sheet !== "directories") return undefined;
+    const where = item.address ?? item.target.key;
+    if (where.startsWith("mappers[")) {
+      return { document: `${item.component}/mappers`, address: where, idFields: ["name"] };
+    }
+    if (!where.startsWith("config.")) return undefined;   // handed back, not guessed
+    return { document: `${item.component}/settings`, address: where };
+  },
+});
+```
+
+```yaml
+documents:
+  - { sheet: directories, router: store-and-mappers }
+```
+
+`route()` sees the whole `TestItem` — sheet, component, key, the row's own
+`address`, its category path — and answers both halves at once: which document,
+and where in it the row sits. Returning `undefined` hands the row BACK: it comes
+out `not run`, named in the run's own output, rather than filed at a guessed
+address. Which is the point — what to say about a row a step did not check is
+your statement, not this tool's guess.
+
+`documents:` naming a router nothing registered **fails the run**, with the
+registered names beside it. It used to leave every row of that sheet unanswered,
+which reads exactly like a sheet that has no document — so a misspelled name, or
+a plugin file that never loaded, showed up nowhere.
+
+Reach for a router the moment a document's name needs anything the three
+placeholders do not say. Reach for `document:` when it does not — it is a table,
+and a table is the thing you want to be reading in six months.
 
 **Say which document; the address usually derives.** Where a row sits in a
 product's own export is the product's shape, not yours, so a sheet bound to

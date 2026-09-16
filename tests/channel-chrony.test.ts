@@ -53,7 +53,7 @@ describe("the rule a project binds to its own item", () => {
     if (r === undefined) throw new Error("no rule covers " + id);
     return r;
   };
-  const ctx = { host: "h1", held: {}, hosts: 1 };
+  const ctx = { host: "h1", held: {}, observedHosts: 1 };
 
   it("passes a disciplined clock and points at the line", () => {
     const v = ruleFor("chrony.time-synced.1").verdict({ text: TRACKING }, ctx);

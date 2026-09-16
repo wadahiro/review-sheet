@@ -534,7 +534,7 @@ describe("comparing a published issuer against the expected one", () => {
 });
 
 describe("the issuer rule a project binds", () => {
-  const ctx = { host: "h1", held: {}, hosts: 1 };
+  const ctx = { host: "h1", held: {}, observedHosts: 1 };
   const body = (issuer: string) => JSON.stringify({ issuer });
   const ruleFor = (id: string, base?: string) => {
     registerKeycloakRules({ issuer_external: id, ...(base === undefined ? {} : { issuer_base: base }), sheet: "sso" });
@@ -626,7 +626,7 @@ describe("what AUTH_SESSION_ID says about the deployment", () => {
 });
 
 describe("the sticky-session rule a project binds", () => {
-  const ctx = { host: "h1", held: {}, hosts: 1 };
+  const ctx = { host: "h1", held: {}, observedHosts: 1 };
   const ruleFor = (id: string) => {
     registerKeycloakRules({ sticky_session_cookie: id, sheet: "sso" });
     const r = listProbeRules().find((x) => x.covers(id));
@@ -690,7 +690,7 @@ describe("the hostname a deployed keycloak.conf sets", () => {
 });
 
 describe("the issuer rule reading its expectation off the host", () => {
-  const ctx = (conf: string | null) => ({ host: "h1", held: { files: { "/opt/keycloak/conf/keycloak.conf": conf } }, hosts: 1 });
+  const ctx = (conf: string | null) => ({ host: "h1", held: { files: { "/opt/keycloak/conf/keycloak.conf": conf } }, observedHosts: 1 });
   const ASKED = "GET https://sso.example.com/realms/main/.well-known/openid-configuration";
   const body = (issuer: string) => JSON.stringify({ issuer });
   const ruleFor = (id: string, extra: Record<string, string>) => {

@@ -39,7 +39,7 @@ import { compiledInFor, injectedOptions, lineOfCompiledIn, includeSyntaxFor } fr
 import { effectiveConfig, isProductDefault, lineOfEffective, SECRET_FIELDS, REDACTED, MASKED, LOGIN_MARKS_LIST } from "./channels/keycloak.js";
 import type { TestItem, TestPlan } from "./testplan.js";
 import type { LangText, FunctionalRule } from "./types.js";
-import { listChannels, listFunctionalChannels, listProbeRules, registerChannel, commandChannel, getDocumentRouter, productVersionFor, type Channel } from "./channel.js";
+import { listChannels, listFunctionalChannels, listProbeRules, registerChannel, commandChannel, getDocumentRouter, listDocumentRouters, productVersionFor, type Channel } from "./channel.js";
 import type { TestResult, TestResults } from "./testresults.js";
 
 // One environment, as somebody collected it. The shape is a contract rather
@@ -213,14 +213,70 @@ export type HostVerdict = {
 // The tool's own `check:` items go through this too, with a rule that compares
 // the read value against the declared one. One implementation, so the two can
 // never drift.
+// What a rule is told about the run it is judging.
+export type ProbeContext = {
+  host: string;
+  held: ObservedHost;
+  // How many hosts THIS observation carries. See ProbeRule in channel.ts for
+  // why that is not the design's node count.
+  observedHosts: number;
+  // The same number under the name it used to have, which read like the
+  // second thing. Kept so no rule breaks in silence — a renamed field is
+  // `undefined`, and a rule comparing against `undefined` does not fail, it
+  // answers wrongly.
+  hosts?: number;
+  lang?: "ja" | "en";
+};
+
+// Said once per process, not once per host: a fleet would otherwise print it
+// once per node per item.
+const warnedAbout = new Set<string>();
+
+function probeContext(
+  host: string,
+  held: ObservedHost,
+  observedHosts: number,
+  lang: "ja" | "en" | undefined,
+  rule: string | undefined
+): ProbeContext {
+  const ctx = {
+    host,
+    held,
+    observedHosts,
+    ...(lang === undefined ? {} : { lang }),
+  } as ProbeContext;
+  // A GETTER, so the warning fires when a rule actually reads the old name and
+  // not for every rule that never touches it.
+  Object.defineProperty(ctx, "hosts", {
+    enumerable: true,
+    get() {
+      const who = rule ?? "a probe rule";
+      if (!warnedAbout.has(who)) {
+        warnedAbout.add(who);
+        console.warn(
+          `Warning: ${who} reads ctx.hosts, which is now ctx.observedHosts. Same value — the number of hosts ` +
+            `THIS observation carries — under a name that says so. It is not the node count the design expects; ` +
+            `where a rule needs that, it is the project's own number. ctx.hosts will be removed.`
+        );
+      }
+      return observedHosts;
+    },
+  });
+  return ctx;
+}
+
 export function judgeProbes(
   item: { unit: string; id?: string; text: LangText | string; instance: string; intrusive?: boolean },
   hosts: Record<string, ObservedHost>,
-  verdict: (probe: ProbeResult, ctx: { host: string; held: ObservedHost; hosts: number }) => HostVerdict,
+  verdict: (probe: ProbeResult, ctx: ProbeContext) => HostVerdict,
   opts: {
     lang?: "ja" | "en";
     sheet?: string;
     at?: string;
+    // The rule's own name, so the deprecation warning on `ctx.hosts` can say
+    // WHICH plugin to change. A caller that has no name (the tool's own
+    // `check:` path builds its rule inline) passes none.
+    rule?: string;
     // Where the probe for this item lives on a host. The default is the
     // declared `probes` map; the `check:` path reads a command's output instead.
     read?: (held: ObservedHost, id: string, host: string) => ProbeResult | undefined;
@@ -261,7 +317,7 @@ export function judgeProbes(
     // The document's language reaches the rule here. Nowhere else does: a rule
     // is registered once, at load, and cannot be told then which document it
     // will end up in.
-    const got = verdict(probe, { host, held, hosts: entries.length, ...(opts.lang === undefined ? {} : { lang: opts.lang }) });
+    const got = verdict(probe, probeContext(host, held, entries.length, opts.lang, opts.rule));
     if (got.ok === null) {
       seen.push({ host, ran: false, why: got.why || t.notProbed });
       continue;
@@ -483,6 +539,29 @@ export function judgeFiles(
     substitute?: string;
   } = {}
 ): JudgeOutcome {
+  // A `documents:` entry naming a router NOTHING registered used to be
+  // indistinguishable from a router deliberately handing a row back: both left
+  // `documentFor` with nothing, and every row of that sheet came out
+  // unanswered. A record then says the sheet could not be answered, which is
+  // the same sentence it would say if the sheet genuinely had no document —
+  // and the actual cause, a misspelled name or a plugin file that never
+  // loaded, appears nowhere. Named, with what IS registered beside it, because
+  // the usual cause of one is the spelling of the other.
+  const missingRouters = (opts.documents ?? []).filter(
+    (d) => d.router !== undefined && getDocumentRouter(d.router) === undefined
+  );
+  if (missingRouters.length > 0) {
+    const have = listDocumentRouters().map((r) => r.name);
+    throw new Error(
+      `documents: names ${missingRouters.length} router(s) nothing registered: ` +
+        missingRouters.map((d) => `"${d.router}" (sheet "${d.sheet}")`).join(", ") +
+        `. Registered: ${have.length === 0 ? "none" : have.map((n) => `"${n}"`).join(", ")}. ` +
+        `A product router is registered by the plugin that owns it; a project's own is registered by a module ` +
+        `under the probe-rule directory (--rules-dir, default ./.review-sheet/rules) calling ` +
+        `registerDocumentRouter. Left unregistered, every row of that sheet would come back unanswered with ` +
+        `nothing saying why.`
+    );
+  }
   const t = JUDGE_WORDS[opts.lang ?? "ja"];
   const at = opts.at ?? new Date().toISOString();
   const { merged, conflicts } = mergeByEnvironment(observations);
@@ -1311,7 +1390,7 @@ export function judgeFunctional(
         f,
         obs?.hosts ?? {},
         (probe, ctx) => rule.verdict(probe, ctx),
-        { lang: opts.lang, at, ...((rule.sheet ?? f.sheet) === undefined ? {} : { sheet: (rule.sheet ?? f.sheet)! }) }
+        { lang: opts.lang, at, rule: rule.name, ...((rule.sheet ?? f.sheet) === undefined ? {} : { sheet: (rule.sheet ?? f.sheet)! }) }
       );
       out.push(answer);
       for (const d of documents) {

@@ -127,11 +127,29 @@ describe("a row answered through a router", () => {
   });
 
   // The registration is the project's: a router nobody bound answers nothing.
+  // And a `documents:` entry naming one nothing registered is a BROKEN
+  // DECLARATION, not a router declining a row — the two used to be the same
+  // outcome, every row of the sheet unanswered, so a misspelled name or a
+  // plugin file that never loaded read as a sheet that has no document.
   it("is only registered when a documents: entry names it", () => {
     clear();
     expect(listDocumentRouters()).toEqual([]);
-    const got = judge([item("aurora.aws_rds_cluster_parameter_group.this.parameter[name=max_connections].value", "500")]);
-    expect(got.results).toEqual([]);
+    expect(() => judge([item("aurora.aws_rds_cluster_parameter_group.this.parameter[name=max_connections].value", "500")]))
+      .toThrow(/names 1 router\(s\) nothing registered/);
+  });
+
+  // …and it says what IS registered, because the usual cause of one name being
+  // absent is the spelling of another.
+  it("names the routers that are registered beside the one that is not", () => {
+    registerAwsRdsRouter();
+    const wrong = () =>
+      judgeFiles(planOf([item("aurora.aws_rds_cluster.this.backup_retention_period", "7")]), [obs], {
+        at: "X",
+        lang: "en",
+        documents: [{ sheet: "aws infrastructure", router: "aws-rd" }],
+      });
+    expect(wrong).toThrow(/"aws-rd" \(sheet "aws infrastructure"\)/);
+    expect(wrong).toThrow(/Registered: "aws-rds"/);
   });
 });
 

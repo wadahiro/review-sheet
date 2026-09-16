@@ -1,0 +1,12 @@
+{
+  "environment": "prod",
+  "hosts": {
+    "node1": {
+      "files": {},
+      "documents": [
+        { "name": "corp/settings", "format": "json", "how": "GET /admin/components/corp", "text": "{ \"config\": { \"connectionUrl\": \"ldaps://corp.example.com\" } }" },
+        { "name": "corp/mappers", "format": "json", "how": "GET /admin/components/corp/mappers", "text": "{ \"mappers\": [ { \"name\": \"first name\", \"attribute\": \"givenName\" } ] }" }
+      ]
+    }
+  }
+}
