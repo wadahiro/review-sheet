@@ -113,7 +113,24 @@ export type ObservedDocument = {
 // Where a row's value sits in one collected file, keyed by the structural
 // address the sheet was built from — the same projection every other reader of
 // an entry uses, so a row's own address resolves against it unchanged.
-type Parsed = Map<string, { value: string; line?: number }>;
+// A file, read: every value at its own address — and every BLOCK at its own.
+//
+// A container row is not a setting, it is the opening of a block: `<Directory
+// "/var/www">`, a logrotate pattern. It has a line of its own (the opening), and
+// an identity written in that opening — which the parsers all record
+// (`ContainerNode.line` / `.subject`) and this used to throw away, keeping only
+// the leaves. A judge could then say two things about such a row, both weaker
+// than the file allows: that it EXISTS, and nothing about where.
+type Parsed = Map<string, { value: string; line?: number; block?: BlockRecord }>;
+
+// What a block's own opening says, for the row that IS the block.
+type BlockRecord = {
+  // The identity written in the opening, verbatim (`ContainerNode.subject`).
+  subject?: string;
+  // …assembled by a template from variables, so no file holds the result and a
+  // comparison against the deployed text is between two spellings of one fact.
+  assembled?: boolean;
+};
 
 // The same address, two spellings. A file quotes an identity when it has to —
 // a URL as a client id — and a product that has no placeholder in it never
@@ -124,6 +141,23 @@ const parse = (text: string | null | undefined, path: string, format: Format | u
   if (text === undefined || text === null) return null;
   const out: Parsed = new Map();
   for (const e of extractFile(text, path, format, idFields === undefined ? undefined : { idFields })) {
+    // THE BLOCKS THIS VALUE IS INSIDE, each at its own address. Every child
+    // repeats the whole chain, so the first one to arrive wins — they carry the
+    // same opening — and a block is recorded even where no leaf of it is, since
+    // its own row asks about the opening and not about what is under it.
+    let at = "";
+    for (const c of e.containers ?? []) {
+      at = at === "" ? c.pathSeg : `${at}.${c.pathSeg}`;
+      const address = unquoteIds(at);
+      if (out.has(address)) continue;
+      out.set(address, {
+        value: c.subject ?? "",
+        ...(c.line === undefined ? {} : { line: c.line }),
+        block: { ...(c.subject === undefined ? {} : { subject: c.subject }), ...(c.subjectAssembled === true ? { assembled: true } : {}) },
+      });
+    }
+    // …and the value itself, which wins over a block of the same address: a
+    // leaf is what the row asking at that address is about.
     out.set(unquoteIds(e.source?.path ?? e.key), { value: String(e.value), line: e.source?.line });
   }
   return out;
@@ -442,6 +476,8 @@ export type JudgeWords = {
   absentFail: (path: string) => string;
   containerPass: string;
   containerFail: (path: string) => string;
+  containerIs: (subject: string) => string;
+  containerIsNot: (subject: string) => string;
   setHere: (path: string) => string;
   setElsewhere: (path: string, by: string) => string;
   fromFile: string;
@@ -472,6 +508,8 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     absentPass: "削除されていることを確認（配布物にあり、この案件では設定しない）",
     absentFail: (path) => `${path} にまだ存在する（配布物から削除したはずの設定）`,
     containerPass: "この設定ブロックが配備ファイルにあることを確認（ブロック自体に値は無い）",
+    containerIs: (subject) => `この設定ブロックが配備ファイルにあり、開きが ${subject} であることを確認`,
+    containerIsNot: (subject) => `この設定ブロックはあるが、開きは ${subject}`,
     containerFail: (path) => `${path} にこの設定ブロックが無い — 配下の設定はどれも効かない`,
     setHere: (path) => `${path} で設定している`,
     setElsewhere: (path, by) => `${path} が読み込む ${by} で設定している`,
@@ -501,6 +539,8 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     absentPass: "confirmed gone (shipped by the distribution, not set by this project)",
     absentFail: (path) => `still present in ${path} (a setting this project removes)`,
     containerPass: "the block is in the deployed file (a block holds no value of its own)",
+    containerIs: (subject) => `the block is in the deployed file, opening with ${subject}`,
+    containerIsNot: (subject) => `the block is there, but it opens with ${subject}`,
     containerFail: (path) => `${path} does not hold this block — nothing under it applies`,
     setHere: (path) => `set in ${path}`,
     setElsewhere: (path, by) => `set in ${by}, which ${path} reads`,
@@ -718,8 +758,47 @@ export function judgeFiles(
         continue;
       }
       if (item.container === true) {
-        const there = holds(file, key);
-        out.results.push({ target, at, evidence, status: there ? "pass" : "fail", detail: there ? t.containerPass : t.containerFail(path) });
+        const block = file.get(key);
+        if (!holds(file, key)) {
+          out.results.push({ target, at, evidence, status: "fail", detail: t.containerFail(path) });
+          continue;
+        }
+        // Where the opening is, so the verdict points at the block rather than
+        // at the file. A parser that does not record it leaves this out rather
+        // than borrowing a child's line: a row pointed at a line that is not
+        // its own is a false claim about the file, and the first attempt at
+        // this (the earliest child's line) pointed at an unrelated setting.
+        const where = { ...evidence, ...(block?.line === undefined ? {} : { line: block.line }) };
+        // A block's IDENTITY is what its opening says. Where the row states
+        // one, it is a value and is compared; where it states none — a
+        // `<LocationMatch>` the sheet lists by address alone — the old sentence
+        // is the true one and is kept for exactly that case.
+        const want = item.expected;
+        if (want === undefined || want === "") {
+          out.results.push({ target, at, evidence: where, status: "pass", detail: t.containerPass });
+          continue;
+        }
+        const said = block?.block?.subject;
+        // Assembled by a template from variables: no file holds the result, so
+        // the deployed text and the row's value are two spellings of one fact
+        // and only the ADDRESS can be compared — which `holds` just did.
+        if (said === undefined || block?.block?.assembled === true) {
+          out.results.push({ target, at, evidence: where, status: "pass", detail: t.containerPass });
+          continue;
+        }
+        // Compared as the file wrote it, on both sides. A parser records the
+        // opening VERBATIM — httpd keeps `"/var/www"` with its quotes, which is
+        // what the sheet's own row carries too — and a judge that tidied either
+        // side would be comparing a spelling neither file nor sheet holds.
+        // (Measured across the parsers: subject and row value agree
+        // character for character wherever both exist.)
+        const same = String(want) === said;
+        out.results.push({
+          target, at, evidence: where,
+          status: same ? "pass" : "fail",
+          detail: same ? t.containerIs(said) : t.containerIsNot(said),
+          ...(same || item.quiet === true ? {} : { actual: said }),
+        });
         continue;
       }
       // The files this one NAMES are part of the claim: "nothing sets it" is
