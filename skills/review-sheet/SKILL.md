@@ -3704,6 +3704,51 @@ out `not run`, named in the run's own output, rather than filed at a guessed
 address. Which is the point — what to say about a row a step did not check is
 your statement, not this tool's guess.
 
+#### …and what the row expects
+
+A second parameter carries `ctx.items`: every row of the plan for THIS row's
+environment, each with the value it expects. (The same shape
+`FunctionalChannel.answer` gets, filtered the same way — a row of one
+environment must never be answered from another's.) A router may return an
+`expected` of its own, and it replaces the row's.
+
+That is for a row that does not hold a product's value at all. A row whose
+expected value is a REFERENCE — `$(env:SSO_HOST)` — holds the one spelling it
+has across every environment; the product holds what the reference resolved to,
+so comparing them compares a name with a value. Where your sheet already carries
+each variable's definition as a row of its own, the table from one to the other
+is a reading of the model:
+
+```js
+const REFERENCE = /^\$\(env:([A-Za-z_][A-Za-z0-9_]*)\)$/;
+
+route: (item, ctx) => {
+  const named = REFERENCE.exec(item.expected ?? "");
+  const defines = named === null ? undefined : (ctx?.items ?? []).find((x) => x.target.key === named[1]);
+  return {
+    document: "clients",
+    address: item.address ?? item.target.key,
+    // Omitted where the row expects no reference — the row's own value stands.
+    ...(defines?.expected === undefined ? {} : { expected: defines.expected }),
+  };
+},
+```
+
+**Two resolutions, and they read different things.** `documents[].substitute` is
+the importer's own placeholder pattern, resolved from the observation's
+`substitutions` map — what the importer ACTUALLY did, which only whoever ran it
+can say, and which needs no row to exist. A router's `expected` is read off the
+model — no collector has to say a second time what the sheet already says. Both
+apply, the router's first and the substitution after; each is a no-op where its
+own pattern does not match, so an entry may declare both.
+
+Comparison is EQUALITY, and stays equality. A containment check passes on
+`https://evil/?x=<expected>`, and a comparator loosened in one place is
+inherited by every row of every sheet. Where the document genuinely holds a list
+and the question is membership, that is the row's ADDRESS; where it genuinely is
+a substring, that is a rule, and a rule is a probe rule or a functional channel
+where you write the comparison you mean and sign it.
+
 `documents:` naming a router nothing registered **fails the run**, with the
 registered names beside it. It used to leave every row of that sheet unanswered,
 which reads exactly like a sheet that has no document — so a misspelled name, or

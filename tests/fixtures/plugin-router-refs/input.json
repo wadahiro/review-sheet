@@ -1,0 +1,91 @@
+{
+  "metadata": {
+    "title": "t"
+  },
+  "groups": [
+    {
+      "name": "clients",
+      "test": {
+        "method": {
+          "en": "read the product's API"
+        }
+      }
+    }
+  ],
+  "documents": [
+    {
+      "sheet": "clients",
+      "router": "clients-with-refs",
+      "substitute": "\\$\\(env:([A-Za-z_][A-Za-z0-9_]*)\\)"
+    }
+  ],
+  "sheets": [
+    {
+      "name": "clients",
+      "group": "clients",
+      "instances": [
+        "stg",
+        "prod"
+      ],
+      "categories": [
+        {
+          "name": "variables",
+          "params": [
+            {
+              "key": "OIDC_HOST",
+              "instances": [
+                {
+                  "name": "stg",
+                  "value": "https://oidc-stg.example.com"
+                },
+                {
+                  "name": "prod",
+                  "value": "https://oidc.example.com"
+                }
+              ]
+            },
+            {
+              "key": "SAML_HOST",
+              "instances": [
+                {
+                  "name": "stg",
+                  "value": "https://saml-stg.example.com"
+                },
+                {
+                  "name": "prod",
+                  "value": "https://saml.example.com"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "poc-oidc",
+          "params": [
+            {
+              "key": "poc-oidc.rootUrl",
+              "value": "$(env:OIDC_HOST)",
+              "source": {
+                "path": "poc-oidc.rootUrl"
+              }
+            },
+            {
+              "key": "poc-saml.entityId",
+              "value": "$(env:SAML_HOST)",
+              "source": {
+                "path": "poc-saml.entityId"
+              }
+            },
+            {
+              "key": "poc-oidc.adminUrl",
+              "value": "$(env:ADMIN_HOST)",
+              "source": {
+                "path": "poc-oidc.adminUrl"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

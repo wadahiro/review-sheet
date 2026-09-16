@@ -641,7 +641,7 @@ export function judgeFiles(
     // same machinery a file is, because the difference between them is where
     // the bytes came from and nothing else.
     const obs0 = byEnv.get(item.target.instance);
-    const doc = obs0 === undefined ? undefined : documentFor(obs0, item, opts.documents ?? [], obs0.substitutions ?? {});
+    const doc = obs0 === undefined ? undefined : documentFor(obs0, item, opts.documents ?? [], obs0.substitutions ?? {}, plan.items);
     if (doc !== undefined) {
       // A row saying "the product's own default applies" is a claim about ONE
       // build here exactly as it is on the file path below, and the document
@@ -878,37 +878,56 @@ function documentFor(
   obs: Observation,
   item: TestItem,
   templates: DocumentTemplate[],
-  subs: Record<string, string>
+  subs: Record<string, string>,
+  // The plan's own items, for a router that answers this row from another one.
+  allItems: TestItem[] = []
 ): { doc: ObservedDocument; host: string; address: string | undefined; expected: string | undefined; idFields?: string[] } | undefined {
   // A TEMPLATE, where the sheet declares one: it says which document answers
   // the row and where the value sits in it, and both can depend on the row's
   // component. That is the whole of "which realm does this sheet describe, and
   // how is a client of it addressed" — a table, not a program.
   const tpl = templates.find((t) => t.sheet === item.target.sheet);
+  // A placeholder an importer resolved, replaced with what it resolved TO in
+  // this environment. Its own step, because it applies on both branches: the
+  // router one used to return early, so a `documents:` entry declaring both a
+  // `router:` and a `substitute:` had the substitution silently do nothing.
+  const resolved = (s: string): string =>
+    tpl?.substitute === undefined
+      ? s
+      : s.replace(new RegExp(tpl.substitute, "g"), (whole, name: string) => subs[name] ?? whole);
   // A ROUTER answers both halves at once, for a sheet whose rows the API does
   // not address the way their source does. A row it does not name is left
   // unanswered — never filed at a guessed address.
   if (tpl?.router !== undefined) {
-    const to = getDocumentRouter(tpl.router)?.route(item);
+    const to = getDocumentRouter(tpl.router)?.route(item, { items: allItems.filter((x) => x.target.instance === item.target.instance) });
     if (to === undefined) return undefined;
     for (const [host, held] of Object.entries(obs.hosts)) {
       for (const d of held.documents ?? []) {
         if (d.name !== to.document) continue;
-        return { doc: d, host, address: to.address, expected: item.expected, ...(to.idFields === undefined ? {} : { idFields: to.idFields }) };
+        // The router's own answer wins where it gave one, and the observation's
+        // substitution applies after either. The two resolve different things —
+        // one reads the model, the other reads what the importer did — and each
+        // is a no-op where its own pattern does not match, so the order costs
+        // nothing and applying only one would.
+        const want = to.expected ?? item.expected;
+        return {
+          doc: d,
+          host,
+          address: resolved(to.address),
+          expected: want === undefined ? undefined : resolved(want),
+          ...(to.idFields === undefined ? {} : { idFields: to.idFields }),
+        };
       }
     }
     return undefined;
   }
-  const fill = (s: string): string => {
-    let out = s
-      .replace(/\{component\}/g, item.component ?? "")
-      .replace(/\{key\}/g, item.target.key)
-      .replace(/\{address\}/g, item.address ?? item.target.key);
-    if (tpl?.substitute !== undefined) {
-      out = out.replace(new RegExp(tpl.substitute, "g"), (whole, name: string) => subs[name] ?? whole);
-    }
-    return out;
-  };
+  const fill = (s: string): string =>
+    resolved(
+      s
+        .replace(/\{component\}/g, item.component ?? "")
+        .replace(/\{key\}/g, item.target.key)
+        .replace(/\{address\}/g, item.address ?? item.target.key)
+    );
   for (const [host, held] of Object.entries(obs.hosts)) {
     for (const d of held.documents ?? []) {
       if (tpl !== undefined) {

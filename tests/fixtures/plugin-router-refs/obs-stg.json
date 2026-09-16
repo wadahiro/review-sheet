@@ -1,0 +1,19 @@
+{
+  "environment": "stg",
+  "hosts": {
+    "node1": {
+      "files": {},
+      "documents": [
+        {
+          "name": "clients",
+          "format": "json",
+          "how": "GET /admin/clients",
+          "text": "{\n  \"poc-oidc\": {\n    \"rootUrl\": \"https://oidc-stg.example.com\",\n    \"adminUrl\": \"https://admin-stg.example.com\"\n  },\n  \"poc-saml\": {\n    \"entityId\": \"https://saml-stg.example.com\"\n  }\n}"
+        }
+      ]
+    }
+  },
+  "substitutions": {
+    "ADMIN_HOST": "https://admin-stg.example.com"
+  }
+}

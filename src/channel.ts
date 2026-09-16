@@ -61,7 +61,25 @@ export type Channel = {
 // name is left unanswered rather than guessed at.
 export type DocumentRouter = {
   name: string;
-  route: (item: TestItem) => { document: string; address: string; idFields?: string[] } | undefined;
+  // `ctx.items` is what the PLAN says about this item's own environment —
+  // every row of every sheet, with the value each one expects. The same shape
+  // `FunctionalChannel.answer` gets, and for a related reason: some answers are
+  // about more than the row in hand. A row whose expected value is a REFERENCE
+  // (`$(env:SSO_HOST)`) is one — the thing the product will actually hold is
+  // what that variable resolves to, and where the project's own sheet already
+  // carries the variable's definition as a row of its own, the table from one
+  // to the other is a reading of the model rather than a second copy of it.
+  //
+  // Filtered to the item's instance: a row of one environment must not be
+  // answered from another's, and handing over the whole plan makes that an
+  // easy mistake to write in project code.
+  //
+  // `expected` REPLACES the row's own where the router returns one. A router
+  // that only says where a row sits leaves it out and nothing changes.
+  route: (
+    item: TestItem,
+    ctx?: { items?: TestItem[] }
+  ) => { document: string; address: string; idFields?: string[]; expected?: string } | undefined;
 };
 
 const routers = sharedRegistry<DocumentRouter>("review-sheet.document-routers.v1");

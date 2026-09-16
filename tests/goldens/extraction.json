@@ -402,6 +402,30 @@
     "sha": "3153aa2b578565d5"
   },
   {
+    "file": "tests/fixtures/plugin-router-refs/.review-sheet/rules/router.mjs",
+    "parser": "generic",
+    "count": 13,
+    "sha": "81c20dd4c907f25f"
+  },
+  {
+    "file": "tests/fixtures/plugin-router-refs/input.json",
+    "parser": "json",
+    "count": 18,
+    "sha": "5f54edb24fcfc7ee"
+  },
+  {
+    "file": "tests/fixtures/plugin-router-refs/obs-prod.json",
+    "parser": "json",
+    "count": 5,
+    "sha": "bf2580d74a2703cc"
+  },
+  {
+    "file": "tests/fixtures/plugin-router-refs/obs-stg.json",
+    "parser": "json",
+    "count": 5,
+    "sha": "6db0d238b015b4f2"
+  },
+  {
     "file": "tests/fixtures/plugin-router/.review-sheet/rules/router.mjs",
     "parser": "generic",
     "count": 7,
