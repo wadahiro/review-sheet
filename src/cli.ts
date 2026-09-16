@@ -514,7 +514,8 @@ async function writeMarkdownSet(
   narrowed: string[] | undefined,
   // …and whether the unset rows were left out, recorded the same way and for
   // the same reason (see MarkdownSetOptions).
-  withoutUnset: boolean
+  withoutUnset: boolean,
+  unsetKept: readonly string[]
 ): Promise<void> {
   // A markdown set is a SNAPSHOT, so it is written from the current version —
   // the newest one, which is what `assembleVersions` puts last. The comparison
@@ -563,6 +564,7 @@ async function writeMarkdownSet(
     stamp,
     ...(narrowed === undefined ? {} : { instances: narrowed }),
     ...(withoutUnset ? { withoutUnset: true } : {}),
+    ...(unsetKept.length === 0 ? {} : { unsetKept }),
     documents: carried,
     preview: (sheet) => (row: ParamData, categoryPath: string[]) => {
       const hit = index.previewFor(sheet.name, categoryPath.join("/"), row.key);
@@ -688,12 +690,16 @@ program
     "--no-unset",
     "Leave out the rows nobody set — the ones a materialized sheet carries so the ledger is exhaustive, showing the product's own default and marked 未設定 / unset. The page already hides them behind a filter and collapses a category made of nothing else; this takes the same cut one stage earlier, so a recipient's document does not carry them at all. A row the vendor shipped and this project removed (`baseline`), and one marked out of scope, are decisions and stay. What it drops is reported, per sheet"
   )
+  .option(
+    "--keep-unset <names...>",
+    "Sheets --no-unset does not apply to. A sheet whose whole subject IS the product's own defaults — the clients Keycloak ships with, which a project never touches and so never sets — is not an exhaustive ledger with noise in it: its unset rows are its content, and cutting them delivers a page with nothing on it. Named sheets are spared; everything else still gets the cut, so a sheet added later is not left out by omission"
+  )
   .option("--evidence <file>", "Carry the RAW material the test results point at — the deployed files as the hosts held them, the output of the commands that were run — as documents in the page, beside the verdicts that cite them. Without it a verdict names an address on a machine the reader cannot reach. The judge that wrote the results decided what may travel; this only carries it, and --instances narrows it exactly as it narrows values")
   .option(
     "--timezone <zone>",
     "Read the instants this document carries in this IANA zone (Asia/Tokyo), offset kept — today, when each piece of evidence was collected. Decided here for the same reason --lang is: a document has one reader, and an instant resolved once is one the viewer never has to think about. Omitted, they print exactly as recorded"
   )
-  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; unset: boolean; lang: string; format: string; instances?: string[]; sheets?: string[]; evidence?: string; timezone?: string }) => {
+  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; unset: boolean; lang: string; format: string; instances?: string[]; sheets?: string[]; keepUnset?: string[]; evidence?: string; timezone?: string }) => {
     try {
       if (opts.timezone !== undefined && !knownZone(opts.timezone)) {
         console.error(`unknown timezone: ${opts.timezone} — use an IANA name such as Asia/Tokyo or UTC`);
@@ -764,9 +770,22 @@ program
       // row somebody set, so the two cuts are independent and this one reads a
       // model the others have already finished with.
       if (opts.unset === false) {
-        const done = dropUnset(input);
+        const spare = opts.keepUnset ?? [];
+        const has = sheetsOf(input);
+        const unknown = spare.filter((n) => !has.includes(n));
+        if (unknown.length > 0) {
+          console.error(`Error: --keep-unset: ${unknown.join(", ")} — this document has ${has.join(", ")}`);
+          process.exit(1);
+        }
+        const done = dropUnset(input, spare);
         input = done.input;
         console.error(formatUnsetReport(done.report));
+      } else if (opts.keepUnset !== undefined) {
+        // A declaration that cannot take effect. Silence here is the shape of
+        // "my flag did nothing and I could not tell": there is no cut for it to
+        // spare a sheet from.
+        console.error("Error: --keep-unset names sheets to spare from --no-unset, which was not passed — nothing is being cut.");
+        process.exit(1);
       }
       // AFTER --instances, so a delivery narrows its evidence with the same
       // list and by the same rule: the environments it does not cover are not
@@ -855,7 +874,7 @@ program
       }
       if (opts.format === "md") {
         if (opts.output === undefined) throw new Error("--format md writes a SET of files, so it needs a directory: -o <dir>");
-        await writeMarkdownSet(input, opts.output, lang, opts.sources, opts.instances, opts.unset === false);
+        await writeMarkdownSet(input, opts.output, lang, opts.sources, opts.instances, opts.unset === false, opts.keepUnset ?? []);
         return;
       }
       if (opts.format !== "html") throw new Error(`--format takes html or md, not ${opts.format}`);
@@ -2035,7 +2054,7 @@ program
               ? input
               : restrictInstances(input, was.instances).input;
           // …and the same cut the set says was taken, for the same reason.
-          const same = was.withoutUnset === true ? dropUnset(narrowed).input : narrowed;
+          const same = was.withoutUnset === true ? dropUnset(narrowed, was.unsetKept ?? []).input : narrowed;
           const now = modelStamp(withoutEvidence(same));
           const covers =
             (was.instances === undefined ? "" : ` (${was.instances.join(", ")})`) +

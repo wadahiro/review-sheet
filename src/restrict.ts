@@ -271,6 +271,10 @@ export type UnsetReport = {
   sheets: { sheet: string; rows: number; some: string[]; categories: number }[];
   rows: number;
   categories: number;
+  // Sheets the cut was not applied to, because the caller named them. Said
+  // back, so a list that names a sheet this document does not have, or one that
+  // had no unset rows to keep, is visible rather than assumed to have worked.
+  kept: string[];
   // Sheets left holding NOTHING — every row of them was unset, and they carry
   // no prose either. A whole page of the delivery that says only its own title,
   // which is not a thing to find out by opening it. Measured on a real
@@ -294,10 +298,24 @@ function holdsAnything(c: Category): boolean {
   return (c.params ?? []).length > 0 || (c.categories ?? []).some(holdsAnything);
 }
 
+// `keep` names the sheets the cut does NOT apply to.
+//
+// A sheet whose whole subject IS the product's defaults — the clients Keycloak
+// ships with, which a project never touches and therefore never sets — is not
+// an exhaustive ledger with some noise in it. Its unset rows are its content,
+// and a delivery that cuts them delivers a page with nothing on it.
+//
+// By sheet and not by row: what a sheet is ABOUT is the sheet's own property,
+// and a per-row exception would be a second sheet definition living in a
+// delivery script. Named sheets are excluded rather than an allow-list given,
+// so a sheet added later gets the cut — which is the safer default for a
+// handover, and the one that does not go wrong by omission.
 export function dropUnset<T extends ParameterSheetInput | VersionedSheetInput>(
-  input: T
+  input: T,
+  keep: readonly string[] = []
 ): { input: T; report: UnsetReport } {
-  const report: UnsetReport = { sheets: [], rows: 0, categories: 0, emptied: [] };
+  const spared = new Set(keep);
+  const report: UnsetReport = { sheets: [], rows: 0, categories: 0, kept: [...keep], emptied: [] };
 
   const prune = (cats: Category[], sheet: string, path: string[], seen: { rows: number; some: string[]; categories: number }): Category[] => {
     const out: Category[] = [];
@@ -323,6 +341,7 @@ export function dropUnset<T extends ParameterSheetInput | VersionedSheetInput>(
   const apply = <S extends { sheets: Sheet[] }>(doc: S): S => ({
     ...doc,
     sheets: doc.sheets.map((s) => {
+      if (spared.has(s.name)) return s;
       const seen = { rows: 0, some: [] as string[], categories: 0 };
       const categories = prune(s.categories ?? [], s.name, [], seen);
       if (seen.rows > 0 || seen.categories > 0) {
@@ -349,7 +368,11 @@ export function dropUnset<T extends ParameterSheetInput | VersionedSheetInput>(
 // Always printed when the flag was passed: a delivery that quietly left half
 // its rows out is the thing this must never be used to do by accident.
 export function formatUnsetReport(r: UnsetReport): string {
-  if (r.rows === 0 && r.categories === 0) return "unset rows: none to leave out — every row of this document was set by somebody";
+  const spared =
+    r.kept.length === 0 ? "" : `\n  kept in full, as named: ${r.kept.join(", ")}`;
+  if (r.rows === 0 && r.categories === 0) {
+    return `unset rows: none to leave out — every row of this document was set by somebody${spared}`;
+  }
   const lines = [
     `Leaving out ${r.rows} unset row(s)${r.categories > 0 ? ` and ${r.categories} category(ies) left holding none` : ""} — ` +
       `rows nobody set, carrying the product's own default:`,
@@ -362,8 +385,10 @@ export function formatUnsetReport(r: UnsetReport): string {
     lines.push(
       `  ${r.emptied.length} sheet(s) are left holding nothing at all — every row of them was unset, so the ` +
         `delivery carries a page that says only its own title: ${r.emptied.join(", ")}. ` +
-        `Leave them out with --sheets if they do not belong in this handover.`
+        `Leave them out with --sheets if they do not belong in this handover, or keep their rows with ` +
+        `--keep-unset if the product's own defaults are what those sheets are ABOUT.`
     );
   }
+  if (spared !== "") lines.push(spared.replace(/^\n/, ""));
   return lines.join("\n");
 }

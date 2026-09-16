@@ -139,6 +139,46 @@ describe("leaving out the rows nobody set", () => {
   });
 });
 
+describe("a sheet the cut is told to spare", () => {
+  // A sheet whose whole SUBJECT is the product's own defaults — the clients
+  // Keycloak ships with, which a project never touches and so never sets — is
+  // not an exhaustive ledger with noise in it. Its unset rows are its content.
+  it("keeps every row of it, and cuts the others", () => {
+    const { input } = dropUnset(doc(), ["app"]);
+    expect(keys(input)).toContain("b");
+    expect(cats(input)).toContain("all unset");
+  });
+
+  it("cuts a sheet it was not told to spare", () => {
+    const two = {
+      metadata: { title: "t" },
+      sheets: [
+        { name: "ours", categories: [{ name: "c", params: [row("a"), row("b", { origin: "default" })] }] },
+        { name: "the product's own", categories: [{ name: "c", params: [row("x", { origin: "default" })] }] },
+      ],
+    } as never as ParameterSheetInput;
+    const { input, report } = dropUnset(two, ["the product's own"]);
+    expect((input.sheets[0]!.categories![0]!.params ?? []).map((p) => p.key)).toEqual(["a"]);
+    expect((input.sheets[1]!.categories![0]!.params ?? []).map((p) => p.key)).toEqual(["x"]);
+    expect(report.kept).toEqual(["the product's own"]);
+  });
+
+  // …and it is then not one of the emptied, which is the whole reason to spare
+  // it: that warning is what sends somebody here.
+  it("is not reported as left holding nothing", () => {
+    const only = {
+      metadata: { title: "t" },
+      sheets: [{ name: "defaults only", categories: [{ name: "c", params: [row("a", { origin: "default" })] }] }],
+    } as never as ParameterSheetInput;
+    expect(dropUnset(only).report.emptied).toEqual(["defaults only"]);
+    expect(dropUnset(only, ["defaults only"]).report.emptied).toEqual([]);
+  });
+
+  it("says which sheets it spared", () => {
+    expect(formatUnsetReport(dropUnset(doc(), ["app"]).report)).toContain("kept in full, as named: app");
+  });
+});
+
 describe("a sheet left holding nothing", () => {
   const onlyUnset = () =>
     ({
@@ -216,6 +256,17 @@ describe("what a set records about how it was narrowed", () => {
     expect(was?.stamp).toBe("abc123");
     expect(was?.instances).toEqual(["staging", "production"]);
     expect(was?.withoutUnset).toBe(true);
+  });
+
+  // …and which sheets it spared, on lines of their own: a sheet's name has
+  // spaces in it and the stamp's own fields are whitespace-separated.
+  it("names the sheets the cut spared", () => {
+    const was = stampOf(indexOf({ withoutUnset: true, unsetKept: ["keycloak default clients master", "another one"] }));
+    expect(was?.unsetKept).toEqual(["keycloak default clients master", "another one"]);
+  });
+
+  it("says nothing about sparing when nothing was spared", () => {
+    expect(stampOf(indexOf({ withoutUnset: true }))?.unsetKept).toBeUndefined();
   });
 
   it("says nothing about it when the cut was not taken", () => {
