@@ -8,9 +8,10 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import {
   registerKeycloakChannels, registerKeycloakLdapRouter, effectiveConfig, isProductDefault, lineOfEffective,
-  readyReport, clusterMembers, issuerOf, issuerFor,
+  readyReport, clusterMembers, issuerOf, issuerFor, issuerMatches, realmAsked,
+  stickySessionNode, hasSessionCookie, registerKeycloakRules,
 } from "../src/channels/keycloak";
-import { listFunctionalChannels, listDocumentRouters } from "../src/channel";
+import { listFunctionalChannels, listDocumentRouters, listProbeRules } from "../src/channel";
 import type { TestItem } from "../src/testplan";
 
 const clear = (): void => {
@@ -475,5 +476,177 @@ describe("where a single-store sheet's binding omits ldap_component", () => {
         decider: "product-default",
       } as TestItem)
     ).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The issuer a realm publishes, and why the comparison is parsed.
+
+describe("comparing a published issuer against the expected one", () => {
+  const WANT = "https://sso.example.com/realms/main";
+
+  it("accepts the same URL written differently", () => {
+    expect(issuerMatches("https://sso.example.com/realms/main", WANT)).toBe(true);
+    expect(issuerMatches("https://sso.example.com/realms/main/", WANT)).toBe(true);
+    expect(issuerMatches("https://SSO.Example.com/realms/main", WANT)).toBe(true);
+    expect(issuerMatches("https://sso.example.com:443/realms/main", WANT)).toBe(true);
+  });
+
+  // The reason this is parsed and not a substring search. Each of these
+  // CONTAINS the expected hostname and is a realm published under somebody
+  // else's name; a token minted by any of them would be validated against a
+  // host this deployment does not own.
+  it("refuses a host that merely contains the expected one", () => {
+    expect(issuerMatches("https://sso.example.com.attacker.io/realms/main", WANT)).toBe(false);
+    expect(issuerMatches("https://attacker.io/?x=https://sso.example.com/realms/main", WANT)).toBe(false);
+    expect(issuerMatches("https://evil.com/sso.example.com/realms/main", WANT)).toBe(false);
+    expect(issuerMatches("https://not-sso.example.com/realms/main", WANT)).toBe(false);
+  });
+
+  // Scheme and port are part of who answers. An issuer served over http is not
+  // the https one, whatever the hostname says.
+  it("counts the scheme and the port as part of the origin", () => {
+    expect(issuerMatches("http://sso.example.com/realms/main", WANT)).toBe(false);
+    expect(issuerMatches("https://sso.example.com:8443/realms/main", WANT)).toBe(false);
+  });
+
+  it("counts the realm path too", () => {
+    expect(issuerMatches("https://sso.example.com/realms/other", WANT)).toBe(false);
+    expect(issuerMatches("https://sso.example.com/auth/realms/main", WANT)).toBe(false);
+  });
+
+  // Something that will not parse is not equal to anything. An issuer this
+  // cannot read is one it cannot vouch for.
+  it("refuses what it cannot parse", () => {
+    expect(issuerMatches("sso.example.com/realms/main", WANT)).toBe(false);
+    expect(issuerMatches("", WANT)).toBe(false);
+    expect(issuerMatches(undefined, WANT)).toBe(false);
+    expect(issuerMatches(WANT, undefined)).toBe(false);
+  });
+
+  // A run asks several realms and each answers with its own issuer, so the
+  // answer is judged against the realm the REQUEST named.
+  it("reads the realm off the request", () => {
+    expect(realmAsked("GET https://sso.example.com/realms/main/.well-known/openid-configuration")).toBe("main");
+    expect(realmAsked("https://sso.example.com/realms/other/protocol/openid-connect/certs")).toBe("other");
+    expect(realmAsked("GET https://sso.example.com/health/ready")).toBeUndefined();
+  });
+});
+
+describe("the issuer rule a project binds", () => {
+  const ctx = { host: "h1", held: {}, hosts: 1 };
+  const body = (issuer: string) => JSON.stringify({ issuer });
+  const ruleFor = (id: string, base?: string) => {
+    registerKeycloakRules({ issuer_external: id, ...(base === undefined ? {} : { issuer_base: base }), sheet: "sso" });
+    const r = listProbeRules().find((x) => x.covers(id));
+    if (r === undefined) throw new Error("no rule covers " + id);
+    return r;
+  };
+  const ASKED = "GET https://sso.example.com/realms/main/.well-known/openid-configuration";
+
+  it("passes the issuer the base and the asked realm make", () => {
+    const v = ruleFor("sso.issuer.1", "https://sso.example.com").verdict(
+      { how: ASKED, text: body("https://sso.example.com/realms/main") },
+      ctx
+    );
+    expect(v.ok).toBe(true);
+  });
+
+  // The judgement this whole rule exists for: hostname-strict, so a realm
+  // publishing an issuer under a lookalike host fails.
+  it("fails a lookalike host", () => {
+    const v = ruleFor("sso.issuer.2", "https://sso.example.com").verdict(
+      { how: ASKED, text: body("https://sso.example.com.attacker.io/realms/main") },
+      ctx
+    );
+    expect(v.ok).toBe(false);
+    expect(v.why).toContain("attacker.io");
+  });
+
+  // A common real defect: hostname left at the node's own name, so every token
+  // names a host no client can reach.
+  it("fails an issuer still naming the node", () => {
+    const v = ruleFor("sso.issuer.3", "https://sso.example.com").verdict(
+      { how: ASKED, text: body("https://node1.internal:8443/realms/main") },
+      ctx
+    );
+    expect(v.ok).toBe(false);
+  });
+
+  // With no base declared nothing here knows what the issuer should have been.
+  // Saying so is the answer; passing anything would be a rule that cannot fail.
+  it("declines to judge when no base is declared", () => {
+    const v = ruleFor("sso.issuer.4").verdict({ how: ASKED, text: body("https://anything/realms/main") }, ctx);
+    expect(v.ok).toBe(null);
+    expect(v.why).toContain("issuer_base");
+  });
+
+  // A run asks several realms through the same item, and each answers with its
+  // own issuer. Judging every answer against one realm passes the wrong pairing
+  // — including the case that matters: a realm publishing ANOTHER realm's
+  // issuer.
+  it("judges each answer against the realm its own request named", () => {
+    const rule = ruleFor("sso.issuer.6", "https://sso.example.com");
+    const other = "GET https://sso.example.com/realms/other/.well-known/openid-configuration";
+    expect(rule.verdict({ how: other, text: body("https://sso.example.com/realms/other") }, ctx).ok).toBe(true);
+    expect(rule.verdict({ how: other, text: body("https://sso.example.com/realms/main") }, ctx).ok).toBe(false);
+  });
+
+  it("fails a response carrying no issuer at all", () => {
+    const v = ruleFor("sso.issuer.5", "https://sso.example.com").verdict({ how: ASKED, text: "502 Bad Gateway" }, ctx);
+    expect(v.ok).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The session cookie, and the node name the product appends to it.
+
+describe("what AUTH_SESSION_ID says about the deployment", () => {
+  it("finds the node identifier the sticky-session encoder appended", () => {
+    expect(stickySessionNode("Set-Cookie: AUTH_SESSION_ID=abc123def.node1; Path=/; HttpOnly")).toBe("node1");
+  });
+
+  it("finds none when the session id stands alone", () => {
+    expect(stickySessionNode("Set-Cookie: AUTH_SESSION_ID=abc123def; Path=/; HttpOnly")).toBeUndefined();
+  });
+
+  // A dot in the node's own name belongs to the node, not to a second field.
+  it("keeps a dotted node name whole", () => {
+    expect(stickySessionNode("AUTH_SESSION_ID=abc.node1.dc1")).toBe("node1.dc1");
+  });
+
+  // Carrying no cookie is not the same as carrying one with no node in it, and
+  // a verdict that confuses them reports a request that was never given a
+  // session as a deployment that is not leaking node names.
+  it("tells no cookie from a cookie with no node", () => {
+    expect(hasSessionCookie("HTTP/1.1 200 OK\nContent-Type: text/html")).toBe(false);
+    expect(hasSessionCookie("Set-Cookie: AUTH_SESSION_ID=abc; Path=/")).toBe(true);
+    expect(stickySessionNode("HTTP/1.1 200 OK")).toBeUndefined();
+  });
+});
+
+describe("the sticky-session rule a project binds", () => {
+  const ctx = { host: "h1", held: {}, hosts: 1 };
+  const ruleFor = (id: string) => {
+    registerKeycloakRules({ sticky_session_cookie: id, sheet: "sso" });
+    const r = listProbeRules().find((x) => x.covers(id));
+    if (r === undefined) throw new Error("no rule covers " + id);
+    return r;
+  };
+
+  it("passes a cookie that names no node", () => {
+    const v = ruleFor("sso.sticky.1").verdict({ text: "Set-Cookie: AUTH_SESSION_ID=abc; Path=/; HttpOnly" }, ctx);
+    expect(v.ok).toBe(true);
+  });
+
+  it("fails a cookie that publishes the node name", () => {
+    const v = ruleFor("sso.sticky.2").verdict({ text: "Set-Cookie: AUTH_SESSION_ID=abc.node1; Path=/" }, ctx);
+    expect(v.ok).toBe(false);
+    expect(v.why).toContain("node1");
+  });
+
+  it("declines to judge a response that was given no session", () => {
+    const v = ruleFor("sso.sticky.3").verdict({ text: "HTTP/1.1 302 Found\nLocation: /" }, ctx);
+    expect(v.ok).toBe(null);
   });
 });

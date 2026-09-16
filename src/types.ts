@@ -2,6 +2,14 @@
 // Input data model
 // ============================================================
 
+// Which product rules a project binds to its own functional items.
+//
+// One declaration, shared by the spec that reads it, the assembly that carries
+// it and the model that ships it — the three used to hold three copies of the
+// same literal, and a field added to one of them was simply absent from the
+// others.
+export type FunctionalRule = { rule: "chrony" | "keycloak" | "logrotate" | "systemd"; sheet?: string; health_ready?: string; config_syntax?: string; units_enabled?: string; lifecycle?: string; issuer_external?: string; issuer_base?: string; sticky_session_cookie?: string; time_synced?: string };
+
 // A documentation string, or a { en, ja } language map. Fields that carry
 // human-readable prose (description, remarks) accept either form: a plain
 // string when it is language-neutral or authored in one language, or a map so
@@ -69,7 +77,7 @@ export type ParameterSheetInput = {
   builds?: { sheet: string; product: string; version: string }[];
   // Which product plugin answers which functional item — see channels/.
   functional_channels?: { channel: "keycloak" | "aws-rds"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string; parameters_authored?: string }[];
-  functional_rules?: { rule: "keycloak" | "logrotate" | "systemd"; sheet?: string; health_ready?: string; config_syntax?: string; units_enabled?: string }[];
+  functional_rules?: FunctionalRule[];
   // Which document answers a sheet's rows, and where in it each row sits.
   documents?: { sheet: string; document?: string; address?: string; substitute?: string; router?: string }[];
   not_checked?: { sheet?: string; keys?: string[]; carried?: boolean; reason: string }[];

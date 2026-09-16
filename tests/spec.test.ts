@@ -298,6 +298,51 @@ sheets:
   });
 });
 
+// The four rules a project binds by name. Each field has to reach the schema,
+// because `additionalProperties: false` means a field the schema does not know
+// is not a silently-ignored one — it fails the build, and one the schema knows
+// but nothing registers is a binding that answers nothing.
+describe("loadBuildSpec: functional rules a project binds", () => {
+  const withRules = (rules: string): Record<string, string> =>
+    files({
+      [SPEC_PATH]: `
+version: 1
+instances: [prod]
+functional_rules:
+${rules}
+sheets:
+  - name: s
+    recipe: layered
+    defaults: defaults.yml
+`,
+    });
+
+  it("accepts every rule and binding the tool holds", () => {
+    const map = withRules(`  - rule: chrony
+    time_synced: clock
+  - rule: systemd
+    units_enabled: units
+    lifecycle: cycle
+  - rule: keycloak
+    health_ready: ready
+    issuer_external: issuer
+    issuer_base: https://sso.example.com
+    sticky_session_cookie: cookie
+  - rule: logrotate
+    config_syntax: syntax
+`);
+    expect(() => loadBuildSpec(SPEC_PATH, { readFile: readFileFrom(map) })).not.toThrow();
+  });
+
+  it("rejects a rule nothing registers", () => {
+    expect(() => loadBuildSpec(SPEC_PATH, { readFile: readFileFrom(withRules("  - rule: chronyd\n    time_synced: clock\n")) })).toThrow();
+  });
+
+  it("rejects a misspelled binding rather than ignoring it", () => {
+    expect(() => loadBuildSpec(SPEC_PATH, { readFile: readFileFrom(withRules("  - rule: keycloak\n    issuer_externals: issuer\n")) })).toThrow();
+  });
+});
+
 describe("loadBuildSpec: unknown-field rejection (P0)", () => {
   function layeredSpecYaml(extra: string): string {
     return `

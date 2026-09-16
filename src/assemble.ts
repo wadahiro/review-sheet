@@ -72,6 +72,7 @@ import type {
   ContainerNode,
 } from "./types.js";
 import { pickLang } from "./types.js";
+import type { FunctionalRule } from "./types.js";
 import { PRESENCE_VALUE } from "./types.js";
 
 // `origin: "embedded"` marks a base-layer entry whose position relative to its
@@ -691,7 +692,7 @@ export type AssembleOpts = {
   defaultsCheckedBy?: { product: "httpd" | "keycloak"; file: string; command?: string; aside?: string }[];
   builds?: { sheet: string; product: string; version: string }[];
   functionalChannels?: { channel: "keycloak" | "aws-rds"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string; parameters_authored?: string }[];
-  functionalRules?: { rule: "keycloak" | "logrotate" | "systemd"; sheet?: string; health_ready?: string; config_syntax?: string; units_enabled?: string }[];
+  functionalRules?: FunctionalRule[];
   documents?: { sheet: string; document?: string; address?: string; substitute?: string; router?: string }[];
   notChecked?: { sheet?: string; keys?: string[]; carried?: boolean; reason: string }[];
   idFieldsOut?: string[];

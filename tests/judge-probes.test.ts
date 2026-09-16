@@ -127,6 +127,23 @@ describe("a rule the tool itself holds", () => {
     expect(got.evidence.map((d) => [d.host, d.sheet])).toEqual([["web01", "os baseline"], ["web02", "os baseline"]]);
   });
 
+  // Every rule the tool holds has to be reachable from a spec that binds it.
+  // A registration sitting in a branch nothing takes is indistinguishable from
+  // a working one by any check short of running it.
+  it("reaches a rule bound by name in the spec", async () => {
+    clear();
+    const { registerModelChannels, judgeFunctional } = await import("../src/judge");
+    registerModelChannels({ functional_rules: [{ rule: "chrony", time_synced: "clock-disciplined" }] });
+    const plan = {
+      metadata: { title: "t" }, units: [{ name: "u", declaration: { method: { ja: "m" } }, sheets: ["s"] }], items: [],
+      functional: [{ unit: "u", id: "clock-disciplined", text: "x", instance: "stg", intrusive: false }],
+    } as unknown as TestPlan;
+    const at = (leap: string): Observation[] =>
+      [{ environment: "stg", hosts: { web01: { files: {}, probes: { "clock-disciplined": { ran: true, text: `Stratum : 3\nLeap status     : ${leap}\n` } } } } }] as unknown as Observation[];
+    expect(judgeFunctional(plan, at("Normal"), { lang: "ja" }).answers[0]!.status).toBe("pass");
+    expect(judgeFunctional(plan, at("Not synchronised"), { lang: "ja" }).answers[0]!.status).toBe("fail");
+  });
+
   // A unit the host does not have is not a finding — that is systemd's, and
   // the only judgement in the rule.
   it("does not fail a unit the host does not have", async () => {

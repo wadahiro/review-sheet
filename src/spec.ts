@@ -15,6 +15,7 @@ import { dirname, resolve as resolvePath } from "node:path";
 import { getRecipe, listRecipes, type JsonValue } from "./recipe.js";
 import type { SheetDictionaryBinding } from "./assemble.js";
 import { formatAjvErrors } from "./schema-errors.js";
+import type { FunctionalRule } from "./types.js";
 
 export type BuildSpec = {
   version: 1;
@@ -69,7 +70,7 @@ export type BuildSpec = {
   functional_channels?: Array<{ channel: "keycloak" | "aws-rds"; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string; parameters_authored?: string }>;
   // …and the rules that contain no project fact at all — what a product's own
   // answer MEANS — bound to whatever this project calls the item.
-  functional_rules?: Array<{ rule: "keycloak" | "logrotate" | "systemd"; sheet?: string; health_ready?: string; config_syntax?: string; units_enabled?: string }>;
+  functional_rules?: FunctionalRule[];
   // What ELSE decides whether a file's "the product's own default applies" row
   // is true: a binary whose compiled-in default differs from its manual, a file
   // beside the configuration that injects options on the command line, and a
@@ -342,11 +343,16 @@ const specSchema = {
         required: ["rule"],
         additionalProperties: false,
         properties: {
-          rule: { enum: ["keycloak", "logrotate", "systemd"] },
+          rule: { enum: ["chrony", "keycloak", "logrotate", "systemd"] },
           sheet: { type: "string" },
           health_ready: { type: "string" },
           config_syntax: { type: "string" },
           units_enabled: { type: "string" },
+          lifecycle: { type: "string" },
+          issuer_external: { type: "string" },
+          issuer_base: { type: "string" },
+          sticky_session_cookie: { type: "string" },
+          time_synced: { type: "string" },
         },
       },
     },

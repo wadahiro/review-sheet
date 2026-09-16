@@ -95,6 +95,71 @@ export function issuerFor(base: string | null | undefined, realm: string | null 
   return `${(base ?? "").replace(/\/$/, "")}/realms/${realm ?? ""}`;
 }
 
+// …and whether the issuer a realm published IS the one expected.
+//
+// By ORIGIN AND PATH, parsed — never by string containment, and that is a
+// security property rather than tidiness. An issuer is what every client of
+// this realm will validate tokens against, so "does the answer mention the name
+// we expect" is the wrong question: `https://sso.example.com.attacker.io/realms/
+// poc` contains `sso.example.com`, and so does `https://evil/?x=sso.example.com`.
+// Both pass a `includes()` and both are a realm published under somebody else's
+// name.
+//
+// Exact string equality is nearly right and fails on things that are the same
+// URL: a trailing slash, a default port written out (`https://h:443`), a host
+// in another case. So both sides are parsed and compared field by field — and
+// anything that will not parse is NOT equal, because an issuer that is not a
+// URL is not one this comparison can vouch for.
+export function issuerMatches(issuer: string | null | undefined, want: string | null | undefined): boolean {
+  const at = (u: string | null | undefined): { origin: string; path: string } | undefined => {
+    try {
+      const url = new URL(String(u));
+      return { origin: url.origin.toLowerCase(), path: url.pathname.replace(/\/+$/, "") };
+    } catch {
+      return undefined;
+    }
+  };
+  const a = at(issuer);
+  const b = at(want);
+  return a !== undefined && b !== undefined && a.origin === b.origin && a.path === b.path;
+}
+
+// The realm a discovery request was put about, read off the request itself.
+//
+// The answer has to be judged against the QUESTION: a run asks several realms
+// and each answers with its own issuer, so comparing every reply against one
+// expected realm would pass the wrong pairing.
+export function realmAsked(how: string | null | undefined): string | undefined {
+  return /\/realms\/([^/?#]+)/.exec(how ?? "")?.[1];
+}
+
+// ---------------------------------------------------------------------------
+// The session cookie, and what a node identifier in it would mean.
+//
+// With Infinispan's `spi-sticky-session-encoder` on — which it is by default —
+// Keycloak appends `.<nodeId>` to the `AUTH_SESSION_ID` cookie in PLAIN TEXT,
+// so that a load balancer can route a session back to the node that owns it.
+// The identifier is the node's own name, and it leaves the deployment on every
+// response: a reader of the cookie learns how many nodes there are and what
+// each is called.
+//
+// So the check is the product's arithmetic and nothing else: split the value on
+// `.` and see whether anything follows the session id. One part means the
+// encoder is not appending a node name; more than one means it is, and the name
+// is the part after the first dot.
+export function stickySessionNode(cookie: string | null | undefined): string | undefined {
+  const value = /AUTH_SESSION_ID=([^;\s]*)/.exec(cookie ?? "")?.[1];
+  if (value === undefined || value === "") return undefined;
+  const parts = value.split(".");
+  return parts.length > 1 ? parts.slice(1).join(".") : undefined;
+}
+
+// Whether the response carried the cookie at all — which is not the same as
+// carrying one with no node in it, and a verdict that confuses the two says
+// "no node identifier" about a request that was never given a session.
+export const hasSessionCookie = (text: string | null | undefined): boolean =>
+  /AUTH_SESSION_ID=/.test(text ?? "");
+
 
 // One realm's login page, as a collector fetched it. The shape is the
 // collector's to produce; what each field MEANS is this file's.
@@ -505,13 +570,66 @@ export function registerKeycloakLdapRouter(binding: {
 // project fact at all — no expectation to compare against, nothing this
 // deployment decided. It is what `/health/ready` MEANS, so it is the product's
 // verdict and not a rule anyone should have to write again.
-export function registerKeycloakRules(binding: { health_ready?: string; sheet?: string }): void {
+export function registerKeycloakRules(binding: {
+  health_ready?: string;
+  // What the realm SHOULD publish as its issuer is two facts a product cannot
+  // know — the hostname this deployment answers on, and the realm the question
+  // was put about. The second is read off the request; the first is the base
+  // the binding names, which is the project stating its own expectation once
+  // rather than a rule inventing one.
+  issuer_external?: string;
+  issuer_base?: string;
+  sticky_session_cookie?: string;
+  sheet?: string;
+}): void {
+  const at = binding.sheet === undefined ? {} : { sheet: binding.sheet };
+
+  if (binding.issuer_external !== undefined) {
+    registerProbeRule({
+      name: "keycloak.issuer-external",
+      covers: (x) => x === binding.issuer_external,
+      ...at,
+      verdict: (probe) => {
+        const issuer = issuerOf(probe.text);
+        if (issuer === undefined) {
+          return { ok: false, why: `no issuer in the response: ${(probe.text ?? "").slice(0, 120)}` };
+        }
+        // No base declared: the reading still stands on its own — the realm
+        // published SOMETHING — but nothing here knows what it should have
+        // been, and a rule that quietly passes anything is worse than one that
+        // says it cannot answer.
+        if (binding.issuer_base === undefined) {
+          return { ok: null, why: `issuer ${issuer} — no issuer_base declared to compare it against` };
+        }
+        const want = issuerFor(binding.issuer_base, realmAsked(probe.how));
+        return issuerMatches(issuer, want) ? { ok: true, why: issuer } : { ok: false, why: `issuer ${issuer}, expected ${want}` };
+      },
+    });
+  }
+
+  if (binding.sticky_session_cookie !== undefined) {
+    registerProbeRule({
+      name: "keycloak.sticky-session-cookie",
+      covers: (x) => x === binding.sticky_session_cookie,
+      ...at,
+      verdict: (probe) => {
+        if (!hasSessionCookie(probe.text)) {
+          return { ok: null, why: `the response set no AUTH_SESSION_ID: ${(probe.text ?? "").slice(0, 120)}` };
+        }
+        const node = stickySessionNode(probe.text);
+        return node === undefined
+          ? { ok: true, why: "AUTH_SESSION_ID carries no node identifier" }
+          : { ok: false, why: `AUTH_SESSION_ID names the node in plain text: .${node}` };
+      },
+    });
+  }
+
   const id = binding.health_ready;
   if (id === undefined) return;
   registerProbeRule({
     name: "keycloak.health-ready",
     covers: (x) => x === id,
-    ...(binding.sheet === undefined ? {} : { sheet: binding.sheet }),
+    ...at,
     verdict: (probe) => {
       const said = readyReport(probe.text);
       if (said.http !== 200) return { ok: false, why: `HTTP ${said.http ?? "—"}` };

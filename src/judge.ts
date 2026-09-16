@@ -29,6 +29,7 @@ import type { Format } from "./extract.js";
 import type { Collected } from "./channel.js";
 import { registerKeycloakChannels, registerKeycloakRules } from "./channels/keycloak.js";
 import { registerAwsRdsRouter, registerAwsRdsChannel } from "./channels/aws-rds.js";
+import { registerChronyRules } from "./channels/chrony.js";
 import { registerLogrotateRules } from "./channels/logrotate.js";
 import { registerSystemdRules } from "./channels/systemd.js";
 import { buildMismatch, buildMismatchReported, rpmVersions, packagesToQuery } from "./channels/rpm.js";
@@ -36,7 +37,7 @@ import "./channels/reads.js"; // the product recipes (reads/addresses/defaults/v
 import { compiledInFor, injectedOptions, lineOfCompiledIn, includeSyntaxFor } from "./channels/httpd.js";
 import { effectiveConfig, isProductDefault, lineOfEffective, SECRET_FIELDS, REDACTED, MASKED, LOGIN_MARKS_LIST } from "./channels/keycloak.js";
 import type { TestItem, TestPlan } from "./testplan.js";
-import type { LangText } from "./types.js";
+import type { LangText, FunctionalRule } from "./types.js";
 import { listChannels, listFunctionalChannels, listProbeRules, registerChannel, commandChannel, getDocumentRouter, productVersionFor, type Channel } from "./channel.js";
 import type { TestResult, TestResults } from "./testresults.js";
 
@@ -1143,7 +1144,7 @@ export function registerModelChannels(model: {
   channels?: import("./types.js").ChannelSpec[];
   functional_channels?: { channel: string; sheet?: string; login_page?: string; login_assets?: string; ldap_connection?: string; parameters_authored?: string }[];
   documents?: { router?: string }[];
-  functional_rules?: { rule: string; sheet?: string; health_ready?: string; config_syntax?: string; units_enabled?: string }[];
+  functional_rules?: FunctionalRule[];
 }): number {
   for (const c of model.channels ?? []) {
     registerChannel(commandChannel(c, `${c.channel}:${c.sheet}:${c.command}`));
@@ -1163,6 +1164,7 @@ export function registerModelChannels(model: {
   // a logrotate dry run and `systemctl is-enabled` MEAN. The project names its
   // own items, so it binds them, exactly as it binds a channel.
   for (const r of model.functional_rules ?? []) {
+    if (r.rule === "chrony") registerChronyRules(r);
     if (r.rule === "keycloak") registerKeycloakRules(r);
     if (r.rule === "logrotate") registerLogrotateRules(r);
     if (r.rule === "systemd") registerSystemdRules(r);
