@@ -68,11 +68,12 @@ export function registerChronyRules(binding: { time_synced?: string; sheet?: str
     verdict: (probe) => {
       const leap = trackingFields(probe.text).get("Leap status");
       // No such line is not "not synchronised": the daemon did not answer at
-      // all — it is not running, or the command could not reach it — and a
-      // verdict that calls that a clock problem sends a reader to the wrong
-      // place.
+      // all — it is not running, the host has no chrony on it, or the command
+      // could not reach it. That is the host saying it cannot be asked, which
+      // is a third answer and never a failure; calling it a clock problem sends
+      // a reader to the time instead of to the host.
       if (leap === undefined) {
-        return { ok: false, why: `chronyc tracking said nothing about the leap status: ${(probe.text ?? "").slice(0, 120)}` };
+        return { ok: null, why: `chronyc tracking said nothing about the leap status: ${(probe.text ?? "").slice(0, 120)}` };
       }
       const at = lineOfLeap(probe.text);
       return isSynchronised(leap)

@@ -15,6 +15,7 @@ import { dirname, resolve as resolvePath } from "node:path";
 import { getRecipe, listRecipes, type JsonValue } from "./recipe.js";
 import type { SheetDictionaryBinding } from "./assemble.js";
 import { formatAjvErrors } from "./schema-errors.js";
+import inputSchema from "./schema/input.schema.json";
 import type { FunctionalRule } from "./types.js";
 
 export type BuildSpec = {
@@ -336,27 +337,12 @@ const specSchema = {
         },
       },
     },
-    functional_rules: {
-      type: "array",
-      items: {
-        type: "object",
-        required: ["rule"],
-        additionalProperties: false,
-        properties: {
-          rule: { enum: ["chrony", "keycloak", "logrotate", "systemd"] },
-          sheet: { type: "string" },
-          health_ready: { type: "string" },
-          config_syntax: { type: "string" },
-          units_enabled: { type: "string" },
-          lifecycle: { type: "string" },
-          issuer_external: { type: "string" },
-          issuer_base: { type: "string" },
-          issuer_conf: { type: "string" },
-          sticky_session_cookie: { type: "string" },
-          time_synced: { type: "string" },
-        },
-      },
-    },
+    // THE SAME schema the model is validated against, not a copy of it: a
+    // build.yml's `functional_rules` is carried into the model verbatim, so two
+    // copies can only ever be two chances to add a binding to one of them. They
+    // were, and a rule bound in a build.yml that the model then rejected is how
+    // it showed.
+    functional_rules: inputSchema.properties.functional_rules,
     functional_channels: {
       type: "array",
       items: {

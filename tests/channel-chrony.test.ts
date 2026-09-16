@@ -68,13 +68,19 @@ describe("the rule a project binds to its own item", () => {
     expect(v.why).toContain("Not synchronised");
   });
 
-  // The daemon not answering is not a clock fault, and the reason has to send
-  // the reader to the daemon rather than to the time.
-  it("says the daemon answered nothing when the line is missing", () => {
+  // The daemon not answering is a THIRD answer, not a clock fault. A host with
+  // no chrony on it, or a daemon that cannot be talked to, has not been asked —
+  // and failing it sends the reader to the time instead of to the host.
+  it("declines when the daemon said nothing about the leap status", () => {
     const v = ruleFor("chrony.time-synced.3").verdict({ text: "Cannot talk to daemon" }, ctx);
-    expect(v.ok).toBe(false);
+    expect(v.ok).toBe(null);
     expect(v.why).toContain("said nothing about the leap status");
+    expect(v.why).toContain("Cannot talk to daemon");
     expect(v.line).toBeUndefined();
+  });
+
+  it("declines on a host that has no chrony at all", () => {
+    expect(ruleFor("chrony.time-synced.5").verdict({ text: "chronyc is not installed on this host" }, ctx).ok).toBe(null);
   });
 
   // A binding that names no item registers nothing. The failure this guards is

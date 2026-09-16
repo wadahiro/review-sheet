@@ -102,11 +102,17 @@
         "required": ["rule"],
         "additionalProperties": false,
         "properties": {
-          "rule": { "enum": ["keycloak", "logrotate", "systemd"] },
+          "rule": { "enum": ["chrony", "keycloak", "logrotate", "systemd"] },
           "sheet": { "type": "string" },
           "health_ready": { "type": "string" },
           "config_syntax": { "type": "string" },
-          "units_enabled": { "type": "string" }
+          "units_enabled": { "type": "string" },
+          "lifecycle": { "type": "string" },
+          "issuer_external": { "type": "string" },
+          "issuer_base": { "type": "string" },
+          "issuer_conf": { "type": "string" },
+          "sticky_session_cookie": { "type": "string" },
+          "time_synced": { "type": "string" }
         }
       }
     },
