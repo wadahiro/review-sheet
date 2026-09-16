@@ -4601,24 +4601,23 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
           <section class="rs-overview">
             <h1>${title}</h1>
 
-            ${/* The project and the version are NOT here. The title above
-                  already names the project, and the version a document carries
-                  is the model's own bookkeeping — `current` on every single-
-                  version document, which is every document that is not a
-                  comparison. Two cards, one repeating the heading and one
-                  saying nothing, at the top of the first page a reader opens.
-                  They are still in the model: the stamp is taken over it, the
-                  markdown set's index carries them, and a version history is
-                  ordered by them. */ ""}
-            ${(data.metadata?.generated_at || data.metadata?.extra) && html`
+            ${/* The project, the version and WHEN THIS WAS BUILT are not
+                  here. The title above already names the project; the version a
+                  document carries is the model's own bookkeeping (`current` on
+                  every single-version document, which is every document that is
+                  not a comparison); and the build time is this tool's, not the
+                  work's — a reader opening the first page is told when a
+                  generator ran, which answers nothing they came for and dates
+                  the document the moment it is regenerated without a single
+                  value changing. The moments that MEAN something are already
+                  where they belong: a test record carries when it was run and
+                  against which hosts, and a changelog carries when a version
+                  was cut. All three are still in the model — the stamp is taken
+                  over it, the markdown set's index carries them, and a version
+                  history is ordered by them. */ ""}
+            ${data.metadata?.extra && html`
             <div class="rs-overview-grid">
-              ${data.metadata?.generated_at && html`
-                <div class="rs-overview-item">
-                  <dt>${t.generatedAt}</dt>
-                  <dd>${formatTimestamp(data.metadata.generated_at)}</dd>
-                </div>
-              `}
-              ${data.metadata?.extra && Object.entries(data.metadata.extra).map(([k, v]) => html`
+              ${Object.entries(data.metadata.extra).map(([k, v]) => html`
                 <div class="rs-overview-item" key=${k}>
                   <dt>${k}</dt>
                   <dd>${v}</dd>

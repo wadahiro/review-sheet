@@ -3771,12 +3771,17 @@ describe("the overview page", () => {
     expect(host.querySelector(".rs-overview-sheets")?.textContent).toContain("web");
   });
 
-  it("keeps what a project chose to put there, and when it was generated", () => {
+  it("keeps what a project chose to put there", () => {
     const host = draw({ title: "t", generated_at: "2026-09-16T00:00:00Z", extra: { 担当: "SRE" } });
     const text = host.querySelector(".rs-overview-grid")?.textContent ?? "";
     expect(text).toContain("担当");
     expect(text).toContain("SRE");
-    expect(text).toContain("2026");
+    // …and not WHEN THIS WAS BUILT. That is the generator's moment, not the
+    // work's: it answers nothing a reader came for and dates the document the
+    // instant it is regenerated with no value changed. The moments that mean
+    // something are where they belong — a test record says when it was run,
+    // a changelog says when a version was cut.
+    expect(text).not.toContain("2026");
   });
 
   // An empty box is worse than no box: the grid is the only thing between the
