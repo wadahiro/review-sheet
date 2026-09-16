@@ -51,6 +51,32 @@ const results = (): TestResults => ({
   functional: [{ unit: "server", item: "起動・停止ができること", instance: "local", status: "pass" }],
 });
 
+// WHO decided the expected value is not a question a unit test asks.
+//
+// It is a real fact and a real distinction — a vendor's line deployed unchanged
+// is signed off differently from a value this project chose — but it is signed
+// off in the DESIGN REVIEW, against the sheet, where the two values sit side by
+// side in the as-installed column. A test asks one thing: does the deployed
+// system hold what the design says. The answer does not depend on who wrote the
+// design's value, and the verification is identical either way.
+describe("what a record does not carry", () => {
+  it("has no column for who decided the value", () => {
+    const b = renderTestDoc(plan(), results(), "server", { includeDefaults: true });
+    for (const said of ["由来", "本案件で設定", "ベンダ配布", "製品の既定値"]) {
+      expect(b["test:items"]).not.toContain(said);
+    }
+  });
+
+  // …and the one row whose CHECK differs because of it still says so, in the
+  // column whose job that is: a row the vendor shipped and this project removed
+  // is verified by its absence.
+  it("still says how a removed row was checked", () => {
+    const b = renderTestDoc(plan(), results(), "server", { includeDefaults: true });
+    const row = b["test:items"].split("\n").find((l) => l.includes("`Gone`")) ?? "";
+    expect(row).toContain("（設定なし）");
+  });
+});
+
 describe("the tables a document is given", () => {
   // The item is the SETTING; what to expect of it belongs in the column whose
   // whole job is to say so. Carrying it as a sentence put the same nine
@@ -60,12 +86,11 @@ describe("the tables a document is given", () => {
     const b = renderTestDoc(plan(), results(), "server", { includeDefaults: true });
     const row = (key: string): string =>
       b["test:items"].split("\n").find((l) => l.includes(`\`${key}\``)) ?? "";
-    expect(row("Listen")).toContain("| `Listen` | `80` | 本案件で設定 |");
-    // …a row still on the product's own default says WHICH, beside the value.
-    expect(row("Timeout")).toContain("| `Timeout` | `60` | 製品の既定値 |");
+    expect(row("Listen")).toContain("| `Listen` | `80` |");
+    expect(row("Timeout")).toContain("| `Timeout` | `60` |");
     // …and one the vendor shipped and this project removed has no value to
     // state, so the column states the absence itself.
-    expect(row("Gone")).toContain("| `Gone` | （設定なし） | ベンダ配布から削除 |");
+    expect(row("Gone")).toContain("| `Gone` | （設定なし） |");
   });
 
   // An expectation that IS the empty string is a setting turned off, not a row
@@ -78,8 +103,8 @@ describe("the tables a document is given", () => {
     ] as never;
     const b = renderTestDoc(p, { results: [] } as never, "server", { includeDefaults: true });
     const row = (k: string): string => b["test:items"].split("\n").find((l) => l.includes(`\`${k}\``)) ?? "";
-    expect(row("user")).toContain("| `user` | （空） | 本案件で設定 |");
-    expect(row("rp")).toContain("| `rp` | （空） | 製品の既定値 |");
+    expect(row("user")).toContain("| `user` | （空） |");
+    expect(row("rp")).toContain("| `rp` | （空） |");
   });
 
   // The taxonomy names three levels; a reader has to be able to point at each

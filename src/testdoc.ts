@@ -45,7 +45,6 @@ type Words = {
   // reader maps the table onto the page by reading the same words twice.
   major: string; middle: string; subject: string;
   // The column that says WHO decided the expected value, and its five answers.
-  decider: string; deciders: Record<string, string>;
   pass: string; fail: string; notRun: string;
   // What the EXPECTED column says where the value cannot say it itself.
   expectAbsent: string; expectEmpty: string;
@@ -74,14 +73,6 @@ const T: Record<TestDocLang, Words> = {
     major: "大項目",
     middle: "中項目",
     subject: "対象",
-    decider: "由来",
-    deciders: {
-      project: "本案件で設定",
-      "vendor-kept": "ベンダ配布のまま",
-      "vendor-changed": "ベンダ配布から変更",
-      "product-default": "製品の既定値",
-      "vendor-removed": "ベンダ配布から削除",
-    },
     expected: "期待結果",
     verdict: "判定",
     ran: "実施日",
@@ -132,14 +123,6 @@ const T: Record<TestDocLang, Words> = {
     major: "Unit",
     middle: "Component",
     subject: "Subject",
-    decider: "Decided by",
-    deciders: {
-      project: "This project",
-      "vendor-kept": "The vendor's, unchanged",
-      "vendor-changed": "The vendor's, changed here",
-      "product-default": "The product's default",
-      "vendor-removed": "The vendor's, removed here",
-    },
     item: "Setting (test item)",
     expected: "Expected",
     verdict: "Result",
@@ -499,7 +482,6 @@ export function renderTestDoc(
             cell(i.component),
             itemText(t, i, lang),
             expectedText(t, i),
-            t.deciders[i.decider] ?? "",
             verdictOf(t, r),
             dayOf(r, run, opts.timezone),
             cell(r?.detail),
@@ -514,14 +496,30 @@ export function renderTestDoc(
           ];
         });
       {
-        const shape = dropEmpty([t.no, t.subject, t.item, t.expected, t.decider, t.verdict, t.ran, t.how, t.evidence, t.note], rows, 6);
+        // NO "who decided it" column. `TestDecider` is on the plan and is a
+        // real fact — a vendor's line deployed unchanged is signed off
+        // differently from a value this project chose — but it is signed off in
+        // the DESIGN REVIEW, against the sheet, where the two values sit side
+        // by side in the as-installed column. A unit test asks one thing: does
+        // the deployed system hold what the design says. The answer does not
+        // depend on who wrote the design's value, and the verification is the
+        // same either way — read the file, compare.
+        //
+        // It was here, and the one case it seemed to earn was a row the vendor
+        // shipped and this project removed, whose check is an ABSENCE rather
+        // than a value. The `how` column already says so on that row
+        // ("confirmed gone — shipped by the distribution, not set by this
+        // project"), so the column added nothing there either. And the record
+        // is a sheet of the same document as the parameter sheets, so a reader
+        // who wants the provenance is one tab away rather than out of reach.
+        const shape = dropEmpty([t.no, t.subject, t.item, t.expected, t.verdict, t.ran, t.how, t.evidence, t.note], rows, 5);
         sections.push(table(shape.header, shape.rows), "");
       }
     }
 
     // …and this environment's functional items, last, as one more sub-heading.
     // The columns are deliberately not the ones above: a functional item has no
-    // sheet row behind it, so it has no 対象 and no 由来, and the sentence IS
+    // sheet row behind it, so it has no 対象, and the sentence IS
     // the expectation. That difference is where a reader sees which items came
     // from the design and which a person wrote — the boundary survives without
     // splitting the document in two.
