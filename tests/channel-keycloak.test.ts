@@ -12,6 +12,7 @@ import {
   stickySessionNode, hasSessionCookie, registerKeycloakRules,
 } from "../src/channels/keycloak";
 import { listFunctionalChannels, listDocumentRouters, listProbeRules } from "../src/channel";
+import { CHANNEL_WORDS } from "../src/channel-words";
 import type { TestItem } from "../src/testplan";
 
 const clear = (): void => {
@@ -58,9 +59,8 @@ describe("what a login page means", () => {
   it("fails a page that answers but carries no login form", () => {
     const got = channel().answer("login-page", hosts({ login: [page({ form: ["kc-form-login"], declared_theme: "corp" })] }), "stg")!;
     expect(got.status).toBe("fail");
-    expect(got.reason).toContain("ログインフォームが無い");
-    // …and says WHICH mark is missing, which a count never could.
-    expect(got.reason).toContain('name="username"');
+    // …and says WHICH marks are missing, which a count never could.
+    expect(got.reason).toBe(CHANNEL_WORDS.en.loginPageBad("poc", "200", ['name="username"', 'name="password"']));
   });
 
   // A theme can be SELECTED and still broken: the resource version is re-minted
@@ -106,7 +106,7 @@ describe("what a directory test means", () => {
   it("does not judge a provider this environment disabled", () => {
     const got = channel().answer("ldap", hosts({ ldap: [provider({ enabled: false })] }), "stg")!;
     expect(got.status).toBe("not_run");
-    expect(got.reason).toContain("無効");
+    expect(got.reason).toBe(CHANNEL_WORDS.en.ldapDisabledHere("corp"));
   });
 });
 

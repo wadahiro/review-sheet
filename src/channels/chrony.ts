@@ -17,6 +17,7 @@
 // entry); this is what the running daemon says.
 
 import { registerProbeRule } from "../channel.js";
+import { wordsFor } from "../channel-words.js";
 
 // One labelled line of `chronyc tracking`, by its label.
 //
@@ -65,7 +66,8 @@ export function registerChronyRules(binding: { time_synced?: string; sheet?: str
     name: "chrony.time-synced",
     covers: (x) => x === id,
     ...(binding.sheet === undefined ? {} : { sheet: binding.sheet }),
-    verdict: (probe) => {
+    verdict: (probe, ctx) => {
+      const w = wordsFor(ctx.lang);
       const leap = trackingFields(probe.text).get("Leap status");
       // No such line is not "not synchronised": the daemon did not answer at
       // all — it is not running, the host has no chrony on it, or the command
@@ -73,7 +75,7 @@ export function registerChronyRules(binding: { time_synced?: string; sheet?: str
       // is a third answer and never a failure; calling it a clock problem sends
       // a reader to the time instead of to the host.
       if (leap === undefined) {
-        return { ok: null, why: `chronyc tracking said nothing about the leap status: ${(probe.text ?? "").slice(0, 120)}` };
+        return { ok: null, why: w.leapMissing((probe.text ?? "").slice(0, 120)) };
       }
       const at = lineOfLeap(probe.text);
       return isSynchronised(leap)

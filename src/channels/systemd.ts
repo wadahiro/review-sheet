@@ -1,4 +1,5 @@
 import { registerProbeRule } from "../channel.js";
+import { wordsFor, type ChannelWords } from "../channel-words.js";
 
 // What systemctl says about a unit.
 //
@@ -84,14 +85,19 @@ export function lifecycleSteps(text: string | null | undefined): Map<string, Lif
 //
 // A step with no line at all is a step that did not run, which is not the same
 // as one that ran and failed; both are findings and the reason says which.
-export function lifecycleFaults(steps: Map<string, LifecycleStep>, order = ["stop", "start", "restart"]): string[] {
+export function lifecycleFaults(
+  steps: Map<string, LifecycleStep>,
+  order = ["stop", "start", "restart"],
+  w: ChannelWords = wordsFor(undefined)
+): string[] {
   const bad: string[] = [];
   for (const action of order) {
     const step = steps.get(action);
-    if (step === undefined) bad.push(`${action}: did not run`);
+    if (step === undefined) bad.push(w.stepDidNotRun(action));
+    // `rc=5` is the command's own answer and is quoted, not written.
     else if (step.rc !== 0) bad.push(`${action}: rc=${step.rc}`);
     else if (AFTER[action] !== undefined && step.active !== AFTER[action]) {
-      bad.push(`${action}: is-active=${step.active}, ${action} means ${AFTER[action]}`);
+      bad.push(w.stepLeftWrongState(action, step.active, AFTER[action]!));
     }
   }
   const started = steps.get("start")?.enteredAt;
@@ -100,7 +106,7 @@ export function lifecycleFaults(steps: Map<string, LifecycleStep>, order = ["sto
   // not reporting a defect, and inventing one from a missing field would fail
   // every project that prints the shorter line.
   if (started !== undefined && restarted !== undefined && restarted <= started) {
-    bad.push("restart: the unit did not enter active again (ActiveEnterTimestamp did not move)");
+    bad.push(w.restartDidNotRestart());
   }
   return bad;
 }
@@ -114,15 +120,16 @@ export function registerSystemdRules(binding: { units_enabled?: string; lifecycl
       name: "systemd.lifecycle",
       covers: (x) => x === binding.lifecycle,
       ...(binding.sheet === undefined ? {} : { sheet: binding.sheet }),
-      verdict: (probe) => {
+      verdict: (probe, ctx) => {
+        const w = wordsFor(ctx.lang);
         const steps = lifecycleSteps(probe.text);
         // Nothing parsed at all is not three failed steps: the run produced no
         // output this can read, and saying "stop, start and restart all failed"
         // about it sends a reader to the unit instead of to the collector.
         if (steps.size === 0) {
-          return { ok: false, why: `no lifecycle steps in the output: ${(probe.text ?? "").slice(0, 120)}` };
+          return { ok: false, why: w.noLifecycleSteps((probe.text ?? "").slice(0, 120)) };
         }
-        const bad = lifecycleFaults(steps);
+        const bad = lifecycleFaults(steps, undefined, w);
         return bad.length === 0 ? { ok: true } : { ok: false, why: bad.join("; ") };
       },
     });

@@ -9,6 +9,7 @@
 import { describe, it, expect } from "bun:test";
 import { judgeProbes, type ProbeResult, type ObservedHost, type Observation } from "../src/judge";
 import type { TestPlan } from "../src/testplan";
+import { CHANNEL_WORDS } from "../src/channel-words";
 
 const held = (probes: Record<string, ProbeResult>): ObservedHost => ({ files: {}, probes });
 
@@ -156,5 +157,80 @@ describe("a rule the tool itself holds", () => {
     } as unknown as TestPlan;
     const obs = [{ environment: "stg", hosts: { web01: { files: {}, probes: { "service-enabled": { ran: true, text: "a enabled\nfw Failed to get unit file state for fw.service: No such file or directory\n" } } } } }] as unknown as Observation[];
     expect(judgeFunctional(plan, obs, { lang: "ja" }).answers[0]!.status).toBe("pass");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The document's language reaches the words a product plugin writes.
+//
+// A verdict is half quotation and half sentence: what the product said, and
+// what the tool says it means. The sentence half used to be written inline —
+// the probe rules in English and the functional channels in Japanese — so every
+// delivery carried one of the two in the wrong language, whichever `--lang` it
+// was generated with.
+//
+// Asserted against the table rather than against a literal, so neither language
+// is spelled out here and the test says only what it means: whichever language
+// was asked for is the one that came back.
+describe("the language a verdict is written in", () => {
+  const clear = (): void => {
+    const arr = (globalThis as Record<symbol, unknown>)[Symbol.for("review-sheet.probe-rules.v1")] as unknown[];
+    if (Array.isArray(arr)) arr.length = 0;
+  };
+  const plan = {
+    metadata: { title: "t" },
+    units: [{ name: "u", declaration: { method: { ja: "m" } }, sheets: ["s"] }],
+    items: [],
+    functional: [{ unit: "u", id: "clock", text: "x", instance: "stg", intrusive: false }],
+  } as unknown as TestPlan;
+  const obs = [
+    { environment: "stg", hosts: { web01: { files: {}, probes: { clock: { ran: true, text: "Cannot talk to daemon" } } } } },
+  ] as unknown as Observation[];
+
+  const reasonIn = async (lang: "ja" | "en"): Promise<string> => {
+    clear();
+    const { registerModelChannels, judgeFunctional } = await import("../src/judge");
+    registerModelChannels({ functional_rules: [{ rule: "chrony", time_synced: "clock" }] });
+    return judgeFunctional(plan, obs, { lang }).answers[0]!.reason ?? "";
+  };
+
+  it("says it in Japanese for a Japanese document", async () => {
+    expect(await reasonIn("ja")).toContain(CHANNEL_WORDS.ja.leapMissing("Cannot talk to daemon"));
+  });
+
+  it("says it in English for an English one", async () => {
+    expect(await reasonIn("en")).toContain(CHANNEL_WORDS.en.leapMissing("Cannot talk to daemon"));
+  });
+
+  // …and the two are not the same sentence, which is the only thing that makes
+  // the pair above worth asserting.
+  it("does not say the same thing either way", () => {
+    expect(CHANNEL_WORDS.ja.leapMissing("x")).not.toBe(CHANNEL_WORDS.en.leapMissing("x"));
+  });
+
+  // The product's own words are QUOTED, in either language. Translating them
+  // would be translating the evidence.
+  it("quotes what the daemon said, whatever the document's language", async () => {
+    for (const lang of ["ja", "en"] as const) expect(await reasonIn(lang)).toContain("Cannot talk to daemon");
+  });
+
+  // …and the other half of the same wire. A functional channel answers a whole
+  // item rather than folding one probe per host, so it is reached by a
+  // different call and had to be threaded separately — which is exactly the
+  // kind of second path that gets forgotten.
+  it("reaches a functional channel too", async () => {
+    clear();
+    const { registerFunctionalChannel } = await import("../src/channel");
+    const { judgeFunctional } = await import("../src/judge");
+    registerFunctionalChannel({
+      name: "test.language",
+      covers: (id) => id === "clock",
+      answer: (_id, _hosts, _instance, ctx) => ({ status: "not_run", reason: `lang=${ctx?.lang ?? "none"}` }),
+    });
+    for (const lang of ["ja", "en"] as const) {
+      expect(judgeFunctional(plan, obs, { lang }).answers[0]!.reason).toBe(`lang=${lang}`);
+    }
+    const arr = (globalThis as Record<symbol, unknown>)[Symbol.for("review-sheet.functional-channels.v1")] as unknown[];
+    if (Array.isArray(arr)) arr.length = 0;
   });
 });

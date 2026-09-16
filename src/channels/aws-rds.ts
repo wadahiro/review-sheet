@@ -22,6 +22,7 @@
 // What arrives is the API's reply, verbatim, as a document.
 
 import { registerDocumentRouter, registerFunctionalChannel, type DocumentRouter, type FunctionalAnswer } from "../channel.js";
+import { wordsFor, type ChannelWords } from "../channel-words.js";
 import type { TestItem } from "../testplan.js";
 
 // A resource's own attributes, by the type that holds them. The KEY is the
@@ -98,7 +99,7 @@ export function registerAwsRdsRouter(): void {
 // The set the design authored is the PLAN's, read through the same table the
 // router uses. A project keeping its own copy of that pattern is the hazard
 // this whole file exists to remove.
-function authoredAnswer(hosts: Record<string, unknown>, items: TestItem[], sheet: string): FunctionalAnswer {
+function authoredAnswer(hosts: Record<string, unknown>, items: TestItem[], sheet: string, w: ChannelWords): FunctionalAnswer {
   for (const [host, held] of Object.entries(hosts)) {
     const doc = ((held as { documents?: { name?: string; how?: string; text?: string; absent?: string }[] }).documents ?? []).find(
       (d) => d.name === "describe-db-cluster-parameters"
@@ -109,7 +110,7 @@ function authoredAnswer(hosts: Record<string, unknown>, items: TestItem[], sheet
     try {
       body = JSON.parse(doc.text ?? "{}") as typeof body;
     } catch {
-      return { status: "not_run", reason: "パラメータの一覧を読めなかった" };
+      return { status: "not_run", reason: w.parametersUnreadable() };
     }
     // A PAGE IS NOT THE LIST. `describe-db-cluster-parameters` is paginated and
     // a group holds several hundred parameters, so a reply that carries a
@@ -118,7 +119,7 @@ function authoredAnswer(hosts: Record<string, unknown>, items: TestItem[], sheet
     // answer. Refused rather than answered from part of the data: the pass it
     // would otherwise produce is the failure mode this item exists to catch.
     if (typeof body.Marker === "string" && body.Marker !== "") {
-      return { status: "not_run", reason: "パラメータの一覧が途中までしか返っていない（ページングされている）" };
+      return { status: "not_run", reason: w.parametersPaginated() };
     }
     // The VALUE rows, not every row that names a parameter: `apply_method` says
     // HOW a change takes effect, which is not a statement that the value was
@@ -137,13 +138,13 @@ function authoredAnswer(hosts: Record<string, unknown>, items: TestItem[], sheet
     const ok = extra.length === 0 && missing.length === 0;
     return {
       status: ok ? "pass" : "fail",
-      detail: `${(body.Parameters ?? []).length} 項目のうち変更されているのは ${changed.length} 件`,
+      detail: w.authoredDetail((body.Parameters ?? []).length, changed.length),
       ...(ok
         ? {}
         : {
             reason: [
-              extra.length > 0 ? `設計にない変更: ${extra.join(", ")}` : "",
-              missing.length > 0 ? `設計にあるが変更されていない: ${missing.join(", ")}` : "",
+              extra.length > 0 ? w.authoredExtra(extra.join(", ")) : "",
+              missing.length > 0 ? w.authoredMissing(missing.join(", ")) : "",
             ]
               .filter((x) => x !== "")
               .join(" / "),
@@ -151,7 +152,7 @@ function authoredAnswer(hosts: Record<string, unknown>, items: TestItem[], sheet
       evidence: { host, ...(doc.how === undefined ? {} : { command: doc.how }) },
     };
   }
-  return { status: "not_run", reason: "この環境の AWS は収集していない" };
+  return { status: "not_run", reason: w.awsNotCollected() };
 }
 
 // Bound by a project, because the id is a project's own.
@@ -161,6 +162,6 @@ export function registerAwsRdsChannel(binding: { sheet?: string; parameters_auth
   registerFunctionalChannel({
     name: "aws-rds",
     covers: (x) => x === id,
-    answer: (_x, hosts, _instance, ctx) => authoredAnswer(hosts, ctx?.items ?? [], binding.sheet ?? ""),
+    answer: (_x, hosts, _instance, ctx) => authoredAnswer(hosts, ctx?.items ?? [], binding.sheet ?? "", wordsFor(ctx?.lang)),
   });
 }

@@ -105,9 +105,13 @@ export type ProbeRule = {
   // carries the host, everything else that host holds, and how many hosts
   // answered — the fleet's own size, which is an expectation no literal can
   // state.
+  // `lang` is the language the DOCUMENT this verdict lands in is written in.
+  // A rule that only quotes what a product said can ignore it; one that says
+  // anything of its own resolves its words from it (`wordsFor` in
+  // src/channel-words.ts) rather than writing a sentence in one language.
   verdict: (
     probe: { how?: string; ran?: boolean; why?: string; ok?: boolean | null; text?: string },
-    ctx: { host: string; held: unknown; hosts: number }
+    ctx: { host: string; held: unknown; hosts: number; lang?: "ja" | "en" }
   ) => { ok: boolean | null; why?: string; line?: number };
 };
 
@@ -422,7 +426,9 @@ export type FunctionalChannel = {
     id: string,
     hosts: Record<string, unknown>,
     instance: string,
-    ctx?: { items?: TestItem[] }
+    // `lang` as on ProbeRule above: the document's language, for the half of an
+    // answer the channel writes rather than quotes.
+    ctx?: { items?: TestItem[]; lang?: "ja" | "en" }
   ) => FunctionalAnswer | undefined;
 };
 

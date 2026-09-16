@@ -5,6 +5,7 @@
 // project that reviews an RDS cluster — and it cannot be inferred from the
 // spelling, which is the whole reason it is a table rather than a rule.
 
+import { CHANNEL_WORDS } from "../src/channel-words";
 import { describe, it, expect, beforeEach } from "bun:test";
 import "../src/parsers/index";
 import { awsRdsRouter, registerAwsRdsRouter, registerAwsRdsChannel } from "../src/channels/aws-rds";
@@ -160,7 +161,7 @@ describe("nobody changed anything the design did not decide", () => {
       { ParameterName: "work_mem", Source: "engine-default" },
     ]));
     expect(got.status).toBe("pass");
-    expect(got.detail).toContain("2 項目のうち変更されているのは 1 件");
+    expect(got.detail).toContain(CHANNEL_WORDS.en.authoredDetail(2, 1));
   });
 
   // `user` is the API saying somebody set it — which is the whole reason to ask.
@@ -168,9 +169,9 @@ describe("nobody changed anything the design did not decide", () => {
     expect(ask(reply([
       { ParameterName: "max_connections", Source: "user" },
       { ParameterName: "work_mem", Source: "user" },
-    ])).reason).toContain("設計にない変更: work_mem");
+    ])).reason).toContain(CHANNEL_WORDS.en.authoredExtra("work_mem"));
     expect(ask(reply([{ ParameterName: "max_connections", Source: "engine-default" }])).reason).toContain(
-      "設計にあるが変更されていない: max_connections"
+      CHANNEL_WORDS.en.authoredMissing("max_connections")
     );
   });
 
@@ -197,7 +198,7 @@ describe("nobody changed anything the design did not decide", () => {
     const truncated = JSON.stringify({ Parameters: [{ ParameterName: "max_connections", Source: "user" }], Marker: "abc" });
     const got = listFunctionalChannels()[0]!.answer("aws-parameters-authored", hostsWith(truncated), "staging", { items: plan })!;
     expect(got.status).toBe("not_run");
-    expect(got.reason).toContain("ページング");
+    expect(got.reason).toBe(CHANNEL_WORDS.en.parametersPaginated());
     // …and an empty marker is not truncation.
     const whole = JSON.stringify({ Parameters: [{ ParameterName: "max_connections", Source: "user" }], Marker: "" });
     clear();

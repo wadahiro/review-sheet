@@ -33,6 +33,7 @@ import { registerChronyRules } from "./channels/chrony.js";
 import { registerLogrotateRules } from "./channels/logrotate.js";
 import { registerSystemdRules } from "./channels/systemd.js";
 import { buildMismatch, buildMismatchReported, rpmVersions, packagesToQuery } from "./channels/rpm.js";
+import { wordsFor } from "./channel-words.js";
 import "./channels/reads.js"; // the product recipes (reads/addresses/defaults/versions) register on load
 import { compiledInFor, injectedOptions, lineOfCompiledIn, includeSyntaxFor } from "./channels/httpd.js";
 import { effectiveConfig, isProductDefault, lineOfEffective, SECRET_FIELDS, REDACTED, MASKED, LOGIN_MARKS_LIST } from "./channels/keycloak.js";
@@ -257,7 +258,10 @@ export function judgeProbes(
       seen.push({ host, ran: false, why: probe.why || (item.intrusive === true ? t.consentNeeded : t.notProbed) });
       continue;
     }
-    const got = verdict(probe, { host, held, hosts: entries.length });
+    // The document's language reaches the rule here. Nowhere else does: a rule
+    // is registered once, at load, and cannot be told then which document it
+    // will end up in.
+    const got = verdict(probe, { host, held, hosts: entries.length, ...(opts.lang === undefined ? {} : { lang: opts.lang }) });
     if (got.ok === null) {
       seen.push({ host, ran: false, why: got.why || t.notProbed });
       continue;
@@ -562,7 +566,7 @@ export function judgeFiles(
       const heldDoc = obs0?.hosts?.[doc.host];
       const wrongBuildDoc =
         item.kind === "default-in-force" && heldDoc !== undefined
-          ? buildOf(heldDoc, item.target.sheet, opts.builds ?? [], opts.rpmCommand, opts.defaultsCheckedBy ?? [])
+          ? buildOf(heldDoc, item.target.sheet, opts.builds ?? [], opts.rpmCommand, opts.defaultsCheckedBy ?? [], opts.lang)
           : undefined;
       if (wrongBuildDoc !== undefined) {
         out.results.push({
@@ -670,7 +674,7 @@ export function judgeFiles(
             continue;
           }
         }
-        const wrongBuild = buildOf(held, item.target.sheet, opts.builds ?? [], opts.rpmCommand, opts.defaultsCheckedBy ?? []);
+        const wrongBuild = buildOf(held, item.target.sheet, opts.builds ?? [], opts.rpmCommand, opts.defaultsCheckedBy ?? [], opts.lang);
         if (wrongBuild !== undefined) {
           out.results.push({
             target, at,
@@ -761,13 +765,15 @@ function buildOf(
   // configuration can also be held to its pin — `rpm -q` answers for a package
   // and says nothing about a tarball, an image or a cloud API, which on one
   // real project was eight of fourteen pinned products (see ProductVersion).
-  defaultsCheckedBy: { product: string; command?: string }[] = []
+  defaultsCheckedBy: { product: string; command?: string }[] = [],
+  lang?: "ja" | "en"
 ): string | undefined {
   if (builds.length === 0) return undefined;
+  const w = wordsFor(lang);
   const bad: string[] = [];
   if (command !== undefined) {
     const out = held.commands?.[command];
-    if (typeof out === "string") bad.push(...buildMismatch(builds, sheet, rpmVersions(out)));
+    if (typeof out === "string") bad.push(...buildMismatch(builds, sheet, rpmVersions(out), {}, w));
   }
   // What each product's own configuration command reported, keyed by the
   // product whose entry asked for it.
@@ -776,7 +782,7 @@ function buildOf(
     const out = d.command === undefined ? undefined : held.commands?.[d.command];
     if (typeof out === "string") asked.set(d.product, out);
   }
-  bad.push(...buildMismatchReported(builds, sheet, asked, productVersionFor).mismatch);
+  bad.push(...buildMismatchReported(builds, sheet, asked, productVersionFor, w).mismatch);
   return bad.length === 0 ? undefined : bad.join(", ");
 }
 
@@ -1265,7 +1271,10 @@ export function judgeFunctional(
         out.push({ ...base, status: "not_run", reason: t.notCollected });
         continue;
       }
-      const got = fc.answer(f.id!, obs.hosts, f.instance, { items: plan.items.filter((i) => i.target.instance === f.instance) });
+      const got = fc.answer(f.id!, obs.hosts, f.instance, {
+        items: plan.items.filter((i) => i.target.instance === f.instance),
+        ...(opts.lang === undefined ? {} : { lang: opts.lang }),
+      });
       if (got !== undefined) {
         out.push({
           ...base,

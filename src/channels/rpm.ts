@@ -22,6 +22,8 @@
 //
 // A product not in this list and not declared by the project is SKIPPED, which
 // is the honest answer: this tool does not know how that one is versioned.
+import { wordsFor, type ChannelWords } from "../channel-words.js";
+
 const PACKAGE_OF: Record<string, string> = {
   httpd: "httpd",
   systemd: "systemd",
@@ -60,7 +62,8 @@ export function buildMismatch(
   builds: { sheet: string; product: string; version: string }[],
   sheet: string,
   installed: Map<string, string>,
-  overrides: Record<string, string> = {}
+  overrides: Record<string, string> = {},
+  w: ChannelWords = wordsFor(undefined)
 ): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -78,7 +81,7 @@ export function buildMismatch(
     // missing package is not a wrong version.
     if (got === undefined) continue;
     const ok = b.version.includes("-") ? got === b.version : got.split("-")[0] === b.version;
-    if (!ok) out.push(`${pkg} ${got}（シートは ${b.product} ${b.version} を記述）`);
+    if (!ok) out.push(w.packageIsNotTheBuild(pkg, got, b.product, b.version));
   }
   return out;
 }
@@ -99,7 +102,8 @@ export function buildMismatchReported(
   builds: { sheet: string; product: string; version: string }[],
   sheet: string,
   asked: Map<string, string>,
-  versionFor: (product: string) => { from: string; version: (out: string) => string | undefined } | undefined
+  versionFor: (product: string) => { from: string; version: (out: string) => string | undefined } | undefined,
+  w: ChannelWords = wordsFor(undefined)
 ): { mismatch: string[]; unverified: string[] } {
   const mismatch: string[] = [];
   const unverified: string[] = [];
@@ -122,7 +126,7 @@ export function buildMismatchReported(
     // The same granularity rule as above: a pin naming no release cannot be
     // held to one.
     const ok = b.version.includes("-") ? got === b.version : got.split("-")[0] === b.version;
-    if (!ok) mismatch.push(`${b.product} ${got}（シートは ${b.version} を記述）`);
+    if (!ok) mismatch.push(w.productIsNotTheBuild(b.product, got, b.version));
   }
   return { mismatch, unverified };
 }

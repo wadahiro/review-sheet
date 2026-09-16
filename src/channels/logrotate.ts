@@ -1,4 +1,5 @@
 import { registerProbeRule } from "../channel.js";
+import { wordsFor } from "../channel-words.js";
 
 // What `logrotate -d` says about a configuration it was asked to read.
 //
@@ -21,8 +22,8 @@ export function registerLogrotateRules(binding: { config_syntax?: string; sheet?
     name: "logrotate.config-syntax",
     covers: (x) => x === id,
     ...(binding.sheet === undefined ? {} : { sheet: binding.sheet }),
-    verdict: (probe) => {
-      if (/not installed/.test(probe.text ?? "")) return { ok: null, why: "logrotate がこのホストに無い" };
+    verdict: (probe, ctx) => {
+      if (/not installed/.test(probe.text ?? "")) return { ok: null, why: wordsFor(ctx.lang).logrotateAbsent() };
       const bad = configErrors(probe.text);
       return bad.length === 0 ? { ok: true } : { ok: false, why: bad.slice(0, 2).join(" / ") };
     },

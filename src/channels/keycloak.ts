@@ -19,6 +19,7 @@
 // that happens to share a name.
 
 import { registerDocumentRouter, registerFunctionalChannel, registerProbeRule, type DocumentRouter, type FunctionalAnswer } from "../channel.js";
+import { wordsFor, type ChannelWords } from "../channel-words.js";
 import type { TestItem } from "../testplan.js";
 
 // ---------------------------------------------------------------------------
@@ -278,12 +279,12 @@ const allWith = (hosts: Record<string, unknown>, has: (h: Held) => boolean): [st
 const firstWith = (hosts: Record<string, unknown>, has: (h: Held) => boolean): [string, Held] | undefined =>
   allWith(hosts, has)[0];
 
-function loginAnswer(id: string, hosts: Record<string, unknown>, sheet: string): FunctionalAnswer | undefined {
+function loginAnswer(id: string, hosts: Record<string, unknown>, sheet: string, w: ChannelWords): FunctionalAnswer | undefined {
   // EVERY node that was asked: a login page is fetched through the node's own
   // front end, so one whose proxy is broken serves a page that never renders —
   // and reading only the first node answers for a fleet it never looked at.
   const from = allWith(hosts, (h) => (h.login ?? []).length > 0);
-  if (from.length === 0) return { status: "not_run", reason: "ログイン画面を取得できていない" };
+  if (from.length === 0) return { status: "not_run", reason: w.noLoginPage() };
   const all = from.flatMap(([host, held]) => (held.login ?? []).map((p) => ({ host, p })));
   const pages = all.filter(({ p }) => p.reason === undefined && p.error === undefined);
   const documents = pages
@@ -313,7 +314,7 @@ function loginAnswer(id: string, hosts: Record<string, unknown>, sheet: string):
     const total = pages.reduce((n, x) => n + (x.p.assets ?? []).length, 0);
     return {
       status: bad.length === 0 ? "pass" : "fail",
-      detail: `ログイン画面が参照する ${total} 件（${pages.length} レルム）`,
+      detail: w.assetsDetail(total, pages.length),
       ...(bad.length === 0 ? {} : { reason: bad.slice(0, 3).join(" / ") }),
       evidence: cite,
       documents,
@@ -330,9 +331,7 @@ function loginAnswer(id: string, hosts: Record<string, unknown>, sheet: string):
     return {
       status: "fail",
       detail: `GET ${pages[0]!.p.url}`,
-      reason: broken
-        .map((x) => `${name(x)}: HTTP ${x.p.status}${missingMarks(x.p.form).length === 0 ? "" : `、ログインフォームが無い（${missingMarks(x.p.form).join(", ")}）`}`)
-        .join(" / "),
+      reason: broken.map((x) => w.loginPageBad(name(x), String(x.p.status), missingMarks(x.p.form))).join(" / "),
       evidence: { host: broken[0]!.host, command: `GET ${broken[0]!.p.url}` },
       documents,
     };
@@ -345,25 +344,25 @@ function loginAnswer(id: string, hosts: Record<string, unknown>, sheet: string):
   if (declared.length === 0) {
     return {
       status: "not_run",
-      reason: `どのレルムも loginTheme を指定していない（製品既定 ${[...new Set(pages.map((x) => String(x.p.theme)))].join(", ")} が配信されている）`,
+      reason: w.noThemeDeclared([...new Set(pages.map((x) => String(x.p.theme)))].join(", ")),
       documents,
     };
   }
   const wrong = declared.filter((x) => x.p.theme !== x.p.declared_theme);
   return {
     status: wrong.length === 0 ? "pass" : "fail",
-    detail: `GET ${pages[0]!.p.url}（${declared.length} レルム）`,
+    detail: w.loginDetail(String(pages[0]!.p.url), declared.length),
     ...(wrong.length === 0
       ? {}
-      : { reason: wrong.map((x) => `${name(x)}: ${JSON.stringify(x.p.theme)} が配信されている、指定は ${x.p.declared_theme}`).join(" / ") }),
+      : { reason: wrong.map((x) => w.themeWrong(name(x), JSON.stringify(x.p.theme), String(x.p.declared_theme))).join(" / ") }),
     evidence: wrong.length === 0 ? cite : { host: wrong[0]!.host, command: `GET ${wrong[0]!.p.url}` },
     documents,
   };
 }
 
-function ldapAnswer(hosts: Record<string, unknown>, sheet: string): FunctionalAnswer | undefined {
+function ldapAnswer(hosts: Record<string, unknown>, sheet: string, w: ChannelWords): FunctionalAnswer | undefined {
   const from = firstWith(hosts, (h) => (h.ldap ?? []).length > 0);
-  if (from === undefined) return { status: "not_run", reason: "ユーザフェデレーションの状態を読めていない" };
+  if (from === undefined) return { status: "not_run", reason: w.noFederationState() };
   const [host, held] = from;
   const all = held.ldap ?? [];
   const providers = all.filter((p) => p.error === undefined);
@@ -377,7 +376,7 @@ function ldapAnswer(hosts: Record<string, unknown>, sheet: string): FunctionalAn
   if (live.length === 0) {
     return {
       status: "not_run",
-      reason: providers.length === 0 ? "LDAP プロバイダが無い" : `この環境では無効: ${providers.map((p) => p.name).join(", ")}`,
+      reason: providers.length === 0 ? w.noLdapProvider() : w.ldapDisabledHere(providers.map((p) => p.name).join(", ")),
       documents,
     };
   }
@@ -390,7 +389,7 @@ function ldapAnswer(hosts: Record<string, unknown>, sheet: string): FunctionalAn
   );
   return {
     status: bad.length === 0 ? "pass" : "fail",
-    detail: `POST /admin/realms/{realm}/testLDAPConnection（${live.length} プロバイダ）`,
+    detail: w.ldapDetail(live.length),
     ...(bad.length === 0 ? {} : { reason: bad.slice(0, 2).join(" / ") }),
     evidence: { host, command: "POST /admin/realms/{realm}/testLDAPConnection" },
     documents,
@@ -413,11 +412,12 @@ export function registerKeycloakChannels(binding: {
   registerFunctionalChannel({
     name: "keycloak",
     covers: (id) => ids.has(id),
-    answer: (id, hosts) => {
+    answer: (id, hosts, _instance, ctx) => {
       const kind = ids.get(id);
       if (kind === undefined) return undefined;
-      if (kind === "ldap") return ldapAnswer(hosts, sheet);
-      return loginAnswer(kind === "assets" ? "assets" : "page", hosts, sheet);
+      const w = wordsFor(ctx?.lang);
+      if (kind === "ldap") return ldapAnswer(hosts, sheet, w);
+      return loginAnswer(kind === "assets" ? "assets" : "page", hosts, sheet, w);
     },
   });
 }
@@ -597,18 +597,19 @@ export function registerKeycloakLdapRouter(binding: {
 // verdict says which of the three ways it could not answer.
 function expectedBase(
   binding: { issuer_base?: string; issuer_conf?: string },
-  held: unknown
+  held: unknown,
+  w: ChannelWords
 ): { base?: string; why: string } {
   if (binding.issuer_base !== undefined) return { base: binding.issuer_base, why: "" };
   const path = binding.issuer_conf;
-  if (path === undefined) return { why: "no issuer_base or issuer_conf declared to compare it against" };
+  if (path === undefined) return { why: w.noIssuerExpectation() };
   const conf = (held as { files?: Record<string, string | null> } | undefined)?.files?.[path];
-  if (typeof conf !== "string") return { why: `${path} was not observed on this host` };
+  if (typeof conf !== "string") return { why: w.confNotObserved(path) };
   const base = configuredHostname(conf);
-  if (base === undefined) return { why: `${path} sets no hostname` };
+  if (base === undefined) return { why: w.confSetsNoHostname(path) };
   // Keycloak accepts a bare hostname here, and an issuer built from one would
   // be a guess about the scheme — the one thing a product rule must not make.
-  if (!/^https?:\/\//.test(base)) return { why: `${path} says hostname=${base}, which is not a full URL` };
+  if (!/^https?:\/\//.test(base)) return { why: w.hostnameNotAUrl(path, base) };
   return { base, why: "" };
 }
 
@@ -636,18 +637,19 @@ export function registerKeycloakRules(binding: {
       covers: (x) => x === binding.issuer_external,
       ...at,
       verdict: (probe, ctx) => {
+        const w = wordsFor(ctx.lang);
         const issuer = issuerOf(probe.text);
         if (issuer === undefined) {
-          return { ok: false, why: `no issuer in the response: ${(probe.text ?? "").slice(0, 120)}` };
+          return { ok: false, why: w.noIssuerInResponse((probe.text ?? "").slice(0, 120)) };
         }
-        const from = expectedBase(binding, ctx.held);
+        const from = expectedBase(binding, ctx.held, w);
         // No base at all: the reading still stands on its own — the realm
         // published SOMETHING — but nothing here knows what it should have
         // been, and a rule that quietly passes anything is worse than one that
         // says it cannot answer.
-        if (from.base === undefined) return { ok: null, why: `issuer ${issuer} — ${from.why}` };
+        if (from.base === undefined) return { ok: null, why: w.issuerUnjudged(issuer, from.why) };
         const want = issuerFor(from.base, realmAsked(probe.how));
-        return issuerMatches(issuer, want) ? { ok: true, why: issuer } : { ok: false, why: `issuer ${issuer}, expected ${want}` };
+        return issuerMatches(issuer, want) ? { ok: true, why: issuer } : { ok: false, why: w.issuerNotExpected(issuer, want) };
       },
     });
   }
@@ -657,14 +659,13 @@ export function registerKeycloakRules(binding: {
       name: "keycloak.sticky-session-cookie",
       covers: (x) => x === binding.sticky_session_cookie,
       ...at,
-      verdict: (probe) => {
+      verdict: (probe, ctx) => {
+        const w = wordsFor(ctx.lang);
         if (!hasSessionCookie(probe.text)) {
-          return { ok: null, why: `the response set no AUTH_SESSION_ID: ${(probe.text ?? "").slice(0, 120)}` };
+          return { ok: null, why: w.noSessionCookie((probe.text ?? "").slice(0, 120)) };
         }
         const node = stickySessionNode(probe.text);
-        return node === undefined
-          ? { ok: true, why: "AUTH_SESSION_ID carries no node identifier" }
-          : { ok: false, why: `AUTH_SESSION_ID names the node in plain text: .${node}` };
+        return node === undefined ? { ok: true, why: w.cookieCarriesNoNode() } : { ok: false, why: w.cookieNamesNode(node) };
       },
     });
   }
@@ -675,10 +676,11 @@ export function registerKeycloakRules(binding: {
     name: "keycloak.health-ready",
     covers: (x) => x === id,
     ...at,
-    verdict: (probe) => {
+    verdict: (probe, ctx) => {
       const said = readyReport(probe.text);
+      // `HTTP 500` is the server's own answer, quoted.
       if (said.http !== 200) return { ok: false, why: `HTTP ${said.http ?? "—"}` };
-      return said.down ? { ok: false, why: "ready but a check reports DOWN" } : { ok: true };
+      return said.down ? { ok: false, why: wordsFor(ctx.lang).readyButDown() } : { ok: true };
     },
   });
 }
