@@ -1779,9 +1779,37 @@ sheet built from a handful of recorded files wants. An entry opts in to being an
 environment's slice; the two shapes are not unified. Two entries both claiming
 one environment fail the build rather than one of them quietly winning.
 
+**Each side's `defaults:` are its own.** An environment with no overlay of its
+own reads the defaults — and with one merged key space, the two releases'
+defaults files collide. Both define `app_host`, the last file read wins, and the
+old release's rows quietly report the NEW release's value, with a source map
+pointing into the new release's file (which is where `apply` would write). Tag
+each file with the component it belongs to:
+
+```yaml
+    defaults:
+      - { path: old/roles/sso/defaults/main.yml, component: "19.0.2" }
+      - { path: new/roles/sso/defaults/main.yml, component: "26.7.3" }
+```
+
+An untagged file stays SHARED — every component reads it, and a tagged one
+overrides it for its own. So a role's `defaults/` then its `vars/` still layer
+the way Ansible layers them; tag both with the same component when they belong
+to one side.
+
+The failure is invisible until two things coincide: the same variable in both
+components' defaults, AND an environment with no overlay. Give every environment
+an overlay, or let the two files share no variable, and the sheet is correct by
+accident. So two untagged defaults files that define the same variable are
+reported on a `component_order` sheet — not refused, because one component's
+`defaults/` + `vars/` is the same shape and there is nothing in the spec to tell
+them apart. A `component:` naming a component no template produces IS refused:
+it tags the file out of every view, which is the bug rather than the fix.
+
 There is no per-component `instances:`/`overlays:` block, and there will not be:
 the union belongs to the sheet and the subset to the entry that owns it, which
-is one home per fact.
+is one home per fact. `defaults:` takes `component:` for the opposite reason —
+a defaults file has no environment to inherit the answer from.
 
 ##### A sheet that exists only to compare
 

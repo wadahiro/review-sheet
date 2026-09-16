@@ -212,6 +212,13 @@ export type SheetInputs = {
   dimension?: string; // default "environment"
   instances: string[]; // ordered; value-column order
   layers: ValueLayer[]; // exactly one base; error otherwise
+  // The base layer AS EACH COMPONENT SEES IT, when a sheet's `defaults:` files
+  // are tagged with the component they belong to. The assembler does not read
+  // it: the rows it resolves from the base layer are the ones no component
+  // claimed, and for those the merged `layers` base IS the right answer. It is
+  // here because the recipe that needs it (ansible) gets its defaults by
+  // delegating to the layered recipe, so this is the only channel between them.
+  componentDefaults?: Map<string, ExtractedMap>;
   embedded: EmbeddedEntry[]; // already keyed (product-side)
   // Whole deployed files, as this sheet says they will be, for the reviewer to
   // read a value in its place (types.ts's ArtifactPreview). Passed straight

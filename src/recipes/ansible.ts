@@ -116,7 +116,7 @@ import type {
   EmbeddedEntry,
   KeyMapEntry,
 } from "../assemble.js";
-import { layeredRecipe, sourceOrListSchema, splitSchema } from "./layered.js";
+import { layeredRecipe, defaultsOrListSchema, sourceOrListSchema, splitSchema } from "./layered.js";
 
 const schema = {
   type: "object",
@@ -135,7 +135,7 @@ const schema = {
     // string" message, a declaration the code would have handled. (Found by a
     // sheet that genuinely needs two: a systemd unit template interpolates
     // both the role's defaults/ and its vars/.)
-    defaults: sourceOrListSchema,
+    defaults: defaultsOrListSchema,
     // Same shared shape as layered's, for the same reason `defaults` is: this
     // recipe hands the sheet straight to `layeredRecipe.load`, so a narrower
     // copy here would only refuse a declaration that already works.
@@ -597,14 +597,24 @@ export const ansibleRecipe: SheetRecipe = {
     const overlayLayers = core.layers.filter(
       (l): l is Extract<ValueLayer, { kind: "overlay" }> => l.kind === "overlay"
     );
+    // The defaults AS ONE COMPONENT SEES THEM. On a sheet that compares two
+    // releases, each side's `defaults:` file is tagged with the component it
+    // belongs to, and a row of the old release must fall back to the OLD
+    // defaults — merged, the two files share a key space and the last one read
+    // answered for both, sending the row's source map into the other release's
+    // file. Undeclared (every sheet that does not compare) this is the same
+    // single map it has always been.
+    const componentDefaults = core.componentDefaults;
+    const defaultsFor = (component: string | undefined): ExtractedMap =>
+      (component === undefined ? undefined : componentDefaults?.get(component)) ?? defaultsMap;
 
     // A variable AS ONE INSTANCE SEES IT: that instance's overlay when it sets
     // it, the defaults otherwise. This is the same resolution the overlay
     // re-keying below already does; naming it makes the condition evaluation
     // and the value substitution provably agree.
-    const valueIn = (instance: string | undefined, nm: string): string | undefined =>
+    const valueIn = (instance: string | undefined, nm: string, component?: string): string | undefined =>
       ((instance === undefined ? undefined : overlayLayers.find((l) => l.instance === instance))?.entries.get(nm) ??
-        defaultsMap.get(nm))?.value;
+        defaultsFor(component).get(nm))?.value;
     // Does the `{% if %}` around a line hold for this instance? THREE answers,
     // not two — see the same function in preview.ts, which decides what a
     // preview line CLAIMS and carries the reasoning in full.
@@ -616,12 +626,17 @@ export const ansibleRecipe: SheetRecipe = {
     // is in it — that is what the `{% for %}` in the same block renders from.
     const condState = (
       cond: Extract<LineCondition, { supported: true }>,
-      instance: string | undefined
+      instance: string | undefined,
+      component?: string
     ): "holds" | "fails" | "unknown" => {
       for (const t of cond.tests) {
-        const scalar = valueIn(instance, t.variable);
+        const scalar = valueIn(instance, t.variable, component);
         const truth =
-          scalar !== undefined ? truthyJinja(scalar) : loopMembers(t.variable, instance).length > 0 ? true : undefined;
+          scalar !== undefined
+            ? truthyJinja(scalar)
+            : loopMembers(t.variable, instance, component).length > 0
+              ? true
+              : undefined;
         if (truth === undefined) return "unknown";
         if (truth === t.negated) return "fails";
       }
@@ -630,8 +645,8 @@ export const ansibleRecipe: SheetRecipe = {
     // An unsupported condition never holds — the caller reports it and leaves
     // the line out, rather than guessing at a comparison or a loop. Nor does an
     // unknown one, and the caller reports that too.
-    const holds = (cond: LineCondition | undefined, instance: string | undefined): boolean =>
-      cond === undefined ? true : cond.supported ? condState(cond, instance) === "holds" : false;
+    const holds = (cond: LineCondition | undefined, instance: string | undefined, component?: string): boolean =>
+      cond === undefined ? true : cond.supported ? condState(cond, instance, component) === "holds" : false;
     const conditionOf = (entry: Entry, conditions: Map<number, LineCondition>): LineCondition | undefined =>
       entry.source.conditional && entry.source.line !== undefined ? conditions.get(entry.source.line) : undefined;
     const loopOf = (entry: Entry, loops: Map<number, LineLoop>): LineLoop | undefined =>
@@ -670,8 +685,9 @@ export const ansibleRecipe: SheetRecipe = {
       // consumed — see the expansion below.
       source: SourceLocation;
     };
-    const loopMembers = (list: string, instance: string | undefined): LoopMember[] => {
-      const read = (nm: string) => (instance === undefined ? defaultsMap.get(nm) : overlayEntryFor(instance, nm));
+    const loopMembers = (list: string, instance: string | undefined, component?: string): LoopMember[] => {
+      const defs = defaultsFor(component);
+      const read = (nm: string) => (instance === undefined ? defs.get(nm) : overlayEntryFor(instance, nm, component));
       const out: LoopMember[] = [];
       for (let i = 0; ; i++) {
         const hit = read(`${list}[${i}]`);
@@ -687,7 +703,7 @@ export const ansibleRecipe: SheetRecipe = {
       // the bracket.
       const byElement = new Map<string, Map<string, { value: string; source: SourceLocation }>>();
       const head = new RegExp(`^(${list.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\[[^\\]]*\\])\\.(.+)$`);
-      const names = instance === undefined ? [...defaultsMap.keys()] : [...new Set([...defaultsMap.keys(), ...(overlayLayers.find((l) => l.instance === instance)?.entries.keys() ?? [])])];
+      const names = instance === undefined ? [...defs.keys()] : [...new Set([...defs.keys(), ...(overlayLayers.find((l) => l.instance === instance)?.entries.keys() ?? [])])];
       for (const nm of names) {
         const m = head.exec(nm);
         if (!m) continue;
@@ -715,10 +731,10 @@ export const ansibleRecipe: SheetRecipe = {
     // Which instances render this line. `undefined` means "every one of them",
     // which is both the unconditional case and a condition that holds
     // everywhere — a row with no per-instance story to tell.
-    const renderedIn = (cond: LineCondition | undefined): string[] | undefined => {
+    const renderedIn = (cond: LineCondition | undefined, component?: string): string[] | undefined => {
       if (cond === undefined) return undefined;
       const names = io.instances.length > 0 ? io.instances : [undefined];
-      const rendering = names.filter((i) => holds(cond, i));
+      const rendering = names.filter((i) => holds(cond, i, component));
       return rendering.length === names.length ? undefined : (rendering as string[]);
     };
     // The definition site of a variable AS THIS INSTANCE SETS IT, so a
@@ -726,13 +742,13 @@ export const ansibleRecipe: SheetRecipe = {
     // value — the overlay when it overrides, the defaults otherwise. Without
     // this an instance-specific row would send apply and verify at the base
     // file, which does not hold that value.
-    const overlayEntryFor = (instance: string, nm: string): ExtractedEntry | undefined =>
-      overlayLayers.find((l) => l.instance === instance)?.entries.get(nm) ?? defaultsMap.get(nm);
-    const rendersSomewhere = (entry: Entry, conditions: Map<number, LineCondition>): boolean => {
+    const overlayEntryFor = (instance: string, nm: string, component?: string): ExtractedEntry | undefined =>
+      overlayLayers.find((l) => l.instance === instance)?.entries.get(nm) ?? defaultsFor(component).get(nm);
+    const rendersSomewhere = (entry: Entry, conditions: Map<number, LineCondition>, component?: string): boolean => {
       const cond = conditionOf(entry, conditions);
       if (cond === undefined) return true;
       const names = io.instances.length > 0 ? io.instances : [undefined];
-      return names.some((i) => holds(cond, i));
+      return names.some((i) => holds(cond, i, component));
     };
 
     // What Ansible's template module injects when it WRITES the file. No vars
@@ -825,6 +841,20 @@ export const ansibleRecipe: SheetRecipe = {
         throw new Error(
           `ansible recipe: sheet "${name}": template ${spec.path} declares instances ${stray.join(", ")}, ` +
             `which this sheet does not have (${io.instances.join(", ")})`
+        );
+      }
+    }
+    // A `defaults: [{ component: … }]` naming a component no template here
+    // produces is the same silent no-op the check above refuses: the tagged
+    // file falls out of every component's view, and the row it was meant to
+    // answer for goes back to reading whichever file happened to be last.
+    if (componentDefaults !== undefined) {
+      const known = new Set(specs.map((t) => t.component).filter((c): c is string => c !== undefined));
+      const stray = [...componentDefaults.keys()].filter((c) => !known.has(c));
+      if (stray.length > 0) {
+        throw new Error(
+          `ansible recipe: sheet "${name}": defaults declare component(s) ${stray.join(", ")}, ` +
+            `which no template here produces (${[...known].join(", ") || "none"})`
         );
       }
     }
@@ -1018,12 +1048,12 @@ export const ansibleRecipe: SheetRecipe = {
       // for, seen from the other side, and it was the one direction nothing
       // checked.
       const variablesByEntryKey = new Map<string, Set<string>>();
-      for (const { entries, structured, conditions } of read) {
+      for (const { spec, entries, structured, conditions } of read) {
         for (const entry of entries) {
           // Same rule as pass 2: under the artifact axis a conditional line
           // counts when some instance renders it; under the variable axis it
           // never counts, as before.
-          if (entry.source.conditional && !(rowsArtifact && rendersSomewhere(entry, conditions))) continue;
+          if (entry.source.conditional && !(rowsArtifact && rendersSomewhere(entry, conditions, spec.component))) continue;
           // EVERY variable the line's value interpolates, not just
           // `source.templateVar`. That field is the parser's answer to "which
           // variable IS this value" and it takes the FIRST one, which is a
@@ -1083,6 +1113,12 @@ export const ansibleRecipe: SheetRecipe = {
       // name.
       const bound: ExtractedMap = new Map();
       for (const { spec, file, content, entries, structured, conditions, loops } of read) {
+        // Every VALUE read below resolves through this component's own
+        // defaults — see defaultsFor. Name membership (does the sheet know this
+        // variable at all) still reads the merged map: a name is a name in
+        // either component's file, and narrowing that would make a template's
+        // own variable look unknown to it.
+        const defs = defaultsFor(spec.component);
         // The heading a reader wants is the file on the host, not the id this
         // spec files rows under: `logrotate-httpd` is the template's name,
         // `/etc/logrotate.d/httpd` is the thing being reviewed. The id stays
@@ -1186,7 +1222,7 @@ export const ansibleRecipe: SheetRecipe = {
           // artifact axis does not have (Pattern B varies a value, not the
           // existence of a line), so agreeing on the length is the honest
           // requirement.
-          const members = loopMembers(loop.list, undefined);
+          const members = loopMembers(loop.list, undefined, spec.component);
           if (members.length === 0) {
             console.warn(
               `ansible recipe: sheet "${name}": ${entry.key} repeats over ${loop.list}, which this sheet reads no ` +
@@ -1195,7 +1231,7 @@ export const ansibleRecipe: SheetRecipe = {
             continue;
           }
           for (const inst of io.instances) {
-            const n = loopMembers(loop.list, inst).length;
+            const n = loopMembers(loop.list, inst, spec.component).length;
             if (n !== members.length) {
               console.warn(
                 `ansible recipe: sheet "${name}": ${loop.list} has ${members.length} element(s) in the defaults and ` +
@@ -1231,7 +1267,7 @@ export const ansibleRecipe: SheetRecipe = {
               if (m.fields !== undefined && nm.startsWith(`${loop.variable}.`)) {
                 return m.fields.get(nm.slice(loop.variable.length + 1))?.source;
               }
-              return defaultsMap.get(nm)?.source;
+              return defs.get(nm)?.source;
             };
             const bind = (t: string): string =>
               substituteJinja(t, (nm) => {
@@ -1242,7 +1278,7 @@ export const ansibleRecipe: SheetRecipe = {
                   if (f !== undefined) return f.value;
                   return m.identifier?.field === field ? m.identifier.value : undefined;
                 }
-                return defaultsMap.get(nm)?.value;
+                return defs.get(nm)?.value;
               }).text;
             const boundKey = bind(entry.key);
             const boundCategories = entry.categoryPath.map(bind);
@@ -1387,7 +1423,7 @@ export const ansibleRecipe: SheetRecipe = {
               // inside `{% if the_list %}`.
               .filter((v) =>
                 (io.instances.length > 0 ? io.instances : [undefined]).every(
-                  (i) => valueIn(i, v) === undefined && loopMembers(v, i).length === 0
+                  (i) => valueIn(i, v, spec.component) === undefined && loopMembers(v, i, spec.component).length === 0
                 )
               );
             if (blind.length > 0) {
@@ -1405,7 +1441,7 @@ export const ansibleRecipe: SheetRecipe = {
           // own `{% if %}`, the other stated because the role's condition is
           // about the host and not about anything a sheet can see.
           const declaredIn = spec.instances;
-          const fromCondition = rowsArtifact ? renderedIn(cond) : undefined;
+          const fromCondition = rowsArtifact ? renderedIn(cond, spec.component) : undefined;
           const onlyIn =
             declaredIn === undefined
               ? fromCondition
@@ -1447,13 +1483,13 @@ export const ansibleRecipe: SheetRecipe = {
             // renders to `daily`). The row's identity is its address in the
             // RENDERED file, so it has to be rendered as well.
             const rawKey = expandedFromLoop.has(entry) || renumbered.has(entry) ? entry.key : (entry.source.path ?? entry.key);
-            const keySub = substituteJinja(rawKey, (n) => defaultsMap.get(n)?.value);
+            const keySub = substituteJinja(rawKey, (n) => defs.get(n)?.value);
             const key = keySub.text;
             // And the row's heading, which for a format whose containers are
             // templated is the same string one level up (a logrotate block is
             // named by the log path it rotates). A tab reading `{{ keycloak_home
             // }}/data/log/...` names a file nobody has.
-            const sub = (t: string): string => substituteJinja(t, (n) => defaultsMap.get(n)?.value).text;
+            const sub = (t: string): string => substituteJinja(t, (n) => defs.get(n)?.value).text;
             const categoryPath = entry.categoryPath.map(sub);
             // And the CHAIN, which is the same names a third time. The row's
             // key is substituted above and the chain has to address the same
@@ -1492,7 +1528,7 @@ export const ansibleRecipe: SheetRecipe = {
             // logrotate block's `{{ keycloak_home }}`) is never there.
             const valueVars = [...new Set(jinjaVariables(entry.value))];
             const vars = [...new Set([...jinjaVariables(rawKey), ...valueVars])];
-            const { text, unresolved: valueUnresolved } = substituteJinja(entry.value, (n) => defaultsMap.get(n)?.value);
+            const { text, unresolved: valueUnresolved } = substituteJinja(entry.value, (n) => defs.get(n)?.value);
             const unresolved = [...keySub.unresolved, ...valueUnresolved];
             if (unresolved.length > 0) {
               console.warn(
@@ -1523,8 +1559,8 @@ export const ansibleRecipe: SheetRecipe = {
             // site is deterministic and gives verify a real check; apply holds
             // on `substituted` either way, which is also right, since which
             // part of a composed line a reviewer meant is not knowable.
-            const siteVar = valueVars.find((v) => defaultsMap.get(v) !== undefined);
-            const only = siteVar !== undefined ? defaultsMap.get(siteVar) : undefined;
+            const siteVar = valueVars.find((v) => defs.get(v) !== undefined);
+            const only = siteVar !== undefined ? defs.get(siteVar) : undefined;
             for (const v of vars) consumedVars.add(v);
             // An entry that already carries a file is one this recipe EXPANDED:
             // a `{% for %}` member's row, whose site is the element in the vars
@@ -1562,12 +1598,12 @@ export const ansibleRecipe: SheetRecipe = {
                 // instance actually defines rather than a choice made once for
                 // all of them.
                 const site = valueVars.reduce<ReturnType<typeof overlayEntryFor>>(
-                  (found, v) => found ?? overlayEntryFor(instance, v),
+                  (found, v) => found ?? overlayEntryFor(instance, v, spec.component),
                   undefined
                 );
                 return {
                   name: instance,
-                  value: substituteJinja(entry.value, (n) => valueIn(instance, n)).text,
+                  value: substituteJinja(entry.value, (n) => valueIn(instance, n, spec.component)).text,
                   // Same rule the single-valued branch above follows: an entry
                   // that already carries a file is one this recipe EXPANDED (a
                   // `{% for %}` member, whose site is the element in the vars
@@ -1671,7 +1707,7 @@ export const ansibleRecipe: SheetRecipe = {
           }
           const variable = entry.source.templateVar;
           if (variable !== undefined) {
-            const def = defaultsMap.get(variable);
+            const def = defs.get(variable);
             if (!def) {
               console.warn(`skipped (no default for {{ ${variable} }}): ${entry.key}`);
               continue;
@@ -1761,7 +1797,7 @@ export const ansibleRecipe: SheetRecipe = {
         // a lone `  --x v \` is not a statement any parser recognises.
         if (exprLines.size > 0) {
           for (const instance of io.instances.length > 0 ? io.instances : [undefined]) {
-            const flat = renderedArtifact(content, (n) => valueIn(instance, n), [], () => []);
+            const flat = renderedArtifact(content, (n) => valueIn(instance, n, spec.component), [], () => []);
             for (const e of extractFile(flat, spec.deployedPath ?? file, formatOf(spec) as never, io.extractOptions)) {
               if (e.source.line === undefined || !exprLines.has(e.source.line)) continue;
               // The row's key is its structural path where the format has one
@@ -1781,8 +1817,8 @@ export const ansibleRecipe: SheetRecipe = {
           // key -> instance -> the value the artifact holds there
           const found = new Map<string, Map<string | undefined, Entry>>();
           for (const instance of names) {
-            const rendered = renderedArtifact(content, (n) => valueIn(instance, n), blocks, (list) =>
-              loopMembers(list, instance)
+            const rendered = renderedArtifact(content, (n) => valueIn(instance, n, spec.component), blocks, (list) =>
+              loopMembers(list, instance, spec.component)
             );
             for (const e of extractFile(rendered, spec.deployedPath ?? file, formatOf(spec) as never, io.extractOptions)) {
               // Only a name an expression-only line writes, and only an
@@ -1801,10 +1837,10 @@ export const ansibleRecipe: SheetRecipe = {
           for (const [key, per] of found) {
             const perInstance = [...per].map(([instance, e]) => {
               const site = [...exprVars].reduce<ReturnType<typeof overlayEntryFor>>(
-                (f, v) => f ?? (instance === undefined ? undefined : overlayEntryFor(instance, v)),
+                (f, v) => f ?? (instance === undefined ? undefined : overlayEntryFor(instance, v, spec.component)),
                 undefined
               );
-              const base = [...exprVars].map((v) => defaultsMap.get(v)).find((d) => d !== undefined);
+              const base = [...exprVars].map((v) => defs.get(v)).find((d) => d !== undefined);
               // Where the value is WRITTEN. Never the template line — it holds
               // an expression and not the value — so the row points at the
               // variable's own site, marked `substituted` like every other row
@@ -2071,7 +2107,7 @@ export const ansibleRecipe: SheetRecipe = {
             // rendering it for an environment the role skips would put a file
             // on screen that is not on the disk.
             spec.instances ?? io.instances,
-            (instance, n) => (n === "ansible_managed" ? ansibleManaged : valueIn(instance, n)),
+            (instance, n) => (n === "ansible_managed" ? ansibleManaged : valueIn(instance, n, spec.component)),
             keys,
             DEPLOY_TIME_VARS,
             warn,
@@ -2080,7 +2116,7 @@ export const ansibleRecipe: SheetRecipe = {
             // upward, so a list of maps read as empty and it declared the loop
             // uncomputable while the rows it produced sat on the sheet.
             (list, instance) =>
-              loopMembers(list, instance).map((m) => ({
+              loopMembers(list, instance, spec.component).map((m) => ({
                 ...(m.value !== undefined ? { value: m.value } : {}),
                 ...(m.fields !== undefined ? { fields: new Map([...m.fields].map(([k, v]) => [k, v.value])) } : {}),
                 ...(m.identifier !== undefined ? { identifier: m.identifier } : {}),
@@ -2141,7 +2177,7 @@ export const ansibleRecipe: SheetRecipe = {
           for (const row of artifactRows) {
             const overridden = row.vars.filter((v) => layer.entries.has(v));
             if (overridden.length === 0) continue;
-            const { text } = substituteJinja(row.text, (n) => (layer.entries.get(n) ?? defaultsMap.get(n))?.value);
+            const { text } = substituteJinja(row.text, (n) => (layer.entries.get(n) ?? defaultsFor(row.component).get(n))?.value);
             const only = overridden.length === 1 ? layer.entries.get(overridden[0]) : undefined;
             rekeyed.set(row.key, { value: text, source: only ? { ...only.source, substituted: true } : { file: "" } });
           }

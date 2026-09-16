@@ -78,7 +78,15 @@ import { previewFile, previewRendered, previewId, addLineKey, type LineKeys } fr
 import { inlineFileFor } from "../ansible-tasks.js";
 import type { ArtifactPreview, LangText } from "../types.js";
 
-export type SourceSpec = { path: string; format?: Format; key?: KeyTransform };
+export type SourceSpec = {
+  path: string;
+  format?: Format;
+  key?: KeyTransform;
+  // Which component's defaults this file holds, on a sheet whose rows belong to
+  // several (`component_order`). Only meaningful on `defaults:` — see
+  // defaultsOrListSchema below for why it is not on the shared shape.
+  component?: string;
+};
 
 const sourceSchema = {
   oneOf: [
@@ -98,6 +106,32 @@ const sourceSchema = {
 // only refuses, with a confusing message, a declaration that would have
 // worked. (`static_files` is the deliberate exception; see ansible.ts.)
 export const sourceOrListSchema = { oneOf: [sourceSchema, { type: "array", items: sourceSchema, minItems: 1 }] };
+
+// `defaults:` alone, because `component:` answers a question only a defaults
+// file has. An overlay is already tied to one environment, and the environment
+// already says which component it belongs to (the template that renders it), so
+// a `component:` there would be a second place to state the same fact — free to
+// contradict the first. Shared with ansible.ts for the same reason
+// `sourceOrListSchema` is: that recipe hands `defaults` straight through.
+const defaultsSourceSchema = {
+  oneOf: [
+    { type: "string" },
+    {
+      type: "object",
+      required: ["path"],
+      properties: {
+        path: { type: "string" },
+        format: { type: "string" },
+        key: keyTransformSchema,
+        component: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+  ],
+};
+export const defaultsOrListSchema = {
+  oneOf: [defaultsSourceSchema, { type: "array", items: defaultsSourceSchema, minItems: 1 }],
+};
 
 // `pattern` is the only field: see substitution.ts's compileSubstitution for
 // the "exactly one capturing group" check — that is a runtime validation
@@ -176,7 +210,7 @@ const schema = {
   type: "object",
   properties: {
     split: splitSchema,
-    defaults: sourceOrListSchema,
+    defaults: defaultsOrListSchema,
     overlays: { type: "object", additionalProperties: sourceOrListSchema },
     static_files: staticFilesSchema,
     // A file whose CONTENT an Ansible task writes inline — see
@@ -238,7 +272,8 @@ export function asSourceSpecs(v: JsonValue | undefined): SourceSpec[] {
     const o = asObject(item);
     const format = typeof o.format === "string" ? (o.format as Format) : undefined;
     const key = o.key === undefined ? undefined : (o.key as unknown as KeyTransform);
-    return { path: asString(o.path, "path"), format, key };
+    const component = o.component === undefined ? undefined : asString(o.component, "component");
+    return { path: asString(o.path, "path"), format, key, ...(component !== undefined ? { component } : {}) };
   });
 }
 
@@ -1093,10 +1128,59 @@ export const layeredRecipe: SheetRecipe = {
       };
 
     const defaultsSpecs = asSourceSpecs(sheetSpec.defaults).map(withKeyShape("key"));
-    const baseMap =
-      defaultsSpecs.length > 0
-        ? buildMapFromSources(io, defaultsSpecs, `sheet "${name}": defaults`, selector, extractOptions, warn, componentDeriver, split)
+    const buildDefaults = (specs: SourceSpec[]): ExtractedMap =>
+      specs.length > 0
+        ? buildMapFromSources(io, specs, `sheet "${name}": defaults`, selector, extractOptions, warn, componentDeriver, split)
         : new Map();
+    const baseMap = buildDefaults(defaultsSpecs);
+    // The SAME defaults, read once per component that claims some of them.
+    //
+    // `baseMap` above is every defaults file merged into one key space, so two
+    // components that both define `app_host` leave only the last one's value in
+    // it — and a row of the FIRST component then falls back to the second's
+    // file, with a source map pointing there. That is invisible until two
+    // things coincide: the same variable in both components' defaults, and an
+    // environment with no overlay to override it.
+    //
+    // Each component's view is its own files read OVER the untagged ones, so a
+    // sheet that tags none of them gets `undefined` here and every caller reads
+    // `baseMap` exactly as before.
+    const taggedDefaults = defaultsSpecs.filter((sp) => sp.component !== undefined);
+    // Two UNTAGGED defaults files that define the same variable, on a sheet
+    // whose rows belong to several components. Last-wins is right when they are
+    // one component's layers (a role's defaults/ then its vars/, which is
+    // Ansible's own precedence) and wrong when they are two components' — and
+    // nothing here can tell those apart, which is exactly why `component:`
+    // exists. Reported rather than decided: silence is what let a row of one
+    // release read the other release's file.
+    if (defaultsSpecs.length > 1 && asStringList(sheetSpec.component_order).length > 0) {
+      const untagged = defaultsSpecs.filter((sp) => sp.component === undefined);
+      const setBy = new Map<string, string[]>();
+      for (const sp of untagged) {
+        for (const key of buildDefaults([sp]).keys()) setBy.set(key, [...(setBy.get(key) ?? []), sp.path]);
+      }
+      const shared = [...setBy].filter(([, files]) => files.length > 1);
+      if (shared.length > 0) {
+        warn(
+          `sheet "${name}": ${shared.length} variable(s) are defined in more than one untagged defaults file, and ` +
+            `this sheet compares components — the last file read answers for every component. Declare ` +
+            `"component:" on each defaults file to give each component its own: ` +
+            shared
+              .slice(0, 5)
+              .map(([key, files]) => `${key} (${files.join(", ")})`)
+              .join("; ")
+        );
+      }
+    }
+    const componentDefaults =
+      taggedDefaults.length === 0
+        ? undefined
+        : new Map(
+            [...new Set(taggedDefaults.map((sp) => sp.component!))].map((component) => [
+              component,
+              buildDefaults(defaultsSpecs.filter((sp) => sp.component === undefined || sp.component === component)),
+            ])
+          );
     // Display fallback: the first defaults source, when there is one. Recorded
     // as `source_file`, NOT `file_path` — it is a file in this repository, and
     // file_path means where the configuration LANDS (types.ts). Putting a repo
@@ -1237,6 +1321,7 @@ export const layeredRecipe: SheetRecipe = {
       ...(sourceFallback ? { sourceFile: sourceFallback } : {}),
       instances: io.instances,
       layers: [{ kind: "base", entries: baseMap }, ...overlayLayers],
+      ...(componentDefaults ? { componentDefaults } : {}),
       embedded: staticFilesResult.embedded,
       ...(staticFilesResult.nestedMembers.size > 0 ? { nestedMembers: staticFilesResult.nestedMembers } : {}),
       ...(components?.componentLabels ? { componentLabels: components.componentLabels } : {}),
