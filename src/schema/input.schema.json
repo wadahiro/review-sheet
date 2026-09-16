@@ -111,6 +111,7 @@
           "issuer_external": { "type": "string" },
           "issuer_base": { "type": "string" },
           "issuer_conf": { "type": "string" },
+          "issuer_scheme": { "type": "string", "enum": ["http", "https"] },
           "sticky_session_cookie": { "type": "string" },
           "time_synced": { "type": "string" }
         }

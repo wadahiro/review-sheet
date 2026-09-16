@@ -750,6 +750,25 @@ describe("the issuer rule reading its expectation off the host", () => {
     expect(rule.verdict(reply, ctx("hostname=sso.example.com\n")).why).toContain("not a full URL");
   });
 
+  // `issuer_scheme` lets the PROJECT state the one fact the file cannot: a
+  // bare `hostname=` still gets its hostname from each host's own file, but
+  // the scheme comes from what the binding declares — never guessed.
+  it("prefixes a bare hostname with the declared scheme, but never overrides one already stated", () => {
+    const rule = ruleFor("sso.issuer.conf.6", {
+      issuer_conf: "/opt/keycloak/conf/keycloak.conf",
+      issuer_scheme: "https",
+    });
+    const reply = { how: ASKED, text: body("https://sso.example.com/realms/main") };
+    expect(rule.verdict(reply, ctx("hostname=sso.example.com\n")).ok).toBe(true);
+    expect(rule.verdict({ ...reply, text: body("http://sso.example.com/realms/main") }, ctx("hostname=sso.example.com\n")).ok).toBe(
+      false
+    );
+    // A conf value that already states a scheme is trusted as stated —
+    // `issuer_scheme` never overrides it, so an `http` issuer against an
+    // `https://` conf value still fails rather than being coerced to match.
+    expect(rule.verdict({ ...reply, text: body("http://sso.example.com/realms/main") }, ctx(CONF)).ok).toBe(false);
+  });
+
   it("reads the path it was told to and no other", () => {
     const rule = ruleFor("sso.issuer.conf.5", { issuer_conf: "/etc/keycloak/keycloak.conf" });
     const v = rule.verdict({ how: ASKED, text: body("https://sso.example.com/realms/main") }, ctx(CONF));

@@ -601,7 +601,7 @@ export function registerKeycloakLdapRouter(binding: {
 // Which base this run expects, and — when there is none — the reason, so the
 // verdict says which of the three ways it could not answer.
 function expectedBase(
-  binding: { issuer_base?: string; issuer_conf?: string },
+  binding: { issuer_base?: string; issuer_conf?: string; issuer_scheme?: "http" | "https" },
   held: unknown,
   w: ChannelWords
 ): { base?: string; why: string } {
@@ -612,10 +612,14 @@ function expectedBase(
   if (typeof conf !== "string") return { why: w.confNotObserved(path) };
   const base = configuredHostname(conf);
   if (base === undefined) return { why: w.confSetsNoHostname(path) };
+  if (/^https?:\/\//.test(base)) return { base, why: "" };
   // Keycloak accepts a bare hostname here, and an issuer built from one would
-  // be a guess about the scheme — the one thing a product rule must not make.
-  if (!/^https?:\/\//.test(base)) return { why: w.hostnameNotAUrl(path, base) };
-  return { base, why: "" };
+  // otherwise be a guess about the scheme — the one thing a product rule must
+  // not make on its own. `issuer_scheme` lets the PROJECT state that fact
+  // once (a deployment's own front-door scheme, not a per-request guess),
+  // while the hostname itself still comes from each host's own file.
+  if (binding.issuer_scheme !== undefined) return { base: `${binding.issuer_scheme}://${base}`, why: "" };
+  return { why: w.hostnameNotAUrl(path, base) };
 }
 
 export function registerKeycloakRules(binding: {
@@ -631,6 +635,11 @@ export function registerKeycloakRules(binding: {
   // differs per environment. A declared `issuer_base` WINS when both are given:
   // an expectation somebody wrote down outranks one derived from the host.
   issuer_conf?: string;
+  // The scheme to prefix onto a bare hostname read from `issuer_conf` — for a
+  // product option (Keycloak's `hostname`) that accepts either a bare host or
+  // a full URL. Only used when the conf value itself has no scheme; a value
+  // that is already `http(s)://...` is trusted as stated and this is ignored.
+  issuer_scheme?: "http" | "https";
   sticky_session_cookie?: string;
   sheet?: string;
 }): void {
