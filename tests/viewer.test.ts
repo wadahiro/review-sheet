@@ -3643,6 +3643,65 @@ describe("the overview page", () => {
     return host;
   };
 
+  // A CHAPTER TREE DEEPER THAN ONE LEVEL.
+  //
+  // `sheetsInOrder`'s contract is that a sheet belongs to the NEAREST group it
+  // names and never to an ancestor, so a chapter's own sheets are only ever the
+  // ones matching its own name. The list here matched every group against
+  // `data.groups` — the top level alone — so a project whose sheets sit under a
+  // child chapter got the ancestor's heading over an empty list and no way to
+  // reach the sheets at all. Measured on a real delivery: 8 of 19 sheets
+  // listed, and the chapter holding the other 11 shown empty.
+  const chapters = (): HTMLElement => {
+    document.body.innerHTML = "";
+    location.hash = "#overview";
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const sheet = (name: string, group: string) => ({
+      name,
+      group,
+      instances: [],
+      categories: [{ name: "c", params: [{ key: "k", value: "1" }] }],
+    });
+    render(
+      h(Root, {
+        payload: {
+          metadata: { title: "t" },
+          versions: [
+            {
+              version: "current",
+              groups: [{ name: "top", groups: [{ name: "mid", groups: [{ name: "deep" }] }] }, { name: "flat" }],
+              sheets: [sheet("deep-sheet", "deep"), sheet("mid-sheet", "mid"), sheet("flat-sheet", "flat")],
+            },
+          ],
+        } as never,
+        reviewEnabled: false,
+        initialLang: "ja",
+        server: false,
+      }),
+      host
+    );
+    return host;
+  };
+
+  it("lists every sheet, at whatever depth of the tree it is filed", () => {
+    const named = [...chapters().querySelectorAll(".rs-overview-sheet-link")].map((e) => e.textContent?.trim());
+    expect(named.sort()).toEqual(["deep-sheet", "flat-sheet", "mid-sheet"]);
+  });
+
+  it("shows every chapter of the tree, not only its top level", () => {
+    const seen = [...chapters().querySelectorAll(".rs-overview-groupname")].map((e) => e.textContent?.trim());
+    expect(seen).toEqual(["top", "mid", "deep", "flat"]);
+  });
+
+  // …and a child chapter is INSIDE its parent, so the page can say which
+  // chapter a sheet is under rather than listing four that look alike.
+  it("puts a child chapter inside its parent", () => {
+    const host = chapters();
+    const nested = host.querySelectorAll(".rs-overview-group .rs-overview-group");
+    expect(nested.length).toBe(2);
+  });
+
   it("does not repeat the project or state a version nobody set", () => {
     const host = draw({ title: "t", project: "iam-platform-poc", version: "current" });
     const text = host.querySelector(".rs-overview")?.textContent ?? "";
