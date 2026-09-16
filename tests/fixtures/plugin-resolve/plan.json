@@ -1,0 +1,6 @@
+{
+  "metadata": { "title": "t" },
+  "units": [{ "name": "u", "declaration": { "method": { "en": "m" } }, "sheets": ["s"] }],
+  "items": [],
+  "functional": [{ "unit": "u", "id": "cluster-formed", "text": "the nodes formed a cluster", "instance": "stg", "intrusive": false }]
+}

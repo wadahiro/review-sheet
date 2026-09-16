@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { Command } from "commander";
+import { installSelfResolver } from "./plugin-resolve.js";
 import { readFileSync, writeFileSync, readdirSync, mkdirSync } from "fs";
 import { resolve, relative, join, dirname, basename } from "path";
 import { createInterface } from "node:readline/promises";
@@ -88,6 +89,11 @@ async function loadPluginModules(
   kind: string,
   countRegistered: () => number
 ): Promise<number> {
+  // Before ANY plugin is imported: a plugin names this tool by its package
+  // name, and this is what makes that name mean this process — see
+  // src/plugin-resolve.ts.
+  installSelfResolver();
+
   const dirs: string[] = [];
   if (explicitDir) dirs.push(resolve(explicitDir));
   try {
@@ -128,12 +134,12 @@ async function loadPluginModules(
     console.error(
       `Warning: imported ${loaded} ${kind} plugin file(s) from ${dirs.join(", ")}, but the ${kind} registry ` +
         `did not gain any entries (still ${before}). The file(s) loaded without error, so this is not a syntax ` +
-        `or path problem — it means whatever they registered landed somewhere this process doesn't read. The ` +
-        `usual cause is a stale or duplicate "review-sheet" package copy in node_modules (this process reads a ` +
-        `process-wide shared registry — see src/registry.ts — but an old copy of the package predating that, or ` +
-        `a copy resolved from a different node_modules tree, still writes into its own separate registry). If ` +
-        `you next see "Unknown ${kind}" or a missing-description error, treat THIS warning as the root cause, ` +
-        `not that one.`
+        `or path problem — it means whatever they registered landed somewhere this process doesn't read, or they ` +
+        `registered nothing at all. Check first that each file calls a register… function at import time rather ` +
+        `than exporting something for a caller that does not exist. A "review-sheet" imported by name resolves ` +
+        `to THIS process (see src/plugin-resolve.ts), so a second copy in node_modules is no longer a way for ` +
+        `this to happen; a plugin reaching the tool by some other path still is. If you next see ` +
+        `"Unknown ${kind}" or a missing-description error, treat THIS warning as the root cause, not that one.`
     );
   }
   // A file this cannot load is named rather than passed over: a directory whose

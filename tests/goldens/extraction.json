@@ -378,6 +378,30 @@
     "sha": "e3b0c44298fc1c14"
   },
   {
+    "file": "tests/fixtures/plugin-resolve/.review-sheet/rules/probe.mjs",
+    "parser": "generic",
+    "count": 7,
+    "sha": "524c8104e3e93ec9"
+  },
+  {
+    "file": "tests/fixtures/plugin-resolve/input.json",
+    "parser": "json",
+    "count": 1,
+    "sha": "823c7614e14fa779"
+  },
+  {
+    "file": "tests/fixtures/plugin-resolve/obs.json",
+    "parser": "json",
+    "count": 5,
+    "sha": "f37bd77e735e40b9"
+  },
+  {
+    "file": "tests/fixtures/plugin-resolve/plan.json",
+    "parser": "json",
+    "count": 7,
+    "sha": "3153aa2b578565d5"
+  },
+  {
     "file": "tests/fixtures/projects/README.md",
     "parser": "generic",
     "count": 3,

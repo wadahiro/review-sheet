@@ -288,7 +288,7 @@ export function judgeProbes(
     answer: {
       ...base,
       status: failed.length === 0 ? "pass" : "fail",
-      detail: `${point.how ?? id}（${ran.length} ホスト）`,
+      detail: t.acrossHosts(point.how ?? id, ran.length),
       ...(failed.length === 0 ? {} : { reason: `${failed.map((x) => x.host).join(", ")}: ${failed[0]!.why ?? ""}` }),
       evidence: {
         host: point.host,
@@ -401,6 +401,8 @@ export type JudgeWords = {
   fromDocument: string;
   notInDocument: (how: string) => string;
   emptyAndAbsent: string;
+  acrossHosts: (how: string, hosts: number) => string;
+  expected: (got: string, want: string) => string;
 };
 
 export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
@@ -430,6 +432,8 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     fromDocument: "取得した文書",
     notInDocument: (how) => `${how} が返す文書にこの設定が無い`,
     emptyAndAbsent: "シートが空を述べ、文書もこの設定を保持していない",
+    acrossHosts: (how, hosts) => `${how}（${hosts} ホスト）`,
+    expected: (got, want) => `${got} — ${want} を期待`,
   },
   en: {
     notCollected: "this environment has not been collected",
@@ -457,6 +461,8 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     fromDocument: "the collected document",
     notInDocument: (how) => `${how} returns a document without this setting`,
     emptyAndAbsent: "the sheet states emptiness and the document holds nothing here",
+    acrossHosts: (how, hosts) => `${how} (${hosts} host(s))`,
+    expected: (got, want) => `${got} — expected ${want}`,
   },
 };
 
@@ -1365,7 +1371,7 @@ export function judgeFunctional(
           ctx.held.commands ?? {}
         );
         if (got === undefined) return { ok: null, why: t.channelSilent(ctx.host, command) };
-        return { ok: got.value === f.check!.expect, why: `${got.value} — ${f.check!.expect} を期待`, line: got.line };
+        return { ok: got.value === f.check!.expect, why: t.expected(String(got.value), String(f.check!.expect)), line: got.line };
       },
       {
         lang: opts.lang,

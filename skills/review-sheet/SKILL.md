@@ -2203,15 +2203,15 @@ If the shape is *almost* a built-in recipe, do not write one — pass `hooks`
 
 ### Where plugins live, and one trap
 
-All three plugin kinds — parsers, recipes, metadata providers — are plain modules
-that self-register at import. The CLI loads them from an explicit flag and from a
-convention directory:
+All four plugin kinds are plain modules that self-register at import. The CLI
+loads them from an explicit flag and from a convention directory:
 
 | Kind | Register with | Flag | Auto-loaded from | Loaded by |
 | --- | --- | --- | --- | --- |
 | Parser | `registerParser` | `--parsers-dir` | `./.review-sheet/parsers/` | `import`, `verify`, `apply`, `serve` |
 | Recipe | `registerRecipe` | `--recipes-dir` | `./.review-sheet/recipes/` | `import --spec` |
 | Metadata provider | `registerMetadataProvider` | `--providers-dir` | `./.review-sheet/providers/` | `import` |
+| Probe rule | `registerProbeRule` | `--rules-dir` | `./.review-sheet/rules/` | `judge` |
 
 Each command loads the kinds it can act on: `verify` / `apply` / `serve` resolve
 source maps, so they need parsers but never recipes or providers.
@@ -2219,17 +2219,36 @@ source maps, so they need parsers but never recipes or providers.
 The auto directory is resolved against the **current working directory**, not
 against `build.yml` — run the CLI from the project root.
 
-The trap: your plugin's `import { registerRecipe } from "review-sheet"` is
-resolved from **the plugin's own location**, i.e. through your project's
-`node_modules`. If the CLI you are running came from somewhere else — a sibling
-checkout, `bun run ../review-sheet/src/cli.ts`, a linked workspace — the plugin
-loads a *second copy* of the package, and ES module identity is by resolved file
-path. review-sheet keeps its registries process-wide (`Symbol.for`) so both
-copies share one, but that only helps when **both** copies have that; a project
-pinned to an older release still registers into that copy's private array, and
-the only symptom is `Unknown recipe "x"` (or a custom parser that is simply never
-picked), which reads as "my file was not loaded". If you hit it, move the pin
-first.
+### Importing the tool from a plugin
+
+One form, everywhere:
+
+```js
+import { registerProbeRule } from "review-sheet/src/channel.ts";
+import { clusterMembers } from "review-sheet/src/channels/keycloak.ts";
+```
+
+`review-sheet` names **the process that loaded the plugin**, not a copy of the
+package anywhere on disk. The CLI installs a resolver for its own name before it
+imports anything from a plugin directory (`src/plugin-resolve.ts`), so this line
+works with no `node_modules` at all — a project that keeps the tool's path in an
+environment variable and runs `bun run "$DIR/src/cli.ts"` needs no configuration
+for it.
+
+It also settles what used to be a trap. Resolved the ordinary way, the specifier
+answers from the *plugin's* location — so a CLI run from somewhere else (a
+sibling checkout, a linked workspace) meant the plugin loaded a **second copy**
+of the package, ES module identity being by resolved path. The registries are
+process-wide (`Symbol.for`) so two copies that both have that share one, but a
+project pinned to an older release registered into that copy's private array,
+and the only symptom was `Unknown recipe "x"`, or a rule that never answers —
+which reads as "my file was not loaded". A plugin extends the tool that loaded
+it; there is no reading of "extend" under which the other copy is the answer.
+
+The boundary: this covers the plugins **the CLI imports**. A script of your own
+that you run directly (`bun ./scripts/check-something.mjs`) is a different
+process and resolves the way its own directory says — give it a `node_modules`,
+or import by path.
 
 ## Metadata: where descriptions come from
 

@@ -1,0 +1,7 @@
+{
+  "environment": "stg",
+  "hosts": {
+    "h1": { "files": {}, "probes": { "cluster-formed": { "ran": true, "text": "ISPN000094: Received new cluster view for channel ISPN: [n1|1] (2) [n1, n2]" } } },
+    "h2": { "files": {}, "probes": { "cluster-formed": { "ran": true, "text": "ISPN000094: Received new cluster view for channel ISPN: [n1|1] (2) [n1, n2]" } } }
+  }
+}

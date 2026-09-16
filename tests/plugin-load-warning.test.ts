@@ -36,8 +36,12 @@ describe("loadPluginModules warns on net-zero registration", () => {
 
     expect(stderr).toContain("Warning: imported 1 parser plugin file(s)");
     expect(stderr).toContain("registry did not gain any entries");
-    // Names the actual root cause so a reader doesn't have to reverse-engineer
-    // it from a later "Unknown parser"/"no description" symptom.
-    expect(stderr).toContain("stale or duplicate");
+    // Names what to check so a reader doesn't have to reverse-engineer it from
+    // a later "Unknown parser"/"no description" symptom. It used to send them
+    // to a duplicate package copy in node_modules; the tool answers for its own
+    // name now (src/plugin-resolve.ts), so that cause is gone and the message
+    // must not still point at it.
+    expect(stderr).toContain("registered nothing at all");
+    expect(stderr).not.toContain("The usual cause is a stale or duplicate");
   });
 });
