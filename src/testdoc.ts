@@ -21,6 +21,7 @@ import type { LangText } from "./types.js";
 import { pickLang } from "./types.js";
 import type { FunctionalTestItem, TestItem, TestPlan, TestUnit } from "./testplan.js";
 import type { TestResult, TestResults } from "./testresults.js";
+import { foldByTarget } from "./testresults.js";
 import { evidenceCell } from "./evidence.js";
 
 export type TestDocLang = "ja" | "en";
@@ -306,7 +307,11 @@ type AnswerIndex = { byPath: Map<string, TestResult>; byKey: Map<string, TestRes
 const answerIndex = (results: TestResults): AnswerIndex => {
   const byPath = new Map<string, TestResult>();
   const byKey = new Map<string, TestResult>();
-  for (const r of results.results) {
+  // FOLDED FIRST. `judgeFiles` answers per host, and this index answers per
+  // row: without the fold it kept whichever host came last, so a row of the
+  // record showed one node's verdict and lost the other's — including a
+  // disagreement, which is the one thing a record must never drop.
+  for (const r of foldByTarget(results.results)) {
     if (r.target.path !== undefined) byPath.set(pathOf(r.target), r);
     byKey.set(looseOf(r.target), r);
   }

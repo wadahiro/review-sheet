@@ -32,6 +32,11 @@ export type TestEvidence = {
   line?: number;
   command?: string;
   note?: string;
+  // The OTHER hosts that answered the same row, where several did. The verdict
+  // is the worst of them and points at the host that produced it; these are the
+  // rest, so a reader following it can reach every set of bytes the row was
+  // read from rather than one.
+  also?: TestEvidence[];
 };
 
 export type TestResult = {
@@ -82,6 +87,62 @@ export type TestResults = {
 const keyOf = (t: { sheet: string; key: string; instance: string }): string => `${t.sheet}\u0000${t.key}\u0000${t.instance}`;
 const pathKeyOf = (t: { sheet: string; path?: string[]; key: string; instance: string }): string =>
   `${keyOf(t)}\u0000${(t.path ?? []).join("\u0000")}`;
+
+// ONE ROW, EVERY HOST — the same fold `judgeProbes` applies to a functional
+// item, applied to the rows.
+//
+// `judgeFiles` walks every host that was collected and pushes a result per
+// host, which is the honest record: two nodes hold the same file and each was
+// read. Everything downstream answers per ROW, though, and each did something
+// different with the duplicates — the document's index kept whichever came
+// last, silently, and the coverage gate counted them all, so a plan of 3698
+// items came back "4244 answered".
+//
+// The rule is the one already written down for functional items: a fleet is
+// only as configured as its least configured node, and the host that produced
+// the worst answer is named. A host that could not be asked is a THIRD answer
+// and does not drag the verdict down — it is not a failure, and treating it as
+// one would fail every row of every environment collected in passes.
+//
+// Every host's evidence is kept. The reason the duplicates existed is that a
+// reader following a verdict wants the bytes it was read from, and there is one
+// set of those per host.
+const RANK: Record<TestStatus, number> = { fail: 3, not_run: 2, pass: 1 };
+
+export function foldByTarget(results: readonly TestResult[]): TestResult[] {
+  const groups = new Map<string, TestResult[]>();
+  for (const r of results) {
+    const k = pathKeyOf(r.target);
+    groups.set(k, [...(groups.get(k) ?? []), r]);
+  }
+  const out: TestResult[] = [];
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      out.push(group[0]!);
+      continue;
+    }
+    const answered = group.filter((r) => r.status !== "not_run");
+    // Nobody could answer: the first reason stands for all of them, the same
+    // way `judgeProbes` returns the first `why` when no host ran.
+    const decided = answered.length === 0 ? group : answered;
+    const worst = [...decided].sort((a, b) => RANK[b.status] - RANK[a.status])[0]!;
+    const others = group.filter((r) => r !== worst);
+    // …and when the hosts did not agree, the row says so by name: a verdict
+    // that reads `fail` without saying which node produced it sends a reader to
+    // every one of them.
+    const disagree = new Set(group.map((r) => r.status)).size > 1;
+    const named = (r: TestResult): string => `${r.evidence?.host ?? "?"}: ${r.status}${r.actual === undefined ? "" : ` (${r.actual})`}`;
+    const also = others.map((r) => r.evidence).filter((e): e is TestEvidence => e !== undefined);
+    out.push({
+      ...worst,
+      ...(disagree ? { reason: [worst.reason, group.map(named).join(", ")].filter(Boolean).join(" — ") } : {}),
+      ...(worst.evidence === undefined
+        ? {}
+        : { evidence: { ...worst.evidence, ...(also.length === 0 ? {} : { also }) } }),
+    });
+  }
+  return out;
+}
 
 export type ResultsCheck = {
   answered: number;
@@ -135,7 +196,9 @@ export function checkResults(plan: TestPlan, results: TestResults): ResultsCheck
   };
   const seen = new Set<TestItem>();
 
-  for (const r of results.results) {
+  for (const r of foldByTarget(results.results)) {
+    // One entry per ROW, never per host — see foldByTarget. Counting the
+    // per-host results made `answered` exceed the plan's own item count.
     // With a path, the answer names one item. Without one it names every item
     // that key has — which is one, unless two components of the sheet share the
     // key, and then answering without the path is genuinely ambiguous and every

@@ -158,12 +158,27 @@ export function withoutEvidence<T extends WithArtifacts & { versions?: WithArtif
 // The HOST is part of the match rather than decoration: two hosts hold the same
 // file, a verdict was read from one of them, and a link to the other one's copy
 // would show a reader bytes nobody judged.
+type EvidenceRef = { host?: string; file?: string; line?: number; command?: string; also?: EvidenceRef[] };
+
 export function evidenceCell(
-  answer: { instance: string; evidence?: { host?: string; file?: string; line?: number; command?: string } } | undefined,
+  answer: { instance: string; evidence?: EvidenceRef } | undefined,
   carried: NonNullable<TestResults["evidence"]>
 ): string {
   const ev = answer?.evidence;
   if (ev === undefined) return "";
+  // EVERY HOST THAT ANSWERED, not only the one the verdict points at.
+  //
+  // Two nodes hold the same file and both were read; the verdict is the worst
+  // of them and names the host that produced it (see `foldByTarget`), and the
+  // rest are the other sets of bytes this row was read from. A cell showing
+  // one of them is a reader who cannot check the others — which is the whole
+  // reason the per-host results exist.
+  if (ev.also !== undefined && ev.also.length > 0) {
+    return [{ ...ev, also: undefined }, ...ev.also]
+      .map((one) => evidenceCell({ instance: answer!.instance, evidence: one }, carried))
+      .filter((x) => x !== "")
+      .join("<br>");
+  }
   const text = [ev.host, ev.file === undefined ? undefined : `${ev.file}${ev.line === undefined ? "" : `:${ev.line}`}`, ev.command]
     .filter((x): x is string => x !== undefined)
     .join(" ");
