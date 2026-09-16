@@ -11,7 +11,7 @@ import { toMarkdownSet, href, modelStamp, stampOf, hasBody, frontDoor, INDEX } f
 import { getMessages } from "./html/i18n.js";
 import type { Lang } from "./html/i18n.js";
 import { buildArtifactIndex } from "./artifact-index.js";
-import { carriedDocuments, addressOf, type CarriedDocument } from "./md-documents.js";
+import { carriedDocuments, addressOf, type CarriedDocument, containedPath } from "./md-documents.js";
 import { zipOf } from "./zip.js";
 import { SET_DIR } from "./set-block.js";
 import type { ParamData } from "./prompt.js";
@@ -530,7 +530,9 @@ async function writeMarkdownSet(
   // the evidence the delivery carries beside it — see `withoutEvidence`.
   const stamp = modelStamp(withoutEvidence(input));
 
-  const carried = carriedDocuments(previews, instances);
+  // A path that did not survive as written is SAID — see containedPath.
+  const carriedNotes: string[] = [];
+  const carried = carriedDocuments(previews, instances, carriedNotes);
 
   // The file each row is a line of, and where in it — as an address relative to
   // the sheet, which is where `carriedDocuments` already puts these files.
@@ -591,6 +593,29 @@ async function writeMarkdownSet(
     { path: "viewer.html", text: viewer },
   ];
 
+  // EVERY PATH OF THE SET IS INSIDE THE SET.
+  //
+  // `carriedDocuments` mints contained paths, so reaching this with one that
+  // escapes is a bug in the producer rather than in the model — which is
+  // exactly why it is checked here and not assumed: the two writers below both
+  // trust this path space, and a generator that writes outside the directory
+  // it was given, or puts `..` in an archive somebody else opens, is not a
+  // thing to warn about and continue past.
+  //
+  // Both envelopes at one point, rather than inside each: a third one would
+  // otherwise start unguarded, and `zipOf` stays the pure "given files, returns
+  // bytes" function its own header declares.
+  const escaping = whole.filter((f) => f.path !== containedPath(f.path));
+  if (escaping.length > 0) {
+    throw new Error(
+      `${escaping.length} file(s) of the set have a path that does not stay inside it: ` +
+        escaping.slice(0, 5).map((f) => `"${f.path}"`).join(", ") +
+        `${escaping.length > 5 ? `, +${escaping.length - 5} more` : ""}. ` +
+        `A set's paths are relative and normalised — no "..", no leading "/", no "\\" — because they are ` +
+        `written under the directory -o names and carried in an archive somebody else opens.`
+    );
+  }
+
   // The DIRECTORY is the primary form and an archive is the envelope, chosen by
   // the name the output was given. A project that can receive a folder should
   // get one: the tree is what a repository diffs, and an archive holding a
@@ -629,7 +654,7 @@ async function writeMarkdownSet(
   }
   // Never silent about a sheet that did not land where its chapter says: a set
   // whose index and whose files disagree is the failure this is for.
-  for (const p of problems) console.error(`Warning: ${p}`);
+  for (const p of [...carriedNotes, ...problems]) console.error(`Warning: ${p}`);
   const carriedCount = files.length - 1 - data.sheets.length;
   console.error(
     `Generated: ${whole.length} file(s) ${outDir.endsWith(".zip") ? `in ${outDir}` : `under ${outDir}/`} (model ${stamp})` +
@@ -1354,14 +1379,35 @@ async function runSpecImport(opts: {
     // just as well, and a committed input.json shouldn't bake in a local
     // filesystem layout. This means verify/apply must be run from the same CWD
     // used for `import --spec`, same as every other path this CLI records.
+    // …and a path that comes out pointing ABOVE the working directory is worth
+    // saying. It is legal — the recording contract is "relative to where you
+    // ran" and verify/apply honour it from there — but it makes every later
+    // command fragile to which directory it is run from, and the fix is one
+    // sentence: run from the directory the spec's paths are written against,
+    // usually the repository root.
+    const above = new Set<string>();
     const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, materializeWarnings, layoutNotes, projectOverlap, derivedChannels, derivedDocuments, derivedDefaults } = assembleFromSpecWithReport(spec, {
       readFile,
       listDir,
       readBinary,
       specDir,
-      resolve: (p: string) => relative(process.cwd(), resolve(specDir, p)),
+      resolve: (p: string) => {
+        const at = relative(process.cwd(), resolve(specDir, p));
+        if (at.startsWith("..")) above.add(at);
+        return at;
+      },
       marker: opts.annotationMarker,
     });
+    if (above.size > 0) {
+      const some = [...above].slice(0, 3);
+      console.error(
+        `Warning: ${above.size} path(s) are recorded as pointing above this directory — ${some.join(", ")}` +
+          `${above.size > 3 ? `, +${above.size - 3} more` : ""}. A model records paths relative to the directory ` +
+          `\`import\` ran in, and verify/apply/serve resolve them the same way, so this model can only be used from ` +
+          `here. Running from the directory the spec's own paths are written against — usually the repository root ` +
+          `— records them as plain paths and makes the model independent of where a later command is run.`
+      );
+    }
 
     const perProvider = Object.entries(report.byProvider)
       .map(([name, n]) => `${name}:${n}`)

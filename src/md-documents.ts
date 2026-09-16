@@ -95,12 +95,78 @@ function withDistinctPaths(docs: CarriedDocument[]): CarriedDocument[] {
   });
 }
 
-export function carriedDocuments(previews: ArtifactPreview[], instances: string[]): CarriedDocument[] {
-  return withDistinctPaths(carriedDocumentsRaw(previews, instances));
+// Normalised FIRST, then made distinct. The other order is how two documents
+// spelled differently and normalising to one path stayed two strings here and
+// became one file on disk — the second overwriting the first, with the run
+// still reporting that it carried both.
+export function carriedDocuments(previews: ArtifactPreview[], instances: string[], notes: string[] = []): CarriedDocument[] {
+  return withDistinctPaths(carriedDocumentsRaw(previews, instances, notes));
 }
 
-function carriedDocumentsRaw(previews: ArtifactPreview[], instances: string[]): CarriedDocument[] {
-  const strip = (f: string): string => f.replace(/^\/+/, "");
+// A path INSIDE the set, out of a path that names a place on a filesystem.
+//
+// The two are different spaces, and this is the boundary between them. A
+// recorded path is a filesystem path — `import --spec` records it relative to
+// the directory the command was run from, which is a legal and documented
+// contract, and `verify`/`apply` read it back that way. Concatenated onto
+// `sources/` as if it were already a suffix, the ways it is NOT one come
+// through: a leading `/` (an absolute path — which is how a collected file is
+// named, on purpose), a `..` from a CWD that sat below what the spec points at,
+// a `\` or a drive letter from a Windows recording.
+//
+// Measured, on the real CLI, before this existed:
+//   `../../../../x.txt`  wrote OUTSIDE the directory `-o` named, silently — the
+//                        stale-file scan only looks inside it, so nothing saw.
+//   the same, as a .zip   put `docs/sources/../../../../x.txt` in the archive: a
+//                        deliverable that writes outside wherever it is opened.
+//   `x.conf` and `a/../x.conf` with DIFFERENT bytes: two documents, distinct as
+//                        strings, one file on disk — the first silently gone,
+//                        while the run reported carrying two.
+//
+// So: normalised, lexically. A `..` pops what precedes it and is DROPPED where
+// there is nothing to pop — which is not a loss of information but the recovery
+// of the one spelling every CWD agrees on: `sources/../../platforms/x.tf` and
+// the `sources/platforms/x.tf` a run from the repository root already writes
+// become the same path, rather than a third.
+export function containedPath(raw: string): string {
+  const out: string[] = [];
+  // A drive prefix is not a segment, and a backslash is a separator wherever
+  // the path was written down — an archive entry carrying either is the same
+  // escape as `..`, for whoever opens it on Windows.
+  for (const seg of raw.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/").split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      out.pop();
+      continue;
+    }
+    out.push(seg);
+  }
+  return out.join("/");
+}
+
+// …and ONE segment, for the parts a set's own tree is built from rather than
+// read from a file: which environment, which host. A separator in one of those
+// would silently become a directory level, and `.`/`..` a move.
+const segment = (raw: string): string => {
+  const one = raw.replace(/[\\/]+/g, "-").trim();
+  return one === "" || /^\.+$/.test(one) ? "unnamed" : one;
+};
+
+// `notes` collects the rewrites, so a path that did not survive as written is
+// said rather than quietly replaced.
+function carriedDocumentsRaw(previews: ArtifactPreview[], instances: string[], notes: string[] = []): CarriedDocument[] {
+  const strip = (f: string, what: string): string => {
+    const to = containedPath(f);
+    // A leading `/` is not a rewrite worth saying: naming a collected file by
+    // the absolute path its host held it at is what `evidence/` is for, and
+    // dropping the root is how it becomes a suffix. Anything else changed the
+    // path's own shape.
+    if (to !== f.replace(/^\/+/, "")) notes.push(`${what} ${f} is carried as ${to}`);
+    // Nothing left at all — a path that was only separators, or only `..`.
+    // Named by its own last segment so the file still arrives, the same move
+    // `commandFile` makes for a command no filename can hold.
+    return to === "" ? `unnamed-${modelStamp(f).slice(0, 8)}` : to;
+  };
   return previews.map((p) => {
     // An `absent` line is one this environment does not render. The file on
     // disk does not have it, so neither does this — the point of writing it out
@@ -116,7 +182,7 @@ function carriedDocumentsRaw(previews: ArtifactPreview[], instances: string[]): 
       const from = p.deployed_path ?? p.source_file;
       const host = p.observed?.host ?? "host";
       const instance = p.instances?.[0] ?? "";
-      const under = `evidence/${instance === "" ? "" : `${instance}/`}${host}`;
+      const under = `evidence/${instance === "" ? "" : `${segment(instance)}/`}${segment(host)}`;
       // A collected FILE is named by the absolute path the host holds it at —
       // that is how a host names a file, and it makes the tree under `evidence`
       // read like the machine it came from. Everything else is the output of a
@@ -124,11 +190,11 @@ function carriedDocumentsRaw(previews: ArtifactPreview[], instances: string[]): 
       // newlines in it, and used as a filename it produced directories nobody
       // asked for and one write that failed outright.
       const isFile = from.startsWith("/");
-      const named = isFile ? strip(from) : `commands/${commandFile(from)}`;
+      const named = isFile ? strip(from, p.id) : `commands/${commandFile(from)}`;
       return { id: p.id, sheet: p.sheet, path: `${under}/${named}`, text, lineOf };
     }
     if (p.nature === "source") {
-      return { id: p.id, sheet: p.sheet, path: `sources/${strip(p.source_file)}`, text, lineOf };
+      return { id: p.id, sheet: p.sheet, path: `sources/${strip(p.source_file, p.id)}`, text, lineOf };
     }
     // An artifact rendered identically everywhere is written once; one that
     // differs per environment is written per environment, under the names it
@@ -146,11 +212,11 @@ function carriedDocumentsRaw(previews: ArtifactPreview[], instances: string[]): 
     // the reader to infer it from the absence of a directory.
     const covers = p.instances ?? [];
     const everywhere = covers.length === 0 || instances.every((i) => covers.includes(i));
-    const to = strip(p.deployed_path ?? p.source_file);
+    const to = strip(p.deployed_path ?? p.source_file, p.id);
     return {
       id: p.id,
       sheet: p.sheet,
-      path: `artifacts/${everywhere ? COMMON : covers.join("+")}/${to}`,
+      path: `artifacts/${everywhere ? COMMON : covers.map(segment).join("+")}/${to}`,
       text,
       lineOf,
     };
