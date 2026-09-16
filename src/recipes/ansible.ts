@@ -955,7 +955,18 @@ export const ansibleRecipe: SheetRecipe = {
         // components read as the same heading and neither said which release it
         // was. Its own id is the honest name there, which is what it already
         // was before this display rule existed.
-        if (spec.component !== undefined && deploysOneFile(spec.component)) {
+        // …and NOT ON A SHEET THAT COMPARES ITS COMPONENTS. Where
+        // `component_order` is declared the components are named subjects put
+        // side by side — two releases of a product — and the release is the
+        // whole of what the sheet is about. Naming a side by the file it
+        // deploys loses it, and loses it asymmetrically: the rule fires only
+        // for a component that deploys exactly ONE file, so a sheet whose old
+        // side is a static file and whose new side is a template read `19.0.2`
+        // against `/opt/keycloak/conf/keycloak.conf` — one side saying which
+        // release it is and the other saying which file, in a table whose only
+        // job is to tell the two releases apart. (Measured on a real delivery.)
+        const compared = Array.isArray(sheetSpec.component_order) && sheetSpec.component_order.length > 0;
+        if (!compared && spec.component !== undefined && deploysOneFile(spec.component)) {
           componentLabels.set(spec.component, spec.deployedPath ?? spec.component);
         }
         // A `{% for %}` renders ONE template line as several lines of the
@@ -2047,7 +2058,6 @@ export const ansibleRecipe: SheetRecipe = {
       ? (sheetSpec.component_order as unknown[]).filter((x): x is string => typeof x === "string")
       : [];
 
-    if (name === "httpd reverse proxy") for (const e of embedded) if (e.key.includes("admin")) console.warn("DBG4", JSON.stringify({k: e.key, inst: (e.instances ?? []).map((i) => i.name), pw: e.present_when, awu: e.absent_where_unlisted}));
     return {
       name,
       ...(filePath ? { filePath } : {}),

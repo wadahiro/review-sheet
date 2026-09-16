@@ -135,24 +135,31 @@ describe("a component that deploys several files", () => {
 //
 // A component that IS a file is headed by the file rather than by the id the
 // spec files its rows under (`logrotate-httpd` -> `/etc/logrotate.d/httpd`),
-// which is the name a reader wants. Written per template, every component of a
-// multi-file sheet ended up wearing the LAST template's path — so two releases
-// read as the same heading, twice over in a side-by-side comparison, and
-// neither said which release it was.
+// which is the name a reader wants — see recipe-ansible-compare.test.ts for
+// that case. Written per template, every component of a multi-file sheet ended
+// up wearing the LAST template's path — so two releases read as the same
+// heading, twice over in a side-by-side comparison, and neither said which
+// release it was.
+//
+// Every case below is a COMPARISON sheet (`load` declares `component_order`),
+// where a component is a release rather than a file and the label does not
+// apply at all.
 describe("what a component is called", () => {
   const labels = (templates: unknown[]): [string, string][] =>
     [...(((load(templates) as unknown as { componentLabels?: Map<string, string> }).componentLabels) ?? [])];
 
-  it("is the file, where the component deploys one", () => {
+  // …and NOT on a sheet that compares them, however many files each brings.
+  // `load` here declares `component_order`, so these two are releases put side
+  // by side — and the file label gave both of them the same heading, which is
+  // the failure this file's own comment describes one paragraph up, reached by
+  // the other road. The release is what such a sheet is about.
+  it("is its own id on a sheet that compares them, even deploying one file", () => {
     expect(
       labels([
         template("v1", "a.conf.j2", "/etc/a.conf", "space"),
         template("v2", "a.conf.j2", "/etc/a.conf", "space"),
       ])
-    ).toEqual([
-      ["v1", "/etc/a.conf"],
-      ["v2", "/etc/a.conf"],
-    ]);
+    ).toEqual([]);
   });
 
   // Its own id, which is what it was before the display rule existed: a
