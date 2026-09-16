@@ -41,6 +41,9 @@ type Messages = {
   unfreezeColumnTip: string;
   navOutline: string;
   // The chapter tree beside a document set (nav: book).
+  // The legend that says which environment of one component answers which of
+  // another — see Sheet.compare_instances.
+  comparedWith: string;
   navFilter: string;
   navHere: string;
   navCollapse: string;
@@ -280,6 +283,7 @@ const ja: Messages = {
   freezeColumnTip: "この列まで固定する",
   unfreezeColumnTip: "この列の固定を解除",
   navOutline: "目次",
+  comparedWith: "比較",
   navFilter: "文書を絞り込む…",
   navHere: "現在位置へ",
   navCollapse: "閉じる",
@@ -461,6 +465,7 @@ const en: Messages = {
   freezeColumnTip: "Freeze up to this column",
   unfreezeColumnTip: "Unfreeze this column",
   navOutline: "Outline",
+  comparedWith: "Compared",
   navFilter: "Filter documents…",
   navHere: "Jump to current",
   navCollapse: "Collapse",

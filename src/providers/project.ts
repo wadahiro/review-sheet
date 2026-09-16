@@ -76,6 +76,25 @@ export type ProjectMetaSheetDoc = {
   // `"always"` additionally means the sheet opens that way and offers no toggle:
   // a sheet that exists only to compare has no stacked reading to go back to.
   compare_components?: boolean | "always";
+  // WHICH ENVIRONMENT ANSWERS WHICH, where the components being compared do not
+  // share one (Sheet.compare_instances).
+  //
+  // A migration is the case: an on-premises `dev`/`prod` becoming a cloud
+  // `local`/`poc` shares no environment NAME, so each side's cell stacks its
+  // own environments and the reader is left to guess whether the first line of
+  // one answers the first line of the other. The side-by-side view's whole
+  // claim is that a row can be read ACROSS, and without this that claim is
+  // false the moment the names differ.
+  //
+  // A LIST OF PAIRS, old side first, reading the same direction the comparison
+  // does — and a list rather than a map so a third component is another column
+  // of the same table rather than new syntax.
+  //
+  // Display only: it orders the stacked lines so line k is pair k, and is
+  // printed once under the sheet's title so the correspondence is stated rather
+  // than left to be inferred from an order. Nothing about what is compared,
+  // joined or judged changes.
+  compare_instances?: string[][];
   // How this sheet's rows are HEADED. Absent is the default and the safe one:
   // one category per deployed file, rows in the file's own order.
   //
@@ -282,7 +301,7 @@ function checkNav(doc: unknown, path: string): void {
 // listed here to keep this from claiming it first.
 const DOC_FIELDS = ["categories", "under_key", "label", "layout", "category_depth", "params", "sheets", "groups", "numbering", "nav"] as const;
 const SHEET_FIELDS = [
-  "categories", "under_key", "group", "compare_components", "layout", "category_depth",
+  "categories", "under_key", "group", "compare_components", "compare_instances", "layout", "category_depth",
   "group_by", "categories_from", "label", "params", "components",
 ] as const;
 const COMPONENT_FIELDS = ["params"] as const;
@@ -366,6 +385,7 @@ export function loadProjectMeta(path: string, readFile: (path: string) => string
         ...(s?.label ? { label: s.label } : {}),
         ...(s?.group ? { group: s.group } : {}),
         ...(s?.compare_components ? { compare_components: s.compare_components === "always" ? ("always" as const) : true } : {}),
+        ...(s?.compare_instances === undefined || s.compare_instances.length === 0 ? {} : { compare_instances: s.compare_instances }),
         ...(s?.layout ? { layout: s.layout } : {}),
         ...(s?.category_depth !== undefined ? { category_depth: s.category_depth } : {}),
         ...(s?.categories_from ? { categories_from: s.categories_from } : {}),
@@ -501,6 +521,13 @@ export function categoriesForSheet(doc: ProjectMetaDoc, sheet: string | undefine
 // Whether this sheet declares its components comparable (Sheet.compare_components).
 export function compareComponentsForSheet(doc: ProjectMetaDoc, sheet: string | undefined): boolean | "always" {
   return (doc.sheets && sheet !== undefined ? doc.sheets[sheet]?.compare_components : undefined) ?? false;
+}
+
+// …and which environment of one component answers which of another — see
+// ProjectMetaSheetDoc.compare_instances.
+export function compareInstancesForSheet(doc: ProjectMetaDoc, sheet: string | undefined): string[][] | undefined {
+  const pairs = doc.sheets && sheet !== undefined ? doc.sheets[sheet]?.compare_instances : undefined;
+  return pairs === undefined || pairs.length === 0 ? undefined : pairs;
 }
 
 // The component whose dictionary decides every row's category on this sheet,

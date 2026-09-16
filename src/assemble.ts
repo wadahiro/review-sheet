@@ -33,6 +33,7 @@ import {
   labelForSheet,
   groupForSheet,
   compareComponentsForSheet,
+  compareInstancesForSheet,
   declaredComponentsForSheet,
   groupsByFile,
   layoutForSheet,
@@ -2701,6 +2702,9 @@ export function assembleSheetsWithReport(
     const sheetLabel = labelForSheet(projectMeta, si.name);
     const sheetGroup = groupForSheet(projectMeta, si.name);
     const compareComponents = compareComponentsForSheet(projectMeta, si.name);
+    // Which environment of one component answers which of another. Validated
+    // and applied below, once the sheet's own instances are known.
+    const comparePairs = compareInstancesForSheet(projectMeta, si.name);
     // A document has no rows, so none of what follows applies to it: no drafts
     // to build, no keys to bind, no categories to file under, no components to
     // compare. It takes the sheet-level facts that ARE about how it is READ —
@@ -3078,6 +3082,64 @@ export function assembleSheetsWithReport(
         );
       }
     }
+    // WHICH ENVIRONMENT ANSWERS WHICH, checked against the sheet's own list and
+    // then used to order every row's per-environment values so line k of one
+    // component's cell is line k of the next one's.
+    //
+    // Checked here rather than trusted: a pair naming an environment this sheet
+    // does not have would silently order nothing, and a pair whose two halves
+    // are both the OLD side's is a typo that renders as a legitimate-looking
+    // correspondence — the one failure this declaration exists to prevent.
+    if (comparePairs !== undefined) {
+      const claimed = new Map<string, number>();
+      comparePairs.forEach((pair, at) => {
+        for (const one of pair) {
+          if (!si.instances.includes(one)) {
+            throw new Error(
+              `assemble: sheet "${si.name}" compare_instances names ${one}, which this sheet does not have ` +
+                `(${si.instances.join(", ")})`
+            );
+          }
+          const before = claimed.get(one);
+          if (before !== undefined) {
+            throw new Error(
+              `assemble: sheet "${si.name}" compare_instances puts ${one} in two pairs (${before + 1} and ${at + 1}) — ` +
+                `an environment answers one other, or the correspondence says nothing`
+            );
+          }
+          claimed.set(one, at);
+        }
+      });
+      // Every environment the sheet has, ordered: the paired ones in the order
+      // the pairs declare, then the rest in the sheet's own order. Never
+      // dropped — an environment nobody paired still has values, and leaving it
+      // out of the ordering would leave it out of the reading.
+      const rank = new Map<string, number>(si.instances.map((n, i) => [n, comparePairs.length + i]));
+      comparePairs.forEach((pair, at) => {
+        for (const one of pair) rank.set(one, at);
+      });
+      const unpaired = si.instances.filter((n) => !claimed.has(n));
+      if (unpaired.length > 0) {
+        layoutNotes.push(
+          `sheet "${si.name}" compare_instances pairs none of ${unpaired.join(", ")} — ` +
+            `they are read after the paired ones, answering nothing on the other side`
+        );
+      }
+      const order = (p: Parameter): void => {
+        if (!("instances" in p) || p.instances === undefined) return;
+        p.instances = [...p.instances].sort(
+          (a, b) => (rank.get(a.name) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.name) ?? Number.MAX_SAFE_INTEGER)
+        );
+      };
+      const walkCats = (cats: Category[]): void => {
+        for (const c of cats) {
+          for (const p of c.params ?? []) order(p);
+          walkCats(c.categories ?? []);
+        }
+      };
+      walkCats(categories);
+    }
+
     sheets.push({
       name: si.name,
       // Display text from the project metadata, never from the build spec: the
@@ -3090,6 +3152,7 @@ export function assembleSheetsWithReport(
       // it never reached the viewer at all — the declaration parsed, the check
       // above ran, and the sheet still opened stacked with a button on it.
       ...(compareComponents ? { compare_components: compareComponents } : {}),
+      ...(comparePairs === undefined ? {} : { compare_instances: comparePairs }),
       // The declared axis travels with the sheet: the viewer must not have to
       // guess it from which rows happen to have per-environment values.
       ...(si.instances.length > 0 ? { instances: si.instances } : {}),

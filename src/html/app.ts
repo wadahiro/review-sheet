@@ -4714,6 +4714,18 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                   `}
                 </p>
               `}
+              ${/* WHICH ENVIRONMENT ANSWERS WHICH, said once. The side-by-side
+                    view stacks each component's own environments and lines them
+                    up by position; where the two sides share no environment
+                    name, that alignment is a guarantee the reader cannot see,
+                    and a guarantee nobody can see is not one. */ ""}
+              ${(sheet.compare_instances?.length ?? 0) > 0 && html`
+                <p class="rs-file-path">
+                  ${t.comparedWith}: ${(sheet.compare_instances ?? []).map((pair, i) => html`
+                    <span key=${i}>${i === 0 ? "" : " ／ "}<code>${pair.join(" ↔ ")}</code></span>
+                  `)}
+                </p>
+              `}
               ${/* The prose above this page's first heading, when the page IS
                     markdown. It belongs to the sheet rather than to any
                     category, so it is rendered here, between the sheet's own

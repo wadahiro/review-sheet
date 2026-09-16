@@ -1755,6 +1755,24 @@ listen   | dev: 9090  | local: 8081
          | prod: 80   | poc: 443
 ```
 
+**Say which environment answers which.** Four environments in two columns do not
+say whether `dev` is answered by `local` or by `poc`, and this view's whole
+claim is that a row can be read ACROSS. Declare the pairs in `sheet.yml`:
+
+```yaml
+"sso server upgrade":
+  compare_components: always
+  compare_instances: [[dev, local], [prod, poc]]
+```
+
+The stacked lines then take that order — line k of one column is line k of the
+next — and the correspondence is printed once under the sheet's title, because
+an alignment a reader cannot see is not one. Names are not renamed: `dev: 9090`
+stays `dev: 9090`, and the legend carries the mapping.
+
+It is display only. Nothing about what is compared, joined or judged changes —
+"the paired value moved" is a different question, for whoever asks it.
+
 A `static_files` entry that names no `instances:` is unchanged — it is a FILE of
 the sheet, and several of them stay several sections, which is what a legacy
 sheet built from a handful of recorded files wants. An entry opts in to being an
@@ -2380,6 +2398,7 @@ fails when one of them is missing from this section):
 | sheet / document | `category_depth:` | how DEEP a bound dictionary's own grouping is followed. A dictionary's `group` is a PATH mirroring the product's console (`Settings / Capability config`); `category_depth: 1` keeps the head and no more. Undeclared = the whole path, which is what every sheet had before. Applies only to the dictionary's grouping — a `category:` you wrote is already exactly what you asked for |
 | sheet | `under_key:` | the provenance sub-line column — `id` + bilingual label |
 | sheet | `compare_components:` | this sheet's components are comparable side by side — `true` for a toggle, `always` to open that way with no toggle |
+| sheet | `compare_instances:` | which environment answers which, where the components being compared share no environment name — a list of pairs, old side first: `[[dev, local], [prod, poc]]`. Display only: the stacked lines take that order, so line k of one column is line k of the next, and the correspondence is printed under the title rather than left to be inferred. An environment in no pair is kept and reported; a name the sheet does not have, or one in two pairs, fails the build |
 | sheet | `categories_from:` | which component's dictionary decides where every row is filed, when the components disagree (two releases of one product); required on such a sheet — see "A sheet that exists only to compare" |
 | sheet | `components:` | per-COMPONENT `params:`, for a sheet whose rows are named by the product's own field |
 | sheet | `params:` | the rows themselves |

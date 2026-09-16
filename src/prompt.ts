@@ -196,6 +196,8 @@ export type SheetData = {
     // See types.ts: `"always"` opens side by side with no way back, for a sheet
     // whose whole purpose is the comparison.
     compare_components?: boolean | "always";
+    // See types.ts's Sheet.compare_instances.
+    compare_instances?: string[][];
     // Filled by the viewer's localizeSheets, never present in a built model.
     display?: string;
     role?: string;

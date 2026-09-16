@@ -368,6 +368,11 @@ export type Sheet = {
   // said once: spare this sheet's unset rows from the cut, and show them.
   unset_is_content?: boolean;
   compare_components?: boolean | "always";
+  // Which environment of one component answers which of another, where the
+  // components do not share an environment name — see the project metadata's
+  // own comment. Display only: the order the stacked lines take, and a legend
+  // under the title saying so.
+  compare_instances?: string[][];
   role?: string;
   // The review axis this sheet is organised along (environments, regions …),
   // ordered, as DECLARED by the build (never derived from which rows happen to
