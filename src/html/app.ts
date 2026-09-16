@@ -19,6 +19,7 @@ import {
   HELD_REASON_STRUCK_ROW,
   HELD_REASON_DOCUMENT,
   type SheetData,
+  type SheetGroupData,
   type CategoryData,
   type ParamData,
   type ReviewItem,
@@ -194,6 +195,34 @@ function copyToClipboard(value: string, btn: HTMLElement): void {
       btn.innerHTML = origHtml;
     }, 1500);
   });
+}
+
+// One chapter of the overview page's sheet list — its own sheets, THEN its
+// child chapters, recursively. A group only holds sheets whose `group` names
+// IT EXACTLY (sheetsInOrder's own contract: a sheet belongs to the nearest
+// group it names, never an ancestor), so a chapter three levels deep has none
+// of its sheets sitting directly on `group.name` at any level above it — the
+// non-recursive form this replaced matched only sheets at the SAME depth as
+// the group being rendered, and rendered every ancestor as a heading over an
+// empty list the moment a project's chapter tree was more than one level
+// deep (measured on a real delivery: the top-level chapter's own heading,
+// with nothing under it, for every sheet actually filed under a grandchild).
+function renderOverviewGroup(g: SheetGroupData, sheets: SheetData["sheets"], setActiveSheet: (idx: number) => void): VNode | VNode[] {
+  return html`
+    <div class="rs-overview-group" key=${g.name}>
+      <div class="rs-overview-groupname">${g.display ?? g.name}</div>
+      <ul>
+        ${sheets.map((sheet, idx) => sheet.group !== g.name ? null : html`
+          <li key=${idx}>
+            <button class="rs-overview-sheet-link" onClick=${() => setActiveSheet(idx)}>
+              ${sheet.display ?? sheet.name}
+            </button>
+          </li>
+        `)}
+      </ul>
+      ${(g.groups ?? []).map((child) => renderOverviewGroup(child, sheets, setActiveSheet))}
+    </div>
+  `;
 }
 
 // ============================================================
@@ -4609,20 +4638,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
             <div class="rs-overview-sheets">
               <h2>${t.sheetList}</h2>
               ${(data.groups?.length ?? 0) > 0
-                ? (data.groups ?? []).map((g) => html`
-                    <div class="rs-overview-group" key=${g.name}>
-                      <div class="rs-overview-groupname">${g.display ?? g.name}</div>
-                      <ul>
-                        ${data.sheets.map((sheet, idx) => sheet.group !== g.name ? null : html`
-                          <li key=${idx}>
-                            <button class="rs-overview-sheet-link" onClick=${() => setActiveSheet(idx)}>
-                              ${sheet.display ?? sheet.name}
-                            </button>
-                          </li>
-                        `)}
-                      </ul>
-                    </div>
-                  `)
+                ? (data.groups ?? []).map((g) => renderOverviewGroup(g, data.sheets, setActiveSheet))
                 : html`<ul>
                 ${data.sheets.map((sheet, idx) => html`
                   <li key=${idx}>
