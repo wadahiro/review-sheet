@@ -351,6 +351,7 @@ const specSchema = {
           lifecycle: { type: "string" },
           issuer_external: { type: "string" },
           issuer_base: { type: "string" },
+          issuer_conf: { type: "string" },
           sticky_session_cookie: { type: "string" },
           time_synced: { type: "string" },
         },

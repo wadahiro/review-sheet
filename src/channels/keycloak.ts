@@ -124,6 +124,29 @@ export function issuerMatches(issuer: string | null | undefined, want: string | 
   return a !== undefined && b !== undefined && a.origin === b.origin && a.path === b.path;
 }
 
+// The base URL a deployed keycloak.conf says this node will publish.
+//
+// `hostname` is Keycloak's own option for it and keycloak.conf is Keycloak's
+// own file: what a node publishes as its issuer is `<hostname>/realms/<realm>`,
+// and that mapping is the product's. Only WHERE the file sits is a project's,
+// so the binding names the path and nothing else — which is what keeps the
+// expected issuer from being a second copy of a hostname that already differs
+// per environment.
+//
+// Properties semantics: a key written twice is the last one, and `#`/`!` start
+// a comment. Both fall out of the anchored match — a commented-out `hostname`
+// has the comment character where the key would be, so it never matches, and a
+// commented-out setting read as the expectation would compare the product
+// against a value it never saw.
+export function configuredHostname(conf: string | null | undefined): string | undefined {
+  let found: string | undefined;
+  for (const line of (conf ?? "").split("\n")) {
+    const m = /^\s*hostname\s*[=:]\s*(.*?)\s*$/.exec(line);
+    if (m !== null && m[1] !== "") found = m[1];
+  }
+  return found;
+}
+
 // The realm a discovery request was put about, read off the request itself.
 //
 // The answer has to be judged against the QUESTION: a run asks several realms
@@ -570,6 +593,25 @@ export function registerKeycloakLdapRouter(binding: {
 // project fact at all — no expectation to compare against, nothing this
 // deployment decided. It is what `/health/ready` MEANS, so it is the product's
 // verdict and not a rule anyone should have to write again.
+// Which base this run expects, and — when there is none — the reason, so the
+// verdict says which of the three ways it could not answer.
+function expectedBase(
+  binding: { issuer_base?: string; issuer_conf?: string },
+  held: unknown
+): { base?: string; why: string } {
+  if (binding.issuer_base !== undefined) return { base: binding.issuer_base, why: "" };
+  const path = binding.issuer_conf;
+  if (path === undefined) return { why: "no issuer_base or issuer_conf declared to compare it against" };
+  const conf = (held as { files?: Record<string, string | null> } | undefined)?.files?.[path];
+  if (typeof conf !== "string") return { why: `${path} was not observed on this host` };
+  const base = configuredHostname(conf);
+  if (base === undefined) return { why: `${path} sets no hostname` };
+  // Keycloak accepts a bare hostname here, and an issuer built from one would
+  // be a guess about the scheme — the one thing a product rule must not make.
+  if (!/^https?:\/\//.test(base)) return { why: `${path} says hostname=${base}, which is not a full URL` };
+  return { base, why: "" };
+}
+
 export function registerKeycloakRules(binding: {
   health_ready?: string;
   // What the realm SHOULD publish as its issuer is two facts a product cannot
@@ -579,6 +621,10 @@ export function registerKeycloakRules(binding: {
   // rather than a rule inventing one.
   issuer_external?: string;
   issuer_base?: string;
+  // …or the deployed file to read it out of, for a deployment whose hostname
+  // differs per environment. A declared `issuer_base` WINS when both are given:
+  // an expectation somebody wrote down outranks one derived from the host.
+  issuer_conf?: string;
   sticky_session_cookie?: string;
   sheet?: string;
 }): void {
@@ -589,19 +635,18 @@ export function registerKeycloakRules(binding: {
       name: "keycloak.issuer-external",
       covers: (x) => x === binding.issuer_external,
       ...at,
-      verdict: (probe) => {
+      verdict: (probe, ctx) => {
         const issuer = issuerOf(probe.text);
         if (issuer === undefined) {
           return { ok: false, why: `no issuer in the response: ${(probe.text ?? "").slice(0, 120)}` };
         }
-        // No base declared: the reading still stands on its own — the realm
+        const from = expectedBase(binding, ctx.held);
+        // No base at all: the reading still stands on its own — the realm
         // published SOMETHING — but nothing here knows what it should have
         // been, and a rule that quietly passes anything is worse than one that
         // says it cannot answer.
-        if (binding.issuer_base === undefined) {
-          return { ok: null, why: `issuer ${issuer} — no issuer_base declared to compare it against` };
-        }
-        const want = issuerFor(binding.issuer_base, realmAsked(probe.how));
+        if (from.base === undefined) return { ok: null, why: `issuer ${issuer} — ${from.why}` };
+        const want = issuerFor(from.base, realmAsked(probe.how));
         return issuerMatches(issuer, want) ? { ok: true, why: issuer } : { ok: false, why: `issuer ${issuer}, expected ${want}` };
       },
     });

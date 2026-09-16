@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import {
   registerKeycloakChannels, registerKeycloakLdapRouter, effectiveConfig, isProductDefault, lineOfEffective,
-  readyReport, clusterMembers, issuerOf, issuerFor, issuerMatches, realmAsked,
+  readyReport, clusterMembers, issuerOf, issuerFor, issuerMatches, realmAsked, configuredHostname,
   stickySessionNode, hasSessionCookie, registerKeycloakRules,
 } from "../src/channels/keycloak";
 import { listFunctionalChannels, listDocumentRouters, listProbeRules } from "../src/channel";
@@ -648,5 +648,103 @@ describe("the sticky-session rule a project binds", () => {
   it("declines to judge a response that was given no session", () => {
     const v = ruleFor("sso.sticky.3").verdict({ text: "HTTP/1.1 302 Found\nLocation: /" }, ctx);
     expect(v.ok).toBe(null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// …and where the expected base comes from when it is not a literal.
+//
+// A deployment whose hostname differs per environment cannot declare one
+// literal, and writing one per environment into the build would be a second
+// copy of a value the observation already carries. So the binding names the
+// FILE — a path, not a value — and the product's own option in it says what
+// this node will publish.
+
+describe("the hostname a deployed keycloak.conf sets", () => {
+  it("reads the product's own option", () => {
+    expect(configuredHostname("db=postgres\nhostname=https://sso.example.com\nhostname-strict=true\n")).toBe(
+      "https://sso.example.com"
+    );
+  });
+
+  // A commented-out setting is not a setting. Comparing against one would judge
+  // the product against a value it never saw.
+  it("ignores a commented-out hostname", () => {
+    expect(configuredHostname("#hostname=https://old.example.com\nhostname=https://sso.example.com\n")).toBe(
+      "https://sso.example.com"
+    );
+    expect(configuredHostname("# hostname=https://old.example.com\n")).toBeUndefined();
+    expect(configuredHostname("!hostname=https://old.example.com\n")).toBeUndefined();
+  });
+
+  // `hostname-strict` is a different option and must not answer for `hostname`.
+  it("does not answer with a longer option's value", () => {
+    expect(configuredHostname("hostname-strict=true\nhostname-backchannel-dynamic=false\n")).toBeUndefined();
+  });
+
+  it("takes the last of a key written twice", () => {
+    expect(configuredHostname("hostname=https://a.example.com\nhostname=https://b.example.com\n")).toBe(
+      "https://b.example.com"
+    );
+  });
+});
+
+describe("the issuer rule reading its expectation off the host", () => {
+  const ctx = (conf: string | null) => ({ host: "h1", held: { files: { "/opt/keycloak/conf/keycloak.conf": conf } }, hosts: 1 });
+  const ASKED = "GET https://sso.example.com/realms/main/.well-known/openid-configuration";
+  const body = (issuer: string) => JSON.stringify({ issuer });
+  const ruleFor = (id: string, extra: Record<string, string>) => {
+    registerKeycloakRules({ issuer_external: id, sheet: "sso", ...extra });
+    const r = listProbeRules().find((x) => x.covers(id));
+    if (r === undefined) throw new Error("no rule covers " + id);
+    return r;
+  };
+  const CONF = "hostname=https://sso.example.com\nhostname-strict=true\n";
+
+  it("compares against what the deployed file says this node publishes", () => {
+    const rule = ruleFor("sso.issuer.conf.1", { issuer_conf: "/opt/keycloak/conf/keycloak.conf" });
+    expect(rule.verdict({ how: ASKED, text: body("https://sso.example.com/realms/main") }, ctx(CONF)).ok).toBe(true);
+    expect(rule.verdict({ how: ASKED, text: body("https://node1.internal:8443/realms/main") }, ctx(CONF)).ok).toBe(false);
+  });
+
+  // The same host's own file, so each environment brings its own expectation
+  // and the build holds no copy of any of them.
+  it("follows the file from one environment to the next", () => {
+    const rule = ruleFor("sso.issuer.conf.2", { issuer_conf: "/opt/keycloak/conf/keycloak.conf" });
+    const stg = "hostname=https://sso-stg.example.com\n";
+    const asked = "GET https://sso-stg.example.com/realms/main/.well-known/openid-configuration";
+    expect(rule.verdict({ how: asked, text: body("https://sso-stg.example.com/realms/main") }, ctx(stg)).ok).toBe(true);
+    expect(rule.verdict({ how: asked, text: body("https://sso.example.com/realms/main") }, ctx(stg)).ok).toBe(false);
+  });
+
+  // An expectation somebody wrote down outranks one derived from the host.
+  it("lets a declared base win over the file", () => {
+    const rule = ruleFor("sso.issuer.conf.3", {
+      issuer_base: "https://sso.example.com",
+      issuer_conf: "/opt/keycloak/conf/keycloak.conf",
+    });
+    const wrong = "hostname=https://node1.internal:8443\n";
+    expect(rule.verdict({ how: ASKED, text: body("https://sso.example.com/realms/main") }, ctx(wrong)).ok).toBe(true);
+  });
+
+  // Each of the three ways there is no expectation is its own answer, and none
+  // of them is a failing issuer.
+  it("declines, with the reason, when the file cannot supply one", () => {
+    const rule = ruleFor("sso.issuer.conf.4", { issuer_conf: "/opt/keycloak/conf/keycloak.conf" });
+    const reply = { how: ASKED, text: body("https://sso.example.com/realms/main") };
+    expect(rule.verdict(reply, ctx(null)).ok).toBe(null);
+    expect(rule.verdict(reply, ctx(null)).why).toContain("was not observed");
+    expect(rule.verdict(reply, ctx("db=postgres\n")).why).toContain("sets no hostname");
+    // Keycloak accepts a bare hostname; an issuer built from one would be a
+    // guess about the scheme.
+    expect(rule.verdict(reply, ctx("hostname=sso.example.com\n")).ok).toBe(null);
+    expect(rule.verdict(reply, ctx("hostname=sso.example.com\n")).why).toContain("not a full URL");
+  });
+
+  it("reads the path it was told to and no other", () => {
+    const rule = ruleFor("sso.issuer.conf.5", { issuer_conf: "/etc/keycloak/keycloak.conf" });
+    const v = rule.verdict({ how: ASKED, text: body("https://sso.example.com/realms/main") }, ctx(CONF));
+    expect(v.ok).toBe(null);
+    expect(v.why).toContain("/etc/keycloak/keycloak.conf");
   });
 });
