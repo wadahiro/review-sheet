@@ -1773,6 +1773,35 @@ stays `dev: 9090`, and the legend carries the mapping.
 It is display only. Nothing about what is compared, joined or judged changes —
 "the paired value moved" is a different question, for whoever asks it.
 
+**…and a delivery cannot narrow the comparison to one side.** `generate
+--instances poc` says which environment the handover covers, and for an ordinary
+sheet that is the whole answer. Here it would leave a column of values facing a
+column of blanks — the sheet has lost the only thing it was for. So the delivery
+keeps the PARTNER of a delivered environment, read off the pairs above, and says
+so:
+
+```
+Delivering poc — left out: dev, local
+  sheet "sso server upgrade" also kept prod — what the delivered environment(s) are compared against
+```
+
+Nothing new is declared for this: `compare_instances` already states which
+environment answers which, and a per-sheet "keep these too" would be a third
+place to write a name already written twice, free to contradict both.
+
+**The condition is MEASURED, not declared:** would this narrowing leave some
+component with no environments at all. Most comparison sheets are untouched —
+components that SHARE their environments (two realms, each configured in staging
+and production) all survive a narrowing to those two, and widening them would
+put back the `local` column `--instances` exists to remove. A component is
+emptied when NONE of its environments survives, never when one of them does not.
+A pair neither half of which is delivered still goes, whole: the sheet narrows,
+it just cannot be cut in half. Every other sheet is delivered exactly as asked.
+
+A sheet whose component IS emptied and that declares no `compare_instances`
+keeps that component's environments whole, and the report says why: with no
+correspondence to follow, any subset would be a guess.
+
 A `static_files` entry that names no `instances:` is unchanged — it is a FILE of
 the sheet, and several of them stay several sections, which is what a legacy
 sheet built from a handful of recorded files wants. An entry opts in to being an

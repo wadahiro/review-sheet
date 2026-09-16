@@ -29,6 +29,13 @@ export type RestrictReport = {
   emptied: string[];
   // Previews rendered per environment, for environments nobody is delivering.
   previews: number;
+  // Environments a COMPARISON sheet kept although the delivery did not name
+  // them — see keepFor. Reported per sheet, because "the delivery is prod" and
+  // "this sheet also has dev in it" are two facts and only the first was asked
+  // for. `paired`: the sheet declares which environment answers which, so the
+  // partner of a delivered one came with it. `unpaired`: it declares that it
+  // compares but not what against what, so nothing here can narrow it honestly.
+  compared: { sheet: string; kept: string[]; why: "paired" | "unpaired" }[];
 };
 
 const label = (sheet: string, path: string[], key: string): string => [sheet, ...path, key].join(" > ");
@@ -53,6 +60,75 @@ function restrictCategory(c: Category, keep: ReadonlySet<string>, sheet: string,
     ...(c.params === undefined ? {} : { params }),
     ...(c.categories === undefined ? {} : { categories: c.categories.map((x) => restrictCategory(x, keep, sheet, here, emptied)) }),
   };
+}
+
+// THE ENVIRONMENTS THIS SHEET KEEPS, which is not always the ones asked for.
+//
+// A comparison sheet's claim is that a row can be read ACROSS: `prod` beside
+// `poc` is the whole of what an upgrade sheet says. Where the two sides have
+// DIFFERENT environments, narrowing the delivery to one side's leaves a column
+// of values facing a column of blanks — a sheet that has lost the only thing it
+// was for, which is worse than one environment more than was asked for.
+//
+// Measured, not declared. The condition is "would this narrowing leave some
+// component with no environments at all", which the rows themselves answer —
+// on a comparing sheet the top-level categories ARE the components. Most
+// comparison sheets are not affected: components that SHARE their environments
+// (two realms, each configured in staging and production) all survive a
+// narrowing to staging and production, and asking one of them to keep `local`
+// would put back the environment `--instances` exists to remove.
+//
+// Nothing new is declared for the ones that are. `compare_instances` already
+// states which environment answers which, so the partner of a delivered
+// environment is a fact the sheet carries; a per-sheet "keep these too" would
+// be a third place to write a name already written twice, free to contradict
+// both. A sheet that says it compares but not WHAT AGAINST WHAT keeps the
+// emptied component's environments whole: there is no correspondence to follow,
+// so any subset would be a guess. Said out loud either way — see
+// RestrictReport.compared.
+function componentEnvs(s: Sheet): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  for (const component of s.categories ?? []) {
+    const envs = new Set<string>();
+    const walk = (c: Category): void => {
+      for (const p of c.params ?? []) for (const i of p.instances ?? []) envs.add(i.name);
+      for (const inner of c.categories ?? []) walk(inner);
+    };
+    walk(component);
+    out.set(component.name, envs);
+  }
+  return out;
+}
+
+function keepFor(
+  s: Sheet,
+  keep: ReadonlySet<string>
+): { keep: ReadonlySet<string>; also?: { kept: string[]; why: "paired" | "unpaired" } } {
+  if (s.compare_components === undefined) return { keep };
+  const byComponent = componentEnvs(s);
+  // A component with no per-environment values at all is a component this
+  // narrowing cannot empty — it has nothing to lose.
+  const withEnvs = [...byComponent].filter(([, envs]) => envs.size > 0);
+  const emptied = withEnvs.filter(([, envs]) => ![...envs].some((e) => keep.has(e)));
+  if (emptied.length === 0) return { keep };
+  // Nothing of this sheet survives the delivery anyway, so there is no
+  // comparison left to protect. Widening here would put back a sheet the
+  // environment filter had emptied.
+  if (emptied.length === withEnvs.length) return { keep };
+  const needed = new Set(emptied.flatMap(([, envs]) => [...envs]));
+  const add = new Set<string>();
+  for (const pair of s.compare_instances ?? []) {
+    if (!pair.some((i) => keep.has(i))) continue;
+    for (const i of pair) if (!keep.has(i) && needed.has(i)) add.add(i);
+  }
+  let why: "paired" | "unpaired" = "paired";
+  for (const [, envs] of emptied) {
+    if ([...envs].some((e) => add.has(e))) continue;
+    why = "unpaired";
+    for (const e of envs) if (!keep.has(e)) add.add(e);
+  }
+  if (add.size === 0) return { keep };
+  return { keep: new Set([...keep, ...add]), also: { kept: [...add], why } };
 }
 
 function restrictSheet(s: Sheet, keep: ReadonlySet<string>, emptied: string[]): Sheet {
@@ -209,12 +285,26 @@ export function restrictInstances<T extends ParameterSheetInput | VersionedSheet
   const wanted = new Set(keep);
   const emptied: string[] = [];
   let previews = 0;
+  const compared: RestrictReport["compared"] = [];
+  // A preview belongs to a sheet, so it is kept by that sheet's own set — the
+  // rendering of the old release's file is exactly what a comparison sheet's
+  // extra environment is FOR, and dropping it would leave the kept column
+  // pointing at a preview nobody delivered.
+  const previewKeep = new Set(wanted);
   const apply = <S extends { sheets: Sheet[]; artifacts?: ArtifactPreview[] }>(doc: S): S => {
-    const art = restrictPreviews(doc.artifacts, wanted);
+    const sheets = doc.sheets.map((s) => {
+      const per = keepFor(s, wanted);
+      if (per.also) {
+        compared.push({ sheet: s.name, kept: per.also.kept, why: per.also.why });
+        for (const i of per.also.kept) previewKeep.add(i);
+      }
+      return restrictSheet(s, per.keep, emptied);
+    });
+    const art = restrictPreviews(doc.artifacts, previewKeep);
     previews += art.dropped;
     return {
       ...doc,
-      sheets: doc.sheets.map((s) => restrictSheet(s, wanted, emptied)),
+      sheets,
       ...(doc.artifacts === undefined ? {} : { artifacts: art.previews }),
     };
   };
@@ -224,7 +314,16 @@ export function restrictInstances<T extends ParameterSheetInput | VersionedSheet
       : (apply(input as ParameterSheetInput & { sheets: Sheet[] }) as unknown as T);
   return {
     input: out,
-    report: { kept: [...keep], dropped: instancesOf(input).filter((i) => !wanted.has(i)), emptied, previews },
+    report: {
+      kept: [...keep],
+      // An environment a comparison sheet kept is IN the delivery — listing it
+      // as left out would be the report contradicting the document it
+      // describes. It is still named, on the sheet's own line below.
+      dropped: instancesOf(input).filter((i) => !wanted.has(i) && !compared.some((c) => c.kept.includes(i))),
+      emptied,
+      previews,
+      compared,
+    },
   };
 }
 
@@ -238,6 +337,15 @@ export function formatRestrictReport(r: RestrictReport): string {
     );
     for (const e of r.emptied.slice(0, 5)) lines.push(`    ${e}`);
     if (r.emptied.length > 5) lines.push(`    … and ${r.emptied.length - 5} more`);
+  }
+  for (const c of r.compared) {
+    lines.push(
+      c.why === "paired"
+        ? `  sheet "${c.sheet}" also kept ${c.kept.join(", ")} — what the delivered environment(s) are compared against`
+        : `  sheet "${c.sheet}" also kept ${c.kept.join(", ")} — the delivery would have left one of its ` +
+          `components with no environment at all, and it declares no "compare_instances" to say which one ` +
+          `answers which`
+    );
   }
   if (r.previews > 0) lines.push(`  ${r.previews} previewed file(s) rendered only for those environments were left out`);
   return lines.join("\n");
