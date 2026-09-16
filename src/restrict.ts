@@ -16,6 +16,7 @@
 // A pure core: it takes a model and returns a model, and says what it dropped.
 
 import type { ParameterSheetInput, VersionedSheetInput, Sheet, Category, Parameter, ArtifactPreview, SheetGroup } from "./types.js";
+import { effectiveOrigin } from "./prompt.js";
 
 export type RestrictReport = {
   kept: string[];
@@ -239,5 +240,110 @@ export function formatRestrictReport(r: RestrictReport): string {
     if (r.emptied.length > 5) lines.push(`    … and ${r.emptied.length - 5} more`);
   }
   if (r.previews > 0) lines.push(`  ${r.previews} previewed file(s) rendered only for those environments were left out`);
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// A delivery is the rows somebody DECIDED.
+//
+// A sheet materialized from a dictionary is an exhaustive ledger: every option
+// the product has, with the ones nobody set carrying the product's own default
+// and `origin: "default"`. That is the right shape for the document an engineer
+// keeps — "did we mean to leave this alone" is a question only an exhaustive
+// list can be asked — and it is 55% of the rows on one real delivery.
+//
+// For a recipient it is usually the wrong shape. The page already knows this:
+// the viewer hides those rows unless a filter is turned on, and collapses a
+// category made of nothing else. This takes the same cut one stage earlier, so
+// they are not in the file at all — which is the difference between a reader
+// who must not turn a filter on and a document that does not carry them.
+//
+// THE SAME PREDICATE AS THE FILTER, read from the same function (`prompt.ts`'s
+// `effectiveOrigin`) rather than re-derived here: a second spelling of "is this
+// row unset" is a second answer, and the two would part company on the first
+// row that carries no `origin` of its own.
+//
+// What it does NOT touch: a `baseline` row (the vendor shipped it and this
+// project removed it — a decision, and one of the more interesting ones), and
+// an `out_of_scope` row (a different filter, a different claim). Only `default`.
+export type UnsetReport = {
+  // Per sheet, what fell: how many rows, and the first few by name.
+  sheets: { sheet: string; rows: number; some: string[]; categories: number }[];
+  rows: number;
+  categories: number;
+};
+
+// A category with nothing left under it goes — unless somebody wrote a note
+// into it, or into one below it. The filter keeps a noted section for the same
+// reason: hiding a section because every row in it is unset is right, hiding
+// what a person wrote there is not.
+function notedAnywhere(c: Category): boolean {
+  if (typeof c.note === "string" && c.note !== "") return true;
+  return (c.categories ?? []).some(notedAnywhere);
+}
+
+function holdsAnything(c: Category): boolean {
+  return (c.params ?? []).length > 0 || (c.categories ?? []).some(holdsAnything);
+}
+
+export function dropUnset<T extends ParameterSheetInput | VersionedSheetInput>(
+  input: T
+): { input: T; report: UnsetReport } {
+  const report: UnsetReport = { sheets: [], rows: 0, categories: 0 };
+
+  const prune = (cats: Category[], sheet: string, path: string[], seen: { rows: number; some: string[]; categories: number }): Category[] => {
+    const out: Category[] = [];
+    for (const c of cats) {
+      const here = [...path, c.name];
+      const params = (c.params ?? []).filter((p) => {
+        if (effectiveOrigin(p) !== "default") return true;
+        seen.rows++;
+        if (seen.some.length < 3) seen.some.push(label(sheet, here, p.key));
+        return false;
+      });
+      const categories = prune(c.categories ?? [], sheet, here, seen);
+      const kept: Category = { ...c, ...(c.params === undefined ? {} : { params }), ...(c.categories === undefined ? {} : { categories }) };
+      if (!holdsAnything(kept) && !notedAnywhere(kept)) {
+        seen.categories++;
+        continue;
+      }
+      out.push(kept);
+    }
+    return out;
+  };
+
+  const apply = <S extends { sheets: Sheet[] }>(doc: S): S => ({
+    ...doc,
+    sheets: doc.sheets.map((s) => {
+      const seen = { rows: 0, some: [] as string[], categories: 0 };
+      const categories = prune(s.categories ?? [], s.name, [], seen);
+      if (seen.rows > 0 || seen.categories > 0) {
+        report.sheets.push({ sheet: s.name, rows: seen.rows, some: seen.some, categories: seen.categories });
+        report.rows += seen.rows;
+        report.categories += seen.categories;
+      }
+      return { ...s, ...(s.categories === undefined ? {} : { categories }) };
+    }),
+  });
+
+  const out =
+    "versions" in input
+      ? ({ ...input, versions: input.versions.map(apply) } as T)
+      : (apply(input as ParameterSheetInput) as T);
+  return { input: out, report };
+}
+
+// Always printed when the flag was passed: a delivery that quietly left half
+// its rows out is the thing this must never be used to do by accident.
+export function formatUnsetReport(r: UnsetReport): string {
+  if (r.rows === 0 && r.categories === 0) return "unset rows: none to leave out — every row of this document was set by somebody";
+  const lines = [
+    `Leaving out ${r.rows} unset row(s)${r.categories > 0 ? ` and ${r.categories} category(ies) left holding none` : ""} — ` +
+      `rows nobody set, carrying the product's own default:`,
+  ];
+  for (const s of r.sheets.slice(0, 8)) {
+    lines.push(`  ${s.sheet}: ${s.rows} row(s)${s.categories > 0 ? `, ${s.categories} category(ies)` : ""} — ${s.some.join(", ")}${s.rows > s.some.length ? ", …" : ""}`);
+  }
+  if (r.sheets.length > 8) lines.push(`  … and ${r.sheets.length - 8} more sheet(s)`);
   return lines.join("\n");
 }

@@ -56,6 +56,9 @@ export type MarkdownSetOptions = {
   // current as stale. Recorded so it can narrow the same way instead of the
   // reader having to remember which flags built the set.
   instances?: string[];
+  // Whether the rows nobody set were left out (`generate --no-unset`). Recorded
+  // in the stamp so `verify --md` can narrow the model the same way.
+  withoutUnset?: boolean;
   // The documents a sheet's rows are ABOUT, carried into the set as files: the
   // rendered artifact, the authored source it came from, the bytes a host was
   // found holding. Written where the caller says and listed under the sheet
@@ -222,7 +225,7 @@ export function toMarkdownSet(
 
   const paths = new Map(placed.map((p, i) => [p.sheet.name, sheets[i]!.path]));
   return {
-    files: [{ path: INDEX, text: index(data, paths, lang, opts.stamp, opts.instances) }, ...sheets, ...documents],
+    files: [{ path: INDEX, text: index(data, paths, lang, opts.stamp, opts.instances, opts.withoutUnset === true) }, ...sheets, ...documents],
     problems,
   };
 }
@@ -417,7 +420,12 @@ function index(
   paths: Map<string, string>,
   lang: Lang,
   stamp: string | undefined,
-  narrowed: string[] | undefined
+  narrowed: string[] | undefined,
+  // …and the OTHER narrowing that decides what the set contains. Recorded for
+  // the same reason the instances are: a reader checking the set against the
+  // model has to narrow it the same way, or a set that is perfectly current is
+  // called stale.
+  withoutUnset: boolean
 ): string {
   const title = data.metadata?.title ?? (lang === "ja" ? "パラメータシート" : "Parameter sheet");
   const out: string[] = [];
@@ -429,7 +437,7 @@ function index(
   // before this says nothing, and `verify` tries both spellings for it.
   if (stamp !== undefined)
     out.push(
-      `<!-- rs:model ${stamp}${narrowed === undefined || narrowed.length === 0 ? "" : ` instances=${narrowed.join(",")}`} lang=${lang} -->`,
+      `<!-- rs:model ${stamp}${narrowed === undefined || narrowed.length === 0 ? "" : ` instances=${narrowed.join(",")}`}${withoutUnset ? " unset=no" : ""} lang=${lang} -->`,
       ""
     );
   out.push(`# ${title}`, "");
@@ -492,13 +500,14 @@ export function modelStamp(model: unknown): string {
 // the tool's full name in one place and its short one everywhere else. A set
 // written before the change is still a set, so both are recognised on the way
 // in and only the short one is ever written.
-export function stampOf(indexText: string): { stamp: string; instances?: string[]; lang?: Lang } | undefined {
-  const m = /<!--\s*(?:rs|review-sheet):model\s+([0-9a-f]+)(?:\s+instances=([^\s>-]+))?(?:\s+lang=(ja|en))?\s*-->/.exec(indexText);
+export function stampOf(indexText: string): { stamp: string; instances?: string[]; withoutUnset?: true; lang?: Lang } | undefined {
+  const m = /<!--\s*(?:rs|review-sheet):model\s+([0-9a-f]+)(?:\s+instances=([^\s>-]+))?(\s+unset=no)?(?:\s+lang=(ja|en))?\s*-->/.exec(indexText);
   if (m === null) return undefined;
   return {
     stamp: m[1]!,
     ...(m[2] === undefined ? {} : { instances: m[2].split(",") }),
-    ...(m[3] === undefined ? {} : { lang: m[3] as Lang }),
+    ...(m[3] === undefined ? {} : { withoutUnset: true as const }),
+    ...(m[4] === undefined ? {} : { lang: m[4] as Lang }),
   };
 }
 

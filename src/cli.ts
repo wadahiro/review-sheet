@@ -49,7 +49,7 @@ import { loadBuildSpec, specDirOf } from "./spec.js";
 import { inspectTs, lintTs } from "./parsers/ts.js";
 import { inspectPy, lintPy } from "./parsers/py.js";
 import { renderParserPage, renderParserList } from "./parser-docs.js";
-import { restrictInstances, instancesOf, formatRestrictReport, selectSheets, sheetsOf, formatSheetSelection } from "./restrict.js";
+import { restrictInstances, instancesOf, formatRestrictReport, selectSheets, sheetsOf, formatSheetSelection, dropUnset, formatUnsetReport } from "./restrict.js";
 import { buildTestPlan, formatTestPlanReport, type TestPlan } from "./testplan.js";
 import type { Category, ReviewItem } from "./types.js";
 
@@ -511,7 +511,10 @@ async function writeMarkdownSet(
   sources: boolean,
   // Which environments this set covers, when it covers some of them. Written
   // into the index so `verify --md` can narrow the same way.
-  narrowed: string[] | undefined
+  narrowed: string[] | undefined,
+  // …and whether the unset rows were left out, recorded the same way and for
+  // the same reason (see MarkdownSetOptions).
+  withoutUnset: boolean
 ): Promise<void> {
   // A markdown set is a SNAPSHOT, so it is written from the current version —
   // the newest one, which is what `assembleVersions` puts last. The comparison
@@ -559,6 +562,7 @@ async function writeMarkdownSet(
   const { files, problems } = toMarkdownSet(data, lang, {
     stamp,
     ...(narrowed === undefined ? {} : { instances: narrowed }),
+    ...(withoutUnset ? { withoutUnset: true } : {}),
     documents: carried,
     preview: (sheet) => (row: ParamData, categoryPath: string[]) => {
       const hit = index.previewFor(sheet.name, categoryPath.join("/"), row.key);
@@ -680,12 +684,16 @@ program
   .option("--no-previews", "Leave the previewed files out: the panel that shows a row's line in its deployed file, and the affordance that opens it. They are the file as it was AT GENERATION — a document maintained by hand afterwards keeps its values current and the preview does not, so a delivery that will be edited for a long time may prefer not to carry a picture that quietly ages. Also the biggest single part of the file (measured on a real document: 1.1 MB of payload against 0.6 MB without)")
   .option("--sheets <names...>", "Make this document out of these sheets only. A requirements note, a parameter sheet and a test record are separate documents in the world — approved separately, revised on their own cycles — and one build can produce each of them. The sheets keep the document's own order; what is left out is reported")
   .option("--instances <names...>", "Deliver only these environments: the columns, the per-environment values and the previews rendered for the others are left out of the document. Not every environment a build knows belongs to the same handover — one of them is usually the one an engineer keeps in order to build the others. What it drops is reported, including rows left with nothing to show")
+  .option(
+    "--no-unset",
+    "Leave out the rows nobody set — the ones a materialized sheet carries so the ledger is exhaustive, showing the product's own default and marked 未設定 / unset. The page already hides them behind a filter and collapses a category made of nothing else; this takes the same cut one stage earlier, so a recipient's document does not carry them at all. A row the vendor shipped and this project removed (`baseline`), and one marked out of scope, are decisions and stay. What it drops is reported, per sheet"
+  )
   .option("--evidence <file>", "Carry the RAW material the test results point at — the deployed files as the hosts held them, the output of the commands that were run — as documents in the page, beside the verdicts that cite them. Without it a verdict names an address on a machine the reader cannot reach. The judge that wrote the results decided what may travel; this only carries it, and --instances narrows it exactly as it narrows values")
   .option(
     "--timezone <zone>",
     "Read the instants this document carries in this IANA zone (Asia/Tokyo), offset kept — today, when each piece of evidence was collected. Decided here for the same reason --lang is: a document has one reader, and an instant resolved once is one the viewer never has to think about. Omitted, they print exactly as recorded"
   )
-  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; lang: string; format: string; instances?: string[]; sheets?: string[]; evidence?: string; timezone?: string }) => {
+  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; unset: boolean; lang: string; format: string; instances?: string[]; sheets?: string[]; evidence?: string; timezone?: string }) => {
     try {
       if (opts.timezone !== undefined && !knownZone(opts.timezone)) {
         console.error(`unknown timezone: ${opts.timezone} — use an IANA name such as Asia/Tokyo or UTC`);
@@ -750,6 +758,15 @@ program
         // Always printed: a delivery that quietly left an environment out is
         // the thing this flag must never be used to do by accident.
         console.error(formatRestrictReport(done.report));
+      }
+      // …and the rows nobody set, LAST of the three narrowings and before the
+      // evidence: a row left with nothing to show by `--instances` is still a
+      // row somebody set, so the two cuts are independent and this one reads a
+      // model the others have already finished with.
+      if (opts.unset === false) {
+        const done = dropUnset(input);
+        input = done.input;
+        console.error(formatUnsetReport(done.report));
       }
       // AFTER --instances, so a delivery narrows its evidence with the same
       // list and by the same rule: the environments it does not cover are not
@@ -838,7 +855,7 @@ program
       }
       if (opts.format === "md") {
         if (opts.output === undefined) throw new Error("--format md writes a SET of files, so it needs a directory: -o <dir>");
-        await writeMarkdownSet(input, opts.output, lang, opts.sources, opts.instances);
+        await writeMarkdownSet(input, opts.output, lang, opts.sources, opts.instances, opts.unset === false);
         return;
       }
       if (opts.format !== "html") throw new Error(`--format takes html or md, not ${opts.format}`);
@@ -2013,12 +2030,16 @@ program
           // model. Narrowed the same way here, from what the set itself
           // records, so the reader does not have to remember which flags built
           // it — and so a set that is perfectly current is not called stale.
-          const same =
+          const narrowed =
             was.instances === undefined || instancesOf(input).length === 0
               ? input
               : restrictInstances(input, was.instances).input;
+          // …and the same cut the set says was taken, for the same reason.
+          const same = was.withoutUnset === true ? dropUnset(narrowed).input : narrowed;
           const now = modelStamp(withoutEvidence(same));
-          const covers = was.instances === undefined ? "" : ` (${was.instances.join(", ")})`;
+          const covers =
+            (was.instances === undefined ? "" : ` (${was.instances.join(", ")})`) +
+            (was.withoutUnset === true ? " without the unset rows" : "");
           if (was.stamp !== now) {
             console.error(`Error: ${opts.md}/ was written from model ${was.stamp}${covers}; this one is ${now}. Regenerate the set (generate --format md).`);
             process.exit(1);
