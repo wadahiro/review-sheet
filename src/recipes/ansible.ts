@@ -779,7 +779,14 @@ export const ansibleRecipe: SheetRecipe = {
         );
       }
 
-      if (specs.length === 1) {
+      // A sheet that COMPARES its components is not one file, however many
+      // templates it happens to have. The PoC's upgrade sheet has exactly one
+      // — the new release — beside a `static_files` entry for the old one, so
+      // this named the whole sheet after the new side's file and the reader was
+      // told the comparison lives at `/opt/keycloak/conf/keycloak.conf`. Each
+      // component carries its own pair below, which is the honest shape.
+      const comparesComponents = Array.isArray(sheetSpec.component_order) && sheetSpec.component_order.length > 0;
+      if (specs.length === 1 && !comparesComponents) {
         const only = read[0];
         if (only.spec.deployedPath !== undefined) {
           // The sheet shows where the rendered file lands on the managed host and

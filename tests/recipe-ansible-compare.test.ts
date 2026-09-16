@@ -48,6 +48,31 @@ const labelsOf = (over: Record<string, unknown> = {}): Record<string, unknown> =
   return Object.fromEntries((out as { componentLabels?: Map<string, unknown> }).componentLabels ?? new Map());
 };
 
+describe("what the sheet itself is called", () => {
+  const sheetOf = (over: Record<string, unknown> = {}): Record<string, unknown> =>
+    getRecipe("ansible")!.load(spec(over) as never, io) as never;
+
+  // One template and no comparison: the sheet IS that file, and saying where it
+  // lands on the host is the reader's own question answered.
+  it("is the file, where the sheet is one template", () => {
+    const one = sheetOf({ templates: [{ path: "new.j2", deployed_path: "/etc/new/app.conf", format: "properties" }] });
+    expect(one.filePath).toBe("/etc/new/app.conf");
+  });
+
+  // A comparison is not one file, however many templates it happens to have.
+  // A real sheet had exactly one — the new release — beside a static file for
+  // the old one, and so told the reader the comparison lives at the new side's
+  // path.
+  it("is no file at all, where the sheet compares its components", () => {
+    const cmp = sheetOf({
+      component_order: ["19.0.2", "26.7.3"],
+      templates: [{ path: "new.j2", component: "26.7.3", deployed_path: "/etc/new/app.conf", format: "properties" }],
+    });
+    expect(cmp.filePath).toBeUndefined();
+    expect(cmp.sourceFile).toBeUndefined();
+  });
+});
+
 describe("what a component is called", () => {
   // The ordinary sheet: the component is which FILE, and the file is what a
   // reader is reviewing.
