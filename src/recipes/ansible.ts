@@ -485,6 +485,15 @@ function foldScopedStatic(
         // same way a template-driven row sets both.
         value: e.value,
         instances: slices,
+        // THE LIST IS THE PRESENCE LIST, the same statement a scoped template
+        // makes: an environment it leaves out does not have this line. Two
+        // things are true at once and both are the same claim — a key one
+        // environment's file has and another's does not is absent there, and an
+        // environment belonging to the OTHER release has no file of this
+        // component at all. Without it one side of a comparison said "not in
+        // this environment's file" and the other said nothing, which reads as
+        // two different findings rather than one shape.
+        absent_where_unlisted: true as const,
         ...(component === undefined ? {} : { component }),
       };
       merged.set(groupKey, one);

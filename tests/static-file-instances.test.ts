@@ -79,6 +79,18 @@ describe("a scoped static file", () => {
     expect(got.find((r) => r.key === "loglevel")?.instances).toEqual([["dev", "debug"]]);
   });
 
+  // The list IS the presence list, the same statement a scoped template makes:
+  // an environment it leaves out does not have this line. Without it one side
+  // of a comparison said "not in this environment's file" and the other said
+  // nothing, which reads as two findings rather than one shape.
+  it("says the environments it leaves out do not have the row", () => {
+    const got = load([
+      { path: "dev.properties", component: "v1", instances: ["dev"] },
+      { path: "prod.properties", component: "v1", instances: ["prod"] },
+    ]).embedded!;
+    expect(got.every((e) => e.absent_where_unlisted === true)).toBe(true);
+  });
+
   // THE REGRESSION GUARD. An entry that declares nothing is a FILE of the
   // sheet, and several of them stay several sections — which is what a legacy
   // sheet built from recorded files wants, and what this must not take away.
@@ -90,6 +102,9 @@ describe("a scoped static file", () => {
     expect(got.filter((r) => r.key === "port")).toHaveLength(2);
     expect(got.map((r) => r.file).sort()).toContain("prod.properties");
     expect(got.every((r) => r.instances.length === 0)).toBe(true);
+    // …and claims nothing about environments either: an unscoped file is not a
+    // statement about any of them.
+    expect(load([{ path: "dev.properties", component: "v1" }]).embedded!.every((e) => e.absent_where_unlisted === undefined)).toBe(true);
   });
 
   // Two files both claiming to be one environment's configuration is the spec
