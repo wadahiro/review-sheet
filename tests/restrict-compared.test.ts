@@ -242,3 +242,65 @@ describe("a comparison whose components share their environments", () => {
     expect(report.compared).toEqual([]);
   });
 });
+
+describe("a model with a version history", () => {
+  // The same sheet appears once per version, and the report describes the
+  // DOCUMENT — "also kept prod" said three times reads as three sheets having
+  // done it, and the delivery only has one.
+  const versioned = () => {
+    const s = sheet({ compare_components: "always", compare_instances: [["dev", "local"], ["prod", "poc"]] });
+    return {
+      versions: [
+        { version: "1.0", date: "2026-01-01", sheets: [s] },
+        { version: "1.1", date: "2026-02-01", sheets: [s] },
+      ],
+    } as never;
+  };
+
+  it("says what it kept once, not once per version", () => {
+    const { report } = restrictInstances(versioned(), ["poc"]);
+    expect(report.compared).toEqual([{ sheet: "upgrade", kept: ["prod"], why: "paired" }]);
+  });
+
+  // …and it still keeps it, in every version.
+  it("keeps the partner in each version", () => {
+    const { input } = restrictInstances(versioned(), ["poc"]);
+    for (const v of (input as { versions: { sheets: Sheet[] }[] }).versions) {
+      expect(v.sheets[0].instances).toEqual(["prod", "poc"]);
+    }
+  });
+});
+
+// …and the report's other per-row list does NOT dedupe, deliberately: see
+// restrict.test.ts's "reaches every version of a document that carries a
+// history". `emptied` counts empty CELLS, and a version history renders the row
+// once per version, so both really are blank. `compared` names a SHEET, and a
+// versioned document has one sheet per name however many versions carry it.
+describe("the two lists count different things", () => {
+  it("names an emptied row once per version, and the sheet once", () => {
+    const s: Sheet = {
+      name: "upgrade",
+      compare_components: "always",
+      compare_instances: [["dev", "local"], ["prod", "poc"]],
+      instances: ["dev", "prod", "local", "poc"],
+      categories: [
+        { name: "old", categories: [{ name: "Network", params: [row("listen", { dev: "9090", prod: "80" })] }] },
+        {
+          name: "new",
+          categories: [
+            {
+              name: "Network",
+              // `listen` keeps the component alive; `debug` is set only in an
+              // environment nobody delivers, so its cell goes blank.
+              params: [row("listen", { local: "8081", poc: "443" }), row("debug", { local: "on" })],
+            },
+          ],
+        },
+      ],
+    };
+    const vs = [1, 2].map((i) => ({ version: `1.${i}`, date: "2026-01-01", sheets: [s] }));
+    const { report } = restrictInstances({ versions: vs } as never, ["poc"]);
+    expect(report.compared).toEqual([{ sheet: "upgrade", kept: ["prod"], why: "paired" }]);
+    expect(report.emptied).toEqual(["upgrade > new > Network > debug", "upgrade > new > Network > debug"]);
+  });
+});

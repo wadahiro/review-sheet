@@ -52,6 +52,10 @@ function restrictCategory(c: Category, keep: ReadonlySet<string>, sheet: string,
   const here = [...path, c.name];
   const params = (c.params ?? []).map((p) => {
     const done = restrictParam(p, keep);
+    // Once per VERSION, deliberately — see restrict.test.ts. This counts empty
+    // CELLS, and a version history renders the row once per version, so both
+    // are really blank. `compared` above dedupes for the opposite reason: it
+    // names a SHEET, and a versioned document has one sheet per name.
     if (done.emptied) emptied.push(label(sheet, here, p.key));
     return done.param;
   });
@@ -295,7 +299,12 @@ export function restrictInstances<T extends ParameterSheetInput | VersionedSheet
     const sheets = doc.sheets.map((s) => {
       const per = keepFor(s, wanted);
       if (per.also) {
-        compared.push({ sheet: s.name, kept: per.also.kept, why: per.also.why });
+        // Once per SHEET, not once per version. A version history holds the
+        // same sheet N times, and the report describes the document: "also kept
+        // prod" said three times reads as three sheets having done it.
+        if (!compared.some((c) => c.sheet === s.name)) {
+          compared.push({ sheet: s.name, kept: per.also.kept, why: per.also.why });
+        }
         for (const i of per.also.kept) previewKeep.add(i);
       }
       return restrictSheet(s, per.keep, emptied);

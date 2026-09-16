@@ -12,6 +12,7 @@
 // is correct by accident.
 
 import { describe, it, expect } from "bun:test";
+import Ajv from "ajv";
 import "../src/recipes/index.js";
 import { getRecipe } from "../src/recipe";
 import type { RecipeIO } from "../src/recipe";
@@ -129,5 +130,85 @@ describe("what the spec refuses to do quietly", () => {
       console.warn = warn;
     }
     expect(said.join("\n")).not.toContain("more than one untagged defaults file");
+  });
+});
+
+// WHICH RECIPES THE FIELD IS FOR.
+//
+// `component:` is resolved by the ansible recipe, which reads each row's
+// component from the template that produced it. The layered recipe has no such
+// thing — a row's component there comes off the static file it was extracted
+// from, and nothing in its value resolution consults it. Accepting the field
+// and ignoring it would be worse than not having it: a spec that looks fixed
+// and is not, which is the exact silent no-op `additionalProperties: false`
+// exists to refuse everywhere else in this build.
+describe("the recipes that can answer for a defaults file's component", () => {
+  const validates = (recipe: string, sheet: Record<string, unknown>): boolean =>
+    new Ajv({ allErrors: true }).compile(getRecipe(recipe)!.schema)(sheet);
+
+  const tagged = { defaults: [{ path: "old-defaults.yml", component: "old" }] };
+
+  it("is accepted by the recipe that resolves it", () => {
+    expect(validates("ansible", tagged)).toBe(true);
+  });
+
+  it("is refused by a recipe that would ignore it", () => {
+    expect(validates("layered", tagged)).toBe(false);
+  });
+
+  // …and the shape without it still validates for both, so the test above is
+  // about `component:` rather than about the object form of a defaults entry.
+  it("leaves the untagged shape alone in both", () => {
+    const plain = { defaults: [{ path: "old-defaults.yml" }] };
+    expect(validates("ansible", plain)).toBe(true);
+    expect(validates("layered", plain)).toBe(true);
+  });
+});
+
+// …and the warning that recommends the field is only raised where it can be
+// taken. A layered sheet that compares components and layers two defaults files
+// is in exactly the shape the warning describes — and the only fix it names is
+// one that recipe rejects, so the advice would send a reader to a field that
+// fails their build.
+describe("the advice the collision warning gives", () => {
+  const LAYERED_FILES: Record<string, string> = {
+    "a.yml": "app_host: a.example.com\n",
+    "b.yml": "app_host: b.example.com\n",
+    "recorded.conf": "host=x\n",
+  };
+  const layeredIo: RecipeIO = {
+    readFile: (p: string) => LAYERED_FILES[p.split("/").pop() ?? p] ?? null,
+    specDir: "/spec",
+    resolve: (p: string) => p,
+    instances: [],
+  } as never;
+
+  const saidBy = (recipe: string, sheet: Record<string, unknown>): string => {
+    const said: string[] = [];
+    const warn = console.warn;
+    console.warn = (m: string) => said.push(String(m));
+    try {
+      getRecipe(recipe)!.load(sheet as never, recipe === "layered" ? layeredIo : io);
+    } finally {
+      console.warn = warn;
+    }
+    return said.join("\n");
+  };
+
+  it("is not given to a recipe that cannot take it", () => {
+    const sheet = {
+      name: "compare",
+      recipe: "layered",
+      component_order: ["old", "new"],
+      defaults: ["a.yml", "b.yml"],
+      static_files: [{ path: "recorded.conf", component: "old", format: "properties" }],
+    };
+    expect(saidBy("layered", sheet)).not.toContain("untagged defaults file");
+  });
+
+  // The ansible sheet in the same shape still gets it — the gate is about which
+  // recipe is asking, not about switching the check off.
+  it("is still given to the recipe that can", () => {
+    expect(saidBy("ansible", spec(UNTAGGED) as never)).toContain("untagged defaults file");
   });
 });

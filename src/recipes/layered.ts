@@ -107,12 +107,18 @@ const sourceSchema = {
 // worked. (`static_files` is the deliberate exception; see ansible.ts.)
 export const sourceOrListSchema = { oneOf: [sourceSchema, { type: "array", items: sourceSchema, minItems: 1 }] };
 
-// `defaults:` alone, because `component:` answers a question only a defaults
-// file has. An overlay is already tied to one environment, and the environment
-// already says which component it belongs to (the template that renders it), so
-// a `component:` there would be a second place to state the same fact — free to
-// contradict the first. Shared with ansible.ts for the same reason
-// `sourceOrListSchema` is: that recipe hands `defaults` straight through.
+// THE ANSIBLE RECIPE'S `defaults:`, which is the only one `component:` means
+// anything in. It lives here because that recipe builds its defaults by handing
+// the sheet to `layeredRecipe.load` below, so the map construction is here too
+// — but the RESOLUTION is not: a row's component comes off the template that
+// produced it, which only the ansible recipe has. A layered sheet keeps the
+// plain shape and refuses the field, rather than accepting one it would ignore.
+//
+// `defaults:` alone within that recipe, because `component:` answers a question
+// only a defaults file has. An overlay is already tied to one environment, and
+// the environment already says which component it belongs to (the template that
+// renders it), so a `component:` there would be a second place to state the same
+// fact — free to contradict the first.
 const defaultsSourceSchema = {
   oneOf: [
     { type: "string" },
@@ -210,7 +216,7 @@ const schema = {
   type: "object",
   properties: {
     split: splitSchema,
-    defaults: defaultsOrListSchema,
+    defaults: sourceOrListSchema,
     overlays: { type: "object", additionalProperties: sourceOrListSchema },
     static_files: staticFilesSchema,
     // A file whose CONTENT an Ansible task writes inline — see
@@ -1153,7 +1159,12 @@ export const layeredRecipe: SheetRecipe = {
     // nothing here can tell those apart, which is exactly why `component:`
     // exists. Reported rather than decided: silence is what let a row of one
     // release read the other release's file.
-    if (defaultsSpecs.length > 1 && asStringList(sheetSpec.component_order).length > 0) {
+    // …and only where `component:` is available to fix it. The advice is the
+    // point of the warning, and a layered sheet cannot take it — that recipe
+    // refuses the field (see defaultsOrListSchema). Recognised by the sheet
+    // having templates, which is what the caller adds and this schema does not.
+    const canTagDefaults = sheetSpec.templates !== undefined || sheetSpec.template !== undefined;
+    if (canTagDefaults && defaultsSpecs.length > 1 && asStringList(sheetSpec.component_order).length > 0) {
       const untagged = defaultsSpecs.filter((sp) => sp.component === undefined);
       const setBy = new Map<string, string[]>();
       for (const sp of untagged) {
