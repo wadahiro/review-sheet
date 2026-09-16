@@ -45,7 +45,12 @@ export function effectiveConfig(text: string | null | undefined): Map<string, { 
   return out;
 }
 
-export const isProductDefault = (source: string): boolean => /^classpath /.test(source);
+// `Derived`: not a second source of user intent, but Keycloak computing a
+// value FROM other options with no independent input of its own (measured:
+// http-access-log-file-name/-suffix, derived from http-access-log-file-enabled
+// et al.) — if the deriving option were overridden, that option's own row
+// carries the override, so accepting `Derived` here loses no coverage.
+export const isProductDefault = (source: string): boolean => /^classpath /.test(source) || source === "Derived";
 
 // Which line a key was reported at, so a verdict points at the words.
 export function lineOfEffective(text: string | null | undefined, key: string): number | undefined {

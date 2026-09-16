@@ -150,6 +150,15 @@ describe("the effective configuration the product reports", () => {
     expect(isProductDefault("system property")).toBe(false);
   });
 
+  // `Derived` is Keycloak computing a value FROM other options (measured:
+  // http-access-log-file-name/-suffix, derived from
+  // http-access-log-file-enabled et al.) with no independent user input of its
+  // own — if the deriving option WERE overridden, that option's own row shows
+  // it, so counting `Derived` here loses no coverage.
+  it("counts a derived value as a product default too — it has no override of its own", () => {
+    expect(isProductDefault("Derived")).toBe(true);
+  });
+
   it("points at the line a key was reported at, and nowhere for one it does not report", () => {
     expect(lineOfEffective(OUT, "hostname")).toBe(4);
     expect(lineOfEffective(OUT, "http-port")).toBeUndefined();
