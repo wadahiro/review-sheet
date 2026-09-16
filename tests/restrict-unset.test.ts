@@ -139,6 +139,44 @@ describe("leaving out the rows nobody set", () => {
   });
 });
 
+describe("a sheet left holding nothing", () => {
+  const onlyUnset = () =>
+    ({
+      metadata: { title: "t" },
+      sheets: [
+        { name: "defaults only", categories: [{ name: "c", params: [row("a", { origin: "default" })] }] },
+        // It holds an unset row too, so only the prose separates it from the
+        // sheet above — otherwise the guard would be untestable.
+        { name: "prose", document: { html: "<p>words</p>" }, categories: [{ name: "c", params: [row("z", { origin: "default" })] }] },
+        { name: "kept", categories: [{ name: "c", params: [row("b")] }] },
+      ],
+    }) as never as ParameterSheetInput;
+
+  // A whole page of the delivery that says only its own title, which is not a
+  // thing for a recipient to find out by opening it. Measured on a real
+  // delivery: the two sheets describing the product's own default clients — a
+  // subject that project never touches, which is exactly why every row of them
+  // is unset.
+  it("is named, with what to do about it", () => {
+    const { report } = dropUnset(onlyUnset());
+    expect(report.emptied).toEqual(["defaults only"]);
+    expect(formatUnsetReport(report)).toContain("--sheets");
+  });
+
+  // NAMED, never dropped: whether a page belongs in a handover is `--sheets`'
+  // question, and this flag has no business answering it.
+  it("is still in the document", () => {
+    const { input } = dropUnset(onlyUnset());
+    expect(input.sheets.map((s) => s.name)).toEqual(["defaults only", "prose", "kept"]);
+  });
+
+  // A prose sheet holds no rows by nature. Calling it emptied would report
+  // every document page of every delivery.
+  it("is not what a prose page is", () => {
+    expect(dropUnset(onlyUnset()).report.emptied).not.toContain("prose");
+  });
+});
+
 describe("what it says it dropped", () => {
   // Always, and by name: a delivery that quietly left half its rows out is the
   // thing this flag must never be used to do by accident.

@@ -271,6 +271,14 @@ export type UnsetReport = {
   sheets: { sheet: string; rows: number; some: string[]; categories: number }[];
   rows: number;
   categories: number;
+  // Sheets left holding NOTHING — every row of them was unset, and they carry
+  // no prose either. A whole page of the delivery that says only its own title,
+  // which is not a thing to find out by opening it. Measured on a real
+  // delivery: the two sheets describing the product's own default clients, a
+  // subject that project never touches, which is exactly why every row of them
+  // is unset. NAMED, never dropped: whether a page belongs in a handover is
+  // `--sheets`' question and this one has no business answering it.
+  emptied: string[];
 };
 
 // A category with nothing left under it goes — unless somebody wrote a note
@@ -289,7 +297,7 @@ function holdsAnything(c: Category): boolean {
 export function dropUnset<T extends ParameterSheetInput | VersionedSheetInput>(
   input: T
 ): { input: T; report: UnsetReport } {
-  const report: UnsetReport = { sheets: [], rows: 0, categories: 0 };
+  const report: UnsetReport = { sheets: [], rows: 0, categories: 0, emptied: [] };
 
   const prune = (cats: Category[], sheet: string, path: string[], seen: { rows: number; some: string[]; categories: number }): Category[] => {
     const out: Category[] = [];
@@ -322,6 +330,11 @@ export function dropUnset<T extends ParameterSheetInput | VersionedSheetInput>(
         report.rows += seen.rows;
         report.categories += seen.categories;
       }
+      // A prose sheet holds no rows by nature and is not emptied by anything
+      // here; one that held only unset rows now holds none.
+      if (seen.rows > 0 && !categories.some(holdsAnything) && (s as { document?: unknown }).document === undefined) {
+        report.emptied.push(s.name);
+      }
       return { ...s, ...(s.categories === undefined ? {} : { categories }) };
     }),
   });
@@ -345,5 +358,12 @@ export function formatUnsetReport(r: UnsetReport): string {
     lines.push(`  ${s.sheet}: ${s.rows} row(s)${s.categories > 0 ? `, ${s.categories} category(ies)` : ""} — ${s.some.join(", ")}${s.rows > s.some.length ? ", …" : ""}`);
   }
   if (r.sheets.length > 8) lines.push(`  … and ${r.sheets.length - 8} more sheet(s)`);
+  if (r.emptied.length > 0) {
+    lines.push(
+      `  ${r.emptied.length} sheet(s) are left holding nothing at all — every row of them was unset, so the ` +
+        `delivery carries a page that says only its own title: ${r.emptied.join(", ")}. ` +
+        `Leave them out with --sheets if they do not belong in this handover.`
+    );
+  }
   return lines.join("\n");
 }
