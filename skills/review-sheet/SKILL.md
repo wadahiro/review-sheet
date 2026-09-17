@@ -1864,6 +1864,13 @@ sheet built from a handful of recorded files wants. An entry opts in to being an
 environment's slice; the two shapes are not unified. Two entries both claiming
 one environment fail the build rather than one of them quietly winning.
 
+**The same field on a `layered` sheet**, and the same folding: `static_files` is
+that recipe's, and the ansible one gets its own by delegating to it. It matters
+more there — a layered sheet's static files ARE its configuration, so without
+this there is no way at all to say a component exists in one environment and not
+another, and every row of a client deployed to one of them reads as a shared
+value that the sheet then records as holding in both.
+
 **Each side's `defaults:` are its own.** An environment with no overlay of its
 own reads the defaults — and with one merged key space, the two releases'
 defaults files collide. Both define `app_host`, the last file read wins, and the

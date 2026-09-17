@@ -169,6 +169,14 @@ const staticFilesSchema = {
       exclude: { type: "array", items: { type: "string" } },
       substitution: substitutionSchema,
       component: { type: "string" },
+      // WHICH ENVIRONMENTS THIS FILE IS THE CONFIGURATION FOR — the same field,
+      // and the same folding, the ansible recipe declares. It lives here
+      // because `static_files` is this recipe's field and that recipe delegates
+      // to this one; a copy next door was a copy of the schema only, so a
+      // layered sheet could not say a component exists in one environment and
+      // not another, which on a sheet whose static files ARE the configuration
+      // is the only way to say it at all.
+      instances: { type: "array", items: { type: "string" }, minItems: 1 },
       members_only: { type: "boolean" },
       origin: { enum: ["embedded", "default"] },
     },
@@ -625,6 +633,117 @@ function nestedCategory(split: StructuralSplit | undefined, path: string | undef
   return id === undefined ? undefined : { categoryPath: [split.nest.under, id], categoryPathWins: true };
 }
 
+// Which environments each scoped `static_files` entry is the configuration for,
+// keyed by the path its rows will carry — both spellings, because a recipe
+// resolves a declared path and an entry records the resolved one.
+function staticFileScopes(
+  sheetSpec: Record<string, JsonValue>,
+  io: RecipeIO,
+  name: string
+): Map<string, { instances: string[]; component?: string }> {
+  const out = new Map<string, { instances: string[]; component?: string }>();
+  const list = Array.isArray(sheetSpec.static_files) ? sheetSpec.static_files : [];
+  for (const raw of list) {
+    const f = raw as Record<string, JsonValue>;
+    if (!Array.isArray(f.instances)) continue;
+    const instances = (f.instances as JsonValue[]).map((i) => asString(i, "static_files[].instances[]"));
+    // The same check `templates[].instances` gets: a name this sheet does not
+    // have is a typo that would otherwise scope the file to nothing and empty
+    // it in silence.
+    const stray = instances.filter((i) => !io.instances.includes(i));
+    if (stray.length > 0) {
+      throw new Error(
+        `layered recipe: sheet "${name}": static file ${asString(f.path, "static_files[].path")} declares instances ` +
+          `${stray.join(", ")}, which this sheet does not have (${io.instances.join(", ")})`
+      );
+    }
+    const path = asString(f.path, "static_files[].path");
+    const at = { instances, ...(f.component === undefined ? {} : { component: asString(f.component, "static_files[].component") }) };
+    out.set(path, at);
+    out.set(io.resolve(path), at);
+  }
+  return out;
+}
+
+// One environment's slice of a component, folded into the row it is a slice of.
+//
+// An unscoped static file is a FILE of the sheet: its rows sit under its own
+// name, which is what a legacy sheet built from a handful of recorded files
+// wants. A scoped one is one ENVIRONMENT of a component, and its rows are the
+// same rows another environment's file also has — so they join, each carrying
+// its own value and its own site, and the comparison view stacks them in the
+// component's own cell.
+//
+// That is what lets a migration sheet put a legacy side's dev/prod beside a new
+// side's local/poc: the two need not share an environment name, which in a
+// migration they usually do not.
+function foldScopedStatic(
+  entries: EmbeddedEntry[],
+  scopes: Map<string, { instances: string[]; component?: string }>,
+  name: string
+): EmbeddedEntry[] {
+  if (scopes.size === 0) return entries;
+  const out: EmbeddedEntry[] = [];
+  const merged = new Map<string, EmbeddedEntry>();
+  // Which file gave a group each of its instances, so a contradiction can name
+  // both sides of itself.
+  const from = new Map<string, Map<string, string>>();
+  for (const e of entries) {
+    const at = e.source?.file === undefined ? undefined : scopes.get(e.source.file);
+    if (at === undefined) {
+      out.push(e);
+      continue;
+    }
+    const component = e.component ?? at.component;
+    const groupKey = `${component ?? ""}\u0000${e.key}`;
+    const seen = from.get(groupKey) ?? new Map<string, string>();
+    for (const instance of at.instances) {
+      const already = seen.get(instance);
+      if (already !== undefined) {
+        throw new Error(
+          `layered recipe: sheet "${name}": ${already} and ${e.source.file} both give ${instance} a value for ` +
+            `"${e.key}"${component === undefined ? "" : ` (${component})`} — two files cannot both be that ` +
+            `environment's configuration`
+        );
+      }
+      seen.set(instance, e.source.file!);
+    }
+    from.set(groupKey, seen);
+    const slices = at.instances.map((instance) => ({ name: instance, value: e.value, source: e.source }));
+    const already = merged.get(groupKey);
+    if (already === undefined) {
+      // The row keeps the FIRST file as its own site, the way a template-driven
+      // row keeps one — each environment's own site is on its own slice, which
+      // is what apply and verify read. Where nothing else names a category the
+      // sheet falls back to that filename, exactly as it does for any row; a
+      // migration sheet binds a dictionary or declares one, and then the row
+      // sits under its group like every other.
+      const one: EmbeddedEntry = {
+        ...e,
+        // The fallback for a reader that ignores the per-environment list, the
+        // same way a template-driven row sets both.
+        value: e.value,
+        instances: slices,
+        // THE LIST IS THE PRESENCE LIST, the same statement a scoped template
+        // makes: an environment it leaves out does not have this line. Two
+        // things are true at once and both are the same claim — a key one
+        // environment's file has and another's does not is absent there, and an
+        // environment belonging to the OTHER release has no file of this
+        // component at all. Without it one side of a comparison said "not in
+        // this environment's file" and the other said nothing, which reads as
+        // two different findings rather than one shape.
+        absent_where_unlisted: true as const,
+        ...(component === undefined ? {} : { component }),
+      };
+      merged.set(groupKey, one);
+      out.push(one);
+      continue;
+    }
+    already.instances = [...(already.instances ?? []), ...slices];
+  }
+  return out;
+}
+
 export function buildMapFromSources(
   io: RecipeIO,
   specs: SourceSpec[],
@@ -739,6 +858,10 @@ type StaticFileSpec = {
   // row can see. Same shape, and same reason, as the ansible recipe's
   // `templates:`.
   component?: string;
+  // Which environments this file is the configuration for — see the schema
+  // above and `foldScopedStatic`. Read there, not here: the folding runs over
+  // the finished entries, and this spec is consumed before they exist.
+  instances?: string[];
   // How this file's rows are filed. Default `embedded`: a literal our
   // deliverable bakes in, with a real definition site in our config.
   //
@@ -1333,7 +1456,7 @@ export const layeredRecipe: SheetRecipe = {
       instances: io.instances,
       layers: [{ kind: "base", entries: baseMap }, ...overlayLayers],
       ...(componentDefaults ? { componentDefaults } : {}),
-      embedded: staticFilesResult.embedded,
+      embedded: foldScopedStatic(staticFilesResult.embedded, staticFileScopes(sheetSpec, io, name), name),
       ...(staticFilesResult.nestedMembers.size > 0 ? { nestedMembers: staticFilesResult.nestedMembers } : {}),
       ...(components?.componentLabels ? { componentLabels: components.componentLabels } : {}),
       ...(componentOf ? { componentOf } : {}),
