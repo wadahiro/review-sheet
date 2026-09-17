@@ -19,7 +19,7 @@
 // for the part a project writes, which is the part nothing can derive.
 
 import { pickLang } from "./types.js";
-import type { FunctionalItem, LangText, OutOfScope, ParameterSheetInput, Parameter, Sheet, SheetGroup, TestDeclaration } from "./types.js";
+import type { CoveredBy, FunctionalItem, LangText, OutOfScope, ParameterSheetInput, Parameter, Sheet, SheetGroup, TestDeclaration } from "./types.js";
 
 export type { TestDeclaration, FunctionalItem };
 
@@ -160,6 +160,12 @@ export type TestPlanReport = {
   // exclusion twice — two real rows, one label, and a reader with no way to
   // tell which provider's credential each line is about.
   excluded: { unit: string; sheet: string; component?: string; key: string; reason: LangText; owner?: string; by?: "product" }[];
+  // Rows this project designed and reviews, that no channel here can read back
+  // — see types.ts's CoveredBy. NOT items: an item is something that should
+  // have been answered, and these cannot be, by nature. Filing them as 未実施
+  // would read as "not got to yet", which is the misreading the field exists to
+  // remove. `functional` is the id of the test that covers each.
+  coveredElsewhere: { unit: string; sheet: string; component?: string; key: string; reason: LangText; functional: string }[];
   // A per-environment row that says nothing about an environment: no value for
   // it, so there is nothing to expect and nothing to check.
   unstated: { unit: string; sheet: string; key: string; instance: string }[];
@@ -236,15 +242,25 @@ const expectedOf = (p: Parameter, instance: string, kind: TestKind): string | un
   return per === undefined ? ("value" in p ? p.value : undefined) : per.find((i) => i.name === instance)?.value;
 };
 
-type Row = { p: Parameter; path: string[]; component?: string; file?: string; outOfScope?: OutOfScope };
+type Row = { p: Parameter; path: string[]; component?: string; file?: string; outOfScope?: OutOfScope; coveredBy?: CoveredBy };
 
 const rowsOf = (sheet: Sheet): Row[] => {
   const out: Row[] = [];
   // The deployed path is the top-level category's own when it has one (a sheet
   // covering several artifacts names each of them), and the sheet's otherwise.
-  const walk = (cats: NonNullable<Sheet["categories"]>, path: string[], inherited?: OutOfScope, file?: string): void => {
+  const walk = (
+    cats: NonNullable<Sheet["categories"]>,
+    path: string[],
+    inherited?: OutOfScope,
+    file?: string,
+    inheritedCover?: CoveredBy
+  ): void => {
     for (const c of cats) {
       const oos = c.out_of_scope ?? inherited;
+      // Inherited the same way `out_of_scope` is: "no channel here can read
+      // this" is usually true of a whole block (a credentials category read
+      // back masked) rather than of one row in it.
+      const cover = c.covered_by ?? inheritedCover;
       const here = [...path, c.name];
       const where = path.length === 0 ? (c.file_path ?? sheet.file_path) : file;
       for (const p of c.params ?? []) {
@@ -258,9 +274,14 @@ const rowsOf = (sheet: Sheet): Row[] => {
         // prompt.ts), while deployed_file is documented (types.ts) as always
         // the deployed file, the same address space item.file needs.
         const rowFile = p.deployed_file ?? where;
-        out.push({ p, path: here, component: here[0], ...(rowFile === undefined ? {} : { file: rowFile }), outOfScope: p.out_of_scope ?? oos });
+        out.push({
+          p, path: here, component: here[0],
+          ...(rowFile === undefined ? {} : { file: rowFile }),
+          outOfScope: p.out_of_scope ?? oos,
+          coveredBy: p.covered_by ?? cover,
+        });
       }
-      walk(c.categories ?? [], here, oos, where);
+      walk(c.categories ?? [], here, oos, where, cover);
     }
   };
   walk(sheet.categories ?? [], []);
@@ -279,7 +300,9 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
 
   const units = new Map<string, TestUnit>();
   const items: TestItem[] = [];
-  const report: TestPlanReport = { excluded: [], unstated: [], partialControls: [] };
+  const report: TestPlanReport = { excluded: [], coveredElsewhere: [], unstated: [], partialControls: [] };
+  // See the covered_by skip below: an environment named only by covered rows.
+  const coveredInstances: { unit: string; instance: string }[] = [];
   const bare: string[] = [];
 
   for (const sheet of input.sheets) {
@@ -310,6 +333,31 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
           reason: row.outOfScope.reason,
           ...(row.outOfScope.owner === undefined ? {} : { owner: row.outOfScope.owner }),
           ...(row.outOfScope.by === undefined ? {} : { by: row.outOfScope.by }),
+        });
+        continue;
+      }
+      // Before `kind`, and for the same reason `out_of_scope` is: this row
+      // produces no item at all. Ordered AFTER out_of_scope so a row carrying
+      // both keeps the stronger claim — out of scope is not reviewed, and
+      // "what covers it" is a question about a row that is.
+      if (row.coveredBy !== undefined) {
+        // The environments this row states a value in — recorded even though it
+        // produces no item, because the functional items below are derived from
+        // the environments a unit's rows name. Without this a unit whose rows
+        // are ALL covered names no environment, gets no functional items, and
+        // every one of its `covered_by` declarations then fails the check below
+        // for naming a test that "is not there" — the test being absent only
+        // because those same rows removed it.
+        for (const i of sheet.instances ?? []) {
+          if (expectedOf(row.p, i, kindOf(row.p)) !== undefined) coveredInstances.push({ unit: u.name, instance: i });
+        }
+        report.coveredElsewhere.push({
+          unit: u.name,
+          sheet: sheet.name,
+          ...(row.component === undefined ? {} : { component: row.component }),
+          key: row.p.key,
+          reason: row.coveredBy.reason,
+          functional: row.coveredBy.functional,
         });
         continue;
       }
@@ -394,7 +442,12 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
     // pushed no items, so it names no environments, so this loop runs zero
     // times for it. A guard would have been a branch no test could ever see
     // taken (verifying.md R3).
-    const instances = [...new Set(items.filter((i) => i.unit === unit.name).map((i) => i.target.instance))];
+    const instances = [
+      ...new Set([
+        ...items.filter((i) => i.unit === unit.name).map((i) => i.target.instance),
+        ...coveredInstances.filter((c) => c.unit === unit.name).map((c) => c.instance),
+      ]),
+    ];
     for (const instance of instances) {
       for (const raw of unit.declaration.functional ?? []) {
         const f = functionalItemOf(raw);
@@ -410,6 +463,24 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
         });
       }
     }
+  }
+
+  // A `covered_by` naming a functional test the unit does not have. "Covered by
+  // X" where nothing is X is worse than saying nothing: the row leaves the
+  // items, the record says it is covered, and no test of that name ever ran.
+  // The same rule this file already applies to a unit nobody declared, and the
+  // same one the recipes apply to a pattern that matched nothing.
+  const missingCover = report.coveredElsewhere
+    .filter((c) => !functional.some((f) => f.unit === c.unit && f.id === c.functional))
+    .map((c) => {
+      const has = [...new Set(functional.filter((f) => f.unit === c.unit).map((f) => f.id).filter((id): id is string => id !== undefined))];
+      return `${c.sheet} > ${c.key}: covered_by "${c.functional}" — unit "${c.unit}" has ${has.length > 0 ? `${has.join(", ")}` : "no functional item with an id"}`;
+    });
+  if (missingCover.length > 0) {
+    throw new Error(
+      `covered_by names a functional test that is not there (${missingCover.length}):\n  ${missingCover.join("\n  ")}\n` +
+        `A row declared covered by a test nobody runs reads as covered and is not.`
+    );
   }
 
   if (bare.length > 0) {
@@ -442,6 +513,13 @@ export function formatTestPlanReport(plan: TestPlan, report: TestPlanReport): st
         ? "not tested in this phase"
         : `${n + fn} item(s)${fn > 0 ? ` (${fn} functional)` : ""}`;
     lines.push(`  ${u.name}: ${how} [${u.sheets.join(", ")}]`);
+  }
+  if (report.coveredElsewhere.length > 0) {
+    lines.push(
+      `  covered by a functional test (${report.coveredElsewhere.length}): ` +
+        report.coveredElsewhere.slice(0, 3).map((e) => `${e.sheet} > ${e.key} -> ${e.functional}`).join(", ") +
+        (report.coveredElsewhere.length > 3 ? ", …" : "")
+    );
   }
   if (report.excluded.length > 0) {
     lines.push(`  out of scope (${report.excluded.length}): ${report.excluded.slice(0, 3).map((e) => `${e.sheet} > ${e.key}`).join(", ")}${report.excluded.length > 3 ? ", …" : ""}`);

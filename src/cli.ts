@@ -17,7 +17,7 @@ import { SET_DIR } from "./set-block.js";
 import type { ParamData } from "./prompt.js";
 import { validateInput, validateReview, validateResults, validateObservation, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
-import { renderTestDoc, renderExcluded, injectBlocks, unitDocuments } from "./testdoc.js";
+import { renderTestDoc, renderExcluded, coveringVerdict, injectBlocks, unitDocuments } from "./testdoc.js";
 import { judgeFiles, evidenceFrom, collectPlan, registerModelChannels, answerTheRest, judgeFunctional, rpmQuery, runsFrom } from "./judge.js";
 import { findBakedSecrets, formatBakedSecrets, findSecretsInEvidence, formatEvidenceLeaks } from "./secrets.js";
 import { listProbeRules, listDocumentRouters } from "./channel.js";
@@ -1235,7 +1235,10 @@ program
             ),
           ...(opts.timezone === undefined ? {} : { timezone: opts.timezone }),
         });
-        blocks["test:excluded"] = renderExcluded(report.excluded, t.unit, lang);
+        blocks["test:excluded"] = renderExcluded(report.excluded, t.unit, lang, {
+          rows: report.coveredElsewhere,
+          verdict: coveringVerdict(plan, results, lang),
+        });
         const before = readFileSync(t.path, "utf-8");
         // The item tables are the run; a document that takes none of them has
         // lost it. Everything else here is a restatement the document may decline.

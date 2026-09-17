@@ -528,6 +528,27 @@ export type TestDeclaration = {
   document?: string;
 };
 
+// A row this project DESIGNED and reviews, that no channel here can verify.
+//
+// Distinct from `out_of_scope`, and the distinction is the point. Out of scope
+// means the row is outside this review's remit — greyed out, not signed. This
+// means the opposite: the row IS reviewed (a Vault reference is exactly the
+// decision a reviewer signs), and what cannot happen is the CHECK. The
+// product's API answers with a mask, so nothing can read the value back.
+//
+// Written where the workaround used to be `out_of_scope`, which said the row is
+// not reviewed while its own reason said it is — one row contradicting itself.
+//
+// `functional` names the functional test that DOES cover it, by id, and a build
+// whose unit has no such item fails: "covered by X" where nothing is X is worse
+// than saying nothing, because it reads as covered. The record prints that
+// item's own verdict beside the claim, so "covered by a test that did not run"
+// cannot hide either.
+export type CoveredBy = {
+  reason: LangText;
+  functional: string;
+};
+
 export type OutOfScope = {
   reason: LangText;
   owner?: string;
@@ -633,6 +654,7 @@ export type Category = {
   // Mark a whole category (and its descendants) as not in review scope: greyed
   // out in the HTML, and skipped — not held — by verify/apply.
   out_of_scope?: OutOfScope;
+  covered_by?: CoveredBy;
   params?: Parameter[];
   categories?: Category[];
 };
@@ -810,6 +832,7 @@ export type ParameterBase = {
   // Mark a single parameter as not in review scope (same effect as the category
   // flag, at parameter granularity).
   out_of_scope?: OutOfScope;
+  covered_by?: CoveredBy;
   origin?: Origin;
   extra?: Record<string, string>;
   // Extra definition sites related to this parameter, beyond its primary

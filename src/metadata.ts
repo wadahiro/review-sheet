@@ -5,7 +5,7 @@
 // resolve time, self-registering providers).
 
 import type { KeyTransformStep } from "./keytransform.js";
-import { pickLang, type LangText, type OutOfScope, type ParamOption } from "./types.js";
+import { pickLang, type CoveredBy, type LangText, type OutOfScope, type ParamOption } from "./types.js";
 import { sharedRegistry } from "./registry.js";
 import type { Binding } from "./bind.js";
 
@@ -195,6 +195,7 @@ export type MetadataResult = {
   // Whether this value is a credential — see types.ts's ParameterBase.secret.
   secret?: boolean;
   out_of_scope?: OutOfScope;
+  covered_by?: CoveredBy;
   provenance: LangProvenance;
 };
 
@@ -271,6 +272,7 @@ export type ResolvedMetadata = {
   presence_label?: LangText;
   secret?: boolean;
   out_of_scope?: OutOfScope;
+  covered_by?: CoveredBy;
   provenance?: LangProvenance;
   contributions: Record<string, number>;
 };
@@ -278,7 +280,7 @@ export type ResolvedMetadata = {
 // Fields merged whole, field-level first-wins: the first (highest-priority)
 // provider to supply a defined value for the field claims it outright, same
 // as before this module gained per-language merging.
-const PLAIN_MERGE_FIELDS = ["default", "default_from", "docs_url", "type", "scope", "options", "composite", "presence_label", "secret", "out_of_scope"] as const;
+const PLAIN_MERGE_FIELDS = ["default", "default_from", "docs_url", "type", "scope", "options", "composite", "presence_label", "secret", "out_of_scope", "covered_by"] as const;
 
 // LangText fields merged per language KEY rather than as a whole (see below)
 // — the reason this module exists: a project's own metadata file may now

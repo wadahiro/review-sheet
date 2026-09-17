@@ -165,6 +165,11 @@ export type MarkdownRow = {
   // from a committed set must not turn "nothing was decided here" into "the
   // project decided this is out of its remit" — see OutOfScope.by.
   outOfScopeBy?: string;
+  // Carried for the same reason: a model rebuilt from a committed set must not
+  // turn "designed, reviewed, unverifiable here, covered by X" back into an
+  // ordinary row that then reads as untested — see CoveredBy.
+  coveredBy?: string;
+  coveredByTest?: string;
 };
 
 // A heading and the rows under it. The heading path IS the category path, so
@@ -348,6 +353,8 @@ function rowOf(p: ParamData, instances: string[], l: Lang, path: string[], opts:
     ...(lang(p.out_of_scope?.reason, l) === "" ? {} : { outOfScope: lang(p.out_of_scope?.reason, l) }),
     ...(p.out_of_scope?.owner === undefined ? {} : { outOfScopeOwner: p.out_of_scope.owner }),
     ...(p.out_of_scope?.by === undefined ? {} : { outOfScopeBy: p.out_of_scope.by }),
+    ...(lang(p.covered_by?.reason, l) === "" ? {} : { coveredBy: lang(p.covered_by?.reason, l) }),
+    ...(p.covered_by?.functional === undefined ? {} : { coveredByTest: p.covered_by.functional }),
     ...(p.absent_where_unlisted === true ? { absent: true as const } : {}),
     ...(p.presence === true ? { presence: lang(p.presence_label, l) } : {}),
     ...(p.default_from === undefined ? {} : { defaultFrom: p.default_from }),
@@ -772,6 +779,8 @@ export function renderSheetMarkdown(doc: MarkdownSheet): string {
         (row.outOfScope === undefined ? "" : cellMark("oos", row.outOfScope)) +
         (row.outOfScopeOwner === undefined ? "" : cellMark("oosowner", row.outOfScopeOwner)) +
         (row.outOfScopeBy === undefined ? "" : cellMark("oosby", row.outOfScopeBy)) +
+        (row.coveredBy === undefined ? "" : cellMark("cover", row.coveredBy)) +
+        (row.coveredByTest === undefined ? "" : cellMark("covertest", row.coveredByTest)) +
         (row.presence === undefined ? "" : cellMark("presence", row.presence)) +
         (row.defaultFrom === undefined ? "" : cellMark("from", row.defaultFrom)) +
         (row.subCategory === undefined ? "" : cellMark("sub", row.subCategory.join(" / ")));
@@ -1243,6 +1252,15 @@ export function liftMarkdownSheet(text: string, instances: string[], l: Lang = "
           : shown[n] || has("elsewhere")
             ? {}
             : { origin: "default" as const }),
+        ...(split.marks.find((m) => m.kind === "cover") === undefined ||
+        split.marks.find((m) => m.kind === "covertest") === undefined
+          ? {}
+          : {
+              covered_by: {
+                reason: split.marks.find((m) => m.kind === "cover")!.value,
+                functional: split.marks.find((m) => m.kind === "covertest")!.value,
+              },
+            }),
         ...(split.marks.find((m) => m.kind === "oos") === undefined
           ? {}
           : {

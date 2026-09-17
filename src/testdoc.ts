@@ -59,6 +59,10 @@ type Words = {
   excludedNone: string;
   noDecisionHead: string;
   noDecision: (n: number) => string;
+  coveredHead: string;
+  coveredIntro: (n: number) => string;
+  coveredBy: (test: string, status: string) => string;
+  coveredUnknown: string;
   // Where each level is on the page this run wrote — which depends on what it
   // wrote. A unit with functional items has a sub-heading no sheet is behind,
   // and a row no sheet row derived; a unit without one has neither, and saying
@@ -102,6 +106,12 @@ const T: Record<TestDocLang, Words> = {
     excludedHead: "対象外",
     excludedCols: ["設定項目", "理由", "所管"],
     excludedNone: "なし。",
+    coveredHead: "この単体テストでは検証できない項目",
+    coveredIntro: (n) =>
+      `以下の ${n} 項目は本案件が設計し、レビュー対象でもあるが、この単体テストの手段では値を読み戻せない。` +
+      `代わりに担保する機能確認をそれぞれに示す。`,
+    coveredBy: (test, status) => `**${test}**（${status}）が担保する:`,
+    coveredUnknown: "結果なし",
     noDecisionHead: "決定の存在しない項目",
     noDecision: (n) =>
       `以下の ${n} 項目は、製品がその値を持つことをパラメータシートに記録しているが、` +
@@ -158,6 +168,12 @@ const T: Record<TestDocLang, Words> = {
     excludedHead: "Out of scope",
     excludedCols: ["Parameter", "Reason", "Owner"],
     excludedNone: "None.",
+    coveredHead: "Parameters this unit test cannot verify",
+    coveredIntro: (n) =>
+      `This project designed the following ${n} parameter(s) and reviews them, but nothing available to this ` +
+      `unit test can read the value back. The functional test that covers each is named below.`,
+    coveredBy: (test, status) => `Covered by **${test}** (${status}):`,
+    coveredUnknown: "no result",
     noDecisionHead: "Parameters with no decision behind them",
     noDecision: (n) =>
       `The parameter sheet records that the product holds a value for the following ${n} parameter(s), ` +
@@ -325,6 +341,33 @@ const functionalAnswerFor = (results: TestResults, f: FunctionalTestItem, text: 
   const here = (results.functional ?? []).filter((x) => x.unit === f.unit && x.instance === f.instance);
   return (f.id === undefined ? undefined : here.find((x) => x.id === f.id)) ?? here.find((x) => x.item === text);
 };
+
+// The covering test's OWN name and verdict, for renderExcluded's third group.
+//
+// Built here rather than in renderExcluded because the answer lookup is this
+// file's (a functional answer joins by id, falling back to the sentence), and a
+// second spelling of that join would part company with the first. The verdict
+// is the WORST across the environments the unit runs in: "covered by a test
+// that passed in staging and failed in production" is not covered.
+export function coveringVerdict(
+  plan: TestPlan,
+  results: TestResults,
+  lang: TestDocLang = "ja"
+): (unit: string, functionalId: string) => { text: string; status: string } | undefined {
+  const t = T[lang];
+  const rank: Record<string, number> = { fail: 3, not_run: 2, pass: 1 };
+  return (unit, functionalId) => {
+    const items = plan.functional.filter((f) => f.unit === unit && f.id === functionalId);
+    if (items.length === 0) return undefined;
+    const text = pickLang(items[0].text, lang) ?? functionalId;
+    const answers = items.map((f) => functionalAnswerFor(results, f, pickLang(f.text, lang) ?? ""));
+    // No answer at all is the worst reading of the three, not the absence of
+    // one: a covering test nobody ran covers nothing.
+    if (answers.some((a) => a === undefined)) return { text, status: t.notRun };
+    const worst = answers.reduce<string>((w, a) => (rank[a!.status] > (rank[w] ?? 0) ? a!.status : w), "pass");
+    return { text, status: worst === "pass" ? t.pass : worst === "fail" ? t.fail : t.notRun };
+  };
+}
 
 export type TestDocOptions = {
   lang?: TestDocLang;
@@ -642,7 +685,14 @@ export function unitDocuments(plan: TestPlan, sheets: { name: string; source_fil
 export function renderExcluded(
   excluded: { unit: string; sheet: string; component?: string; key: string; reason: LangText; owner?: string; by?: "product" }[],
   unitName: string,
-  lang: TestDocLang = "ja"
+  lang: TestDocLang = "ja",
+  // Rows no channel here can read, and what covers each — see CoveredBy. The
+  // covering test's OWN verdict is printed beside the claim, because "covered
+  // by a test that did not run" is the exact thing this field must not hide.
+  covered: {
+    rows: { unit: string; sheet: string; component?: string; key: string; reason: LangText; functional: string }[];
+    verdict: (unit: string, functionalId: string) => { text: string; status: string } | undefined;
+  } = { rows: [], verdict: () => undefined }
 ): string {
   const t = T[lang];
   const mine = excluded.filter((e) => e.unit === unitName);
@@ -685,6 +735,20 @@ export function renderExcluded(
     out.push("", `### ${t.noDecisionHead}`, "", t.noDecision(undecided.length));
     for (const [reason, rows] of byReason) {
       out.push("", reason, "", rows.map((e) => `- ${where(e)}`).join("\n"));
+    }
+  }
+  // …and the rows nothing here could read. Grouped by the test that covers
+  // them: "which of these does the LDAP connectivity check stand for" is the
+  // question a reader has, and one line per row answers it once each.
+  const mineCovered = covered.rows.filter((c) => c.unit === unitName);
+  if (mineCovered.length > 0) {
+    const byTest = new Map<string, typeof mineCovered>();
+    for (const c of mineCovered) byTest.set(c.functional, [...(byTest.get(c.functional) ?? []), c]);
+    out.push("", `### ${t.coveredHead}`, "", t.coveredIntro(mineCovered.length));
+    for (const [id, rows] of byTest) {
+      const v = covered.verdict(unitName, id);
+      out.push("", t.coveredBy(v?.text ?? id, v?.status ?? t.coveredUnknown), "");
+      for (const c of rows) out.push(`- ${where(c)} — ${cell(pickLang(c.reason, lang))}`);
     }
   }
   return out.join("\n");

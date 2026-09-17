@@ -333,6 +333,46 @@ a separate `_reason` string field alongside it; both forms are retired and no
 longer validate. Migrate the old boolean-plus-separate-reason-field pair to the
 single object form shown above (`{ reason, owner? }`).
 
+### Designed, reviewed, and unverifiable here (`covered_by`)
+
+A row can be a real decision AND be impossible to check from here. The LDAP
+bind credential is the measured case: the design says "use this Vault
+reference", which is exactly what a reviewer signs — and the product's admin API
+answers with a mask, so nothing the unit test has can read the value back.
+
+`out_of_scope` is the wrong field for it, and says so out loud: it greys the row
+out as outside this review while the reason someone writes there explains that
+the reference IS reviewed. One row contradicting itself.
+
+```yaml
+# sheet.yml
+'config.bindCredential[0]':
+  covered_by:
+    reason:
+      ja: 管理 API はこの値をマスクして返すため、値そのものは読み戻せない。
+      en: The admin API answers with a mask, so the value itself cannot be read back.
+    functional: ldap-connection      # the functional test that DOES cover it
+```
+
+The row stays in scope, in the sheet, with its source map — `verify` and `apply`
+treat it like any other row, because it is one. What changes is the RECORD: it
+produces no test item (an item is something that should have been answered, and
+this cannot be), and the unit's record names it under its own heading with the
+covering test's own verdict beside it.
+
+`functional` is an **id**, checked at plan time: a `covered_by` naming a test
+the unit does not have fails the build, listing the ids it does have. "Covered
+by X" where nothing is X is worse than saying nothing — it reads as covered. The
+covering test's verdict is printed because the same hazard survives one level
+up: covered by a test that did not run is not covered.
+
+Settable on a category too, and inherited by everything under it — "read back
+masked" is usually true of a whole credentials block rather than of one row.
+
+A row carrying both `out_of_scope` and `covered_by` keeps the out-of-scope
+reading: not reviewed is the stronger claim, and "what covers it" is a question
+about a row that IS reviewed.
+
 **`by: "product"` — the exclusion nobody decided.** A dictionary can mark a
 parameter `ui: readonly` (the product's admin console shows the value and offers
 no way to choose one). For a row NOBODY SET, the tool then files it out of scope
@@ -2503,6 +2543,12 @@ params:
   smtpServer.password:
     category: Email
     secret: true                     # a credential — see below
+  config.bindCredential[0]:
+    covered_by:                      # reviewed, and unreadable from here
+      reason:
+        en: The admin API answers with a mask, so the value cannot be read back.
+        ja: 管理 API はマスクして返すため、値そのものは読み戻せない。
+      functional: ldap-connection    # the functional test that covers it (an id, checked)
 ```
 
 **`secret:`** says a value is a credential. Usually only the project can: a

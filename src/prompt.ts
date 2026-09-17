@@ -1,7 +1,7 @@
 // Framework-free model + AI-prompt builder, shared by the browser app and the
 // CLI. No DOM or Node dependencies so it can run in either environment.
 
-import { pickLang, type LangText, type Origin, type OutOfScope, type SheetDocument } from "./types.js";
+import { pickLang, type CoveredBy, type LangText, type Origin, type OutOfScope, type SheetDocument } from "./types.js";
 import { unifiedDiff } from "./diff-text.js";
 import { markdownChangeReport, renderMarkdownChanges } from "./markdown-changes.js";
 
@@ -97,6 +97,7 @@ export type ParamData = {
   additional_sources?: SourceLocation[];
   instances?: { name: string; value: string; source?: SourceLocation }[];
   out_of_scope?: OutOfScope;
+  covered_by?: CoveredBy;
   origin?: Origin;
   // Written by the recipient in a delivered document, not extracted from any
   // config file. Viewer-side only: no built model ever carries it, and the row
@@ -120,6 +121,7 @@ export type CategoryData = {
   // A paragraph beside the table — see types.ts's Category.note.
   note?: LangText;
   out_of_scope?: OutOfScope;
+  covered_by?: CoveredBy;
   params?: ParamData[];
   categories?: CategoryData[];
 };

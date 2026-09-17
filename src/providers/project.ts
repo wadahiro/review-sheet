@@ -47,6 +47,9 @@ export type ProjectMetaParam = {
   description?: LangText;
   remarks?: LangText;
   out_of_scope?: { reason: LangText; owner?: string };
+  // No channel here can read this row's value back, and the named functional
+  // test is what covers it instead — see types.ts's CoveredBy.
+  covered_by?: { reason: LangText; functional: string };
   // This value is a credential (see types.ts's ParameterBase.secret). The
   // project is usually the only one that can say so: a product's option
   // registry rarely marks its own secrets, and the one measured here does not
@@ -305,7 +308,7 @@ const SHEET_FIELDS = [
   "group_by", "categories_from", "label", "params", "components",
 ] as const;
 const COMPONENT_FIELDS = ["params"] as const;
-const PARAM_FIELDS = ["category", "deployed_file", "dict_key", "description", "remarks", "out_of_scope", "secret"] as const;
+const PARAM_FIELDS = ["category", "deployed_file", "dict_key", "description", "remarks", "out_of_scope", "covered_by", "secret"] as const;
 
 // A compile-time twin of each list: a field added to the type and forgotten
 // here fails to build rather than becoming the next silently-dropped one.
@@ -640,6 +643,7 @@ const projectProvider: MetadataProvider = {
       description: p.description,
       remarks: p.remarks,
       out_of_scope: p.out_of_scope,
+      covered_by: p.covered_by,
       secret: p.secret,
       provenance: "project",
     };
