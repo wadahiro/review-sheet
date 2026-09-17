@@ -285,6 +285,35 @@ describe("the index", () => {
     expect(frontDoor(doc(), "en")).not.toContain("the next rebuild replaces");
   });
 
+  // WHEN THE FILE WAS WRITTEN is not a fact about the configuration. A rebuild
+  // that changes no row moves it, and a document whose rows are a month old
+  // does not — while a reader seeing a date at the top of a parameter sheet
+  // reads it as "current as of", which is the one thing it is not. The same
+  // line was taken off the HTML's front page for the same reason.
+  it("does not date the index by when it was generated", () => {
+    const { files } = toMarkdownSet(
+      { ...doc(), metadata: { ...doc().metadata, project: "P", version: "1.0", generated_at: "2026-09-17T11:00:57.557Z" } } as never,
+      "ja"
+    );
+    const idx = files.find((f) => f.path === INDEX)!.text;
+    expect(idx).not.toContain("作成日時");
+    expect(idx).not.toContain("2026-09-17T11:00:57");
+    // …and the rest of the table is untouched, so this is about the date and
+    // not about the table.
+    expect(idx).toContain("| プロジェクト | P |");
+    expect(idx).toContain("| バージョン | 1.0 |");
+  });
+
+  it("does not date it in English either", () => {
+    const { files } = toMarkdownSet(
+      { ...doc(), metadata: { ...doc().metadata, project: "P", generated_at: "2026-09-17T11:00:57.557Z" } } as never,
+      "en"
+    );
+    const idx = files.find((f) => f.path === INDEX)!.text;
+    expect(idx).not.toContain("Generated");
+    expect(idx).not.toContain("2026-09-17T11:00:57");
+  });
+
   // The English half says the same two things, and had the same two wrong.
   it("names the same folder and the same saved file in English", () => {
     const front = frontDoor(doc(), "en");

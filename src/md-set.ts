@@ -450,18 +450,24 @@ function index(
   out.push(`# ${title}`, "");
 
   const meta = data.metadata;
-  if (meta?.project !== undefined || meta?.version !== undefined || meta?.generated_at !== undefined) {
+  // NOT `generated_at`. It is when this file was WRITTEN, which says nothing
+  // about the configuration the document describes — a rebuild that changes no
+  // row moves it, and a document whose rows are a month old does not. A reader
+  // seeing a date at the top of a parameter sheet reads it as "current as of",
+  // which is the one thing it is not. The same line was taken off the HTML's
+  // front page for the same reason; the stamp above still carries the model's
+  // identity, for the tooling that checks a set against a build.
+  if (meta?.project !== undefined || meta?.version !== undefined) {
     const label =
       lang === "ja"
-        ? { project: "プロジェクト", version: "バージョン", at: "作成日時", item: "項目", value: "値" }
-        : { project: "Project", version: "Version", at: "Generated", item: "Item", value: "Value" };
+        ? { project: "プロジェクト", version: "バージョン", item: "項目", value: "値" }
+        : { project: "Project", version: "Version", item: "Item", value: "Value" };
     // Markdown REQUIRES a header row, so a table written with empty ones opens
     // with a blank one — which reads as an index with a hole in it rather than
     // as a table that needs no heading.
     out.push(`| ${label.item} | ${label.value} |`, "| --- | --- |");
     if (meta.project !== undefined) out.push(`| ${label.project} | ${meta.project} |`);
     if (meta.version !== undefined) out.push(`| ${label.version} | ${meta.version} |`);
-    if (meta.generated_at !== undefined) out.push(`| ${label.at} | ${meta.generated_at} |`);
     out.push("");
   }
 
