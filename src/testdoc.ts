@@ -62,7 +62,10 @@ type Words = {
   // wrote. A unit with functional items has a sub-heading no sheet is behind,
   // and a row no sheet row derived; a unit without one has neither, and saying
   // otherwise would describe a page the reader is not holding.
-  taxonomyWhere: (hasFunctional: boolean) => string[];
+  // …and whether every sheet of the unit actually HAS one of those headings,
+  // which is false whenever a sheet's items are all unset parameters and those
+  // are not being printed as rows. See the call site.
+  taxonomyWhere: (hasFunctional: boolean, everySheet: boolean) => string[];
   taxonomyUndeclared: string;
 };
 
@@ -111,11 +114,11 @@ const T: Record<TestDocLang, Words> = {
     // document ever meets) and not what happens when it goes wrong: "a gap
     // fails the build" is this tool's own guarantee mechanism, and a customer's
     // paperwork is not where a tool explains how it keeps its promises.
-    taxonomyWhere: (f: boolean) => [
+    taxonomyWhere: (f: boolean, every: boolean) => [
       "この文書の単位。環境ごとの見出しが環境名とともに掲げる",
       f
-        ? "その環境の中の見出し。詳細設計のシート1つにつき1つ、および「機能確認」"
-        : "詳細設計のシート。その環境の中の見出しで、項目表ごとに1つ",
+        ? `その環境の中の見出し。${every ? "詳細設計のシート1つにつき1つ" : "詳細設計のシートのうち、この文書に行を持つもの1つにつき1つ"}、および「機能確認」`
+        : `詳細設計のシート${every ? "" : "のうち、この文書に行を持つもの"}。その環境の中の見出しで、項目表ごとに1つ`,
       f ? "その表の1行。シートの行から自動導出し、機能確認は宣言した項目を並べる" : "その表の1行。シートの行から自動導出する",
     ],
     taxonomyUndeclared: "—",
@@ -156,11 +159,11 @@ const T: Record<TestDocLang, Words> = {
     excludedNone: "None.",
     coveredBy: (test) => `Covered instead by the functional test "${test}".`,
     taxonomyCols: ["No.", "Level", "How items are raised", "In this document"],
-    taxonomyWhere: (f: boolean) => [
+    taxonomyWhere: (f: boolean, every: boolean) => [
       "This document's unit, named by each environment's heading beside the environment",
       f
-        ? "A heading inside that environment: one per sheet of the detailed design, plus the functional checks"
-        : "A sheet of the detailed design — a heading inside that environment, one per item table",
+        ? `A heading inside that environment: one per sheet of the detailed design${every ? "" : " that has rows in this document"}, plus the functional checks`
+        : `A sheet of the detailed design${every ? "" : " that has rows in this document"} — a heading inside that environment, one per item table`,
       f ? "One row of that table: derived from the sheet's rows, or one of the declared functional items" : "One row of that table, derived from the sheet's rows",
     ],
     taxonomyUndeclared: "—",
@@ -422,7 +425,13 @@ export function renderTestDoc(
   // `injectBlocks`' ordinary "a marker nothing produced" error.
   const declared = unit.declaration.taxonomy;
   if (declared !== undefined && declared.length > 0) {
-    const where = t.taxonomyWhere(mineFunctional.length > 0);
+    // A SHEET WHOSE ROWS ARE ALL UNSET has no heading unless those rows are
+    // being printed, so the sentence claiming one per sheet is false for it —
+    // and it is false about coverage, in a record, which is the one thing that
+    // must not happen. Measured rather than assumed: with `--include-defaults`
+    // every sheet does get one, and the sentence is true again.
+    const everySheet = unit.sheets.every((name) => shown.some((i) => i.target.sheet === name));
+    const where = t.taxonomyWhere(mineFunctional.length > 0, everySheet);
     blocks["test:taxonomy"] = table(
       t.taxonomyCols,
       declared.map((row, i) => [

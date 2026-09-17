@@ -183,3 +183,70 @@ describe("leaving out what the product set aside", () => {
     expect(said).toEqual([]);
   });
 });
+
+// THE TAXONOMY'S "IN THIS DOCUMENT" COLUMN IS THE TOOL'S SENTENCE, and it
+// claimed one heading per sheet of the detailed design. A sheet whose items are
+// ALL unset parameters gets no heading unless those are printed as rows — so on
+// a real record the sentence said nine sheets have a section where seven do,
+// which is a claim about coverage in a document whose whole job is coverage.
+describe("what the taxonomy says about the headings", () => {
+  const planWith = (over: Record<string, unknown> = {}): TestPlan =>
+    ({
+      metadata: { title: "t" },
+      units: [
+        {
+          name: "u",
+          label: { ja: "U" },
+          sheets: ["set", "unset"],
+          declaration: {
+            method: { ja: "読む" },
+            taxonomy: [
+              { level: { ja: "大項目" }, raised: { ja: "a" } },
+              { level: { ja: "中項目" }, raised: { ja: "b" } },
+              { level: { ja: "小項目" }, raised: { ja: "c" } },
+            ],
+          },
+        },
+      ],
+      items: [
+        { target: { sheet: "set", path: [], key: "Listen", instance: "local" }, unit: "u", kind: "value", decider: "project", expected: "80" },
+        { target: { sheet: "unset", path: [], key: "Timeout", instance: "local" }, unit: "u", kind: "default-in-force", decider: "product-default", expected: "60" },
+      ],
+      functional: [],
+      ...over,
+    }) as never;
+
+  const results = { runs: {}, results: [] } as unknown as TestResults;
+  const taxonomy = (opts: Record<string, unknown> = {}): string =>
+    renderTestDoc(planWith(), results, "u", { lang: "ja", ...opts })["test:taxonomy"];
+
+  it("does not claim a heading for a sheet that has none", () => {
+    expect(taxonomy()).toContain("この文書に行を持つもの");
+  });
+
+  // …and says the plain thing when it IS true: printing the unset rows gives
+  // every sheet its heading back.
+  it("claims one per sheet when every sheet has one", () => {
+    expect(taxonomy({ includeDefaults: true })).not.toContain("この文書に行を持つもの");
+  });
+
+  // The sentence has two shapes — with functional items and without — and the
+  // correction has to reach both, since a unit either declares them or does not.
+  it("corrects both shapes of the sentence", () => {
+    const withFunctional = renderTestDoc(
+      planWith({ functional: [{ unit: "u", text: { ja: "起動できること" }, intrusive: false, instance: "local" }] }),
+      results,
+      "u",
+      { lang: "ja" }
+    )["test:taxonomy"];
+    expect(withFunctional).toContain("この文書に行を持つもの1つにつき1つ");
+    expect(withFunctional).toContain("機能確認");
+  });
+
+  it("says it in English too", () => {
+    const en = (o: Record<string, unknown>): string =>
+      renderTestDoc(planWith(), results, "u", { lang: "en", ...o })["test:taxonomy"];
+    expect(en({})).toContain("that has rows in this document");
+    expect(en({ includeDefaults: true })).not.toContain("that has rows in this document");
+  });
+});
