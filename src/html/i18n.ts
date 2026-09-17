@@ -303,10 +303,10 @@ const ja: Messages = {
   // picker is the way in and the README says so. Advertising a second way that
   // does not work is worse than having one.
   pickFolder: "フォルダを開く",
-  pickFolderTip: "`viewer.html` があるフォルダを選びます。`.md` を修正するたびに選び直してください",
+  pickFolderTip: "`.md` の入った `docs` フォルダを選びます。`.md` を修正するたびに選び直してください",
   saveSingle: "1ファイルで保存",
-  saveSingleTip: "いま表示している内容を1枚のHTMLに書き出します。フォルダを選ばずに読めますが、保存した時点の内容のままです",
-  dropNoSheets: "この中にシートの markdown が見つかりませんでした。`viewer.html` があるフォルダを選んでください。",
+  saveSingleTip: "いま表示している内容を1枚のHTMLに書き出します。このページと同じ名前で保存されるので、置き換えられます。フォルダを選ばずに読めますが、保存した時点の内容のままです",
+  dropNoSheets: "この中にシートの markdown が見つかりませんでした。`.md` の入った `docs` フォルダを選んでください。",
   dropFailed: (reason) =>
     `フォルダを読み取れませんでした（${reason}）。\n\n` +
     "ブラウザがこのフォルダの読み取りを拒否しています。zip を展開したフォルダで試すか、別のブラウザで開いてみてください。",
@@ -473,10 +473,10 @@ const en: Messages = {
   navNoMatch: "No document matches",
   navOutlineTip: "Toggle outline",
   pickFolder: "Open folder",
-  pickFolderTip: "Choose the folder `viewer.html` is in. Choose it again each time you edit the `.md` files",
+  pickFolderTip: "Choose the `docs` folder the `.md` files are in. Choose it again each time you edit them",
   saveSingle: "Save as one file",
-  saveSingleTip: "Write what is on screen into one HTML. It opens with no folder to choose, and holds what was there when you saved it",
-  dropNoSheets: "No sheet markdown in there. Choose the folder `viewer.html` is in.",
+  saveSingleTip: "Write what is on screen into one HTML, under this page's own name so it replaces it. It opens with no folder to choose, and holds what was there when you saved it",
+  dropNoSheets: "No sheet markdown in there. Choose the `docs` folder the `.md` files are in.",
   dropFailed: (reason) =>
     `The folder could not be read (${reason}).\n\n` +
     "The browser refused to read it. Try the folder from the unzipped archive, or open this page in another browser.",

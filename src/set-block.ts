@@ -37,6 +37,21 @@ export const SET_DIR = "docs";
 
 export const SET_BLOCK_ID = "sheet-md-set";
 
+// The name a page saves itself under, from the name it is open as.
+//
+// The delivery unpacks to `viewer.html` beside the `docs` folder, and the page
+// that writes the set into itself IS that viewer — so saving under its own name
+// replaces it. Under any other name every save is a new file and the original
+// stays empty, which is what "sheet (1).html" beside an empty viewer was.
+//
+// A page renamed by whoever received it keeps that name: it is the one they
+// will look for. The fallback is for a page opened from somewhere with no file
+// name at all (a blob URL, a server route ending in `/`).
+export function savedAs(pathname: string): string {
+  const here = decodeURIComponent((pathname.split("/").pop() ?? "").trim());
+  return here.toLowerCase().endsWith(".html") ? here : "viewer.html";
+}
+
 export const SET_BLOCK_OPEN = `<script type="application/json" id="${SET_BLOCK_ID}">`;
 
 // The files, as the block's text.

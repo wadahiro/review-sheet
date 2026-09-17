@@ -47,7 +47,7 @@ import { runMermaid } from "./mermaid-runtime.js";
 import { filesFromDrop, filesFromPicker, type DroppedFile } from "./drop-set.js";
 import { readMarkdownSet, documentPreviews } from "../md-read.js";
 import { buildArtifactIndex } from "../artifact-index.js";
-import { SET_BLOCK_ID, setBlockJson, spliceSetBlock, FOLDER_INPUT_ID } from "../set-block.js";
+import { SET_BLOCK_ID, setBlockJson, spliceSetBlock, FOLDER_INPUT_ID, savedAs } from "../set-block.js";
 import { setShowSources, showSources } from "./display-config.js";
 import type { DiffStatus } from "../diff.js";
 import { pickLang, type OutOfScope, type Capabilities, type ArtifactPreview, type ColumnDefinition, PRESENCE_VALUE } from "../types.js";
@@ -5099,7 +5099,9 @@ function init() {
     const url = URL.createObjectURL(new Blob([out], { type: "text/html" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = "sheet.html";
+    // The name of the page doing the saving, so a second save replaces the
+    // first instead of landing beside it — see `savedAs`.
+    a.download = savedAs(window.location.pathname);
     document.body.appendChild(a);
     a.click();
     a.remove();
