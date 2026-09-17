@@ -308,17 +308,13 @@ describe("the index", () => {
     expect(front).toContain("「1ファイルで保存」");
   });
 
-  // The opening line says what the reader was handed. It used to say that AND
-  // name the two things in the folder — which the first two bullets then named
-  // again, three lines down.
-  it("opens by saying what this is, not by listing what is in it", () => {
-    for (const [lang, what, listed] of [
-      ["ja", "レビューと保守のためのパラメータシートです。", "中身は"],
-      ["en", "A parameter sheet, to review and to keep.", "The document itself is"],
-    ] as const) {
-      const front = frontDoor(doc(), lang);
-      expect(front).toContain(what);
-      expect(front).not.toContain(listed);
+  // …and opens with the instructions. The line before them labelled a thing
+  // the reader is already holding.
+  it("opens with what to do, under the title", () => {
+    for (const [lang, heading] of [["ja", "## 使い方"], ["en", "## How to use this"]] as const) {
+      const front = frontDoor(doc(), lang).split("\n").filter((l) => l !== "");
+      expect(front[0]).toStartWith("# ");
+      expect(front[1]).toBe(heading);
     }
   });
 

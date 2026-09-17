@@ -380,13 +380,12 @@ export function frontDoor(data: SheetData, lang: Lang): string {
     ? [
         `# ${title}`,
         "",
-        // WHAT THIS IS, and nothing about how it is arranged. The second half
-        // of this line used to name the two things in the folder — which the
-        // first two bullets then named again, three lines further down. What a
-        // recipient cannot get from the title above or the bullets below is
-        // what the thing they were handed is FOR.
-        "レビューと保守のためのパラメータシートです。",
-        "",
+        // STRAIGHT TO WHAT TO DO. Every line that came before this heading said
+        // something the title above or the bullets below already said — what
+        // the folder holds, what not to edit, where the index is — and the last
+        // of them, "a parameter sheet, to review and to keep", was a label on a
+        // thing the reader is holding. A hand-over note earns its length in
+        // instructions, not in introduction.
         "## 使い方",
         "",
         `- **修正するのは \`${SET_DIR}/\` の中の \`.md\`** です。`,
@@ -397,8 +396,6 @@ export function frontDoor(data: SheetData, lang: Lang): string {
       ]
     : [
         `# ${title}`,
-        "",
-        "A parameter sheet, to review and to keep.",
         "",
         "## How to use this",
         "",
