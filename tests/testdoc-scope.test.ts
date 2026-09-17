@@ -1,18 +1,20 @@
 // WHAT A RECORD SAYS ABOUT WHAT IT DID NOT CHECK.
 //
-// Three claims that used to be one, or none:
+// Three reasons a row has no test item, in ONE table, told apart by the reason
+// column — which is the column that exists to answer exactly that:
 //
-//   "we left these out"        a decision the project made and can be asked to
-//                              justify — the out-of-scope table
+//   "we left this out"         a decision the project made and can be asked to
+//                              justify
 //   "nothing was decided here" the dictionary says the product's admin UI shows
 //                              the value and offers no way to choose one, and
-//                              nobody set it. There is no remit to be outside
-//                              of, and printing it under the heading above made
-//                              a reader read it as one
-//   "N unset parameters were   true, and already said per-row on the parameter
-//    checked too"              sheet of a project that marks them there. The
-//                              only way to drop the restatement was to print
-//                              every one of them as a row
+//                              nobody set it. Droppable with a flag: a project
+//                              whose sheet marks those rows per-row is being
+//                              told the same thing twice
+//   "covered by X instead"     designed and reviewed, and no channel here can
+//                              read it back — with X's OWN verdict beside it
+//
+// …and one line counting the unset parameters, droppable on its own axis: the
+// only way to lose the restatement used to be printing every one of them.
 
 import { describe, it, expect } from "bun:test";
 import { renderTestDoc, renderExcluded } from "../src/testdoc";
@@ -35,26 +37,16 @@ describe("the two kinds of row a record does not check", () => {
     expect(out()).toContain("運用");
   });
 
-  // The table is the project's claim, so a row the tool set aside must not be
-  // in it — that is the whole complaint this answers.
-  it("keeps what the tool set aside out of that table", () => {
-    const table = out().split("###")[0];
-    expect(table).not.toContain("notBefore");
-    expect(table).not.toContain("clientSessionIdleTimeout");
-  });
-
-  it("gives them their own heading, which says what they are", () => {
-    expect(out()).toContain("### 決定の存在しない項目");
+  // ONE table, and each row carries its own reason — which is what tells the
+  // two apart, and is the column a reader is reading for exactly that.
+  it("puts what the tool set aside in the same table, with its own reason", () => {
     expect(out()).toContain("notBefore");
     expect(out()).toContain("clientSessionIdleTimeout");
+    expect(out().split("\n").find((l) => l.includes("notBefore"))).toContain("選ぶ手段がない");
   });
 
-  // Once for the pair, not once per row: the sentence is the dictionary's and
-  // it is the same sentence.
-  it("says the shared reason once and lists the keys under it", () => {
-    const said = out().split("選ぶ手段がない").length - 1;
-    expect(said).toBe(1);
-    expect(out()).toContain("- realm > `notBefore`");
+  it("is one table, not a section per kind", () => {
+    expect(out()).not.toContain("###");
   });
 
   it("counts only this unit's", () => {
@@ -70,13 +62,13 @@ describe("a record with nothing left out", () => {
     expect(renderExcluded([], "server", "en")).toBe("None.");
   });
 
-  // …and still shows the other section. "The project excluded nothing, and
-  // here is what carries no decision" is exactly the distinction being drawn.
-  it("still says what carries no decision", () => {
+  // "Nothing" means nothing in the table at all — the project's rows and the
+  // product's are rows of one table now.
+  it("still lists what carries no decision, when that is all there is", () => {
     const only = EXCLUDED.filter((e) => e.by !== undefined);
     const text = renderExcluded(only, "server", "ja");
-    expect(text.startsWith("なし。")).toBe(true);
-    expect(text).toContain("### 決定の存在しない項目");
+    expect(text).not.toContain("なし。");
+    expect(text).toContain("notBefore");
   });
 });
 
@@ -85,8 +77,9 @@ describe("a plan built before any of this", () => {
   // ABSENT is the project case and not the other way round.
   it("renders entirely as the project's own decisions", () => {
     const old = EXCLUDED.filter((e) => e.unit === "server").map(({ by: _drop, ...rest }) => rest);
-    const text = renderExcluded(old, "server", "ja");
-    expect(text).not.toContain("###");
+    const text = renderExcluded(old, "server", "ja", undefined, { productExclusions: false } as never);
+    // Nothing is `by: "product"` any more, so the flag that drops those has
+    // nothing to drop and every row stays.
     expect(text).toContain("notBefore");
   });
 });
@@ -159,12 +152,12 @@ describe("leaving out what the product set aside", () => {
   const out = (o: Record<string, unknown>) => renderExcluded(EXCLUDED, "server", "ja", undefined, o as never);
 
   it("is printed by default", () => {
-    expect(out({})).toContain("### 決定の存在しない項目");
+    expect(out({})).toContain("notBefore");
   });
 
   it("goes away when the record asks it to", () => {
-    expect(out({ productExclusions: false })).not.toContain("### 決定の存在しない項目");
     expect(out({ productExclusions: false })).not.toContain("notBefore");
+    expect(out({ productExclusions: false })).not.toContain("clientSessionIdleTimeout");
   });
 
   // The project's own decisions are a different claim and stay.

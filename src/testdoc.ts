@@ -57,10 +57,6 @@ type Words = {
   ranAt: (at: string, hosts: string) => string; notRunYet: string;
   excludedHead: string; excludedCols: string[]; taxonomyCols: string[];
   excludedNone: string;
-  noDecisionHead: string;
-  noDecision: (n: number) => string;
-  coveredHead: string;
-  coveredIntro: (n: number) => string;
   coveredBy: (test: string, status: string) => string;
   coveredUnknown: string;
   // Where each level is on the page this run wrote — which depends on what it
@@ -106,16 +102,8 @@ const T: Record<TestDocLang, Words> = {
     excludedHead: "対象外",
     excludedCols: ["設定項目", "理由", "所管"],
     excludedNone: "なし。",
-    coveredHead: "この単体テストでは検証できない項目",
-    coveredIntro: (n) =>
-      `以下の ${n} 項目は本案件が設計し、レビュー対象でもあるが、この単体テストの手段では値を読み戻せない。` +
-      `代わりに担保する機能確認をそれぞれに示す。`,
-    coveredBy: (test, status) => `**${test}**（${status}）が担保する:`,
+    coveredBy: (test, status) => `代わりに機能確認「${test}」（${status}）で担保する。`,
     coveredUnknown: "結果なし",
-    noDecisionHead: "決定の存在しない項目",
-    noDecision: (n) =>
-      `以下の ${n} 項目は、製品がその値を持つことをパラメータシートに記録しているが、` +
-      `そこに合意すべき決定は存在しない。本プロジェクトの対象外としたものではない。`,
     taxonomyCols: ["項番", "項目", "項目の上げ方", "この文書での対応"],
     // The tool's half of each row: where that level is on the page it just
     // wrote. The project's half — what each level is called and how its items
@@ -168,16 +156,8 @@ const T: Record<TestDocLang, Words> = {
     excludedHead: "Out of scope",
     excludedCols: ["Parameter", "Reason", "Owner"],
     excludedNone: "None.",
-    coveredHead: "Parameters this unit test cannot verify",
-    coveredIntro: (n) =>
-      `This project designed the following ${n} parameter(s) and reviews them, but nothing available to this ` +
-      `unit test can read the value back. The functional test that covers each is named below.`,
-    coveredBy: (test, status) => `Covered by **${test}** (${status}):`,
+    coveredBy: (test, status) => `Covered instead by the functional test "${test}" (${status}).`,
     coveredUnknown: "no result",
-    noDecisionHead: "Parameters with no decision behind them",
-    noDecision: (n) =>
-      `The parameter sheet records that the product holds a value for the following ${n} parameter(s), ` +
-      `and there is no decision in any of them to agree with. This project did not put them out of scope.`,
     taxonomyCols: ["No.", "Level", "How items are raised", "In this document"],
     taxonomyWhere: (f: boolean) => [
       "This document's unit, named by each environment's heading beside the environment",
@@ -722,50 +702,30 @@ export function renderExcluded(
   // cannot tell which provider's credential each line is about.
   const where = (e: { sheet: string; component?: string; key: string }): string =>
     `${cell(e.sheet)}${e.component === undefined ? "" : ` > ${cell(e.component)}`} > \`${cell(e.key)}\``;
-  const out: string[] = [];
-  // A heading over a table with no rows under it is a section a reader has to
-  // decode; "none" is the answer they came for. Said even when the section
-  // below has entries — "the project excluded nothing, and here is what carries
-  // no decision" is precisely the distinction this split exists to draw.
-  out.push(
-    decided.length === 0
-      ? t.excludedNone
-      : table(t.excludedCols, decided.map((e) => [where(e), cell(pickLang(e.reason, lang)), cell(e.owner)]))
-  );
-  // Grouped by the reason rather than by the one rule that produces them today:
-  // `by` is the contract, and the sentence is a dictionary's to write.
+  // ONE TABLE. Three reasons a row has no test item, and the table already has
+  // the column that answers "why" — splitting them into sections gave a reader
+  // three places to look for one question, and repeated the shared sentences
+  // above each. The distinction survives where it belongs: in each row's own
+  // reason, which is what a reader is reading the column for.
+  const rows: string[][] = [];
+  for (const e of decided) rows.push([where(e), cell(pickLang(e.reason, lang)), cell(e.owner)]);
   if (undecided.length > 0 && opts.productExclusions === false) {
     opts.onProductOmitted?.({ unit: unitName, rows: undecided.length });
+  } else {
+    for (const e of undecided) rows.push([where(e), cell(pickLang(e.reason, lang)), cell(e.owner)]);
   }
-  if (undecided.length > 0 && opts.productExclusions !== false) {
-    const byReason = new Map<string, typeof undecided>();
-    for (const e of undecided) {
-      // A reason with no text in either language would group every such row
-      // under one blank heading; the empty string is that group, and it prints
-      // as a blank line rather than as a wrong sentence.
-      const key = pickLang(e.reason, lang) ?? "";
-      byReason.set(key, [...(byReason.get(key) ?? []), e]);
-    }
-    out.push("", `### ${t.noDecisionHead}`, "", t.noDecision(undecided.length));
-    for (const [reason, rows] of byReason) {
-      out.push("", reason, "", rows.map((e) => `- ${where(e)}`).join("\n"));
-    }
+  // …and the rows nothing here could read, whose reason carries the test that
+  // covers them AND that test's own verdict. Covered by a test that did not run
+  // is not covered, and a reason saying only "covered by X" hides exactly that.
+  for (const c of covered.rows.filter((x) => x.unit === unitName)) {
+    const v = covered.verdict(unitName, c.functional);
+    rows.push([
+      where(c),
+      `${cell(pickLang(c.reason, lang))} ${t.coveredBy(v?.text ?? c.functional, v?.status ?? t.coveredUnknown)}`,
+      "",
+    ]);
   }
-  // …and the rows nothing here could read. Grouped by the test that covers
-  // them: "which of these does the LDAP connectivity check stand for" is the
-  // question a reader has, and one line per row answers it once each.
-  const mineCovered = covered.rows.filter((c) => c.unit === unitName);
-  if (mineCovered.length > 0) {
-    const byTest = new Map<string, typeof mineCovered>();
-    for (const c of mineCovered) byTest.set(c.functional, [...(byTest.get(c.functional) ?? []), c]);
-    out.push("", `### ${t.coveredHead}`, "", t.coveredIntro(mineCovered.length));
-    for (const [id, rows] of byTest) {
-      const v = covered.verdict(unitName, id);
-      out.push("", t.coveredBy(v?.text ?? id, v?.status ?? t.coveredUnknown), "");
-      for (const c of rows) out.push(`- ${where(c)} — ${cell(pickLang(c.reason, lang))}`);
-    }
-  }
-  return out.join("\n");
+  return rows.length === 0 ? t.excludedNone : table(t.excludedCols, rows);
 }
 
 const START = (name: string): string => `<!-- ${name}:start -->`;

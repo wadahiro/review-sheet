@@ -357,8 +357,8 @@ the reference IS reviewed. One row contradicting itself.
 The row stays in scope, in the sheet, with its source map — `verify` and `apply`
 treat it like any other row, because it is one. What changes is the RECORD: it
 produces no test item (an item is something that should have been answered, and
-this cannot be), and the unit's record names it under its own heading with the
-covering test's own verdict beside it.
+this cannot be), and it becomes a row of the out-of-scope table whose reason
+names the covering test and that test's own verdict.
 
 `functional` is an **id**, checked at plan time: a `covered_by` naming a test
 the unit does not have fails the build, listing the ids it does have. "Covered
@@ -384,11 +384,11 @@ about such a row keeps it.
 The field exists because the two are different claims. Yours is "we designed
 this and put it outside this review". The tool's is "there is no decision here
 to be inside or outside of anything" — the row is on the sheet as a ledger
-entry, and that is all it is. `test-doc` renders them apart for that reason: the
-out-of-scope table is the project's, and what the product set aside gets its own
-heading below it, one sentence per shared reason with the keys listed under it.
-Absent `by` means the project decided, which is what every model written before
-this field says.
+entry, and that is all it is. They share ONE table in the record, told apart by
+each row's own reason, which is the column that answers exactly that question;
+`--no-product-exclusions` drops the tool's rows for a project whose parameter
+sheet already marks them. Absent `by` means the project decided, which is what
+every model written before this field says.
 
 ### Where a value comes from (`origin`)
 

@@ -126,7 +126,7 @@ describe("a row declared covered by a functional test", () => {
   });
 });
 
-describe("the record's third group", () => {
+describe("the covered row in the table", () => {
   const rows = [{ unit: "u", sheet: "ldap", component: "corp", key: "bindCredential", reason: COVER.reason, functional: "ldap-connection" }];
   const results = (status: string): TestResults =>
     ({ runs: {}, results: [], functional: [{ unit: "u", instance: "local", id: "ldap-connection", item: "LDAP 疎通確認", status }] }) as never;
@@ -137,6 +137,7 @@ describe("the record's third group", () => {
 
   it("names the covering test by its own words, not by its id", () => {
     expect(render(results("pass"))).toContain("LDAP 疎通確認");
+    expect(render(results("pass"))).not.toContain("ldap-connection");
   });
 
   // The hazard one level up: covered by a test that did not run is not covered,
@@ -151,8 +152,13 @@ describe("the record's third group", () => {
     expect(render({ runs: {}, results: [], functional: [] } as never)).toContain("（未実施）");
   });
 
-  it("lists the rows under it, with each one's reason", () => {
-    expect(render(results("pass"))).toContain("- ldap > corp > `bindCredential` — 管理 API はマスクして返す");
+  // One table with the others, told apart by what its reason column says —
+  // which is the column a reader is reading for exactly that question.
+  it("is a row of the same table, carrying its own reason", () => {
+    const line = render(results("pass")).split("\n").find((l) => l.includes("bindCredential"))!;
+    expect(line).toContain("ldap > corp > `bindCredential`");
+    expect(line).toContain("管理 API はマスクして返す");
+    expect(render(results("pass"))).not.toContain("###");
   });
 });
 
