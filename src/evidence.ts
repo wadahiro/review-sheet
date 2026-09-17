@@ -33,9 +33,19 @@ export type CitedBy = ReadonlyMap<string, string>;
 export function evidencePreviews(
   results: TestResults,
   instances: string[] | undefined,
-  cited?: CitedBy
+  // REQUIRED, and the reason it is: an observed document is reachable only
+  // through a record's link, so "who cites this" is not extra information about
+  // a document — it is what decides whether the document can be in the set at
+  // all. A caller with no map is a caller that cannot answer that, and an
+  // optional parameter would have let it carry unreachable bytes by omission.
+  cited: CitedBy,
+  // What went, and why. A delivery that quietly holds less than the results do
+  // is the failure this module exists to prevent, so the caller is handed the
+  // list rather than left to notice.
+  onUncited?: (ids: string[]) => void
 ): ArtifactPreview[] {
   const out: ArtifactPreview[] = [];
+  const uncited: string[] = [];
   // Two documents at one address is a judge bug, and a silent one: the link a
   // verdict carries resolves to whichever was emitted first, so a reader can be
   // shown bytes that are not the ones that verdict was read from. Reported
@@ -67,7 +77,33 @@ export function evidencePreviews(
     // decided what may travel and redacted before this file was written (see
     // this module's own contract), and the verdict citing the address is in the
     // reader's hands either way.
-    if (instances !== undefined && !instances.includes(e.instance) && cited?.has(idOf(e)) !== true) continue;
+    if (instances !== undefined && !instances.includes(e.instance) && !cited.has(idOf(e))) continue;
+    // AN OBSERVED DOCUMENT NOTHING CITES CANNOT BE REACHED, so carrying it puts
+    // bytes in the delivery that no reader has a route to.
+    //
+    // Not a guess about this delivery — the invariant is the tool's own: an
+    // observed document carries no line keys AT ALL (types.ts), "precisely so
+    // it can never be reached the other way" (app.ts). A row cannot open one;
+    // a record's `rs-evidence:` link is the only way in. So uncited is
+    // unreachable, in the HTML and in a markdown set alike.
+    //
+    // It used to be carried anyway, filed under the sheet whose values it
+    // answers for — which in a set is a chapter with no column to link it from.
+    // Measured on a real delivery: 47 files, 0 of them reachable from either
+    // output.
+    //
+    // WHICH evidence is cited moves with what the record PRINTS: 1072 of the
+    // unset-parameter verdicts on that same delivery carry evidence, and
+    // `test-doc --include-defaults` puts those rows in the record, which cites
+    // them, which carries them. The rule is one rule either way.
+    //
+    // Restricted to `observed`, not applied to every nature: this is sound
+    // because of the no-keys invariant, and a nature whose documents a row CAN
+    // reach must not be dropped for want of a citation.
+    if (!cited.has(idOf(e))) {
+      uncited.push(idOf(e));
+      continue;
+    }
     out.push({
       id: idOf(e),
       // BESIDE THE RECORD THAT CITES IT — never beside the rows it is about.
@@ -87,9 +123,7 @@ export function evidencePreviews(
       // follow — the file list under its title becomes relative links into its
       // own chapter — which the inline `rs-evidence:` links never were.
       //
-      // Evidence NOTHING cites keeps `e.sheet`: there is no record to sit
-      // beside, and the rows it answers for are the only anchor left.
-      sheet: cited?.get(idOf(e)) ?? e.sheet,
+      sheet: cited.get(idOf(e))!,
       ...(e.component === undefined ? {} : { component: e.component }),
       // A collected file's source IS the path it was read from — literally
       // true, and what the panel's header shows beside the host and the moment.
@@ -107,6 +141,7 @@ export function evidencePreviews(
         .map((text) => ({ text, kind: "verbatim" as const })),
     });
   }
+  if (uncited.length > 0) onUncited?.(uncited);
   return out;
 }
 

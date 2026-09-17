@@ -50,21 +50,40 @@ const results = (): TestResults =>
     ],
   }) as TestResults;
 
+// Every evidence of the fixture, cited by one record — which is what these
+// tests were written against and what a real record does. Citation is no longer
+// optional: an observed document is reachable only through a record's link, so
+// "who cites this" decides whether it can be carried at all.
+const allCited = (r: TestResults = results()): ReadonlyMap<string, string> =>
+  new Map((r.evidence ?? []).map((e) => [
+    `observed ${e.instance} ${e.host} ${e.path ?? e.command}`,
+    "record",
+  ]));
+
+// …and the same map minus one, for the tests about `--instances`: citation and
+// the environment filter are two gates and the second only shows when the first
+// is open. Written as an exclusion so those tests keep saying what they say
+// about environments rather than about citation.
+const citedExcept = (drop: (id: string) => boolean): ReadonlyMap<string, string> =>
+  new Map([...allCited()].filter(([k]) => !drop(k)));
+
 describe("evidence, as documents", () => {
   it("is observed, and says which host it came from and when", () => {
-    const out = evidencePreviews(results(), undefined);
+    const out = evidencePreviews(results(), undefined, allCited());
     const one = out.find((a) => a.observed?.host === "web01" && a.source_file.startsWith("/etc"))!;
     expect(one.nature).toBe("observed");
     expect(one.observed).toEqual({ host: "web01", at: "2026-09-08T00:11:22Z" });
     // The file it was read from IS its source — literally true of a collected
     // file, and what the panel's header shows.
     expect(one.source_file).toBe("/etc/httpd/conf/httpd.conf");
-    expect(one.sheet).toBe("web");
+    // …and it is filed under the record that CITES it, never under the sheet
+    // whose values it answers for — see the describe() on that below.
+    expect(one.sheet).toBe("record");
     expect(one.component).toBe("httpd.conf");
   });
 
   it("keeps every line of what was collected, verbatim", () => {
-    const one = evidencePreviews(results(), undefined).find((a) => a.source_file.startsWith("/etc"))!;
+    const one = evidencePreviews(results(), undefined, allCited()).find((a) => a.source_file.startsWith("/etc"))!;
     expect(one.lines.map((l) => l.text)).toEqual(["Listen 80", "ServerName x"]);
     expect(new Set(one.lines.map((l) => l.kind))).toEqual(new Set(["verbatim"]));
     // No keys: an observed document is not in the row->preview index, and a key
@@ -73,7 +92,7 @@ describe("evidence, as documents", () => {
   });
 
   it("gives a command's output a document too", () => {
-    const cmd = evidencePreviews(results(), undefined).find((a) => a.source_file === "kc.sh show-config")!;
+    const cmd = evidencePreviews(results(), undefined, allCited()).find((a) => a.source_file === "kc.sh show-config")!;
     expect(cmd.nature).toBe("observed");
     expect(cmd.deployed_path).toBeUndefined();
   });
@@ -82,13 +101,13 @@ describe("evidence, as documents", () => {
   // the moment they were taken does not, and a record that merges them can no
   // longer say which host a verdict was read from.
   it("never merges two hosts into one document", () => {
-    const out = evidencePreviews(results(), undefined);
+    const out = evidencePreviews(results(), undefined, allCited());
     expect(new Set(out.map((a) => a.id)).size).toBe(out.length);
     expect(out.length).toBe(3);
   });
 
   it("leaves out the environments a delivery does not cover", () => {
-    const out = evidencePreviews(results(), ["prod"]);
+    const out = evidencePreviews(results(), ["prod"], citedExcept((id) => id.startsWith("observed local ")));
     expect(out.map((a) => a.observed?.host)).toEqual(["web09"]);
   });
 });
@@ -162,7 +181,7 @@ describe("a document carried twice", () => {
         { instance: "local", host: "web01", at: "x", sheet: "web", command: "GET /login", text: "b" },
       ],
     };
-    const out = evidencePreviews(twice, undefined);
+    const out = evidencePreviews(twice, undefined, new Map([["observed local web01 GET /login", "record"]]));
     console.error = said_to;
     expect(said.join("\n")).toContain("carried more than once");
     expect(said.join("\n")).toContain("observed local web01 GET /login");
@@ -201,12 +220,12 @@ describe("evidence a carried record already cites", () => {
   const localId = "observed local web01 /etc/httpd/conf/httpd.conf";
 
   it("drops an environment's evidence when nothing carried cites it", () => {
-    const docs = evidencePreviews(results(), ["prod"]);
+    const docs = evidencePreviews(results(), ["prod"], citedExcept((id) => id === localId));
     expect(docs.map((d) => d.id)).not.toContain(localId);
   });
 
   it("keeps it when a carried document links to it", () => {
-    const docs = evidencePreviews(results(), ["prod"], new Map([[localId, "record"]]));
+    const docs = evidencePreviews(results(), ["prod"], allCited());
     expect(docs.map((d) => d.id)).toContain(localId);
     // …and the one it does cover is there either way.
     expect(docs.some((d) => (d.instances ?? []).includes("prod"))).toBe(true);
@@ -230,18 +249,32 @@ describe("evidence a carried record already cites", () => {
 // and only the citing record can answer which one that is.
 describe("which sheet an evidence document is filed under", () => {
   const id = "observed local web01 /etc/httpd/conf/httpd.conf";
-  const sheetOf = (cited?: Map<string, string>): string | undefined =>
-    evidencePreviews(results(), undefined, cited).find((d) => d.id === id)?.sheet;
+  const docs = (cited: Map<string, string>) => evidencePreviews(results(), undefined, cited);
 
   it("is the record that cites it, not the rows it is about", () => {
-    expect(sheetOf(new Map([[id, "unit tests"]]))).toBe("unit tests");
+    expect(docs(new Map([[id, "unit tests"]])).find((d) => d.id === id)?.sheet).toBe("unit tests");
   });
 
-  it("falls back to the rows when no record cites it", () => {
-    // Nothing points at it, so there is no record to sit beside — the sheet
-    // whose values it answers for is the only anchor left.
-    expect(sheetOf(new Map([["observed local web01 /etc/other.conf", "unit tests"]]))).toBe("web");
-    expect(sheetOf(undefined)).toBe("web");
+  // …and one nothing cites is not filed anywhere, because it cannot be
+  // reached from anywhere: an observed document carries no line keys at all
+  // (types.ts), precisely so a row can never open one, so a record's link is
+  // the only way in. It used to be carried under the sheet whose values it
+  // answers for — a chapter with no column to link it from.
+  it("is not carried at all when no record cites it", () => {
+    expect(docs(new Map([["observed local web01 /etc/other.conf", "unit tests"]])).map((d) => d.id)).not.toContain(id);
+  });
+
+  it("says which ones went, so a delivery holding less is not a discovery", () => {
+    const gone: string[] = [];
+    evidencePreviews(results(), undefined, new Map(), (ids) => gone.push(...ids));
+    expect(gone).toContain(id);
+    expect(gone).toHaveLength(3);
+  });
+
+  it("reports nothing when every document is cited", () => {
+    const gone: string[] = [];
+    evidencePreviews(results(), undefined, allCited(), (ids) => gone.push(...ids));
+    expect(gone).toEqual([]);
   });
 });
 

@@ -219,9 +219,19 @@ export function toMarkdownSet(
   }
   const stranded = documents.filter((d) => !reached.has(d.path)).map((d) => d.path);
   if (stranded.length > 0) {
+    // COUNTED BY KIND before the sample, because the sample misled. Five of
+    // sixty-four were printed and all five happened to be `sources/`, so a
+    // reader concluded the check did not see the forty-seven `evidence/` files
+    // in the same list — and reported the omission as the bug. A tally cannot
+    // be read as a claim about which kinds are in it.
+    const kindOf = (p: string): string => ["evidence", "sources", "artifacts"].find((k) => p.includes(`/${k}/`)) ?? "elsewhere";
+    const tally = [...stranded.reduce((m, p) => m.set(kindOf(p), (m.get(kindOf(p)) ?? 0) + 1), new Map<string, number>())]
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, n]) => `${n} under ${k}/`)
+      .join(", ");
     problems.push(
-      `${stranded.length} carried file(s) are in the set with no page linking to them, so a reader has no way to reach them: ` +
-        `${stranded.slice(0, 5).join(", ")}${stranded.length > 5 ? `, +${stranded.length - 5} more` : ""}`
+      `${stranded.length} carried file(s) are in the set with no page linking to them, so a reader has no way to reach them ` +
+        `(${tally}): ${stranded.slice(0, 5).join(", ")}${stranded.length > 5 ? `, +${stranded.length - 5} more` : ""}`
     );
   }
 

@@ -825,7 +825,20 @@ program
               contested.slice(0, 3).join(", ") + (contested.length > 3 ? ", …" : "")
           );
         }
-        const docs = evidencePreviews(carried, opts.instances, cited).map((d) =>
+        let uncited = 0;
+        const docs = evidencePreviews(carried, opts.instances, cited, (ids) =>
+          // NOT carried, and said so. An observed document is reachable only
+          // through a record's link, so one nothing cites is bytes with no way
+          // in — and the recovery is real rather than theoretical: the rows
+          // that cite these are the unset-parameter verdicts, which the record
+          // prints under `test-doc --include-defaults`.
+          ((uncited = ids.length),
+          console.error(
+            `evidence: ${ids.length} document(s) are cited by no record and are not carried — a reader has no route ` +
+              `to an observed document nothing links (${ids.slice(0, 3).join(", ")}${ids.length > 3 ? ", …" : ""}). ` +
+              `Printing the rows that cite them (test-doc --include-defaults) carries them.`
+          ))
+        ).map((d) =>
           // WHEN a host was read, in the reader's zone. Resolved here, like the
           // prose `localize.ts` resolves, so the viewer prints what it is given.
           d.observed === undefined || opts.timezone === undefined
@@ -845,8 +858,14 @@ program
           opts.instances === undefined
             ? 0
             : docs.filter((d) => (d.instances ?? []).some((i) => !opts.instances!.includes(i))).length;
+        // TWO reasons a document is not here, and naming one for the other sends
+        // a reader to the wrong lever: `--instances` narrows by environment,
+        // and citation decides whether an observed document can be reached at
+        // all. The uncited ones are counted above, in a line that says what to
+        // do about them; what is left over is the environment filter's.
+        const narrowed = held - docs.length - uncited;
         console.error(
-          `evidence: ${docs.length} document(s) carried${held > docs.length ? `, ${held - docs.length} left out by --instances` : ""}` +
+          `evidence: ${docs.length} document(s) carried${narrowed > 0 ? `, ${narrowed} left out by --instances` : ""}` +
             (beyond > 0
               ? ` — ${beyond} of them for an environment this delivery does not cover, kept because a record it carries cites them`
               : "")

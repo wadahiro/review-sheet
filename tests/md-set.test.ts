@@ -284,6 +284,26 @@ describe("the index", () => {
     expect(frontDoor(doc(), "en")).not.toContain("the next rebuild replaces");
   });
 
+  // THE TALLY BEFORE THE SAMPLE. Five of sixty-four were printed and all five
+  // happened to be `sources/`, so a reader concluded the check did not see the
+  // forty-seven `evidence/` files in the same list — and reported the omission
+  // as a bug. A count per kind cannot be read as a claim about which kinds are
+  // in it.
+  it("counts the unreachable files by kind before naming a few", () => {
+    const carried = [
+      ...Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, sheet: "httpd", path: `evidence/local/h/commands/c${i}.txt`, text: "x" })),
+      ...Array.from({ length: 2 }, (_, i) => ({ id: `s${i}`, sheet: "httpd", path: `sources/a${i}.tf`, text: "x" })),
+    ];
+    const { problems } = toMarkdownSet(doc(), "ja", { documents: carried });
+    const said = problems.join("\n");
+    expect(said).toContain("8 carried file(s)");
+    expect(said).toContain("6 under evidence/");
+    expect(said).toContain("2 under sources/");
+    // …and the biggest group is named first, so the sample that follows is read
+    // against a count rather than instead of one.
+    expect(said.indexOf("6 under evidence/")).toBeLessThan(said.indexOf("2 under sources/"));
+  });
+
   // FOUR LINES CAME OFF, each one said again somewhere the reader is already
   // looking. "Don't edit the HTML" is the first bullet from the other side —
   // that one says to edit the `.md`. The pointer at `index.md` is what the page
