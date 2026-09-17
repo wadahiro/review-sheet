@@ -461,6 +461,12 @@
         },
         "owner": {
           "type": "string"
+        },
+        "by": {
+          "enum": [
+            "product"
+          ],
+          "description": "Who decided. Absent = the project, in its own sheet.yml. \"product\" = nothing was decided: derived from the dictionary alone, for a row the product's admin UI shows without offering any way to choose it."
         }
       },
       "additionalProperties": false

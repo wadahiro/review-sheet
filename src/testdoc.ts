@@ -56,6 +56,9 @@ type Words = {
   defaults: (n: number, ok: number, ng: number) => string;
   ranAt: (at: string, hosts: string) => string; notRunYet: string;
   excludedHead: string; excludedCols: string[]; taxonomyCols: string[];
+  excludedNone: string;
+  noDecisionHead: string;
+  noDecision: (n: number) => string;
   // Where each level is on the page this run wrote — which depends on what it
   // wrote. A unit with functional items has a sub-heading no sheet is behind,
   // and a row no sheet row derived; a unit without one has neither, and saying
@@ -98,6 +101,11 @@ const T: Record<TestDocLang, Words> = {
     notRunYet: "実施日時: — ／ 対象ホスト: — （未実施）",
     excludedHead: "対象外",
     excludedCols: ["設定項目", "理由", "所管"],
+    excludedNone: "なし。",
+    noDecisionHead: "決定の存在しない項目",
+    noDecision: (n) =>
+      `以下の ${n} 項目は、製品がその値を持つことをパラメータシートに記録しているが、` +
+      `そこに合意すべき決定は存在しない。本プロジェクトの対象外としたものではない。`,
     taxonomyCols: ["項番", "項目", "項目の上げ方", "この文書での対応"],
     // The tool's half of each row: where that level is on the page it just
     // wrote. The project's half — what each level is called and how its items
@@ -149,6 +157,11 @@ const T: Record<TestDocLang, Words> = {
     notRunYet: "Run at: — / hosts: — (not run)",
     excludedHead: "Out of scope",
     excludedCols: ["Parameter", "Reason", "Owner"],
+    excludedNone: "None.",
+    noDecisionHead: "Parameters with no decision behind them",
+    noDecision: (n) =>
+      `The parameter sheet records that the product holds a value for the following ${n} parameter(s), ` +
+      `and there is no decision in any of them to agree with. This project did not put them out of scope.`,
     taxonomyCols: ["No.", "Level", "How items are raised", "In this document"],
     taxonomyWhere: (f: boolean) => [
       "This document's unit, named by each environment's heading beside the environment",
@@ -321,6 +334,21 @@ export type TestDocOptions = {
   // this project SET. Turning them on is one flag, for a customer who wants the
   // exhaustive list.
   includeDefaults?: boolean;
+  // …and whether that COUNT is printed at all. A separate axis from the rows:
+  // one is "enumerate them", the other is "mention them", and a project whose
+  // parameter sheet already marks each such row per-row does not want the same
+  // claim restated here in different words. Making it reachable only by turning
+  // every row on was answering "drop one sentence" with several thousand lines.
+  //
+  // Suppressed here, never unreported: `onDefaultsOmitted` is called with what
+  // the document no longer says, and the CLI prints it at build time. The record
+  // is the project's to shape; whether it is complete is not a private matter.
+  defaultsSummary?: boolean;
+  // Called when `defaultsSummary: false` actually removed something — never for
+  // a unit that had no such items to begin with, which would turn a flag into a
+  // line of noise per unit. A callback rather than a return value because this
+  // function's return IS the document, and a core here does not print.
+  onDefaultsOmitted?: (omitted: { unit: string; items: number; answered: number }) => void;
   // WHICH ZONE the reader of this record is in (an IANA name, "Asia/Tokyo").
   //
   // The instant is the fact and the zone is how it is read, so it is decided
@@ -421,10 +449,15 @@ export function renderTestDoc(
   const summaryBlock = [table([t.summaryItem, t.summaryValue], summary)];
   if (defaults.length > 0 && opts.includeDefaults !== true) {
     const dAnswered = defaults.map((i) => answerFor(index, i)).filter((r): r is TestResult => r !== undefined && r.status !== "not_run");
-    summaryBlock.push(
-      "",
-      t.defaults(defaults.length, dAnswered.filter((r) => r.status === "pass").length, dAnswered.filter((r) => r.status === "fail").length)
-    );
+    if (opts.defaultsSummary === false) {
+      // Said to the BUILD rather than to the reader — see TestDocOptions.
+      opts.onDefaultsOmitted?.({ unit: unitName, items: defaults.length, answered: dAnswered.length });
+    } else {
+      summaryBlock.push(
+        "",
+        t.defaults(defaults.length, dAnswered.filter((r) => r.status === "pass").length, dAnswered.filter((r) => r.status === "fail").length)
+      );
+    }
   }
   blocks["test:summary"] = summaryBlock.join("\n");
 
@@ -607,25 +640,54 @@ export function unitDocuments(plan: TestPlan, sheets: { name: string; source_fil
 
 // …and the excluded rows, which need the plan's report rather than the plan.
 export function renderExcluded(
-  excluded: { unit: string; sheet: string; component?: string; key: string; reason: LangText; owner?: string }[],
+  excluded: { unit: string; sheet: string; component?: string; key: string; reason: LangText; owner?: string; by?: "product" }[],
   unitName: string,
   lang: TestDocLang = "ja"
 ): string {
   const t = T[lang];
   const mine = excluded.filter((e) => e.unit === unitName);
+  // TWO CLAIMS, NEVER ONE TABLE. A row the project put out of scope was
+  // designed and then set aside — that is a decision, and this heading is for
+  // it. A row the TOOL set aside carries no decision at all: the dictionary
+  // says the product's admin UI shows the value without offering any way to
+  // choose one, and nobody set it (OutOfScope.by). Printed together, a reader
+  // reading the heading reads the second as the first.
+  const decided = mine.filter((e) => e.by === undefined);
+  const undecided = mine.filter((e) => e.by !== undefined);
   // Named by the component too, where the sheet has them. Two components share
   // a key space by design — a federation sheet excludes
   // `config.bindCredential[0]` under every provider it reviews — so the sheet
   // and the key alone print one exclusion twice, identically, and a reader
   // cannot tell which provider's credential each line is about.
-  return table(
-    t.excludedCols,
-    mine.map((e) => [
-      `${cell(e.sheet)}${e.component === undefined ? "" : ` > ${cell(e.component)}`} > \`${cell(e.key)}\``,
-      cell(pickLang(e.reason, lang)),
-      cell(e.owner),
-    ])
+  const where = (e: { sheet: string; component?: string; key: string }): string =>
+    `${cell(e.sheet)}${e.component === undefined ? "" : ` > ${cell(e.component)}`} > \`${cell(e.key)}\``;
+  const out: string[] = [];
+  // A heading over a table with no rows under it is a section a reader has to
+  // decode; "none" is the answer they came for. Said even when the section
+  // below has entries — "the project excluded nothing, and here is what carries
+  // no decision" is precisely the distinction this split exists to draw.
+  out.push(
+    decided.length === 0
+      ? t.excludedNone
+      : table(t.excludedCols, decided.map((e) => [where(e), cell(pickLang(e.reason, lang)), cell(e.owner)]))
   );
+  // Grouped by the reason rather than by the one rule that produces them today:
+  // `by` is the contract, and the sentence is a dictionary's to write.
+  if (undecided.length > 0) {
+    const byReason = new Map<string, typeof undecided>();
+    for (const e of undecided) {
+      // A reason with no text in either language would group every such row
+      // under one blank heading; the empty string is that group, and it prints
+      // as a blank line rather than as a wrong sentence.
+      const key = pickLang(e.reason, lang) ?? "";
+      byReason.set(key, [...(byReason.get(key) ?? []), e]);
+    }
+    out.push("", `### ${t.noDecisionHead}`, "", t.noDecision(undecided.length));
+    for (const [reason, rows] of byReason) {
+      out.push("", reason, "", rows.map((e) => `- ${where(e)}`).join("\n"));
+    }
+  }
+  return out.join("\n");
 }
 
 const START = (name: string): string => `<!-- ${name}:start -->`;

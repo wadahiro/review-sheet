@@ -159,7 +159,7 @@ export type TestPlanReport = {
   // sheet share a key space by design, so `sheet > key` alone renders one
   // exclusion twice — two real rows, one label, and a reader with no way to
   // tell which provider's credential each line is about.
-  excluded: { unit: string; sheet: string; component?: string; key: string; reason: LangText; owner?: string }[];
+  excluded: { unit: string; sheet: string; component?: string; key: string; reason: LangText; owner?: string; by?: "product" }[];
   // A per-environment row that says nothing about an environment: no value for
   // it, so there is nothing to expect and nothing to check.
   unstated: { unit: string; sheet: string; key: string; instance: string }[];
@@ -309,6 +309,7 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
           key: row.p.key,
           reason: row.outOfScope.reason,
           ...(row.outOfScope.owner === undefined ? {} : { owner: row.outOfScope.owner }),
+          ...(row.outOfScope.by === undefined ? {} : { by: row.outOfScope.by }),
         });
         continue;
       }

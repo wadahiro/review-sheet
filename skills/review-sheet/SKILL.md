@@ -333,6 +333,23 @@ a separate `_reason` string field alongside it; both forms are retired and no
 longer validate. Migrate the old boolean-plus-separate-reason-field pair to the
 single object form shown above (`{ reason, owner? }`).
 
+**`by: "product"` — the exclusion nobody decided.** A dictionary can mark a
+parameter `ui: readonly` (the product's admin console shows the value and offers
+no way to choose one). For a row NOBODY SET, the tool then files it out of scope
+with the dictionary's own sentence — and stamps `by: "product"` on it. Written by
+the tool, never by a project: a project's own `out_of_scope` is applied
+afterwards and overwrites it whole, so a project that DOES have a remit decision
+about such a row keeps it.
+
+The field exists because the two are different claims. Yours is "we designed
+this and put it outside this review". The tool's is "there is no decision here
+to be inside or outside of anything" — the row is on the sheet as a ledger
+entry, and that is all it is. `test-doc` renders them apart for that reason: the
+out-of-scope table is the project's, and what the product set aside gets its own
+heading below it, one sentence per shared reason with the keys listed under it.
+Absent `by` means the project decided, which is what every model written before
+this field says.
+
 ### Where a value comes from (`origin`)
 
 `origin` records *how* a parameter's value is set — display/grouping metadata,
@@ -4033,6 +4050,21 @@ written by hand, so a unit nobody added a line for had its items planned,
 answered and counted with no page anyone could read them on, and the build
 exited 0. (`--unit X -d file.md` still writes one, for a project that declares
 nothing.)
+
+**Two flags, two axes.** `--include-defaults` prints the unset parameters as
+ROWS; without it they are one line counting them. `--no-defaults-summary` drops
+that line WITHOUT printing the rows — for a project whose parameter sheet
+already marks each such row per-row, where the sentence is the same claim in
+different words, and where reaching it through `--include-defaults` answered
+"drop one sentence" with several thousand lines. What the flag removed is
+printed by the build instead:
+
+```
+--no-defaults-summary: server — 862 unset parameter(s) are not mentioned in the record (1083 of them were checked by this run)
+```
+
+The record is the project's to shape; whether it is complete is not a private
+matter.
 
 A unit holding testable rows that declares neither `method` nor `not_tested`
 FAILS the build: untested by accident and untested on purpose look identical in

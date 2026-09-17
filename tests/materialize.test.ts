@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import { stubNonBuiltInProviders } from "./only-builtin-providers.js";
 import { assembleSheets, assembleSheetsWithReport, type AssembleOpts, type SheetDictionaryBinding, type SheetInputs } from "../src/assemble";
 import { pickLang } from "../src/types";
+import { validateInput } from "../src/validate";
 import type { Category, Parameter, ParameterSheetInput, SimpleParameter } from "../src/types";
 
 // The metadata provider registry is a process-wide singleton (see
@@ -1003,6 +1004,23 @@ parameters:
     expect(pickLang(revoked.out_of_scope!.reason, "en")).toContain("offers no way to choose one");
     // An ordinary row is untouched.
     expect(params(input).find((p) => p.key === "ordinary")!.out_of_scope).toBeUndefined();
+  });
+
+  // WHO decided, carried on the exclusion itself. A record that prints this row
+  // beside the project's own out-of-scope rows says two different things under
+  // one heading — see renderExcluded. Absent means the project, so every model
+  // written before this field reads as it always did.
+  it("says the product set it aside, not the project", () => {
+    const input = assembleSheets(sheetInputs([]), uiOpts());
+    expect(params(input).find((p) => p.key === "revoked_at")!.out_of_scope!.by).toBe("product");
+  });
+
+  // …and the model that carries it still validates. The schema refuses a field
+  // it does not know, so a new one that never reached it would fail every
+  // `validate -i` on a freshly imported model.
+  it("leaves the model valid", () => {
+    const input = assembleSheets(sheetInputs([]), uiOpts());
+    expect(() => validateInput(JSON.parse(JSON.stringify(input)))).not.toThrow();
   });
 
   // The claim is about the UI, not about writability: the project sets this

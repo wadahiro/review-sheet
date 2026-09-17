@@ -531,6 +531,20 @@ export type TestDeclaration = {
 export type OutOfScope = {
   reason: LangText;
   owner?: string;
+  // WHO decided this row is not reviewed here. Absent (the normal case) means
+  // the PROJECT did, in its own sheet.yml — "we designed this and put it
+  // outside this review's remit", which is what an out-of-scope table is for.
+  //
+  // `"product"` means nothing was decided at all: the tool derived it from the
+  // dictionary alone (a field the product's admin UI shows without offering any
+  // way to choose it — DictionaryParam.ui), for a row nobody set. Those rows do
+  // exist on the parameter sheet, as ledger rows, but they carry no decision to
+  // be in or out of anyone's remit — so a record that lists them beside the
+  // project's own says two different things under one heading.
+  //
+  // Absent on every model built before this field, which is why absence is the
+  // project case rather than the other way round.
+  by?: "product";
 };
 
 // Where a parameter's value comes from. `overlay` = per-environment variable

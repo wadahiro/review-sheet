@@ -2,7 +2,7 @@
 // extract/apply/verify all go through resolveParser() instead of per-format
 // `if (fmt === "...")` chains.
 
-import type { SourceLocation, LangText, ContainerNode } from "./types.js";
+import type { SourceLocation, LangText, ContainerNode, OutOfScope } from "./types.js";
 import { sharedRegistry } from "./registry.js";
 
 export type Entry = {
@@ -39,7 +39,7 @@ export type Entry = {
   description?: string;
   default?: string;
   remarks?: string;
-  out_of_scope?: { reason: LangText; owner?: string };
+  out_of_scope?: OutOfScope;
   extra?: Record<string, string>;
   // File-level directives (annotation parser): override the sheet name, and tag
   // the value as a Pattern B instance so same-key values across files group.

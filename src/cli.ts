@@ -1175,11 +1175,15 @@ program
   .option("-r, --results <file>", "The answers (omit for the specification before any run: every item reads as not yet run)")
   .option("--lang <lang>", "ja | en (default: ja)", "ja")
   .option("--include-defaults", "Print the unset-parameter items as rows too, instead of one line counting them")
+  // A separate axis from the rows: one is "enumerate them", the other is
+  // "mention them". Reaching the second only through the first answered "drop
+  // one sentence" with several thousand lines.
+  .option("--no-defaults-summary", "Leave out the line counting the unset parameters, without printing them as rows. What it removed is reported here instead")
   .option(
     "--timezone <zone>",
     "Read the recorded instants in this IANA zone (Asia/Tokyo), offset kept. The instant is the fact and the zone is how it is read, so it is decided here rather than recorded; omitted, times print exactly as the results file holds them. It moves the per-row date too — that one was not merely raw but wrong, taking the date off the UTC instant, so a run at 23:30Z showed the day before the one the operator was standing in"
   )
-  .action((opts: { input: string; unit?: string; doc?: string; results?: string; lang: string; includeDefaults?: boolean; timezone?: string }) => {
+  .action((opts: { input: string; unit?: string; doc?: string; results?: string; lang: string; includeDefaults?: boolean; defaultsSummary?: boolean; timezone?: string }) => {
     if (opts.timezone !== undefined) {
       // A zone nobody recognises must not fall back to UTC silently: the whole
       // point is that the reader trusts the time in front of them.
@@ -1221,6 +1225,14 @@ program
         const blocks = renderTestDoc(plan, results, t.unit, {
           lang,
           includeDefaults: opts.includeDefaults === true,
+          // commander's own convention for `--no-x`: the field is `x`, it
+          // defaults to true, and the flag sets it false. Read as `=== false`
+          // so a caller that never passes the option behaves as before.
+          defaultsSummary: opts.defaultsSummary !== false,
+          onDefaultsOmitted: (o) =>
+            console.error(
+              `--no-defaults-summary: ${o.unit} — ${o.items} unset parameter(s) are not mentioned in the record (${o.answered} of them were checked by this run)`
+            ),
           ...(opts.timezone === undefined ? {} : { timezone: opts.timezone }),
         });
         blocks["test:excluded"] = renderExcluded(report.excluded, t.unit, lang);

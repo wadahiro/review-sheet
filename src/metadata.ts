@@ -5,7 +5,7 @@
 // resolve time, self-registering providers).
 
 import type { KeyTransformStep } from "./keytransform.js";
-import { pickLang, type LangText, type ParamOption } from "./types.js";
+import { pickLang, type LangText, type OutOfScope, type ParamOption } from "./types.js";
 import { sharedRegistry } from "./registry.js";
 import type { Binding } from "./bind.js";
 
@@ -194,7 +194,7 @@ export type MetadataResult = {
   presence_label?: LangText;
   // Whether this value is a credential — see types.ts's ParameterBase.secret.
   secret?: boolean;
-  out_of_scope?: { reason: LangText; owner?: string };
+  out_of_scope?: OutOfScope;
   provenance: LangProvenance;
 };
 
@@ -270,7 +270,7 @@ export type ResolvedMetadata = {
   // The product's word for presence — see MetadataEntry.presence_label.
   presence_label?: LangText;
   secret?: boolean;
-  out_of_scope?: { reason: LangText; owner?: string };
+  out_of_scope?: OutOfScope;
   provenance?: LangProvenance;
   contributions: Record<string, number>;
 };

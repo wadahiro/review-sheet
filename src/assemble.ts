@@ -2983,7 +2983,7 @@ export function assembleSheetsWithReport(
         // A project's own out_of_scope is applied later, in fileDrafts, and
         // overwrites this one — the project has the last word on its own
         // review remit, as everywhere else.
-        d.param.out_of_scope = { reason: UI_READONLY_REASON };
+        d.param.out_of_scope = { reason: UI_READONLY_REASON, by: "product" };
       }
       keptDrafts.push(d);
     }
