@@ -61,6 +61,12 @@ type Messages = {
   // What the browser said when it refused to read the dropped folder.
   dropFailed: (reason: string) => string;
   droppedFolder: (sheets: number) => string;
+  // NAMES THE SCOPE, NEVER THE FIELDS. The search index is the key, the
+  // value(s), the default, the description, the remarks, every `extra`, the
+  // sheet's names, the category path, and every line of a document sheet's
+  // markdown down to its table cells and fenced blocks. A label listing three
+  // of those is a list that goes stale the next time one is added — and had:
+  // it said "headings, parameters, comments" while matching all of the above.
   navSearchTip: string;
   navSearchPlaceholder: string;
   navNoResults: string;
@@ -311,8 +317,8 @@ const ja: Messages = {
     `フォルダを読み取れませんでした（${reason}）。\n\n` +
     "ブラウザがこのフォルダの読み取りを拒否しています。zip を展開したフォルダで試すか、別のブラウザで開いてみてください。",
   droppedFolder: (sheets: number) => `表示中: 選んだフォルダ（${sheets} シート）。このファイル自身の内容ではありません`,
-  navSearchTip: "検索 — 見出し・設定項目・コメント (Cmd/Ctrl+K)",
-  navSearchPlaceholder: "見出し・設定項目・コメントを検索…",
+  navSearchTip: "この文書を検索 (Cmd/Ctrl+K)",
+  navSearchPlaceholder: "この文書を検索…",
   navNoResults: "該当する見出しがありません",
   versionLabel: "バージョン",
   compareVersions: "差分を比較",
@@ -481,8 +487,8 @@ const en: Messages = {
     `The folder could not be read (${reason}).\n\n` +
     "The browser refused to read it. Try the folder from the unzipped archive, or open this page in another browser.",
   droppedFolder: (sheets: number) => `Showing the folder you chose (${sheets} sheets) — not what this file was built from`,
-  navSearchTip: "Search — headings, parameters, comments (Cmd/Ctrl+K)",
-  navSearchPlaceholder: "Search headings, parameters, comments…",
+  navSearchTip: "Search this document (Cmd/Ctrl+K)",
+  navSearchPlaceholder: "Search this document…",
   navNoResults: "No matching headings",
   versionLabel: "Version",
   compareVersions: "Compare",
