@@ -280,9 +280,46 @@ describe("the index", () => {
     expect(front).not.toContain("ドラッグ");
     expect(front).toContain("保存した時点の内容のまま");
     expect(front).not.toContain("HTML を直接編集しても表示は変わりません");
-    expect(front).toContain("HTML そのものは編集しないでください");
     expect(frontDoor(doc(), "en")).not.toContain("Drag");
     expect(frontDoor(doc(), "en")).not.toContain("the next rebuild replaces");
+  });
+
+  // FOUR LINES CAME OFF, each one said again somewhere the reader is already
+  // looking. "Don't edit the HTML" is the first bullet from the other side —
+  // that one says to edit the `.md`. The pointer at `index.md` is what the page
+  // the second bullet opens is FOR. A hand-over note nobody reads to the end is
+  // a hand-over note, so what stays has to be what is only here.
+  it("says nothing the bullets or the page already say", () => {
+    for (const [lang, ...gone] of [
+      ["ja", "HTML そのものは編集しないでください", "目次は"],
+      ["en", "Do not edit the HTML itself", "The contents are in"],
+    ] as const) {
+      const front = frontDoor(doc(), lang);
+      for (const g of gone) expect(front).not.toContain(g);
+    }
+  });
+
+  // …and still says the four that are only here.
+  it("keeps the instructions the reader has nowhere else", () => {
+    const front = frontDoor(doc(), "ja");
+    expect(front).toContain("修正するのは `docs/` の中の `.md`");
+    expect(front).toContain("読むのは `viewer.html`");
+    expect(front).toContain("「フォルダを開く」で `docs/` フォルダを選びます");
+    expect(front).toContain("「1ファイルで保存」");
+  });
+
+  // The opening line says what the reader was handed. It used to say that AND
+  // name the two things in the folder — which the first two bullets then named
+  // again, three lines down.
+  it("opens by saying what this is, not by listing what is in it", () => {
+    for (const [lang, what, listed] of [
+      ["ja", "レビューと保守のためのパラメータシートです。", "中身は"],
+      ["en", "A parameter sheet, to review and to keep.", "The document itself is"],
+    ] as const) {
+      const front = frontDoor(doc(), lang);
+      expect(front).toContain(what);
+      expect(front).not.toContain(listed);
+    }
   });
 
   // WHEN THE FILE WAS WRITTEN is not a fact about the configuration. A rebuild

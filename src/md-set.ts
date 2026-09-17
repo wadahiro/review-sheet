@@ -380,7 +380,12 @@ export function frontDoor(data: SheetData, lang: Lang): string {
     ? [
         `# ${title}`,
         "",
-        `このフォルダは、レビューと保守のためのパラメータシートです。中身は \`${SET_DIR}/\` の markdown で、\`viewer.html\` はそれを読むためのページです。`,
+        // WHAT THIS IS, and nothing about how it is arranged. The second half
+        // of this line used to name the two things in the folder — which the
+        // first two bullets then named again, three lines further down. What a
+        // recipient cannot get from the title above or the bullets below is
+        // what the thing they were handed is FOR.
+        "レビューと保守のためのパラメータシートです。",
         "",
         "## 使い方",
         "",
@@ -388,15 +393,12 @@ export function frontDoor(data: SheetData, lang: Lang): string {
         "- **読むのは `viewer.html`** です。ダブルクリックで開きます。",
         `- **\`.md\` を修正したら、\`viewer.html\` の「フォルダを開く」で \`${SET_DIR}/\` フォルダを選びます。** 修正した内容が表示されます。\`viewer.html\` は開くたびに一度選ぶ必要があります。`,
         "- **「1ファイルで保存」** を押すと、そのとき表示していた内容を取り込んだ `viewer.html` がダウンロードされます。ダウンロード先をこのフォルダにすれば、いまの `viewer.html` を置き換えられます。フォルダを選ばずに読めますが、**保存した時点の内容のまま**です。`.md` を修正したら、選び直して保存し直してください。",
-        "- **HTML そのものは編集しないでください。** 作り直すと `viewer.html` は上書きされます。`.md` から作られるので、修正は `.md` に入れてください。",
-        "",
-        `目次は \`${SET_DIR}/index.md\` にあります。`,
         "",
       ]
     : [
         `# ${title}`,
         "",
-        `This folder is a parameter sheet, to review and to keep. The document itself is the markdown under \`${SET_DIR}/\`; \`viewer.html\` is the page that reads it.`,
+        "A parameter sheet, to review and to keep.",
         "",
         "## How to use this",
         "",
@@ -404,9 +406,6 @@ export function frontDoor(data: SheetData, lang: Lang): string {
         "- **Read it with `viewer.html`.** Double-click to open it.",
         `- **After editing, press "Open folder" in \`viewer.html\` and choose the \`${SET_DIR}/\` folder.** It shows what you changed. \`viewer.html\` asks for the folder each time it is opened.`,
         "- **\"Save as one file\"** downloads a `viewer.html` holding what is on screen — save it into this folder to replace the one here. That one opens without choosing a folder, but it holds what it held when you saved it, so edit a `.md` again and you choose the folder and save again.",
-        "- **Do not edit the HTML itself.** A rebuild overwrites `viewer.html`. It is built from the `.md`, so put the change there.",
-        "",
-        `The contents are in \`${SET_DIR}/index.md\`.`,
         "",
       ]
   ).join("\n");
