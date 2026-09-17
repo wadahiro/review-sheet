@@ -221,13 +221,13 @@ describe("what the taxonomy says about the headings", () => {
     renderTestDoc(planWith(), results, "u", { lang: "ja", ...opts })["test:taxonomy"];
 
   it("does not claim a heading for a sheet that has none", () => {
-    expect(taxonomy()).toContain("この文書に行を持つもの");
+    expect(taxonomy()).toContain("行を持つ");
   });
 
   // …and says the plain thing when it IS true: printing the unset rows gives
   // every sheet its heading back.
   it("claims one per sheet when every sheet has one", () => {
-    expect(taxonomy({ includeDefaults: true })).not.toContain("この文書に行を持つもの");
+    expect(taxonomy({ includeDefaults: true })).not.toContain("行を持つ");
   });
 
   // The sentence has two shapes — with functional items and without — and the
@@ -239,7 +239,7 @@ describe("what the taxonomy says about the headings", () => {
       "u",
       { lang: "ja" }
     )["test:taxonomy"];
-    expect(withFunctional).toContain("この文書に行を持つもの1つにつき1つ");
+    expect(withFunctional).toContain("行を持つ詳細設計シート1つにつき1つ");
     expect(withFunctional).toContain("機能確認");
   });
 

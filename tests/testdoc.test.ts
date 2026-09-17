@@ -299,7 +299,7 @@ describe("the tables a document is given", () => {
       { level: { ja: "小項目" }, raised: { ja: "設定を網羅" } },
     ];
     const b = renderTestDoc(p, results(), "server");
-    expect(b["test:taxonomy"]).toContain("詳細設計のシート。その環境の中の見出しで、項目表ごとに1つ");
+    expect(b["test:taxonomy"]).toContain("詳細設計シート。その環境の中の見出しで、項目表ごとに1つ");
     expect(b["test:taxonomy"]).not.toContain("機能確認");
   });
 
