@@ -472,6 +472,7 @@ export type JudgeWords = {
   consentNeeded: string;
   noFile: (host: string, path: string) => string;
   noValueHere: string;
+  secretNoExpectation: string;
   absentPass: string;
   absentFail: (path: string) => string;
   containerPass: string;
@@ -505,6 +506,7 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     consentNeeded: "実行者が明示的に許可したときだけ実施する",
     noFile: (host, path) => `${host} に ${path} がない`,
     noValueHere: "この環境について、シートは値を述べていない",
+    secretNoExpectation: "値は秘密として印されているため、この記録は期待値を持たない",
     absentPass: "削除されていることを確認（配布物にあり、この案件では設定しない）",
     absentFail: (path) => `${path} にまだ存在する（配布物から削除したはずの設定）`,
     containerPass: "この設定ブロックがデプロイ済みファイルにあることを確認（ブロック自体に値は無い）",
@@ -536,6 +538,7 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     consentNeeded: "run only when the operator explicitly allows it",
     noFile: (host, path) => `${host} does not have ${path}`,
     noValueHere: "the sheet states no value for this environment",
+    secretNoExpectation: "the value is marked secret, so the plan carries no expectation to check it against",
     absentPass: "confirmed gone (shipped by the distribution, not set by this project)",
     absentFail: (path) => `still present in ${path} (a setting this project removes)`,
     containerPass: "the block is in the deployed file (a block holds no value of its own)",
@@ -893,7 +896,18 @@ export function judgeFiles(
         continue;
       }
       if (item.expected === undefined) {
-        out.results.push({ target, at, evidence, status: "not_run", reason: t.noValueHere });
+        // TWO REASONS, and they were one sentence. A row the sheet says nothing
+        // about in this environment genuinely has no value here. A SECRET row
+        // does — the sheet states `${vault.corp-ldap-bind}` — and what it does
+        // not have is an expectation, because the plan refuses to carry one
+        // (testplan.ts, `quiet`). Saying "the sheet states no value" of a row
+        // whose value is right there in the sheet sends a reader to look for a
+        // gap that is not there.
+        out.results.push({
+          target, at, evidence,
+          status: "not_run",
+          reason: item.quiet === true ? t.secretNoExpectation : t.noValueHere,
+        });
         continue;
       }
       const seen = here ?? elsewhere?.entries.get(key);
