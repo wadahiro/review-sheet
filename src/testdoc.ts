@@ -692,7 +692,18 @@ export function renderExcluded(
   covered: {
     rows: { unit: string; sheet: string; component?: string; key: string; reason: LangText; functional: string }[];
     verdict: (unit: string, functionalId: string) => { text: string; status: string } | undefined;
-  } = { rows: [], verdict: () => undefined }
+  } = { rows: [], verdict: () => undefined },
+  // Whether the rows the PRODUCT set aside are printed at all.
+  //
+  // The same axis as the unset-parameter line (TestDocOptions.defaultsSummary):
+  // a project whose parameter sheet already marks these rows per-row does not
+  // want the same fact restated here in other words — and this group is the one
+  // carrying no decision, so there is nothing in it a reviewer signs. Left out
+  // here, never unreported: `onProductOmitted` names what went.
+  opts: {
+    productExclusions?: boolean;
+    onProductOmitted?: (o: { unit: string; rows: number }) => void;
+  } = {}
 ): string {
   const t = T[lang];
   const mine = excluded.filter((e) => e.unit === unitName);
@@ -723,7 +734,10 @@ export function renderExcluded(
   );
   // Grouped by the reason rather than by the one rule that produces them today:
   // `by` is the contract, and the sentence is a dictionary's to write.
-  if (undecided.length > 0) {
+  if (undecided.length > 0 && opts.productExclusions === false) {
+    opts.onProductOmitted?.({ unit: unitName, rows: undecided.length });
+  }
+  if (undecided.length > 0 && opts.productExclusions !== false) {
     const byReason = new Map<string, typeof undecided>();
     for (const e of undecided) {
       // A reason with no text in either language would group every such row

@@ -1179,11 +1179,15 @@ program
   // "mention them". Reaching the second only through the first answered "drop
   // one sentence" with several thousand lines.
   .option("--no-defaults-summary", "Leave out the line counting the unset parameters, without printing them as rows. What it removed is reported here instead")
+  // Same axis, different section: what the PRODUCT set aside carries no
+  // decision, so a project whose parameter sheet already marks those rows has
+  // nothing to restate here.
+  .option("--no-product-exclusions", "Leave out the out-of-scope rows the TOOL derived from a dictionary (out_of_scope.by = product), keeping only the ones this project declared. What it removed is reported here instead")
   .option(
     "--timezone <zone>",
     "Read the recorded instants in this IANA zone (Asia/Tokyo), offset kept. The instant is the fact and the zone is how it is read, so it is decided here rather than recorded; omitted, times print exactly as the results file holds them. It moves the per-row date too — that one was not merely raw but wrong, taking the date off the UTC instant, so a run at 23:30Z showed the day before the one the operator was standing in"
   )
-  .action((opts: { input: string; unit?: string; doc?: string; results?: string; lang: string; includeDefaults?: boolean; defaultsSummary?: boolean; timezone?: string }) => {
+  .action((opts: { input: string; unit?: string; doc?: string; results?: string; lang: string; includeDefaults?: boolean; defaultsSummary?: boolean; productExclusions?: boolean; timezone?: string }) => {
     if (opts.timezone !== undefined) {
       // A zone nobody recognises must not fall back to UTC silently: the whole
       // point is that the reader trusts the time in front of them.
@@ -1235,10 +1239,19 @@ program
             ),
           ...(opts.timezone === undefined ? {} : { timezone: opts.timezone }),
         });
-        blocks["test:excluded"] = renderExcluded(report.excluded, t.unit, lang, {
-          rows: report.coveredElsewhere,
-          verdict: coveringVerdict(plan, results, lang),
-        });
+        blocks["test:excluded"] = renderExcluded(
+          report.excluded,
+          t.unit,
+          lang,
+          { rows: report.coveredElsewhere, verdict: coveringVerdict(plan, results, lang) },
+          {
+            productExclusions: opts.productExclusions !== false,
+            onProductOmitted: (o) =>
+              console.error(
+                `--no-product-exclusions: ${o.unit} — ${o.rows} row(s) the product set aside are not named in the record`
+              ),
+          }
+        );
         const before = readFileSync(t.path, "utf-8");
         // The item tables are the run; a document that takes none of them has
         // lost it. Everything else here is a restatement the document may decline.

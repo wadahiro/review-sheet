@@ -148,3 +148,45 @@ describe("the line counting the parameters nobody set", () => {
     expect(said).toEqual([]);
   });
 });
+
+// …and the group that carries no decision can be left out entirely.
+//
+// The same axis as the unset-parameter line: a project whose parameter sheet
+// already marks these rows per-row has nothing to restate here, and this group
+// is the one holding nothing a reviewer signs. The axis is the SECTION, not the
+// rows — the project's own out-of-scope table is untouched either way.
+describe("leaving out what the product set aside", () => {
+  const out = (o: Record<string, unknown>) => renderExcluded(EXCLUDED, "server", "ja", undefined, o as never);
+
+  it("is printed by default", () => {
+    expect(out({})).toContain("### 決定の存在しない項目");
+  });
+
+  it("goes away when the record asks it to", () => {
+    expect(out({ productExclusions: false })).not.toContain("### 決定の存在しない項目");
+    expect(out({ productExclusions: false })).not.toContain("notBefore");
+  });
+
+  // The project's own decisions are a different claim and stay.
+  it("leaves the project's own out-of-scope table alone", () => {
+    expect(out({ productExclusions: false })).toContain("smtpServer.password");
+  });
+
+  it("still reports what it removed, to the build", () => {
+    const said: { unit: string; rows: number }[] = [];
+    out({ productExclusions: false, onProductOmitted: (o: never) => said.push(o) });
+    expect(said).toEqual([{ unit: "server", rows: 2 }]);
+  });
+
+  it("reports nothing for a unit that had none", () => {
+    const said: unknown[] = [];
+    renderExcluded(
+      EXCLUDED.filter((e) => e.by === undefined),
+      "server",
+      "ja",
+      undefined,
+      { productExclusions: false, onProductOmitted: () => said.push(1) } as never
+    );
+    expect(said).toEqual([]);
+  });
+});

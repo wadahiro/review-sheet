@@ -4112,6 +4112,11 @@ printed by the build instead:
 The record is the project's to shape; whether it is complete is not a private
 matter.
 
+`--no-product-exclusions` is the same axis one section over: it drops the
+out-of-scope rows the TOOL derived from a dictionary (`out_of_scope.by =
+"product"` — the group that carries no decision at all), keeping the ones this
+project declared. Also reported at build time, for the same reason.
+
 A unit holding testable rows that declares neither `method` nor `not_tested`
 FAILS the build: untested by accident and untested on purpose look identical in
 a finished document, and only the second is allowed to be silent. The taxonomy's
