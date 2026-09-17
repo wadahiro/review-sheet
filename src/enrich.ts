@@ -457,6 +457,12 @@ function enrichParam(
       param.out_of_scope = resolved.out_of_scope;
       wrote = true;
     }
+    // Same shape, same reason: the project states it in sheet.yml, and nothing
+    // between there and the model carries it otherwise.
+    if (param.covered_by === undefined && resolved.covered_by !== undefined) {
+      param.covered_by = resolved.covered_by;
+      wrote = true;
+    }
 
     // Provenance reflects where `description` came from — only set when this
     // pass actually supplied a description (a preset description keeps no

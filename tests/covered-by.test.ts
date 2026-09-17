@@ -155,3 +155,40 @@ describe("the record's third group", () => {
     expect(render(results("pass"))).toContain("- ldap > corp > `bindCredential` — 管理 API はマスクして返す");
   });
 });
+
+// …and the field has to SURVIVE the trip. Every test above builds the model by
+// hand; a project writes `covered_by` in sheet.yml, and between there and the
+// model sits enrich, which copies the project's per-row metadata onto the row.
+// It copied `out_of_scope` and not this one, so the whole feature above did
+// nothing at all on a real build — found by running one.
+describe("from sheet.yml to the model", () => {
+  it("is carried onto the row by enrich", async () => {
+    const { enrich } = await import("../src/enrich");
+    const { listMetadataProviders } = await import("../src/metadata");
+    await import("../src/providers/index.js");
+    const project = [
+      "sheets:",
+      "  ldap:",
+      "    params:",
+      "      bindCredential:",
+      '        description: { ja: "バインド資格情報", en: "bind credential" }',
+      "        covered_by:",
+      '          reason: { ja: "マスクされる", en: "masked" }',
+      "          functional: ldap-connection",
+      "",
+    ].join("\n");
+    const { input } = enrich(
+      {
+        metadata: { title: "t" },
+        sheets: [{ name: "ldap", categories: [{ name: "corp", params: [{ key: "bindCredential", value: "${vault.corp}" }] }] }],
+      } as never,
+      {
+        readFile: (p: string) => (p === "sheet.yml" ? project : null),
+        project: "sheet.yml",
+        providers: listMetadataProviders(),
+      } as never
+    );
+    const row = (input.sheets[0].categories[0].params ?? [])[0] as { covered_by?: unknown };
+    expect(row.covered_by).toEqual({ reason: { ja: "マスクされる", en: "masked" }, functional: "ldap-connection" });
+  });
+});
