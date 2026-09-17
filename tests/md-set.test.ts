@@ -256,8 +256,15 @@ describe("the index", () => {
     expect(front).toContain("修正するのは `docs/` の中の `.md`");
     expect(front).toContain("1ファイルで保存");
     expect(front).toContain("viewer.html");
-    // Named by CONTENT, because the delivery's own name is whatever `-o` said.
-    expect(front).toContain("このファイルがあるフォルダを選びます");
+    // The folder the picker actually wants — which is the one holding the
+    // markdown, not the one holding the page. Named by its own fixed name,
+    // because the delivery's is whatever `-o` said.
+    expect(front).toContain("`docs/` フォルダを選びます");
+    expect(front).not.toContain("このファイルがあるフォルダ");
+    // …and the save replaces the page it came from, so the reader is told to
+    // put it back here rather than left with two files.
+    expect(front).not.toContain("sheet.html");
+    expect(front).toContain("いまの `viewer.html` を置き換えられます");
     // No stamp, no order: two files, two roles.
     expect(front).not.toContain("rs:model");
     expect(front).not.toContain("## 目次");
@@ -276,6 +283,15 @@ describe("the index", () => {
     expect(front).toContain("HTML そのものは編集しないでください");
     expect(frontDoor(doc(), "en")).not.toContain("Drag");
     expect(frontDoor(doc(), "en")).not.toContain("the next rebuild replaces");
+  });
+
+  // The English half says the same two things, and had the same two wrong.
+  it("names the same folder and the same saved file in English", () => {
+    const front = frontDoor(doc(), "en");
+    expect(front).toContain("choose the `docs/` folder");
+    expect(front).not.toContain("the folder this file is in");
+    expect(front).not.toContain("sheet.html");
+    expect(front).toContain("save it into this folder to replace the one here");
   });
 
   it("lists the chapters in the order the document declares, as links", () => {
