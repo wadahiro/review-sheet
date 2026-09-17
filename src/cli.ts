@@ -17,7 +17,7 @@ import { SET_DIR } from "./set-block.js";
 import type { ParamData } from "./prompt.js";
 import { validateInput, validateReview, validateResults, validateObservation, validateVersionedInput, isVersionedInput } from "./validate.js";
 import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
-import { renderTestDoc, renderExcluded, coveringVerdict, injectBlocks, unitDocuments } from "./testdoc.js";
+import { renderTestDoc, renderExcluded, coveringTestText, injectBlocks, unitDocuments } from "./testdoc.js";
 import { judgeFiles, evidenceFrom, collectPlan, registerModelChannels, answerTheRest, judgeFunctional, rpmQuery, runsFrom } from "./judge.js";
 import { findBakedSecrets, formatBakedSecrets, findSecretsInEvidence, formatEvidenceLeaks } from "./secrets.js";
 import { listProbeRules, listDocumentRouters } from "./channel.js";
@@ -1243,7 +1243,7 @@ program
           report.excluded,
           t.unit,
           lang,
-          { rows: report.coveredElsewhere, verdict: coveringVerdict(plan, results, lang) },
+          { rows: report.coveredElsewhere, test: coveringTestText(plan, lang) },
           {
             productExclusions: opts.productExclusions !== false,
             onProductOmitted: (o) =>

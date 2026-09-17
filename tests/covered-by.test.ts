@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from "bun:test";
 import { buildTestPlan, formatTestPlanReport } from "../src/testplan";
-import { renderExcluded, coveringVerdict } from "../src/testdoc";
+import { renderExcluded, coveringTestText } from "../src/testdoc";
 import { validateInput } from "../src/validate";
 import type { ParameterSheetInput } from "../src/types";
 import type { TestResults } from "../src/testresults";
@@ -128,45 +128,48 @@ describe("a row declared covered by a functional test", () => {
 
 describe("the covered row in the table", () => {
   const rows = [{ unit: "u", sheet: "ldap", component: "corp", key: "bindCredential", reason: COVER.reason, functional: "ldap-connection" }];
-  const results = (status: string): TestResults =>
-    ({ runs: {}, results: [], functional: [{ unit: "u", instance: "local", id: "ldap-connection", item: "LDAP 疎通確認", status }] }) as never;
-  const render = (r: TestResults): string => {
+  const render = (): string => {
     const { plan } = planOf({ covered_by: COVER });
-    return renderExcluded([], "u", "ja", { rows, verdict: coveringVerdict(plan, r, "ja") });
+    return renderExcluded([], "u", "ja", { rows, test: coveringTestText(plan, "ja") });
   };
 
+  // Its id is an address, not prose: "ldap-connection" in a record a reviewer
+  // reads is the tool's filing system on the page.
   it("names the covering test by its own words, not by its id", () => {
-    expect(render(results("pass"))).toContain("LDAP 疎通確認");
-    expect(render(results("pass"))).not.toContain("ldap-connection");
+    expect(render()).toContain("LDAP 疎通確認");
+    expect(render()).not.toContain("ldap-connection");
   });
 
-  // The hazard one level up: covered by a test that did not run is not covered,
-  // and a record that prints only "covered by X" hides exactly that.
-  it("prints the covering test's own verdict beside the claim", () => {
-    expect(render(results("pass"))).toContain("（OK）");
-    expect(render(results("not_run"))).toContain("（未実施）");
-    expect(render(results("fail"))).toContain("（NG）");
-  });
-
-  it("reads a covering test nobody answered as not run", () => {
-    expect(render({ runs: {}, results: [], functional: [] } as never)).toContain("（未実施）");
+  // That test has its own row in the item table of this same record, and
+  // printing its result here too is the duplication this section keeps losing.
+  it("does not repeat the covering test's result", () => {
+    expect(render()).not.toContain("未実施");
+    expect(render()).not.toContain("OK");
   });
 
   // One table with the others, told apart by what its reason column says —
   // which is the column a reader is reading for exactly that question.
   it("is a row of the same table, carrying its own reason", () => {
-    const line = render(results("pass")).split("\n").find((l) => l.includes("bindCredential"))!;
+    const line = render().split("\n").find((l) => l.includes("bindCredential"))!;
     expect(line).toContain("ldap > corp > `bindCredential`");
     expect(line).toContain("管理 API はマスクして返す");
-    expect(render(results("pass"))).not.toContain("###");
+    expect(render()).not.toContain("###");
+  });
+
+  // A covered_by naming a test the plan has no words for falls back to the id
+  // rather than printing nothing — the check at plan time makes that
+  // unreachable through the CLI, and a caller building a plan by hand can
+  // still get here.
+  it("falls back to the id when the plan has no such test", () => {
+    const { plan } = planOf({ covered_by: COVER });
+    const text = renderExcluded([], "u", "ja", {
+      rows: [{ ...rows[0], functional: "elsewhere" }],
+      test: coveringTestText(plan, "ja"),
+    });
+    expect(text).toContain("elsewhere");
   });
 });
 
-// …and the field has to SURVIVE the trip. Every test above builds the model by
-// hand; a project writes `covered_by` in sheet.yml, and between there and the
-// model sits enrich, which copies the project's per-row metadata onto the row.
-// It copied `out_of_scope` and not this one, so the whole feature above did
-// nothing at all on a real build — found by running one.
 describe("from sheet.yml to the model", () => {
   it("is carried onto the row by enrich", async () => {
     const { enrich } = await import("../src/enrich");

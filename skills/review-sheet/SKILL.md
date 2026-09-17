@@ -358,13 +358,12 @@ The row stays in scope, in the sheet, with its source map — `verify` and `appl
 treat it like any other row, because it is one. What changes is the RECORD: it
 produces no test item (an item is something that should have been answered, and
 this cannot be), and it becomes a row of the out-of-scope table whose reason
-names the covering test and that test's own verdict.
+names the covering test in that test's own words. Not its result: the covering
+test has its own row in the item table of the same record.
 
 `functional` is an **id**, checked at plan time: a `covered_by` naming a test
 the unit does not have fails the build, listing the ids it does have. "Covered
-by X" where nothing is X is worse than saying nothing — it reads as covered. The
-covering test's verdict is printed because the same hazard survives one level
-up: covered by a test that did not run is not covered.
+by X" where nothing is X is worse than saying nothing — it reads as covered.
 
 Settable on a category too, and inherited by everything under it — "read back
 masked" is usually true of a whole credentials block rather than of one row.
