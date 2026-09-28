@@ -89,13 +89,13 @@ export function evidencePreviews(
     //
     // It used to be carried anyway, filed under the sheet whose values it
     // answers for — which in a set is a chapter with no column to link it from.
-    // Measured on a real delivery: 47 files, 0 of them reachable from either
-    // output.
+    // Measured on a real delivery: every one of them unreachable, from the set
+    // and from the HTML alike.
     //
-    // WHICH evidence is cited moves with what the record PRINTS: 1072 of the
-    // unset-parameter verdicts on that same delivery carry evidence, and
-    // `test-doc --include-defaults` puts those rows in the record, which cites
-    // them, which carries them. The rule is one rule either way.
+    // WHICH evidence is cited moves with what the record PRINTS: most
+    // unset-parameter verdicts carry evidence, and `test-doc
+    // --include-defaults` puts those rows in the record, which cites them,
+    // which carries them. The rule is one rule either way.
     //
     // Restricted to `observed`, not applied to every nature: this is sound
     // because of the no-keys invariant, and a nature whose documents a row CAN

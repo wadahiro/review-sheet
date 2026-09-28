@@ -77,6 +77,13 @@ const schema = {
     empty_means_unset: { type: "boolean" },
     include: { type: "array", items: { type: "string" } },
     exclude: { type: "array", items: { type: "string" } },
+    // WHICH ROWS THIS SHEET HAS, when the snapshots above are not the plans that
+    // proposed them — see `onlyRowsOf`. Keyed by environment, exactly as
+    // `snapshots` is: two environments are two stacks, and a `count` that
+    // differs between them, or a module only one of them has, makes their
+    // proposing plans two different documents. One path for both would have
+    // scoped the second environment's rows by the first one's stack.
+    rows_from: { type: "object", minProperties: 1, additionalProperties: { type: "string" } },
     // component id -> a directory of *.tf, resolved relative to the spec. What
     // gets previewed beside the sheet is the module's own SOURCE, never the
     // plan (see the module doc and tfSourceKey below for why): a reviewer
@@ -93,6 +100,7 @@ export const terraformPlanRecipe: SheetRecipe = {
   schema,
   load(sheetSpec, io: RecipeIO): SheetInputs {
     const declaredKey = sheetSpec.key as KeyTransform | undefined;
+    const rowsFrom = sheetSpec.rows_from === undefined ? undefined : asPlainObject(sheetSpec.rows_from);
     if (declaredKey?.from === "key") {
       throw new Error(`terraform-plan recipe: "key.from" must be "path" — a plan's rows are addressed structurally`);
     }
@@ -114,7 +122,8 @@ export const terraformPlanRecipe: SheetRecipe = {
         component: { ...(declaredComponent ?? {}), from: "path", steps: [...COMPONENT_STEPS, ...(declaredComponent?.steps ?? [])] },
       }
     );
-    const withDictKeySteps: SheetInputs = { ...si, dictKeySteps: DICT_KEY_STEPS };
+    const scoped = rowsFrom === undefined ? si : onlyRowsOf(si, sheetSpec, io, rowsFrom);
+    const withDictKeySteps: SheetInputs = { ...scoped, dictKeySteps: DICT_KEY_STEPS };
     const sourcesSpec = sheetSpec.sources as Record<string, JsonValue> | undefined;
     if (sourcesSpec === undefined) return withDictKeySteps;
     // `sources:` is not merely a preview request — declaring it says "this
@@ -131,6 +140,114 @@ export const terraformPlanRecipe: SheetRecipe = {
 };
 
 registerRecipe(terraformPlanRecipe);
+
+// THE PLANS THAT PROPOSED THE STACK DEFINE WHICH ROWS THE SHEET HAS; the plans
+// rendered against the state of the applied stacks supply their VALUES.
+//
+// After an apply, `terraform plan` reports `No changes.`, and that is a real
+// statement worth carrying: Terraform itself attests that what is deployed
+// matches what was proposed. Read as a sheet, though, it is a bigger document
+// — a create plan leaves every provider-computed attribute out of
+// `change.after` (they are `after_unknown`: nothing has assigned them yet),
+// while a state plan knows all of them, so `after` also holds every ARN, id,
+// DNS name and endpoint the provider issued — on a stack of any size, several
+// times as many keys as the sheet had.
+//
+// Those extra keys are nobody's decision, and they cannot be told from the
+// arguments whose value the PROVIDER defaulted — which are real rows, the
+// ledger's whole point — inside the state plan: `after_unknown` is empty there,
+// and
+// `configuration.expressions` separates written from unwritten, which is a
+// different cut. The create plan is the only document that knows — so it is
+// what this names, rather than a rule inferred from the file in hand.
+//
+// PER ENVIRONMENT, like `snapshots`. Two environments are two stacks: a `count`
+// that differs between them, or a module only one of them has, makes their
+// proposing plans two different documents, and one path for both would scope
+// the second environment's rows by the first one's stack.
+//
+// By KEYS, not by `after_unknown`. The two agree on the computed attributes and
+// the key set also handles what `after_unknown` cannot: a list the provider
+// sizes at apply time is one unexpanded entry there and N expanded children in
+// the state plan, and a child whose parent is not a row is not a row either.
+//
+// Each reference plan runs through the SAME pipeline, by loading it as if it
+// were that environment's snapshot: the key a row gets is the product of
+// KEY_STEPS, the project's own steps, `include`/`exclude` and the extractor's
+// options, and a second spelling of that here would drift from the first on the
+// day any of them changes.
+function onlyRowsOf(
+  si: SheetInputs,
+  sheetSpec: Record<string, JsonValue>,
+  io: RecipeIO,
+  rowsFrom: Record<string, JsonValue>
+): SheetInputs {
+  const name = asString(sheetSpec.name, "name");
+  const snapshots = asPlainObject(sheetSpec.snapshots);
+  // An environment named here that the sheet does not have scopes nothing and
+  // looks like it worked — the same silent no-op every other declaration in
+  // this build is checked against what the spec actually has.
+  const stray = Object.keys(rowsFrom).filter((i) => !io.instances.includes(i));
+  if (stray.length > 0) {
+    throw new Error(
+      `terraform-plan recipe: sheet "${name}": rows_from names ${stray.join(", ")}, ` +
+        `which this sheet does not have (${io.instances.join(", ")})`
+    );
+  }
+  // …and an environment whose snapshot is NOT scoped keeps every key that
+  // snapshot holds. On a sheet declaring rows_from at all, that is the state
+  // plan's extra rows arriving unannounced in one environment only — which is
+  // the confusion this field exists to remove, so it is refused rather than
+  // half-applied.
+  const unscoped = Object.keys(snapshots).filter((i) => rowsFrom[i] === undefined);
+  if (unscoped.length > 0) {
+    throw new Error(
+      `terraform-plan recipe: sheet "${name}": rows_from covers ${Object.keys(rowsFrom).join(", ")} and this sheet ` +
+        `also has a snapshot for ${unscoped.join(", ")} — name the plan that proposed each, or the unnamed ` +
+        `environments keep every key their snapshot holds while the others do not`
+    );
+  }
+  const dropped = new Set<string>();
+  const layers = si.layers.map((layer) => {
+    const at = layer.kind === "overlay" ? layer.instance : undefined;
+    const from = at === undefined ? undefined : rowsFrom[at];
+    if (from === undefined) return layer;
+    const reference = terraformPlanRecipe.load(
+      { ...sheetSpec, snapshots: { [at!]: from }, rows_from: undefined, sources: undefined } as never,
+      { ...io, instances: [at!] }
+    );
+    const rows = new Set<string>();
+    for (const l of reference.layers) for (const key of l.entries.keys()) rows.add(key);
+    const entries: typeof layer.entries = new Map();
+    for (const [key, entry] of layer.entries) {
+      if (rows.has(key)) entries.set(key, entry);
+      else dropped.add(key);
+    }
+    return { ...layer, entries };
+  });
+  // NEVER SILENT. A sheet holding fewer rows than the file it was read from is
+  // exactly the loss this whole area is organized against, so the count and the
+  // reason travel together — and the reason is the useful half: these are not
+  // rows somebody forgot to categorise.
+  if (dropped.size > 0) {
+    const some = [...dropped].slice(0, 5).join(", ");
+    console.warn(
+      `terraform-plan recipe: sheet "${name}": ${dropped.size} key(s) are in the snapshot(s) and not in the plan ` +
+        `that proposed them, so they are not rows — a plan rendered against state also holds what the provider ` +
+        `assigned at apply time, which the proposing plan could not name ` +
+        `(${some}${dropped.size > 5 ? ", …" : ""})`
+    );
+  }
+  return { ...si, layers };
+}
+
+const asPlainObject = (v: JsonValue | undefined): Record<string, JsonValue> =>
+  v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, JsonValue>) : {};
+
+const asString = (v: JsonValue | undefined, what: string): string => {
+  if (typeof v !== "string") throw new Error(`terraform-plan recipe: ${what} must be a string`);
+  return v;
+};
 
 // The sheet's own final row keys, normalized -> every raw key that collapses
 // onto that normalization, in row order. The snapshot recipe backing this one

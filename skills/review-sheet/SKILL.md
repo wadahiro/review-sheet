@@ -1297,6 +1297,53 @@ The recipe never runs Terraform. A plan is an ordinary committed artifact, which
 is what keeps `import --spec` hermetic — a stale plan is a stale sheet, and
 re-rendering is part of changing the HCL.
 
+**`rows_from:` — the same sheet, holding what the apply produced.** After an
+apply, `terraform plan` against the real state reports `No changes.`, and that
+is worth carrying: Terraform itself attests that what is deployed is what was
+proposed. Read as a sheet, though, it is a bigger document — a create plan
+leaves every provider-computed attribute out of `change.after`
+(`after_unknown`: nothing has assigned them yet), while a state plan knows all
+of them, so `after` also holds every ARN, id, DNS name and endpoint the provider
+issued — several times as many keys as the sheet had.
+
+```yaml
+  snapshots:                                                    # the values
+    staging:    ../../infra/terraform/plan.staging.applied.json
+    production: ../../infra/terraform/plan.production.applied.json
+  rows_from:                                                    # the rows
+    staging:    ../../infra/terraform/plan.staging.json
+    production: ../../infra/terraform/plan.production.json
+```
+
+The plan that PROPOSED the stack defines which rows the sheet has; the plan
+against state supplies their values. **Keyed by environment, exactly as
+`snapshots` is:** two environments are two stacks, and a `count` that differs
+between them or a module only one of them has makes their proposing plans two
+different documents — one path for both would scope the second environment's
+rows by the first one's stack. A sheet that scopes some of its snapshots and not
+others is refused, since the unnamed ones would keep every key their state plan
+holds while the others do not.
+
+Named rather than inferred, because the state plan cannot answer it: `after_unknown` is empty there, and
+`configuration.expressions` separates written from unwritten, which is a
+different cut — only the create plan knows which attributes did not exist yet.
+
+By its KEYS, not by reading `after_unknown`. The two agree on the computed
+attributes, and the key set also handles what `after_unknown` cannot: a list the
+provider sizes at apply time is one unexpanded entry there and N expanded
+children in the state plan, and a child whose parent is not a row is not a row
+either. What it leaves out is counted and named, like every other narrowing
+here.
+
+The reference plan runs through the same pipeline — `key:`, `include`/`exclude`
+and the extractor's options all apply to it — so the two key sets cannot drift.
+Undeclared, nothing changes.
+
+For per-row VERDICTS rather than a values sheet, the other axis is the judge:
+collect observations and answer the existing sheet's items with them. Either
+shape keeps one sheet; what neither wants is a second sheet whose extra rows are
+nobody's decision.
+
 #### `split:` — a source holding an identity-keyed list
 
 A configuration file often holds a LIST of things of one kind, each addressed
@@ -4112,7 +4159,7 @@ different words, and where reaching it through `--include-defaults` answered
 printed by the build instead:
 
 ```
---no-defaults-summary: server — 862 unset parameter(s) are not mentioned in the record (1083 of them were checked by this run)
+--no-defaults-summary: <unit> — N unset parameter(s) are not mentioned in the record (M of them were checked by this run)
 ```
 
 The record is the project's to shape; whether it is complete is not a private
