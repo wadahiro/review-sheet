@@ -100,6 +100,27 @@
             "required": [
               "router"
             ]
+          },
+          {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "document"
+                  ]
+                },
+                {
+                  "required": [
+                    "address"
+                  ]
+                },
+                {
+                  "required": [
+                    "router"
+                  ]
+                }
+              ]
+            }
           }
         ]
       }

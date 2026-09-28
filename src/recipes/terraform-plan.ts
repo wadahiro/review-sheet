@@ -123,7 +123,11 @@ export const terraformPlanRecipe: SheetRecipe = {
       }
     );
     const scoped = rowsFrom === undefined ? si : onlyRowsOf(si, sheetSpec, io, rowsFrom);
-    const withDictKeySteps: SheetInputs = { ...scoped, dictKeySteps: DICT_KEY_STEPS };
+    // …and how a DOCUMENT of this sheet has to be read. The same fact the
+    // extractor is given above, carried into the model so a judge reading a
+    // plan fetched later keys `resource_changes` the way every one of this
+    // sheet's addresses does — see SheetInputs.idFields.
+    const withDictKeySteps: SheetInputs = { ...scoped, dictKeySteps: DICT_KEY_STEPS, idFields: ["address"] };
     const sourcesSpec = sheetSpec.sources as Record<string, JsonValue> | undefined;
     if (sourcesSpec === undefined) return withDictKeySteps;
     // `sources:` is not merely a preview request — declaring it says "this

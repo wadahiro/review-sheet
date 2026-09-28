@@ -224,3 +224,16 @@ describe("a sheet whose environments propose different stacks", () => {
     ).toThrow(/rows_from names qa/);
   });
 });
+
+// HOW A DOCUMENT OF THIS SHEET HAS TO BE READ, carried into the model.
+//
+// A plan addresses `resource_changes` by `address`, which is not one of the
+// extractor's built-in identity fields. The recipe tells the extractor so when
+// it builds the sheet — and a plan fetched later, judged against that sheet, is
+// parsed by whatever the MODEL says. Without this it was keyed positionally,
+// and every one of the sheet's addresses resolved to nothing.
+describe("what the model says a document of this sheet is addressed by", () => {
+  it("carries the recipe's own identity field", () => {
+    expect(load().idFields).toEqual(["address"]);
+  });
+});

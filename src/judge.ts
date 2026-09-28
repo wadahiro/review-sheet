@@ -491,6 +491,7 @@ export type JudgeWords = {
   setBySource: (source: string, how: string) => string;
   docUnreadable: string;
   noAddress: string;
+  addressNotInDocument: (address: string) => string;
   fromDocument: string;
   notInDocument: (how: string) => string;
   emptyAndAbsent: string;
@@ -525,6 +526,8 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     setBySource: (source, how) => `${source} が設定している（${how} が報告）ので、製品の既定値のままではない`,
     docUnreadable: "取得した文書を読めない",
     noAddress: "この行は文書内の住所を持たない（シートがどこから来たか記録していない）",
+    addressNotInDocument: (address) =>
+      `取得した文書はこの住所を持たない（${address}）— 値が無いのではなく、文書の形が違う`,
     fromDocument: "取得した文書",
     notInDocument: (how) => `${how} が返す文書にこの設定が無い`,
     emptyAndAbsent: "シートが空を述べ、文書もこの設定を保持していない",
@@ -557,6 +560,8 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     setBySource: (source, how) => `${source} sets it (${how} reports), so the product's default is not what applies`,
     docUnreadable: "the collected document could not be read",
     noAddress: "this row carries no address inside a document",
+    addressNotInDocument: (address) =>
+      `the collected document has no such address (${address}) — not a value that is absent, a document of another shape`,
     fromDocument: "the collected document",
     notInDocument: (how) => `${how} returns a document without this setting`,
     emptyAndAbsent: "the sheet states emptiness and the document holds nothing here",
@@ -1021,9 +1026,14 @@ function documentFor(
         .replace(/\{key\}/g, item.target.key)
         .replace(/\{address\}/g, item.address ?? item.target.key)
     );
+  // A template that names only its sheet declares what the fall-through below
+  // already did: the rows carry their own addresses, so the document naming
+  // this sheet answers them where they say they sit. Saying it and leaving the
+  // entry out are the same thing — and only one of them is findable.
+  const bare = tpl !== undefined && tpl.document === undefined && tpl.router === undefined && tpl.address === undefined;
   for (const [host, held] of Object.entries(obs.hosts)) {
     for (const d of held.documents ?? []) {
-      if (tpl !== undefined) {
+      if (tpl !== undefined && !bare) {
         if (tpl.document === undefined || tpl.address === undefined) continue;
         if (d.name !== fill(tpl.document)) continue;
         // The EXPECTED value carries the same placeholder the address does —
@@ -1092,6 +1102,43 @@ function answerByDocument(
   // (the address the caller resolved: a template's, or the row's own)
   if (address === undefined) return [{ target, at, evidence, status: "not_run", reason: t.noAddress }];
   const seen = address === undefined ? undefined : parsed.get(unquoteIds(address));
+
+  // NOT THERE, versus NOT ADDRESSABLE HERE. Two different facts, and the whole
+  // module read them as one.
+  //
+  // "The key is absent" is an answer: a product that omits what nobody set says
+  // "still the default" by leaving it out. "The document's shape has no such
+  // address" is not an answer at all — the document was parsed with a different
+  // idea of how its lists are addressed, or it is simply another document, and
+  // every row under that address then reads as absent.
+  //
+  // Which side that lands on was the hazard. A `default-in-force` row PASSED,
+  // silently, on a document that could not have answered it — the exact
+  // "looks tested but isn't" shape this record must never have. Measured on a
+  // real model whose observed document was parsed without the id field its
+  // lists are keyed by: over half the sheet's rows confirmed a default that
+  // nothing had looked at.
+  //
+  // Asked of the address's OWN FIRST ELEMENT — the identified thing it sits
+  // inside, `resource_changes[address=…]` or `clients[clientId=…]` — and not of
+  // its immediate parent. A nested block that is simply not configured has no
+  // keys under it either, and that absence IS the answer this branch reads; a
+  // shape mismatch loses the element itself, which no ordinary absence does.
+  const addressable = (where: string): boolean => {
+    const at = unquoteIds(where);
+    const close = at.indexOf("]");
+    const dot = at.indexOf(".");
+    // No identified element and no nesting: a top-level key, whose container is
+    // the document root. Always there, so nothing is claimed.
+    const end = close >= 0 ? close + 1 : dot;
+    if (end <= 0) return true;
+    const head = at.slice(0, end);
+    for (const k of parsed.keys()) if (k === head || k.startsWith(close >= 0 ? head : `${head}.`)) return true;
+    return false;
+  };
+  if (!addressable(address)) {
+    return [{ target, at, evidence, status: "not_run", reason: t.addressNotInDocument(address) }];
+  }
 
   if (item.kind === "default-in-force") {
     // The product OMITS what nobody set: a key absent from the map it returns

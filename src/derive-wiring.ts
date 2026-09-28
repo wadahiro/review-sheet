@@ -172,6 +172,12 @@ export function deriveDocuments(
     // A router answers where a row sits by itself; an address would be a second,
     // competing answer.
     if (entry.router !== undefined) continue;
+    // …and an entry that names only its sheet says the rows carry their own
+    // addresses. There is nothing to derive and nothing missing.
+    if (entry.document === undefined && entry.address === undefined) {
+      out.skipped.push({ sheet: entry.sheet, kind: "declared", reason: "the rows carry their own addresses" });
+      continue;
+    }
     if (entry.address !== undefined) {
       out.skipped.push({ sheet: entry.sheet, kind: "declared", reason: "the spec states an address of its own" });
       continue;

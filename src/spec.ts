@@ -320,7 +320,14 @@ const specSchema = {
         // never do — has NOT been dropped. It moved to after derivation
         // (assembleFromSpecWithReport), which is the only place that can tell
         // "no address" from "an address nobody had to write".
-        oneOf: [{ required: ["document"] }, { required: ["router"] }],
+        //
+        // …and the third shape, which says nothing further ON PURPOSE: the
+        // sheet's rows carry their own addresses, so the document that names
+        // this sheet answers them where they already say they sit. That is a
+        // sheet built from a document — a Terraform plan, an export — being
+        // judged against another of the same shape, and it needs no template
+        // because there is nothing to template. It WORKED by leaving the entry
+        // out altogether, which is not a thing a reader can find.
       },
     },
     not_checked: {

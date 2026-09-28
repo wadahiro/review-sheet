@@ -236,6 +236,19 @@ export type SheetInputs = {
   // declares no `key_steps` of its own (assemble-spec.ts); a project that
   // declares them still wins.
   dictKeySteps?: KeyTransformStep[];
+  // THE IDENTITY FIELDS a document of this sheet has to be read with.
+  //
+  // A recipe that knows its subject's shape knows this: a Terraform plan
+  // addresses `resource_changes` by `address`, which is not one of the
+  // extractor's built-in identity fields, so a document fetched later and
+  // parsed without it is keyed positionally and every one of this sheet's
+  // addresses resolves to nothing. The sheet was BUILT with the right list;
+  // carrying it is what lets the judge read the same one.
+  //
+  // Merged into the model's `id_fields` rather than kept per sheet: the field
+  // names are a property of the FORMAT, and a project already declares its own
+  // there. Two sheets asking for different ones both get what they asked for.
+  idFields?: string[];
   // Every variable this sheet's template(s) interpolate — including the second
   // and later variables of a line that mixes several.
   //
@@ -3378,6 +3391,11 @@ export function assembleSheetsWithReport(
     strip(sheet.categories);
   }
 
+  // The spec's own, plus every one a recipe stated for its sheet. Order is the
+  // spec's first — a project that declares a field means it, and a recipe's is
+  // an addition to that list rather than a replacement for it.
+  const idFieldsOut = [...new Set([...(opts.idFieldsOut ?? []), ...inputs.flatMap((si) => si.idFields ?? [])])];
+
   const assembled: ParameterSheetInput = {
     ...(metadata ? { metadata } : {}),
     ...(declaredGroups.length > 0 ? { groups: declaredGroups } : {}),
@@ -3391,7 +3409,9 @@ export function assembleSheetsWithReport(
     ...(opts.functionalRules ? { functional_rules: opts.functionalRules } : {}),
     ...(opts.notChecked ? { not_checked: opts.notChecked } : {}),
     ...(opts.documents ? { documents: opts.documents } : {}),
-    ...(opts.idFieldsOut ? { id_fields: opts.idFieldsOut } : {}),
+    // …and whatever the recipes said their own documents are addressed by, so
+    // a judge reading one of them reads the list the sheet was built with.
+    ...(idFieldsOut.length > 0 ? { id_fields: idFieldsOut } : {}),
     sheets,
     ...(artifacts.length > 0 ? { artifacts } : {}),
   };

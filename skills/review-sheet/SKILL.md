@@ -3903,7 +3903,27 @@ field something else.
 documents:
   - { sheet: keycloak realm,     document: "{component}" }   # address derived from the binding
   - { sheet: aws infrastructure, router: aws-rds }           # …or a plugin routes it
+  - { sheet: aws infrastructure }                            # …or the rows say where they sit
 ```
+
+**The third shape says nothing further on purpose.** A sheet built FROM a
+document — a Terraform plan, a product's export — has a row for every value in
+it, each recording the address it was read from. Judged against another document
+of the same shape, there is nothing to template: the document naming the sheet
+answers each row where the row already says it sits. No per-resource mapping
+table, and nothing for a project to keep in step as the subject grows.
+
+Two things make that work rather than merely parse. The document has to be
+ADDRESSABLE the same way the sheet was built — a list keyed by a field the
+extractor does not identify on its own is keyed positionally otherwise, and
+every address resolves to nothing; a recipe that knows its subject's shape says
+so, and the model carries it (`id_fields`). And a document that still cannot
+address a row now says so rather than confirming its default — see the judge's
+own note on `addressNotInDocument`.
+
+A document belongs to a HOST because a fetch has a source. One that belongs to
+no machine — a plan, a cloud API's reply — is filed under whatever ran the
+fetch; the name is yours to choose and it is what the evidence column shows.
 
 ### Routing documents from your own project
 
