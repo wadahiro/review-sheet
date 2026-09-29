@@ -4170,6 +4170,24 @@ answered and counted with no page anyone could read them on, and the build
 exited 0. (`--unit X -d file.md` still writes one, for a project that declares
 nothing.)
 
+**Several runs, one record.** A results file is what ONE run produced, and a run
+answers ONE environment. A record covering several is therefore several files,
+collected at different moments by whoever could reach each — so both readers
+take a list:
+
+```sh
+review-sheet test-doc -i input.json -r results.local.json results.production.json
+review-sheet generate -i input.json --evidence results.local.json results.production.json -o sheet.html
+```
+
+Merged BY ENVIRONMENT, which is the unit a run answers. Two files holding the
+same environment are two runs of it, and the later one wins **wholesale** — its
+verdicts, its functional answers, its evidence. Not row by row: splicing a fresh
+pass onto a stale run's evidence makes the record cite bytes that verdict was
+never read from. "Later" is the run's own `at`, never the order of the command
+line — that is a fact about the shell line, and `at` is a fact about the run.
+Where neither says when, the first is kept and the collision is named.
+
 **Two flags, two axes.** `--include-defaults` prints the unset parameters as
 ROWS; without it they are one line counting them. `--no-defaults-summary` drops
 that line WITHOUT printing the rows — for a project whose parameter sheet

@@ -292,3 +292,93 @@ export function resultsCheckFails(check: ResultsCheck): boolean {
     check.silentFunctional.length > 0
   );
 }
+
+// SEVERAL RUNS, ONE RECORD.
+//
+// A results file is what ONE run produced, and a run answers ONE environment:
+// `runs` is keyed by instance, and every result, functional answer and carried
+// document names the instance it belongs to. A record that covers several
+// environments is therefore several files — collected at different moments, by
+// whoever could reach each one — and reading only the newest of them wrote
+// "not run" over every row of the others.
+//
+// MERGED BY ENVIRONMENT, and that is the unit. Two files holding the same
+// instance are two runs of the same environment, one of them stale; the later
+// one wins WHOLESALE — its results, its functional answers, its evidence, its
+// unclaimed. Not row by row: splicing a fresh pass onto a stale run's evidence
+// makes the record cite bytes that verdict was never read from, which is a
+// record lying in a new way rather than an old one repaired.
+//
+// LATER BY `runs[instance].at`, never by argument order. The order of a shell
+// line is a fact about the shell line; `at` is a fact about the run, and it is
+// the one the reader of the record cares about. Where neither says when (an
+// older file, two runs stamped the same), the first file wins and the collision
+// is named — the same rule `mergeByEnvironment` applies to two collectors
+// claiming one host, for the same reason: this cannot resolve it, so it says so.
+export function mergeResults(files: TestResults[]): { merged: TestResults; conflicts: string[] } {
+  const conflicts: string[] = [];
+  if (files.length <= 1) return { merged: files[0] ?? { results: [] }, conflicts };
+  // Every environment each file speaks for, and when it spoke. A file with no
+  // `runs` entry for an instance it holds results for still speaks for it —
+  // older files carry no runs at all — and, saying nothing about when, loses to
+  // any run that does.
+  const spokenFor = (f: TestResults): Map<string, string | undefined> => {
+    const out = new Map<string, string | undefined>();
+    for (const [instance, run] of Object.entries(f.runs ?? {})) out.set(instance, run.at);
+    for (const r of f.results) if (!out.has(r.target.instance)) out.set(r.target.instance, undefined);
+    for (const r of f.functional ?? []) if (!out.has(r.instance)) out.set(r.instance, undefined);
+    return out;
+  };
+  // Did this file actually answer for this environment, or does it merely carry
+  // the plan's placeholders for it?
+  const answers = (f: TestResults, instance: string): boolean =>
+    f.results.some((r) => r.target.instance === instance && r.status !== "not_run") ||
+    (f.functional ?? []).some((r) => r.instance === instance) ||
+    (f.evidence ?? []).some((e) => e.instance === instance);
+  // Which file answers each environment. A later `at` displaces an earlier one;
+  // anything else keeps what is held and is reported.
+  const winner = new Map<string, { at: string | undefined; from: number }>();
+  files.forEach((f, from) => {
+    for (const [instance, at] of spokenFor(f)) {
+      const held = winner.get(instance);
+      if (held === undefined) {
+        winner.set(instance, { at, from });
+        continue;
+      }
+      // Whichever side loses, it is only worth reporting if it had something to
+      // lose: a stamped run, or an answer of its own. A file that answers the
+      // whole plan — which is what the completeness gate asks for — carries
+      // `not_run` placeholders for the environments its own run never touched,
+      // and dropping those loses nothing.
+      const lost = (at !== undefined && held.at !== undefined && at > held.at) || (at !== undefined && held.at === undefined);
+      const loser = lost ? files[held.from]! : f;
+      const loserAt = lost ? held.at : at;
+      if (lost) winner.set(instance, { at, from });
+      if (loserAt === undefined && !answers(loser, instance)) continue;
+      if (held.at === undefined && at === undefined) {
+        conflicts.push(`${instance} (two runs, neither says when it ran — kept the first)`);
+        continue;
+      }
+      const kept = lost ? at : (held.at ?? "the first");
+      conflicts.push(`${instance} (kept ${kept}, dropped ${loserAt ?? "a run that says when it ran nowhere"})`);
+    }
+  });
+  const mine = (instance: string, from: number): boolean => winner.get(instance)?.from === from;
+  const merged: TestResults = { results: [] };
+  const runs: Record<string, TestRun> = {};
+  const evidence: NonNullable<TestResults["evidence"]> = [];
+  const functional: NonNullable<TestResults["functional"]> = [];
+  const unclaimed: NonNullable<TestResults["unclaimed"]> = [];
+  files.forEach((f, from) => {
+    for (const [instance, run] of Object.entries(f.runs ?? {})) if (mine(instance, from)) runs[instance] = run;
+    for (const r of f.results) if (mine(r.target.instance, from)) merged.results.push(r);
+    for (const e of f.evidence ?? []) if (mine(e.instance, from)) evidence.push(e);
+    for (const r of f.functional ?? []) if (mine(r.instance, from)) functional.push(r);
+    for (const u of f.unclaimed ?? []) if (mine(u.instance, from)) unclaimed.push(u);
+  });
+  if (Object.keys(runs).length > 0) merged.runs = runs;
+  if (evidence.length > 0) merged.evidence = evidence;
+  if (functional.length > 0) merged.functional = functional;
+  if (unclaimed.length > 0) merged.unclaimed = unclaimed;
+  return { merged, conflicts };
+}

@@ -16,7 +16,7 @@ import { zipOf } from "./zip.js";
 import { SET_DIR } from "./set-block.js";
 import type { ParamData } from "./prompt.js";
 import { validateInput, validateReview, validateResults, validateObservation, validateVersionedInput, isVersionedInput } from "./validate.js";
-import { checkResults, formatResultsCheck, resultsCheckFails, type TestResults } from "./testresults.js";
+import { checkResults, formatResultsCheck, resultsCheckFails, mergeResults, type TestResults } from "./testresults.js";
 import { renderTestDoc, renderExcluded, coveringTestText, injectBlocks, unitDocuments } from "./testdoc.js";
 import { judgeFiles, evidenceFrom, collectPlan, registerModelChannels, answerTheRest, judgeFunctional, rpmQuery, runsFrom } from "./judge.js";
 import { findBakedSecrets, formatBakedSecrets, findSecretsInEvidence, formatEvidenceLeaks } from "./secrets.js";
@@ -694,12 +694,12 @@ program
     "--keep-unset <names...>",
     "Sheets --no-unset does not apply to. A sheet whose whole subject IS the product's own defaults — the clients Keycloak ships with, which a project never touches and so never sets — is not an exhaustive ledger with noise in it: its unset rows are its content, and cutting them delivers a page with nothing on it. Named sheets are spared; everything else still gets the cut, so a sheet added later is not left out by omission"
   )
-  .option("--evidence <file>", "Carry the RAW material the test results point at — the deployed files as the hosts held them, the output of the commands that were run — as documents in the page, beside the verdicts that cite them. Without it a verdict names an address on a machine the reader cannot reach. The judge that wrote the results decided what may travel; this only carries it, and --instances narrows it exactly as it narrows values")
+  .option("--evidence <file...>", "Carry the RAW material the test results point at — the deployed files as the hosts held them, the output of the commands that were run — as documents in the page, beside the verdicts that cite them. Without it a verdict names an address on a machine the reader cannot reach. The judge that wrote the results decided what may travel; this only carries it, and --instances narrows it exactly as it narrows values")
   .option(
     "--timezone <zone>",
     "Read the instants this document carries in this IANA zone (Asia/Tokyo), offset kept — today, when each piece of evidence was collected. Decided here for the same reason --lang is: a document has one reader, and an instant resolved once is one the viewer never has to think about. Omitted, they print exactly as recorded"
   )
-  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; unset: boolean; lang: string; format: string; instances?: string[]; sheets?: string[]; keepUnset?: string[]; evidence?: string; timezone?: string }) => {
+  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; unset: boolean; lang: string; format: string; instances?: string[]; sheets?: string[]; keepUnset?: string[]; evidence?: string[]; timezone?: string }) => {
     try {
       if (opts.timezone !== undefined && !knownZone(opts.timezone)) {
         console.error(`unknown timezone: ${opts.timezone} — use an IANA name such as Asia/Tokyo or UTC`);
@@ -792,8 +792,15 @@ program
       // in the file. Appended to the artifacts the model already carries —
       // observed documents share the panel and stay out of the row index, so
       // nothing about the sheet's own previews changes (types.ts).
-      if (opts.evidence !== undefined) {
-        const carried = validateResults(JSON.parse(readFileSync(opts.evidence, "utf-8")));
+      if (opts.evidence !== undefined && opts.evidence.length > 0) {
+        // Same merge the record gets: one run answers one environment, and a
+        // page covering several is built from as many files.
+        const { merged: carried, conflicts: clash } = mergeResults(
+          opts.evidence.map((f) => validateResults(JSON.parse(readFileSync(f, "utf-8"))))
+        );
+        if (clash.length > 0) {
+          console.error(`evidence: ${clash.length} environment(s) answered by more than one run — ${clash.join("; ")}`);
+        }
         // Which evidence the DOCUMENTS this build carries already link to, AND
         // which document each link is in. A record's links are baked in at
         // import and `--instances` never narrowed them, so they decide what
@@ -874,7 +881,7 @@ program
         // raw host bytes, so a credential the sheet holds as a literal can be
         // in it a second time under another name — asked here, of the text
         // actually being carried, and only of the environments still in it.
-        const leaked = findSecretsInEvidence(input, (carried.evidence ?? []).filter((e) => opts.instances === undefined || opts.instances.includes(e.instance)));
+        const leaked = findSecretsInEvidence(input, (carried.evidence ?? []).filter((e: { instance: string }) => opts.instances === undefined || opts.instances.includes(e.instance)));
         if (leaked.length > 0) console.error(formatEvidenceLeaks(leaked));
       }
       const lang = opts.lang === "en" ? "en" : "ja";
@@ -1191,7 +1198,11 @@ program
   .requiredOption("-i, --input <file>", "Model (input.json)")
   .option("-u, --unit <name>", "One unit only (default: every unit, each written to the document its `test: { document: }` names)")
   .option("-d, --doc <file>", "That unit's markdown document, edited IN PLACE between its <!-- test:*:start --> markers. Only with --unit")
-  .option("-r, --results <file>", "The answers (omit for the specification before any run: every item reads as not yet run)")
+  // SEVERAL, because a run answers one environment and a record covers as many
+  // as it has. Reading only the newest wrote "not run" over every row of the
+  // others — see testresults.ts's mergeResults for what two runs of ONE
+  // environment do.
+  .option("-r, --results <file...>", "The answers, one file per run (omit for the specification before any run: every item reads as not yet run). Several environments are merged; two runs of one environment keep the later, by the run's own timestamp")
   .option("--lang <lang>", "ja | en (default: ja)", "ja")
   .option("--include-defaults", "Print the unset-parameter items as rows too, instead of one line counting them")
   // A separate axis from the rows: one is "enumerate them", the other is
@@ -1206,7 +1217,7 @@ program
     "--timezone <zone>",
     "Read the recorded instants in this IANA zone (Asia/Tokyo), offset kept. The instant is the fact and the zone is how it is read, so it is decided here rather than recorded; omitted, times print exactly as the results file holds them. It moves the per-row date too — that one was not merely raw but wrong, taking the date off the UTC instant, so a run at 23:30Z showed the day before the one the operator was standing in"
   )
-  .action((opts: { input: string; unit?: string; doc?: string; results?: string; lang: string; includeDefaults?: boolean; defaultsSummary?: boolean; productExclusions?: boolean; timezone?: string }) => {
+  .action((opts: { input: string; unit?: string; doc?: string; results?: string[]; lang: string; includeDefaults?: boolean; defaultsSummary?: boolean; productExclusions?: boolean; timezone?: string }) => {
     if (opts.timezone !== undefined) {
       // A zone nobody recognises must not fall back to UTC silently: the whole
       // point is that the reader trusts the time in front of them.
@@ -1221,13 +1232,16 @@ program
       }
       const model = JSON.parse(readFileSync(opts.input, "utf-8")) as ParameterSheetInput;
       const { plan, report } = buildTestPlan(model);
-      const results: TestResults =
-        opts.results === undefined ? { results: [] } : validateResults(JSON.parse(readFileSync(opts.results, "utf-8")));
+      const given = (opts.results ?? []).map((f) => validateResults(JSON.parse(readFileSync(f, "utf-8"))));
+      const { merged: results, conflicts } = mergeResults(given);
+      if (conflicts.length > 0) {
+        console.error(`results: ${conflicts.length} environment(s) answered by more than one run — ${conflicts.join("; ")}`);
+      }
       // A document is built from a record that ANSWERS the plan. Building one
       // from a record that does not is how a run reports findings already
       // fixed, or prints a page of passes with an item nobody attempted absent
       // from it — see testresults.ts.
-      if (opts.results !== undefined) {
+      if (given.length > 0) {
         const check = checkResults(plan, results);
         console.error(formatResultsCheck(check));
         if (resultsCheckFails(check)) {
