@@ -160,8 +160,60 @@ const parse = (text: string | null | undefined, path: string, format: Format | u
     // leaf is what the row asking at that address is about.
     out.set(unquoteIds(e.source?.path ?? e.key), { value: String(e.value), line: e.source?.line });
   }
+  withPositionalAliases(out);
   return out;
 };
+
+// A LIST OF ONE HAS ONE ELEMENT, and both its addresses are that element.
+//
+// The extractor addresses a list's elements by an identifying field where every
+// element has one (`parameter[name=max_connections]`) and by position where
+// they do not (`route[0]`). Which of the two it picks is a property of the
+// DOCUMENT, not of the list — so two documents describing the same thing can
+// spell one element's address two ways, and a sheet built from the first cannot
+// find the row in the second.
+//
+// Measured on a real pair: an optional block whose identifying field has no
+// value yet in the document that PROPOSES a stack, and a value in the document
+// read back from the built one. The sheet says `[0]`; the document says
+// `[name=…]`; the value under both is the same value.
+//
+// So each element of a ONE-ELEMENT list is registered under its positional
+// address as well. That is a fact, not a guess: a list with one element has one
+// element, and position and identity cannot point at different things.
+//
+// NOT for longer lists. Matching `[0]` against the first of several identified
+// elements assumes the two documents order them the same way, which this tool
+// can assert about no format it reads — and a wrong answer there is silent,
+// which is the one kind this module refuses to produce. Those stay unresolved,
+// and the reason already says the shape differs.
+//
+// One extraction addresses a given list ONE way, so an alias never lands on a
+// key the document already has — there is no precedence rule here because there
+// is nothing to take precedence over.
+function withPositionalAliases(out: Parsed): void {
+  const ID_SEGMENT = /\[([A-Za-z_][A-Za-z0-9_]*)=([^\]]*)\]/g;
+  // Which values each identified list holds, keyed by everything up to and
+  // including its field name — so `a[x=1].b[y=2]` counts `a`'s x-values and
+  // `a[x=1].b`'s y-values separately.
+  const values = new Map<string, Set<string>>();
+  for (const key of out.keys()) {
+    ID_SEGMENT.lastIndex = 0;
+    for (let m = ID_SEGMENT.exec(key); m !== null; m = ID_SEGMENT.exec(key)) {
+      const at = `${key.slice(0, m.index)}\u0000${m[1]}`;
+      const seen = values.get(at) ?? new Set<string>();
+      seen.add(m[2]!);
+      values.set(at, seen);
+    }
+  }
+  for (const [key, entry] of [...out]) {
+    ID_SEGMENT.lastIndex = 0;
+    const alias = key.replace(ID_SEGMENT, (whole, field: string, value: string, index: number) =>
+      values.get(`${key.slice(0, index)}\u0000${field}`)?.size === 1 ? "[0]" : whole
+    );
+    if (alias !== key) out.set(alias, entry);
+  }
+}
 
 // A block is "there" when the file holds it, or holds anything under it: a
 // parser that emits only leaves still proves the block by its children.
