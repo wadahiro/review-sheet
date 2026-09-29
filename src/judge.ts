@@ -34,6 +34,7 @@ import { registerLogrotateRules } from "./channels/logrotate.js";
 import { registerSystemdRules } from "./channels/systemd.js";
 import { buildMismatch, buildMismatchReported, rpmVersions, packagesToQuery } from "./channels/rpm.js";
 import { wordsFor } from "./channel-words.js";
+import { proposedChanges } from "./channels/terraform.js";
 import "./channels/reads.js"; // the product recipes (reads/addresses/defaults/versions) register on load
 import { compiledInFor, injectedOptions, lineOfCompiledIn, includeSyntaxFor } from "./channels/httpd.js";
 import { effectiveConfig, isProductDefault, lineOfEffective, SECRET_FIELDS, REDACTED, MASKED, LOGIN_MARKS_LIST } from "./channels/keycloak.js";
@@ -542,6 +543,7 @@ export type JudgeWords = {
   builtDiffers: (value: string, how: string) => string;
   setBySource: (source: string, how: string) => string;
   docUnreadable: string;
+  docProposes: (n: number, addresses: string) => string;
   noAddress: string;
   addressNotInDocument: (address: string) => string;
   fromDocument: string;
@@ -577,6 +579,9 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     builtDiffers: (value, how) => `このビルドの既定値は ${value}（${how}）で、シートが示す製品既定値と異なる`,
     setBySource: (source, how) => `${source} が設定している（${how} が報告）ので、製品の既定値のままではない`,
     docUnreadable: "取得した文書を読めない",
+    docProposes: (n, addresses) =>
+      `判定に使えない: この plan は ${n} 件の変更を提案している（after は Terraform が作ろうとしている値で、` +
+      `いま存在する値ではない）— ${addresses}`,
     noAddress: "この行は文書内の住所を持たない（シートがどこから来たか記録していない）",
     addressNotInDocument: (address) =>
       `取得した文書はこの住所を持たない（${address}）— 値が無いのではなく、文書の形が違う`,
@@ -611,6 +616,9 @@ export const JUDGE_WORDS: Record<"ja" | "en", JudgeWords> = {
     builtDiffers: (value, how) => `this build's own default is ${value} (${how}), which is not the product default the sheet states`,
     setBySource: (source, how) => `${source} sets it (${how} reports), so the product's default is not what applies`,
     docUnreadable: "the collected document could not be read",
+    docProposes: (n, addresses) =>
+      `not judgeable: this plan proposes ${n} change(s), so its "after" is what Terraform would make true rather ` +
+      `than what the stack holds — ${addresses}`,
     noAddress: "this row carries no address inside a document",
     addressNotInDocument: (address) =>
       `the collected document has no such address (${address}) — not a value that is absent, a document of another shape`,
@@ -690,6 +698,25 @@ export function judgeFiles(
     }
     return per.get(k) ?? null;
   };
+  // Whether a document is a Terraform plan describing what WOULD be true rather
+  // than what is. Asked once per document — the text is parsed to answer it, and
+  // a plan runs to megabytes. Reported as well as answered per row: a sheet
+  // quietly going all-not_run looks exactly like a sheet nobody collected.
+  const proposalCache = new Map<ObservedDocument, string[] | undefined>();
+  const proposalsOf = (d: ObservedDocument): string[] | undefined => {
+    if (!proposalCache.has(d)) {
+      const moving = d.absent !== undefined ? undefined : proposedChanges(d.text);
+      proposalCache.set(d, moving);
+      if (moving !== undefined && moving.length > 0) {
+        console.error(
+          `judge: ${d.how ?? d.name ?? d.sheet ?? "a collected document"} is a plan proposing ${moving.length} ` +
+            `change(s), so its "after" is what Terraform would make true rather than what the stack holds — ` +
+            `every row it would answer is left unchecked (${moving.slice(0, 3).join(", ")}${moving.length > 3 ? ", …" : ""})`
+        );
+      }
+    }
+    return proposalCache.get(d);
+  };
   const parsedOf = (env: string, host: string, path: string, text: string | null | undefined, fmt: Format | undefined): Parsed | null => {
     const k = `${env}\u0000${host}\u0000${path}`;
     if (!cache.has(k)) cache.set(k, parse(text, path, fmt));
@@ -763,7 +790,9 @@ export function judgeFiles(
         });
         continue;
       }
-      out.results.push(...answerByDocument(item, doc.doc, doc.host, doc.address, doc.expected, at, t, parsedDoc, doc.idFields));
+      out.results.push(
+        ...answerByDocument(item, doc.doc, doc.host, doc.address, doc.expected, at, t, parsedDoc, proposalsOf, doc.idFields)
+      );
       continue;
     }
     const path = item.file;
@@ -1138,12 +1167,24 @@ function answerByDocument(
   at: string,
   t: JudgeWords,
   parsedDoc: (d: ObservedDocument, extraIds?: string[]) => Parsed | null,
+  proposals: (d: ObservedDocument) => string[] | undefined,
   idFields: string[] = []
 ): TestResult[] {
   const target = { sheet: item.target.sheet, path: item.target.path, key: item.target.key, instance: item.target.instance };
   const evidence = { host, ...(doc.how === undefined ? {} : { command: doc.how }) };
   if (doc.absent !== undefined) {
     return [{ target, at, evidence, status: "not_run", reason: doc.absent }];
+  }
+  // A PLAN THAT PROPOSES CHANGES IS NOT A THING TO JUDGE AGAINST. It parses, it
+  // holds an `after` at every address the sheet asks for, and every row would
+  // read OK — for values nothing has yet. See channels/terraform.ts for why the
+  // two cases cannot be told apart from `after` alone. Refused per row rather
+  // than thrown: one stale document must not take the whole record with it, the
+  // same stance a document that could not be read takes.
+  const moving = proposals(doc);
+  if (moving !== undefined && moving.length > 0) {
+    const shown = moving.slice(0, 3).join(", ") + (moving.length > 3 ? ", …" : "");
+    return [{ target, at, evidence, status: "not_run", reason: t.docProposes(moving.length, shown) }];
   }
   const parsed = parsedDoc(doc, idFields);
   if (parsed === null) return [{ target, at, evidence, status: "not_run", reason: t.docUnreadable }];

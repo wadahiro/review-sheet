@@ -50,3 +50,44 @@ export function changedResources(text: string | null | undefined): string[] {
     .map((l) => /^\s*# (\S+) will be/.exec(l)?.[1])
     .filter((x): x is string => x !== undefined);
 }
+
+// WHAT A PLAN JSON DESCRIBES, which is one of two things and never both.
+//
+// With every action `no-op` (or `read`, which observes and changes nothing),
+// `change.after` is what the stack HOLDS — that is the whole reason an
+// apply-後 plan can answer a sheet's values at all. With anything else in
+// there, the same field is what Terraform WOULD MAKE true, and a sheet judged
+// against it is being compared with a proposal: every row reads OK for a value
+// nothing has yet.
+//
+// The two are indistinguishable from `change.after` alone, which is why the
+// question has to be asked of the actions. Returns the addresses that move —
+// WHICH thing moved is what a reader needs first, and the diff under it is in
+// the output they can open.
+//
+// `undefined` when the text is not a plan at all: the caller has a document of
+// some other shape and this has nothing to say about it. Narrow on purpose — a
+// project's own JSON may well have a `resource_changes` key, and reading that
+// as a plan would refuse a document for a reason that is not true of it.
+export function proposedChanges(text: string): string[] | undefined {
+  let doc: unknown;
+  try {
+    doc = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (typeof doc !== "object" || doc === null) return undefined;
+  const plan = doc as { resource_changes?: unknown; terraform_version?: unknown; format_version?: unknown };
+  if (!Array.isArray(plan.resource_changes)) return undefined;
+  if (typeof plan.terraform_version !== "string" && typeof plan.format_version !== "string") return undefined;
+  const moving: string[] = [];
+  for (const c of plan.resource_changes) {
+    if (typeof c !== "object" || c === null) continue;
+    const entry = c as { address?: unknown; change?: { actions?: unknown } };
+    const actions = entry.change?.actions;
+    if (!Array.isArray(actions)) continue;
+    if (actions.length === 1 && (actions[0] === "no-op" || actions[0] === "read")) continue;
+    moving.push(typeof entry.address === "string" ? entry.address : "(unnamed)");
+  }
+  return moving;
+}

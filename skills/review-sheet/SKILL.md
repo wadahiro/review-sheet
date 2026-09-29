@@ -4014,6 +4014,19 @@ and the question is membership, that is the row's ADDRESS; where it genuinely is
 a substring, that is a rule, and a rule is a probe rule or a functional channel
 where you write the comparison you mean and sign it.
 
+**A Terraform plan that still proposes changes is refused as a document.** An
+apply-後 plan can answer a sheet's values because, with nothing left to change,
+`change.after` is what the stack HOLDS. In a plan with pending actions the same
+field is what Terraform would MAKE true, and the two are indistinguishable from
+`after` alone — so judging against one reads OK for values nothing has yet. A
+document whose `resource_changes[].change.actions` hold anything but a single
+`no-op` or `read` leaves every row it would answer `not run`, naming what moves
+and how many. Nothing is declared for this: a plan is a plan, and there is no
+case where judging against a proposal is the thing you meant. It is per row
+rather than a thrown error, so one stale document does not take the record with
+it. (The plan a sheet's ROWS come from is unaffected — a create plan, where
+everything moves, is the ordinary input there. See `rows_from:`.)
+
 `documents:` naming a router nothing registered **fails the run**, with the
 registered names beside it. It used to leave every row of that sheet unanswered,
 which reads exactly like a sheet that has no document — so a misspelled name, or
