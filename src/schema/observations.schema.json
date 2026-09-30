@@ -3,37 +3,112 @@
   "title": "observations",
   "description": "What one environment's hosts hold, as somebody collected it. A contract rather than a convention: it is what makes collecting and judging separable, so a closed network that has only Ansible produces this one file and carries it out to wherever review-sheet lives. Keys this tool does not read are allowed and ignored — a project's own channels (a product's API, a cloud API, the output of a command) live beside these.",
   "type": "object",
-  "required": ["environment", "hosts"],
+  "required": [
+    "environment",
+    "hosts"
+  ],
   "properties": {
-    "environment": { "type": "string", "description": "The environment column this stands for — the same name the sheets use." },
-    "collected_at": { "type": "string", "description": "When, ISO 8601. Carried onto every evidence document, because two hosts' bytes were taken at two moments." },
-    "substitutions": { "type": "object", "additionalProperties": { "type": "string" }, "description": "What an importer's placeholders resolved to in this environment. Only the project read the files the importer read." },
+    "environment": {
+      "type": "string",
+      "description": "The environment column this stands for — the same name the sheets use."
+    },
+    "collected_at": {
+      "type": "string",
+      "description": "When, ISO 8601. Carried onto every evidence document, because two hosts' bytes were taken at two moments."
+    },
+    "substitutions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "What an importer's placeholders resolved to in this environment. Only the project read the files the importer read."
+    },
+    "documents": {
+      "type": "array",
+      "description": "Documents that belong to NO host. A `terraform plan` describes a cloud account, not a machine: which workstation ran the command is provenance of the fetch and not of the values. Filed here, a verdict citing one carries no host, its evidence label is what was ASKED, and the unit's \"hosts checked\" line never names a machine that has nothing to do with what the record certifies. Where the document sits is what says so — there is no flag.",
+      "items": {
+        "type": "object",
+        "required": [
+          "format",
+          "text"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "What to call it, so a sheet can say which document answers its rows (`documents:` in the build spec)."
+          },
+          "sheet": {
+            "type": "string",
+            "description": "…or which sheet's rows it answers directly, for a sheet whose rows carry their own addresses and need no template."
+          },
+          "component": {
+            "type": "string",
+            "description": "…narrowed to one component of that sheet."
+          },
+          "format": {
+            "type": "string",
+            "description": "How to read it. A realm comes back as JSON; nothing says another product's will."
+          },
+          "text": {
+            "type": "string",
+            "description": "The bytes."
+          },
+          "how": {
+            "type": "string",
+            "description": "What was asked, for the record's evidence — `GET /admin/realms/poc`. For a document belonging to no host this is the whole of its label, so it is what a reader sees beside every verdict it answers."
+          },
+          "absent": {
+            "type": "string",
+            "description": "…or it could not be read at all, which is an answer about the product and not a gap in the run."
+          }
+        }
+      }
+    },
     "hosts": {
       "type": "object",
       "description": "One entry per host that was reached. A host nobody reached is absent, which is an answer.",
       "additionalProperties": {
         "type": "object",
-        "required": ["files"],
+        "required": [
+          "files"
+        ],
         "properties": {
           "files": {
             "type": "object",
             "description": "Deployed path -> the bytes, or null for a file the host does not have. Null is an ANSWER, not a gap: every row of that file is reported not run, with that reason.",
-            "additionalProperties": { "type": ["string", "null"] }
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           },
           "included_by": {
             "type": "object",
             "description": "Which further files each deployed file NAMES. A row saying 'we set nothing, so the default applies' is a claim about those too.",
-            "additionalProperties": { "type": "array", "items": { "type": "string" } }
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           },
           "included": {
             "type": "object",
             "description": "…and what each of them holds.",
-            "additionalProperties": { "type": ["string", "null"] }
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           },
           "formats": {
             "type": "object",
             "description": "A format a path's own name cannot state (`space` is nobody's extension). Only where detection cannot serve.",
-            "additionalProperties": { "type": "string" }
+            "additionalProperties": {
+              "type": "string"
+            }
           },
           "probes": {
             "type": "object",
@@ -41,11 +116,80 @@
             "additionalProperties": {
               "type": "object",
               "properties": {
-                "how": { "type": "string", "description": "What was asked, for the record's evidence." },
-                "ran": { "type": "boolean", "description": "Whether it ran at all. A probe that did not is a THIRD answer, never a failure." },
-                "why": { "type": "string", "description": "…and why not, in the collector's own words." },
-                "ok": { "type": ["boolean", "null"], "description": "A verdict the collector itself could reach (an HTTP status is not a rule, it is the answer). Null where judging it needs one." },
-                "text": { "type": "string", "description": "What came back, carried into the record as the material the verdict was read from." }
+                "how": {
+                  "type": "string",
+                  "description": "What was asked, for the record's evidence."
+                },
+                "ran": {
+                  "type": "boolean",
+                  "description": "Whether it ran at all. A probe that did not is a THIRD answer, never a failure."
+                },
+                "why": {
+                  "type": "string",
+                  "description": "…and why not, in the collector's own words."
+                },
+                "ok": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "A verdict the collector itself could reach (an HTTP status is not a rule, it is the answer). Null where judging it needs one."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "What came back, carried into the record as the material the verdict was read from."
+                }
+              }
+            }
+          },
+          "commands": {
+            "type": "object",
+            "description": "What the host was asked, and what it said. One entry per command — the commands a CHANNEL asked for (`collect-plan` lists them), so the collector does not carry a second copy of the same strings.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "documents": {
+            "type": "array",
+            "description": "Documents the project fetched: a realm as a product's API describes it, a resource as a cloud API returns it. Not a file on this host and not a command's output — bytes that answer a whole sheet or component, addressed by each row's own structural address exactly as a file is.",
+            "items": {
+              "type": "object",
+              "required": [
+                "format",
+                "text"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "What to call it, so a sheet can say which document answers its rows (`documents:` in the build spec)."
+                },
+                "sheet": {
+                  "type": "string",
+                  "description": "…or which sheet's rows it answers directly, for a sheet whose rows carry their own addresses and need no template."
+                },
+                "component": {
+                  "type": "string",
+                  "description": "…narrowed to one component of that sheet."
+                },
+                "format": {
+                  "type": "string",
+                  "description": "How to read it. A realm comes back as JSON; nothing says another product's will."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "The bytes."
+                },
+                "how": {
+                  "type": "string",
+                  "description": "What was asked, for the record's evidence — `GET /admin/realms/poc`. For a document belonging to no host this is the whole of its label, so it is what a reader sees beside every verdict it answers."
+                },
+                "absent": {
+                  "type": "string",
+                  "description": "…or it could not be read at all, which is an answer about the product and not a gap in the run."
+                }
               }
             }
           }

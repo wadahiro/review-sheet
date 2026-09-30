@@ -250,7 +250,10 @@ export type ArtifactPreview = {
   // Required by `nature: "observed"` and meaningless without it: which host it
   // was read from and at what moment. A record whose evidence cannot say when
   // it was taken is a record that cannot be re-checked.
-  observed?: { host: string; at: string };
+  // WHERE and WHEN a host was found holding these bytes. `host` is absent for a
+  // document that belongs to no host — a cloud account's state, a plan — where
+  // naming a machine would be a claim about provenance nobody made.
+  observed?: { host?: string; at: string };
   lines: ArtifactLine[];
 };
 

@@ -70,12 +70,15 @@ const html = htm.bind(h);
 // way to detect: "Rendered from" over an authored `.tf` says this tool produced
 // it, and over an OBSERVED file it says the tool produced what a host was found
 // holding — the opposite of what evidence is for.
-export function artifactProvenance(a: { nature?: string; observed?: { host: string; at: string } }, t: Messages): string {
+export function artifactProvenance(a: { nature?: string; observed?: { host?: string; at: string } }, t: Messages): string {
   if (a.nature === "source") return t.artifactSourceFile;
   if (a.nature === "observed") {
-    return t.artifactCollectedFrom
-      .replace("{host}", a.observed?.host ?? "")
-      .replace("{at}", a.observed?.at ?? "");
+    // NO HOST, no sentence about one. A document belonging to no host (a cloud
+    // account's state, a plan) would otherwise read "Collected from  at …",
+    // and a header with a blank where the machine goes is worse than one that
+    // never claimed a machine.
+    const said = a.observed?.host === undefined ? t.artifactCollectedAt : t.artifactCollectedFrom;
+    return said.replace("{host}", a.observed?.host ?? "").replace("{at}", a.observed?.at ?? "");
   }
   return t.artifactRenderedFrom;
 }

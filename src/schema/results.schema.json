@@ -94,7 +94,6 @@
         "additionalProperties": false,
         "required": [
           "instance",
-          "host",
           "at",
           "sheet",
           "text"
@@ -105,7 +104,8 @@
             "description": "The environment it was collected from. `generate --instances` narrows evidence the same way it narrows values — the environments a delivery does not cover are not in the file."
           },
           "host": {
-            "type": "string"
+            "type": "string",
+            "description": "The host whose bytes these are. ABSENT for a document that belongs to no host — a cloud account's state, a plan — where naming a machine would be provenance nobody claimed; such a document is identified by what was ASKED (`command`)."
           },
           "at": {
             "type": "string",

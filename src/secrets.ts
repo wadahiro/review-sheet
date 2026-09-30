@@ -98,7 +98,10 @@ export type EvidenceLeak = { sheet: string; category: string; key: string; where
 
 export function findSecretsInEvidence(
   input: ParameterSheetInput | VersionedSheetInput,
-  evidence: { instance: string; host: string; path?: string; command?: string; text: string }[]
+  // `host` absent for a document that belongs to no host — see judge.ts's
+  // `Observation.documents`. The leak check is about the TEXT and does not care
+  // where it came from; the host only names the place in the report.
+  evidence: { instance: string; host?: string; path?: string; command?: string; text: string }[]
 ): EvidenceLeak[] {
   const literals: { value: string; at: BakedSecret }[] = [];
   const walk = (sheet: string, path: string, categories: Category[] | undefined): void => {
@@ -120,7 +123,11 @@ export function findSecretsInEvidence(
   for (const doc of evidence) {
     for (const { value, at } of literals) {
       if (!doc.text.includes(value)) continue;
-      out.push({ ...at, instance: doc.instance, where: `${doc.host} ${doc.path ?? doc.command ?? ""}` });
+      out.push({
+        ...at,
+        instance: doc.instance,
+        where: [doc.host, doc.path ?? doc.command ?? ""].filter((x) => x !== undefined && x !== "").join(" "),
+      });
     }
   }
   return out;

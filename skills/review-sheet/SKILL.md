@@ -4135,6 +4135,36 @@ collector that reads no files (an account and a region is not a host that holds
 `/etc/httpd/conf/httpd.conf`) is skipped when a deployed file is being judged,
 and a host two observations both claim is reported by name rather than folded.
 
+**A document that belongs to no host goes beside `hosts:`, not inside it.** A
+`terraform plan` describes a cloud account, not a machine: which workstation ran
+the command is provenance of the FETCH and not of the values.
+
+```yaml
+environment: prod
+documents:                      # beside hosts:, belonging to none of them
+  - sheet: aws infrastructure
+    format: json
+    how: terraform show -json (prod)
+    text: "{…}"
+hosts: {}
+```
+
+There is no flag — where it sits says it. A verdict citing one carries no host,
+so its evidence label is what was ASKED with nothing in front of it (a `how`
+that already names the tool no longer reads `terraform terraform show …`), the
+unit's own host line never names a machine that has nothing to do with what the
+record certifies, and the carried document's id drops the host segment rather
+than holding a blank where a machine would go. Put it under a host only where a
+host really is the answer: a product's API answered BY that node, a file that
+machine holds.
+
+The observation's shape is otherwise OPEN on purpose — a project's own channels
+ride along beside the fields this tool reads, and a real one carries several. So
+an unknown key is allowed and ignored; a NEAR-MISS of a declared name is not,
+because `documnets:` is not a key this tool does not read, it is one somebody
+meant to be a key it does, and the openness would swallow it — the documents
+never arrive and every row they would answer reads "not run".
+
 Declare a `check:` only where one command's output really is the answer. An item whose
 rule compares against something else — a count against the fleet's size, a date
 against today, a value against what a deployed file says — is a rule, and a

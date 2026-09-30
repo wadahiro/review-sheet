@@ -51,6 +51,21 @@ export type Observation = {
   environment: string;
   collected_at?: string;
   hosts: Record<string, ObservedHost>;
+  // DOCUMENTS THAT BELONG TO NO HOST. A `terraform plan` describes a cloud
+  // account, not a machine: which workstation ran the command is provenance of
+  // the FETCH and not of the values, and a reader checking `idle_timeout = 60`
+  // does not care whose laptop it was.
+  //
+  // Before this, `documents` existed only under a host, so such a document had
+  // to be filed under an invented one (`localhost`) — which then appeared in
+  // the unit's "hosts checked" line and in every evidence label, naming a
+  // machine that has nothing to do with what the record certifies. The host
+  // was a map key the model demanded, not a fact anybody stated.
+  //
+  // No flag says so: where the document sits does. Everything downstream reads
+  // the host as optional, so a verdict citing one of these carries no host and
+  // its label is what was ASKED, with nothing in front of it.
+  documents?: ObservedDocument[];
   // What an importer's placeholders resolved to in THIS environment. Only the
   // project read the files the importer read, so only it can say.
   substitutions?: Record<string, string>;
@@ -775,7 +790,11 @@ export function judgeFiles(
       // branch returned before ever asking. That is the half that mattered
       // most: a realm's and a client's untouched fields are precisely the rows
       // an upgrade moves, and they are answered from a document, never a file.
-      const heldDoc = obs0?.hosts?.[doc.host];
+      // A build pin is answered by asking the host what it has installed, so a
+      // document belonging to no host cannot be checked against one — there is
+      // nothing to ask. Not a gap: such a document describes a cloud account or
+      // a plan, which no `rpm -q` speaks for.
+      const heldDoc = doc.host === undefined ? undefined : obs0?.hosts?.[doc.host];
       const wrongBuildDoc =
         item.kind === "default-in-force" && heldDoc !== undefined
           ? buildOf(heldDoc, item.target.sheet, opts.builds ?? [], opts.rpmCommand, opts.defaultsCheckedBy ?? [], opts.lang)
@@ -784,7 +803,7 @@ export function judgeFiles(
         out.results.push({
           target: { sheet: item.target.sheet, path: item.target.path, key: item.target.key, instance: item.target.instance },
           at,
-          evidence: { host: doc.host },
+          evidence: { ...(doc.host === undefined ? {} : { host: doc.host }) },
           status: "not_run",
           reason: t.otherBuild(wrongBuildDoc),
         });
@@ -1063,7 +1082,7 @@ function documentFor(
   // …and the rows the plan states a value for without testing them, which a
   // reference must resolve through just the same. See DocumentRouter.
   unchecked: NonNullable<TestPlan["unchecked"]> = []
-): { doc: ObservedDocument; host: string; address: string | undefined; expected: string | undefined; idFields?: string[] } | undefined {
+): { doc: ObservedDocument; host?: string; address: string | undefined; expected: string | undefined; idFields?: string[] } | undefined {
   // A TEMPLATE, where the sheet declares one: it says which document answers
   // the row and where the value sits in it, and both can depend on the row's
   // component. That is the whole of "which realm does this sheet describe, and
@@ -1097,8 +1116,8 @@ function documentFor(
       ],
     });
     if (to === undefined) return undefined;
-    for (const [host, held] of Object.entries(obs.hosts)) {
-      for (const d of held.documents ?? []) {
+    for (const { doc: d, host } of documentsOf(obs)) {
+      {
         if (d.name !== to.document) continue;
         // The router's own answer wins where it gave one, and the observation's
         // substitution applies after either. The two resolve different things —
@@ -1129,8 +1148,8 @@ function documentFor(
   // this sheet answers them where they say they sit. Saying it and leaving the
   // entry out are the same thing — and only one of them is findable.
   const bare = tpl !== undefined && tpl.document === undefined && tpl.router === undefined && tpl.address === undefined;
-  for (const [host, held] of Object.entries(obs.hosts)) {
-    for (const d of held.documents ?? []) {
+  for (const { doc: d, host } of documentsOf(obs)) {
+    {
       if (tpl !== undefined && !bare) {
         if (tpl.document === undefined || tpl.address === undefined) continue;
         if (d.name !== fill(tpl.document)) continue;
@@ -1151,6 +1170,23 @@ function documentFor(
     }
   }
   return undefined;
+}
+
+// EVERY DOCUMENT THIS OBSERVATION HOLDS, with the host it belongs to or none.
+// One walk, because three readers ask the same question — the router branch,
+// the template branch, and the pass that carries the bytes into the record —
+// and three walks that must agree are three walks that will not.
+//
+// Host documents first, so a project that has both keeps the resolution order
+// it had before the hostless kind existed.
+function documentsOf(obs: { hosts: Record<string, ObservedHost>; documents?: ObservedDocument[] }): {
+  doc: ObservedDocument;
+  host?: string;
+}[] {
+  const out: { doc: ObservedDocument; host?: string }[] = [];
+  for (const [host, held] of Object.entries(obs.hosts)) for (const doc of held.documents ?? []) out.push({ doc, host });
+  for (const doc of obs.documents ?? []) out.push({ doc });
+  return out;
 }
 
 // Which document answers a sheet's rows, and where in it each row sits.
@@ -1178,7 +1214,8 @@ export type DocumentTemplate = {
 function answerByDocument(
   item: TestItem,
   doc: ObservedDocument,
-  host: string,
+  // Absent for a document that belongs to no host — see Observation.documents.
+  host: string | undefined,
   address: string | undefined,
   expected: string | undefined,
   at: string,
@@ -1188,7 +1225,9 @@ function answerByDocument(
   idFields: string[] = []
 ): TestResult[] {
   const target = { sheet: item.target.sheet, path: item.target.path, key: item.target.key, instance: item.target.instance };
-  const evidence = { host, ...(doc.how === undefined ? {} : { command: doc.how }) };
+  // No host segment where there is no host: the label is then what was ASKED,
+  // which is the whole of what such a document can be identified by.
+  const evidence = { ...(host === undefined ? {} : { host }), ...(doc.how === undefined ? {} : { command: doc.how }) };
   if (doc.absent !== undefined) {
     return [{ target, at, evidence, status: "not_run", reason: doc.absent }];
   }
@@ -1392,30 +1431,38 @@ export function evidenceFrom(
         seen.add(k);
         out.push({ instance: obs.environment, host, at, sheet: sheetOfCommand.get(command) ?? "", command, text });
       }
-      for (const d of held.documents ?? []) {
-        if (d.absent !== undefined || d.text === "") continue;
-        // One copy per ENVIRONMENT, not per host: a document is asked of a
-        // PRODUCT, every node answers the same API, and only the node a verdict
-        // names can be cited. The others are weight in a delivered file,
-        // carried for a reader with no way to open them. (A file is different —
-        // it is a fact about the host that holds it, and every host's copy is
-        // cited by that host's own verdicts.)
-        const k = `${obs.environment} ${d.how ?? d.name ?? d.sheet ?? ""}`;
-        if (seen.has(k)) continue;
-        seen.add(k);
-        out.push({
-          instance: obs.environment, host, at,
-          // Filed under the first sheet a template sends to this document —
-          // where a reader of the rows it answers is standing.
-          sheet: d.sheet ?? templates.find((t) => t.document === d.name)?.sheet ?? "",
-          ...(d.name === undefined ? {} : { component: d.name }),
-          command: d.how ?? d.name ?? "",
-          text: d.text,
-        });
-      }
       for (const [owner, paths] of Object.entries(held.included_by ?? {})) {
         for (const p of paths) add(p, held.included?.[p], sheetOf.get(owner) ?? "");
       }
+    }
+    // THE DOCUMENTS, outside the host loop — one copy per ENVIRONMENT, not per
+    // host. A document is asked of a PRODUCT: every node answers the same API,
+    // and only the node a verdict names can be cited, so the others are weight
+    // in a delivered file, carried for a reader with no way to open them. (A
+    // file is different — it is a fact about the host that holds it, and every
+    // host's copy is cited by that host's own verdicts.)
+    //
+    // It used to sit INSIDE that loop and achieve the same thing with a key
+    // that left the host out, which worked and read as an accident. Out here
+    // the shape says it — and it is what lets a document belonging to no host
+    // be carried at all, including in an observation that has no hosts.
+    const docAt = obs.collected_at ?? new Date().toISOString();
+    for (const { doc: d, host } of documentsOf(obs)) {
+      if (d.absent !== undefined || d.text === "") continue;
+      const k = `${obs.environment} ${d.how ?? d.name ?? d.sheet ?? ""}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({
+        instance: obs.environment,
+        ...(host === undefined ? {} : { host }),
+        at: docAt,
+        // Filed under the first sheet a template sends to this document —
+        // where a reader of the rows it answers is standing.
+        sheet: d.sheet ?? templates.find((t) => t.document === d.name)?.sheet ?? "",
+        ...(d.name === undefined ? {} : { component: d.name }),
+        command: d.how ?? d.name ?? "",
+        text: d.text,
+      });
     }
   }
   return out;

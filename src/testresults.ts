@@ -64,7 +64,12 @@ export type TestResults = {
   // (which decides what may travel), carried by `generate --evidence`.
   evidence?: {
     instance: string;
-    host: string;
+    // The host whose bytes these are — ABSENT for a document that belongs to
+    // no host (see judge.ts's `Observation.documents`). A file is a fact about
+    // the machine holding it and always has one; a `terraform plan` describes
+    // a cloud account, and which workstation fetched it is not part of its
+    // identity. Such a document is identified by what was ASKED.
+    host?: string;
     at: string;
     sheet: string;
     component?: string;

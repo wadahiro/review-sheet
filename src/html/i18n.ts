@@ -125,6 +125,9 @@ type Messages = {
   // `{host}` / `{at}` — where an OBSERVED document was read and when. Not
   // "rendered from": nothing rendered it, a host had it.
   artifactCollectedFrom: string;
+  // …and for a document that belongs to no host, where naming a machine would
+  // be a provenance claim nobody made.
+  artifactCollectedAt: string;
   artifactDockRight: string;
   artifactDockBelow: string;
   artifactKindAbsent: string;
@@ -348,6 +351,7 @@ const ja: Messages = {
   artifactRenderedFrom: "生成元",
   artifactSourceFile: "ソースファイル",
   artifactCollectedFrom: "{host} から {at} に取得",
+  artifactCollectedAt: "{at} に取得",
   artifactDockRight: "右に表示",
   artifactDockBelow: "下に表示",
   artifactKindAbsent: "この環境では出力されない（条件: {reason}）",
@@ -518,6 +522,7 @@ const en: Messages = {
   artifactRenderedFrom: "Rendered from",
   artifactSourceFile: "Source file",
   artifactCollectedFrom: "Collected from {host} at {at}",
+  artifactCollectedAt: "Collected at {at}",
   artifactDockRight: "Dock to the right",
   artifactDockBelow: "Dock to the bottom",
   artifactKindAbsent: "not rendered for this instance (condition: {reason})",

@@ -19,8 +19,11 @@ import type { TestResults } from "./testresults.js";
 // One document per (environment, host, subject). Never merged across hosts even
 // when the bytes agree: the moment they were taken differs, and a record that
 // merges them can no longer say which host a verdict was read from.
-const idOf = (e: { instance: string; host: string; path?: string; command?: string }): string =>
-  `observed ${e.instance} ${e.host} ${e.path ?? e.command ?? ""}`;
+// A HOSTLESS document drops the host SEGMENT rather than carrying an empty one:
+// an id is the address a delivered record links to, so the spelling with a host
+// must stay byte-identical or every set already handed over links to nothing.
+const idOf = (e: { instance: string; host?: string; path?: string; command?: string }): string =>
+  ["observed", e.instance, ...(e.host === undefined ? [] : [e.host]), e.path ?? e.command ?? ""].join(" ");
 
 // Which document CITES each evidence id, by sheet name. Two things at once,
 // and deliberately one map rather than two: the set of ids decides what has to
@@ -130,7 +133,10 @@ export function evidencePreviews(
       // A command has no path on the host; the command itself is what it is.
       source_file: e.path ?? e.command ?? "",
       nature: "observed",
-      observed: { host: e.host, at: e.at },
+      // The panel's header says WHERE these bytes came from. A document that
+      // belongs to no host has no answer, and inventing one is the claim this
+      // whole change exists to stop; the header shows the moment alone.
+      observed: { ...(e.host === undefined ? {} : { host: e.host }), at: e.at },
       instances: [e.instance],
       // Every line as collected. No `key` on any of them, deliberately: an
       // observed document is kept out of the row->preview index (app.ts), and a

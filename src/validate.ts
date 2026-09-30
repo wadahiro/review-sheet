@@ -3,6 +3,7 @@ import inputSchema from "./schema/input.schema.json";
 import reviewSchema from "./schema/review.schema.json";
 import resultsSchema from "./schema/results.schema.json";
 import observationsSchema from "./schema/observations.schema.json";
+import { suggestNearest } from "./schema-errors.js";
 import type { ParameterSheetInput, VersionedSheetInput, ReviewDocument, Category, SourceLocation } from "./types.js";
 import type { TestResults } from "./testresults.js";
 import type { Observation } from "./judge.js";
@@ -218,12 +219,56 @@ export function validateResults(data: unknown): TestResults {
   return data as TestResults;
 }
 
+// The fields this schema declares, read OFF the schema so there is no second
+// list to drift from it.
+const obsTopFields = Object.keys(observationsSchema.properties);
+const obsHostFields = Object.keys(observationsSchema.properties.hosts.additionalProperties.properties);
+
+// A KEY SOMEBODY MEANT TO BE ONE OF OURS.
+//
+// This schema is open on purpose, and says so: a project's own channels — a
+// product's API, a cloud API, the output of a command — live beside the fields
+// this tool reads, and a real observation carries several (`ldap`, `realms`,
+// `login` on one project). So an unknown key cannot be refused.
+//
+// A NEAR-MISS of a declared name is different: `documnets:` is not "a key this
+// tool does not read", it is a key somebody wrote intending one that it does,
+// and the openness then swallows it — the documents never arrive, every row
+// they would answer reads "not run", and nothing says why. Same distinction
+// `suggestNearest` already draws for an unknown build.yml field, applied where
+// a closed set is not available.
+function misspelled(data: unknown): string[] {
+  const out: string[] = [];
+  const check = (obj: unknown, declared: string[], where: string): void => {
+    if (typeof obj !== "object" || obj === null || Array.isArray(obj)) return;
+    for (const key of Object.keys(obj)) {
+      if (declared.includes(key)) continue;
+      const hint = suggestNearest(key, declared);
+      if (hint !== undefined && hint !== "") out.push(`${where}: unknown key "${key}" — did you mean "${hint}"?`);
+    }
+  };
+  check(data, obsTopFields, "/");
+  const hosts = (data as { hosts?: unknown }).hosts;
+  if (typeof hosts === "object" && hosts !== null) {
+    for (const [host, held] of Object.entries(hosts as Record<string, unknown>)) check(held, obsHostFields, `/hosts/${host}`);
+  }
+  return out;
+}
+
 // What one environment's hosts hold, as somebody collected it. SHAPE only —
 // whether it answers anything is judge.ts's question, against the plan.
 export function validateObservation(data: unknown): Observation {
   if (!validateObservationsSchema(data)) {
     const errors = validateObservationsSchema.errors ?? [];
     throw new Error(`Observation validation error:\n${errors.map((e) => `${e.instancePath || "/"}: ${e.message}`).join("\n")}`);
+  }
+  const typos = misspelled(data);
+  if (typos.length > 0) {
+    throw new Error(
+      `Observation validation error:\n${typos.join("\n")}\n` +
+        `Keys this tool does not read are allowed and ignored — that is what lets a project's own channels ride along — ` +
+        `so a key close to one of ours is refused rather than silently dropped.`
+    );
   }
   return data as Observation;
 }
