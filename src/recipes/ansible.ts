@@ -224,12 +224,12 @@ const schema = {
       },
     },
     overlays: { type: "object", additionalProperties: sourceOrListSchema },
-    include: { type: "array", items: { type: "string" } },
+    include: { type: "array", items: { type: "string" }, minItems: 1 },
     // Same field, same meaning as layered's: the reading order for components,
     // when the sheet's own sources cannot say it — one side a template, the
     // other a file.
     component_order: { type: "array", items: { type: "string" }, minItems: 1 },
-    exclude: { type: "array", items: { type: "string" } },
+    exclude: { type: "array", items: { type: "string" }, minItems: 1 },
     // under_key (the backing-variable column) lives in the project metadata
     // (sheet.yml's under_key:, P7): a display fact, not a data-source one.
     // assemble.ts enforces "any keyMap entry requires an under_key" at

@@ -1119,6 +1119,15 @@ that spelling trades a pile of rows for a permanent warning. `**` rather than
 `*` because `*` stops at a `.`, and a key transform (`key: { from: path }`) puts
 dots in the names.
 
+**The filter is the SHEET's, not one source's**, so `exclude: ["**"]` on a sheet
+that also has `static_files:` empties that too — every row of the sheet, with no
+error. Where the answer is "this sheet takes nothing from the variables at all",
+say it by REMOVING `defaults:`/`overlays:`: both are optional in `layered`, and
+a sheet declaring only `static_files:` is the ordinary shape for one whose
+subject is a single document. `include: []` is not that statement and is
+refused — an empty list selects every key, which is the opposite of what it
+looks like, so the build stops and says which spelling to reach for.
+
 **Scope each part to its own component.** That is what makes the merge safe:
 rows are unique within a component, so two parts can only collide by both
 claiming one, and a collision is an ERROR naming both parts rather than one

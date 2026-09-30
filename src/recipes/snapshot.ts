@@ -83,8 +83,8 @@ const schema = {
     // spec.ts validates it as a common one and strips it before this schema is
     // reached; the recipe receives it via RecipeIO instead.
     empty_means_unset: { type: "boolean" },
-    include: { type: "array", items: { type: "string" } },
-    exclude: { type: "array", items: { type: "string" } },
+    include: { type: "array", items: { type: "string" }, minItems: 1 },
+    exclude: { type: "array", items: { type: "string" }, minItems: 1 },
   },
   additionalProperties: false,
 };

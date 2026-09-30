@@ -33,6 +33,14 @@ export type KeySelector = {
   unmatchedPatterns: () => string[];
 };
 
+// An EMPTY list is refused rather than read as "no filter". `makeKeySelector`
+// starts from `included = inc.length === 0`, so an empty `include:` selects
+// EVERYTHING — the exact opposite of what somebody writing it means, and
+// silently: a role's whole variable file arrives as rows of a sheet that asked
+// for none of it. "Take nothing from this source" is said by removing the
+// source (`defaults:`/`overlays:`/`static_files:` are each optional), not by
+// naming no patterns, and there is deliberately no never-matching-pattern
+// convention to reach for instead.
 export function makeKeySelector(include: string[], exclude: string[]): KeySelector {
   const compiled = [...include, ...exclude].map((pattern) => ({ pattern, re: globToRegExp(pattern), used: false }));
   const inc = compiled.slice(0, include.length);

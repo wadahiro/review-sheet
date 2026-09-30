@@ -160,13 +160,13 @@ const staticFilesSchema = {
       path: { type: "string" },
       format: { type: "string" },
       key: keyTransformSchema,
-      include: { type: "array", items: { type: "string" } },
+      include: { type: "array", items: { type: "string" }, minItems: 1 },
     // Reading order for the components, when the sheet's own sources cannot
     // say it: a comparison sheet takes one side from a template and the other
     // from a file, and which of those is "first" is a statement about the
     // subject, not about the spec. Derived from the sources when omitted.
     component_order: { type: "array", items: { type: "string" }, minItems: 1 },
-      exclude: { type: "array", items: { type: "string" } },
+      exclude: { type: "array", items: { type: "string" }, minItems: 1 },
       substitution: substitutionSchema,
       component: { type: "string" },
       // WHICH ENVIRONMENTS THIS FILE IS THE CONFIGURATION FOR — the same field,
@@ -241,13 +241,13 @@ const schema = {
       },
       additionalProperties: false,
     },
-    include: { type: "array", items: { type: "string" } },
+    include: { type: "array", items: { type: "string" }, minItems: 1 },
     // Reading order for the components, when the sheet's own sources cannot
     // say it: a comparison sheet takes one side from a template and the other
     // from a file, and which of those is "first" is a statement about the
     // subject, not about the spec. Derived from the sources when omitted.
     component_order: { type: "array", items: { type: "string" }, minItems: 1 },
-    exclude: { type: "array", items: { type: "string" } },
+    exclude: { type: "array", items: { type: "string" }, minItems: 1 },
   },
   additionalProperties: false,
 };

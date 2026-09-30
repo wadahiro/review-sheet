@@ -58,6 +58,18 @@ export function formatAjvErrors(errors: ErrorObject[] | null | undefined): strin
         const hint = suggestNearest(bad, candidates);
         return `${e.instancePath || "/"}: must NOT have additional property "${bad}"` + (hint ? ` — did you mean "${hint}"?` : "");
       }
+      // AN EMPTY KEY FILTER, which is the one `minItems` failure where the
+      // schema's own words leave the author where they started. `include: []`
+      // reads as "take nothing" and, unrefused, selected everything; the fix is
+      // not a smaller list but no source at all, so the message says that
+      // rather than making somebody go looking for a never-matching pattern.
+      if (e.keyword === "minItems" && /\/(include|exclude)$/.test(e.instancePath)) {
+        return (
+          `${e.instancePath}: ${e.message} — an empty list selects EVERY key, not none. ` +
+          `To take nothing from a source, remove the source (defaults:/overlays:/static_files: are each optional); ` +
+          `to take some of it, name the patterns.`
+        );
+      }
       return `${e.instancePath || "/"}: ${e.message}`;
     })
     .join("\n");
