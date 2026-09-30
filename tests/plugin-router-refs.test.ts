@@ -217,6 +217,23 @@ describe("what the plan says about a row it does not test", () => {
     expect(buildTestPlan(sheet({})).plan.unchecked).toBeUndefined();
   });
 
+  // THE THIRD WAY A ROW PRODUCES NO ITEM: its unit says it is not tested in
+  // this phase. Found by testing a recommendation rather than asserting it —
+  // the shape suggested for "the value is used but the row is not a parameter
+  // of this sheet" is a sheet of its own in a `not_tested` unit, and that
+  // walked straight back into the same failure. A row still states what it
+  // states whatever phase this is.
+  it("carries what a row of an untested unit states", () => {
+    const input = {
+      metadata: { title: "t" },
+      groups: [{ name: "g", test: { not_tested: { en: "the build tool's own inputs" } } }],
+      sheets: [{ name: "s", group: "g", instances: ["stg"], categories: [{ name: "c", params: [{ key: "HOST", value: "https://h.example.com" }] }] }],
+    } as never;
+    const { plan } = buildTestPlan(input);
+    expect(plan.items).toEqual([]);
+    expect(plan.unchecked).toEqual([{ target: { sheet: "s", path: ["c"], key: "HOST", instance: "stg" }, expected: "https://h.example.com" }]);
+  });
+
   // A CREDENTIAL'S VALUE DOES NOT TRAVEL. The item path withholds it (`quiet`),
   // and this list has to withhold it too — a credential is the commonest thing
   // a project puts out of review scope, so it is the ordinary case here. The

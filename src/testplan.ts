@@ -341,11 +341,6 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
     if (declaration.method === undefined && declaration.not_tested === undefined && !bare.includes(u.name)) {
       bare.push(u.name);
     }
-    // A unit that says it is not tested here still HAS its rows; what it does
-    // not have is items. The statement stands in for them, in one place, where
-    // the items would have been.
-    if (declaration.not_tested !== undefined) continue;
-
     // What a row STATES, for every environment it states it in — recorded for a
     // row that produces no item, since a reference to it must still resolve.
     // Review scope and "does this row hold a value" are different questions.
@@ -361,6 +356,18 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
         });
       }
     };
+
+    // A unit that says it is not tested here still HAS its rows; what it does
+    // not have is items. The statement stands in for them, in one place, where
+    // the items would have been — but the rows still STATE what they state, and
+    // a reference to one must resolve whatever phase this is. The third way a
+    // row can produce no item, after `out_of_scope` and `covered_by`, and it
+    // reached this the same way they did: by a reader of the model finding the
+    // row gone and the row that broke being a different one.
+    if (declaration.not_tested !== undefined) {
+      for (const row of rows) stateWithoutItem(row);
+      continue;
+    }
 
     for (const row of rows) {
       if (row.outOfScope !== undefined) {
