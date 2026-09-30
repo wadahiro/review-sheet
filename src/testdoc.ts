@@ -497,13 +497,53 @@ export function renderTestDoc(
   // answers "which unit am I in" at every one of them, and costs a document
   // with one environment nothing.
   const unitShown = pickLang(unit.label, lang) ?? unitName;
+
+  // WHICH HOSTS THIS UNIT WAS CHECKED AGAINST — asked of the unit's own
+  // answers, never of the run.
+  //
+  // `runs.<env>.hosts` is every host the run READ, which is an environment's
+  // fact; "対象ホスト" under a unit's heading is a claim about that unit. One
+  // observation file may carry units of quite different nature — servers whose
+  // files were read, beside a cloud resource judged from a document that
+  // belongs to no server and is filed under whatever machine fetched it — and
+  // then every unit's heading named every host, including two servers that
+  // appear nowhere in that unit's evidence. A reader checking one unit is
+  // told it was checked against machines it never touched.
+  //
+  // Ordered by the RUN's list so the spelling is stable across regenerations
+  // and matches what the collector recorded; anything the unit cites that the
+  // run did not list follows, rather than being dropped.
+  const hostsOf = (instance: string, run: { hosts?: string[] } | undefined): string[] => {
+    const cited = new Set<string>();
+    const add = (ev: { host?: string; also?: { host?: string }[] } | undefined): void => {
+      if (ev === undefined) return;
+      if (ev.host !== undefined) cited.add(ev.host);
+      // Every host that answered, not only the one the verdict points at — the
+      // same widening `evidenceCell` performs on the cell itself.
+      for (const one of ev.also ?? []) if (one.host !== undefined) cited.add(one.host);
+    };
+    for (const i of shown) {
+      if (i.target.instance !== instance) continue;
+      add(answerFor(index, i)?.evidence);
+    }
+    for (const f of mineFunctional) {
+      if (f.instance !== instance) continue;
+      add(functionalAnswers.get(f)?.evidence);
+    }
+    const listed = (run?.hosts ?? []).filter((h) => cited.has(h));
+    return [...listed, ...[...cited].filter((h) => !listed.includes(h))];
+  };
+
   const sections: string[] = [];
   for (const instance of instances) {
     const run = results.runs?.[instance];
     sections.push(
       `### ${unitShown} (${instance})`,
       "",
-      run?.at === undefined ? t.notRunYet : t.ranAt(inZone(run.at, opts.timezone), (run.hosts ?? []).join(", ") || "—"),
+      // "—" where this unit cites no host at all. The run may well have read
+      // machines, but not for THIS unit, and every row below says 未実施 — so
+      // naming them here would be the one false sentence on the page.
+      run?.at === undefined ? t.notRunYet : t.ranAt(inZone(run.at, opts.timezone), hostsOf(instance, run).join(", ") || "—"),
       ""
     );
     let n = 0;

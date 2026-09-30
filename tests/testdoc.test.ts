@@ -44,7 +44,9 @@ const results = (): TestResults => ({
   results: [
     { target: { sheet: "os", key: "Listen", instance: "local" }, status: "pass", detail: "デプロイ済みファイル", evidence: { host: "web01", file: "/etc/httpd/conf/httpd.conf", line: 12 } },
     { target: { sheet: "os", key: "Listen", instance: "prod" }, status: "not_run", reason: "本番は未構築" },
-    { target: { sheet: "os", key: "pw", instance: "local" }, status: "pass" },
+    // Read from the OTHER node, so "対象ホスト: web01, web02" is something this
+    // record can show rather than something the run merely declared.
+    { target: { sheet: "os", key: "pw", instance: "local" }, status: "pass", evidence: { host: "web02", file: "/etc/httpd/conf/httpd.conf", line: 20 } },
     { target: { sheet: "os", key: "Timeout", instance: "local" }, status: "pass" },
     { target: { sheet: "os", key: "Gone", instance: "local" }, status: "fail", actual: "on" },
   ],
@@ -135,6 +137,48 @@ describe("the tables a document is given", () => {
     // …and an environment nobody ran says so rather than looking blank.
     expect(b["test:items"]).toContain("### SSO サーバ (prod)");
     expect(b["test:items"]).toContain("実施日時: — ／ 対象ホスト: — （未実施）");
+  });
+
+  // WHICH HOSTS, asked of this unit's own answers rather than of the run.
+  //
+  // `runs.<env>.hosts` is every host the run read, which is an environment's
+  // fact. One observation file may carry units of quite different nature — the
+  // servers whose files were read, beside a cloud resource judged from a
+  // document that belongs to no server and is filed under whatever machine
+  // fetched it — and then every unit's heading named every host, telling a
+  // reader that this unit was checked against machines its evidence never
+  // mentions.
+  describe("the hosts a unit's heading names", () => {
+    const twoUnits = (): TestResults => {
+      const r = results();
+      r.runs = { local: { at: "2026-09-07T07:36:49Z", hosts: ["web01", "web02", "localhost"] } };
+      return r;
+    };
+
+    it("names only the hosts this unit's answers were read from", () => {
+      const b = renderTestDoc(plan(), twoUnits(), "server");
+      expect(b["test:items"]).toContain("対象ホスト: web01, web02");
+      // The machine that fetched another unit's document is not this unit's.
+      expect(b["test:items"]).not.toContain("localhost");
+    });
+
+    // Every host across the unit, not only the first: a run over two nodes
+    // records one host per verdict, so the answer is the union of them.
+    it("unions the hosts across the unit's rows", () => {
+      const one = results();
+      one.results = one.results.filter((x) => x.target.key !== "pw");
+      expect(renderTestDoc(plan(), one, "server")["test:items"]).toContain("対象ホスト: web01\n");
+    });
+
+    // …and a unit whose answers cite nobody says so, rather than borrowing the
+    // run's list: every row below it reads 未実施, so naming machines here
+    // would be the one false sentence on the page.
+    it("says — when the unit cites no host at all", () => {
+      const none = results();
+      none.results = none.results.map((x) => ({ ...x, evidence: undefined }));
+      none.functional = [];
+      expect(renderTestDoc(plan(), none, "server")["test:items"]).toContain("対象ホスト: —");
+    });
   });
 
   it("carries the verdict, how it was checked and where to look again", () => {
