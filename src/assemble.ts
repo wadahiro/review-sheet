@@ -1682,6 +1682,15 @@ function materializeDrafts(
 // file), and the author is told here — the two are not alternatives: one keeps
 // the page honest, the other lets somebody decide the sheet should have been
 // split into components instead.
+// How many rows a finished sheet actually carries, anywhere in its tree. The
+// category structure is the only place a param lives once assembly is done, so
+// this is the one honest answer to "did this sheet end up with anything".
+export function rowCountOf(sheet: { categories?: Category[] }): number {
+  const count = (cats: Category[]): number =>
+    cats.reduce((n, c) => n + (c.params?.length ?? 0) + count(c.categories ?? []), 0);
+  return count(sheet.categories ?? []);
+}
+
 export function mixedFileCategories(sheet: { name: string; categories?: Category[] }): { heading: string; files: string[] }[] {
   const out: { heading: string; files: string[] }[] = [];
   const walk = (cats: Category[] | undefined, trail: string[]): void => {
@@ -2618,6 +2627,21 @@ export function assembleSheetsWithReport(
   // with the declaration that would divide it. Never a decision: detection may
   // inform a report, and may not decide what a page looks like.
   layoutNotes: string[];
+  // A DECLARED SHEET THAT PRODUCED NO ROWS AT ALL — sentences, like the notes
+  // above. The strongest form of the failure this whole area exists to prevent
+  // and the one thing nothing said: a sheet is made of rows or of prose, so one
+  // with neither did not travel, and it looks exactly like a sheet that is
+  // simply short. `md-set.ts` already reports it when WRITING a markdown set;
+  // by then the build has succeeded, the document is out, and a reader is
+  // needed to notice. Reported at the build instead, where whoever changed the
+  // declaration is still looking.
+  //
+  // A warning and not an error, deliberately: a sheet can be emptied by a
+  // dictionary's own `ui: "absent"` claim (see UiReport), which is nobody's
+  // mistake, and this tool does not get to fail a build over the product's
+  // shape. Every OTHER way it happens is a declaration that achieved nothing,
+  // which is what the warning is for.
+  emptySheets: string[];
   // Where a project says something about the PRODUCT — see projectOverlap.
   projectOverlap: ProjectOverlap;
 } {
@@ -3527,7 +3551,23 @@ export function assembleSheetsWithReport(
     }
   }
 
-  return { ...enriched, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, materializeWarnings, layoutNotes, projectOverlap };
+  // Asked of the FINISHED tree, after every filter, demotion and `ui` drop has
+  // had its say — the question is what the sheet ended up with, not what any
+  // one step took away.
+  const emptySheets: string[] = [];
+  for (const sheet of enriched.input.sheets) {
+    // Prose is the other thing a sheet can be made of, and a document sheet
+    // has no categories by construction.
+    if (sheet.document !== undefined) continue;
+    if (rowCountOf(sheet) > 0) continue;
+    emptySheets.push(
+      `${sheet.name}: no rows at all. A sheet is made of rows or of prose, so this one carries nothing — ` +
+        `check the key filters (an include:/exclude: is the whole SHEET's, so it narrows every source), ` +
+        `whether the sources resolved, and whether a bound dictionary's ui: "absent" claimed the lot.`
+    );
+  }
+
+  return { ...enriched, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, materializeWarnings, layoutNotes, emptySheets, projectOverlap };
 }
 
 export function assembleSheets(inputs: SheetInputs[], opts: AssembleOpts): ParameterSheetInput {

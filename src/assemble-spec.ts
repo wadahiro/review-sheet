@@ -85,6 +85,8 @@ export function assembleFromSpecWithReport(
   binding: BindingReport;
   categoryWarnings: string[];
   materializeWarnings: string[];
+  // A declared sheet that produced no rows at all — see assemble.ts.
+  emptySheets: string[];
   // Advice about a sheet's layout — see assembleSheetsWithReport.
   layoutNotes: string[];
   // Where a project says something about the PRODUCT — see ProjectOverlap.

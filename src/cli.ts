@@ -1483,7 +1483,7 @@ async function runSpecImport(opts: {
     // sentence: run from the directory the spec's paths are written against,
     // usually the repository root.
     const above = new Set<string>();
-    const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, materializeWarnings, layoutNotes, projectOverlap, derivedChannels, derivedDocuments, derivedDefaults } = assembleFromSpecWithReport(spec, {
+    const { input, report, unusedProjectParams, materializeReports, uiReports, binding, categoryWarnings, materializeWarnings, layoutNotes, emptySheets, projectOverlap, derivedChannels, derivedDocuments, derivedDefaults } = assembleFromSpecWithReport(spec, {
       readFile,
       listDir,
       readBinary,
@@ -1612,6 +1612,10 @@ async function runSpecImport(opts: {
     if (categoryWarnings.length > 0) {
       for (const w of categoryWarnings) console.error(`Warning: ${w}`);
     }
+    // LAST of the warnings, because it is the largest thing that can have gone
+    // wrong: every note above is about some of a sheet, and this one is about
+    // the whole of it.
+    for (const w of emptySheets) console.error(`Warning: ${w}`);
 
     // Dictionary-binding audit: which tier (see bind.ts's BindMethod) resolved
     // each drafted key against a bound product dictionary, or "none" for a key

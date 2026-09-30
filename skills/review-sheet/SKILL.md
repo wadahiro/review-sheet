@@ -1120,8 +1120,9 @@ that spelling trades a pile of rows for a permanent warning. `**` rather than
 dots in the names.
 
 **The filter is the SHEET's, not one source's**, so `exclude: ["**"]` on a sheet
-that also has `static_files:` empties that too — every row of the sheet, with no
-error. Where the answer is "this sheet takes nothing from the variables at all",
+that also has `static_files:` empties that too — every row of the sheet. The
+build then warns (`<sheet>: no rows at all`), which is the one thing it used to
+stay quiet about. Where the answer is "this sheet takes nothing from the variables at all",
 say it by REMOVING `defaults:`/`overlays:`: both are optional in `layered`, and
 a sheet declaring only `static_files:` is the ordinary shape for one whose
 subject is a single document. `include: []` is not that statement and is
