@@ -404,8 +404,8 @@
   {
     "file": "tests/fixtures/plugin-router-refs/.review-sheet/rules/router.mjs",
     "parser": "generic",
-    "count": 13,
-    "sha": "81c20dd4c907f25f"
+    "count": 14,
+    "sha": "ca4491f0011a5d0b"
   },
   {
     "file": "tests/fixtures/plugin-router-refs/input.json",

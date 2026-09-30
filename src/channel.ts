@@ -76,9 +76,20 @@ export type DocumentRouter = {
   //
   // `expected` REPLACES the row's own where the router returns one. A router
   // that only says where a row sits leaves it out and nothing changes.
+  //
+  // `ctx.stated` is WHAT EVERY ROW OF THIS ENVIRONMENT STATES, which is the
+  // reading of the model the paragraph above describes and NOT the same
+  // question as `ctx.items`. A row can be outside the review's remit
+  // (`out_of_scope`) or answered by a test rather than by its value
+  // (`covered_by`) and still state one — so it produces no item, and for as
+  // long as only `ctx.items` existed, taking a row out of review scope silently
+  // stopped every reference to it resolving. The row that then failed was a
+  // DIFFERENT row, which nobody had touched. Resolve a reference through
+  // `ctx.stated`; iterate `ctx.items` when the question really is "what is
+  // being tested here".
   route: (
     item: TestItem,
-    ctx?: { items?: TestItem[] }
+    ctx?: { items?: TestItem[]; stated?: { target: TestItem["target"]; expected: string }[] }
   ) => { document: string; address: string; idFields?: string[]; expected?: string } | undefined;
 };
 

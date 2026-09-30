@@ -768,7 +768,7 @@ export function judgeFiles(
     // same machinery a file is, because the difference between them is where
     // the bytes came from and nothing else.
     const obs0 = byEnv.get(item.target.instance);
-    const doc = obs0 === undefined ? undefined : documentFor(obs0, item, opts.documents ?? [], obs0.substitutions ?? {}, plan.items);
+    const doc = obs0 === undefined ? undefined : documentFor(obs0, item, opts.documents ?? [], obs0.substitutions ?? {}, plan.items, plan.unchecked ?? []);
     if (doc !== undefined) {
       // A row saying "the product's own default applies" is a claim about ONE
       // build here exactly as it is on the file path below, and the document
@@ -1058,8 +1058,11 @@ function documentFor(
   item: TestItem,
   templates: DocumentTemplate[],
   subs: Record<string, string>,
-  // The plan's own items, for a router that answers this row from another one.
-  allItems: TestItem[] = []
+  // The plan's own items, for a router that answers this row from another one…
+  allItems: TestItem[] = [],
+  // …and the rows the plan states a value for without testing them, which a
+  // reference must resolve through just the same. See DocumentRouter.
+  unchecked: NonNullable<TestPlan["unchecked"]> = []
 ): { doc: ObservedDocument; host: string; address: string | undefined; expected: string | undefined; idFields?: string[] } | undefined {
   // A TEMPLATE, where the sheet declares one: it says which document answers
   // the row and where the value sits in it, and both can depend on the row's
@@ -1078,7 +1081,21 @@ function documentFor(
   // not address the way their source does. A row it does not name is left
   // unanswered — never filed at a guessed address.
   if (tpl?.router !== undefined) {
-    const to = getDocumentRouter(tpl.router)?.route(item, { items: allItems.filter((x) => x.target.instance === item.target.instance) });
+    const here = (x: { target: { instance: string } }): boolean => x.target.instance === item.target.instance;
+    const to = getDocumentRouter(tpl.router)?.route(item, {
+      items: allItems.filter(here),
+      // WHAT EVERY ROW STATES, tested or not: the items' own expected values
+      // plus the rows the plan covers with none (out of scope, covered
+      // elsewhere). One list, so a router resolving a reference never has to
+      // know which of the two a row ended up in — and so taking a row out of
+      // review scope cannot break a different row's reference.
+      stated: [
+        ...allItems.filter((x) => here(x) && x.expected !== undefined).map((x) => ({ target: x.target, expected: x.expected as string })),
+        // A `quiet` entry carries no value (a secret row — see TestPlan), so it
+        // cannot answer a reference and is not offered as though it could.
+        ...unchecked.filter((x) => here(x) && x.expected !== undefined).map((x) => ({ target: x.target, expected: x.expected as string })),
+      ],
+    });
     if (to === undefined) return undefined;
     for (const [host, held] of Object.entries(obs.hosts)) {
       for (const d of held.documents ?? []) {

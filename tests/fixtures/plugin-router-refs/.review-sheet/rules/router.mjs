@@ -7,8 +7,13 @@
 //
 // The value is already on the sheet: this project records each variable as a
 // row of its own. So the table from one to the other is a reading of the model,
-// not a second copy of it — and `ctx.items` is the model, as this environment
-// resolved it.
+// not a second copy of it — and `ctx.stated` is what every row of this
+// environment STATES, which is the model as this environment resolved it.
+//
+// `ctx.stated` and not `ctx.items`: a variable row can be `out_of_scope` — it
+// records a value and nobody reviews it — and then it is not in the plan's
+// items at all, so a reference to it stopped resolving and a DIFFERENT row,
+// which nobody had touched, started failing.
 import { registerDocumentRouter } from "review-sheet/src/channel.ts";
 
 const REFERENCE = /^\$\(env:([A-Za-z_][A-Za-z0-9_]*)\)$/;
@@ -23,7 +28,7 @@ registerDocumentRouter({
     if (!where.includes(".")) return undefined;
 
     const named = REFERENCE.exec(item.expected ?? "");
-    const defines = named === null ? undefined : (ctx?.items ?? []).find((x) => x.target.key === named[1]);
+    const defines = named === null ? undefined : (ctx?.stated ?? []).find((x) => x.target.key === named[1]);
     return {
       document: "clients",
       address: where,

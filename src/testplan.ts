@@ -149,6 +149,28 @@ export type TestPlan = {
   units: TestUnit[];
   items: TestItem[];
   functional: FunctionalTestItem[];
+  // ROWS NO ITEM COVERS, AND THE VALUE EACH STATES.
+  //
+  // A row can be outside the review's remit (`out_of_scope`) or answered by a
+  // test instead of by its value (`covered_by`) and still STATE a value — and
+  // another row's expected value may be a REFERENCE to it, resolved by reading
+  // the model (see SKILL.md's "…and what the row expects"). Those two facts are
+  // unrelated, and for as long as this list did not exist they were one: taking
+  // a row out of review scope silently stopped a reference to it resolving, and
+  // the row that broke was a DIFFERENT row that looked untouched.
+  //
+  // Only the rows no item covers, because a tested row's value is already in
+  // `items`; the judge hands routers the union of the two (`ctx.stated`), so
+  // nothing downstream has to know which list a row came from.
+  //
+  // `quiet` for a `secret` row, carrying NO value — exactly as an item does
+  // (see `quiet` on TestItem). A credential is the commonest thing a project
+  // puts out of review scope, so this is the ordinary case here rather than a
+  // corner of it, and the plan travels to whoever runs the test. A reference to
+  // such a row therefore does not resolve, which is the honest answer: nothing
+  // can compare a value this file refuses to carry. Cover the referencing row
+  // (`covered_by`) or put it out of scope too.
+  unchecked?: { target: TestItem["target"]; expected?: string; quiet?: boolean }[];
 };
 
 // Everything the derivation left out, and why. A plan that quietly held fewer
@@ -304,6 +326,7 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
   // See the covered_by skip below: an environment named only by covered rows.
   const coveredInstances: { unit: string; instance: string }[] = [];
   const bare: string[] = [];
+  const unchecked: NonNullable<TestPlan["unchecked"]> = [];
 
   for (const sheet of input.sheets) {
     // A document sheet is prose; it has no rows and nothing to test.
@@ -323,6 +346,22 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
     // the items would have been.
     if (declaration.not_tested !== undefined) continue;
 
+    // What a row STATES, for every environment it states it in — recorded for a
+    // row that produces no item, since a reference to it must still resolve.
+    // Review scope and "does this row hold a value" are different questions.
+    const stateWithoutItem = (row: (typeof rows)[number]): void => {
+      for (const instance of sheet.instances ?? []) {
+        const expected = expectedOf(row.p, instance, kindOf(row.p));
+        if (expected === undefined) continue;
+        unchecked.push({
+          target: { sheet: sheet.name, path: row.path, key: row.p.key, instance },
+          // The same withholding the item path performs, for the same reason —
+          // and it is the common case here, not the exception.
+          ...(row.p.secret === true ? { quiet: true as const } : { expected }),
+        });
+      }
+    };
+
     for (const row of rows) {
       if (row.outOfScope !== undefined) {
         report.excluded.push({
@@ -334,6 +373,7 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
           ...(row.outOfScope.owner === undefined ? {} : { owner: row.outOfScope.owner }),
           ...(row.outOfScope.by === undefined ? {} : { by: row.outOfScope.by }),
         });
+        stateWithoutItem(row);
         continue;
       }
       // Before `kind`, and for the same reason `out_of_scope` is: this row
@@ -359,6 +399,7 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
           reason: row.coveredBy.reason,
           functional: row.coveredBy.functional,
         });
+        stateWithoutItem(row);
         continue;
       }
       const kind = kindOf(row.p);
@@ -492,7 +533,18 @@ export function buildTestPlan(input: ParameterSheetInput): { plan: TestPlan; rep
     );
   }
 
-  return { plan: { metadata: input.metadata, units: [...units.values()], items, functional }, report };
+  return {
+    plan: {
+      metadata: input.metadata,
+      units: [...units.values()],
+      items,
+      functional,
+      // Omitted when empty, so a plan with nothing out of scope reads exactly
+      // as it always did.
+      ...(unchecked.length === 0 ? {} : { unchecked }),
+    },
+    report,
+  };
 }
 
 // What the derivation left out, for the CLI to print. Counts first, then the

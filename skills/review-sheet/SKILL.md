@@ -3971,11 +3971,13 @@ your statement, not this tool's guess.
 
 #### …and what the row expects
 
-A second parameter carries `ctx.items`: every row of the plan for THIS row's
-environment, each with the value it expects. (The same shape
+A second parameter carries two readings of this row's environment, and they
+answer different questions. `ctx.items` is every row of the PLAN, each with the
+value it expects — what is being tested here. (The same shape
 `FunctionalChannel.answer` gets, filtered the same way — a row of one
-environment must never be answered from another's.) A router may return an
-`expected` of its own, and it replaces the row's.
+environment must never be answered from another's.) `ctx.stated` is every row
+that STATES a value, tested or not. A router may return an `expected` of its
+own, and it replaces the row's.
 
 That is for a row that does not hold a product's value at all. A row whose
 expected value is a REFERENCE — `$(env:SSO_HOST)` — holds the one spelling it
@@ -3989,7 +3991,7 @@ const REFERENCE = /^\$\(env:([A-Za-z_][A-Za-z0-9_]*)\)$/;
 
 route: (item, ctx) => {
   const named = REFERENCE.exec(item.expected ?? "");
-  const defines = named === null ? undefined : (ctx?.items ?? []).find((x) => x.target.key === named[1]);
+  const defines = named === null ? undefined : (ctx?.stated ?? []).find((x) => x.target.key === named[1]);
   return {
     document: "clients",
     address: item.address ?? item.target.key,
@@ -3998,6 +4000,17 @@ route: (item, ctx) => {
   };
 },
 ```
+
+**Resolve a reference through `ctx.stated`, never `ctx.items`.** A row can be
+outside the review's remit (`out_of_scope`) or answered by a test rather than by
+its value (`covered_by`) and still state one — those are different questions,
+and a row nobody reviews still records what the product should hold. Such a row
+produces no item, so it is not in `ctx.items` at all: a router reading that list
+stops resolving references to it the moment somebody takes it out of scope, and
+the row that then fails is a DIFFERENT row, in another category, which nobody
+touched. Reach for `ctx.items` when the question really is "what is being tested
+here" — a channel answering "nobody changed anything we did not decide" wants
+the plan, and must not be handed rows the project excluded.
 
 **Two resolutions, and they read different things.** `documents[].substitute` is
 the importer's own placeholder pattern, resolved from the observation's
