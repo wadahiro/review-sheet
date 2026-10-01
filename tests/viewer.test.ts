@@ -3893,4 +3893,34 @@ describe("viewer: an embedded image", () => {
     await waitForEffects();
     expect((host.querySelector(".rs-doc img") as HTMLElement).getAttribute("tabindex")).toBeNull();
   });
+
+  // A RAW <img> TAG, which is the other way an author embeds one: markdown's
+  // own syntax has no width, so somebody wanting a smaller picture writes the
+  // tag and `sanitizeFragment` keeps `src`, `alt` and `width` (dropping class,
+  // style and every handler). That is exactly the case the zoom matters most
+  // for — the author shrank it on purpose and the detail is now unreadable.
+  it("opens one embedded as a raw tag, ignoring the width it was shrunk to", async () => {
+    const host = mountDoc('<p><img src="data:image/png;base64,iVBORw0KGgo=" alt="ログイン画面" width="320"></p>\n');
+    await open(host);
+    const big = host.querySelector(".rs-zoom-image") as HTMLImageElement | null;
+    expect(big).not.toBeNull();
+    expect(big!.getAttribute("src")).toBe("data:image/png;base64,iVBORw0KGgo=");
+    // The shrinking is the author's choice for the TEXT FLOW, and carrying it
+    // into the overlay would show the same unreadable picture a second time.
+    expect(big!.getAttribute("width")).toBeNull();
+  });
+
+  // The whole way, from the markdown an author writes to the picture on screen:
+  // the renderer inlines the file and the viewer opens whatever <img> it finds,
+  // so neither half has to know how the other spelled it.
+  it("opens one that came from raw HTML in the markdown", async () => {
+    const rendered = renderMarkdown('前の文 <img src="img/shot.png" alt="ログイン画面" width="400"> 後の文\n', () => ({
+      mime: "image/png",
+      base64: "iVBORw0KGgo=",
+    }));
+    expect(rendered.html).toContain("<img");
+    const host = mountDoc(rendered.html);
+    await open(host);
+    expect((host.querySelector(".rs-zoom-image") as HTMLImageElement).getAttribute("src")).toBe("data:image/png;base64,iVBORw0KGgo=");
+  });
 });
