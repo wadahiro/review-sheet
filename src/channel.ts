@@ -153,7 +153,10 @@ export type ProbeRule = {
   // warns once and will be removed.
   verdict: (
     probe: { how?: string; ran?: boolean; why?: string; ok?: boolean | null; text?: string },
-    ctx: { host: string; held: unknown; observedHosts: number; hosts?: number; lang?: "ja" | "en" }
+    // `host` is ABSENT for a probe that belongs to none — see judge.ts's
+    // `Observation.probes`. A rule that names the host in its own words asks
+    // whether there is one; most read only `probe`.
+    ctx: { host?: string; held: unknown; observedHosts: number; hosts?: number; lang?: "ja" | "en" }
   ) => { ok: boolean | null; why?: string; line?: number };
 };
 

@@ -19,8 +19,16 @@ const ran = (over: Partial<ProbeResult> = {}): ProbeResult => ({ how: "ss -lntp"
 
 const judge = (
   hosts: Record<string, ObservedHost>,
-  rule: (p: ProbeResult, c: { host: string }) => { ok: boolean | null; why?: string } = () => ({ ok: true })
-) => judgeProbes(item, hosts, rule, { lang: "ja", sheet: "os baseline", at: "X" });
+  rule: (p: ProbeResult, c: { host?: string }) => { ok: boolean | null; why?: string } = () => ({ ok: true }),
+  // A probe belonging to no host, folded in beside whatever the hosts said.
+  hostless?: ProbeResult
+) =>
+  judgeProbes(item, hosts, rule, {
+    lang: "ja",
+    sheet: "os baseline",
+    at: "X",
+    ...(hostless === undefined ? {} : { hostless }),
+  });
 
 describe("one functional item across every host", () => {
   // A fleet is only as configured as its least configured node, and one item
@@ -35,6 +43,71 @@ describe("one functional item across every host", () => {
 
   it("passes only when every host that ran passed", () => {
     expect(judge(two(ran(), ran())).answer.status).toBe("pass");
+  });
+
+  // THE HOST COUNT ONLY WHERE IT SAYS SOMETHING. "(2 ホスト)" tells a reader
+  // the verdict is the worst of two readings; "(1 ホスト)" is the same
+  // sentence with the information taken out, repeated down every row of a
+  // single-host project.
+  it("does not count the hosts when there is one", () => {
+    const got = judge({ web01: held({ ports: ran() }) });
+    expect(got.answer.detail).toBe("ss -lntp");
+  });
+
+  // A host that could not be asked is not one the answer was folded across, so
+  // it does not make the note appear either.
+  it("counts only the hosts that answered", () => {
+    const got = judge({ web01: held({ ports: ran() }), web02: held({}) });
+    expect(got.answer.detail).toBe("ss -lntp");
+  });
+});
+
+// A PROBE THAT BELONGS TO NO HOST.
+//
+// `terraform plan`, run on a workstation or in CI, answers "does the code still
+// match the account" — a fact about the ACCOUNT. No server was asked, and
+// filing it under an invented host put a fictional machine in the record's
+// host line and in front of every evidence label. The same thing documents
+// gained, one channel over.
+describe("a probe filed under no host", () => {
+  it("answers the item with no host at all", () => {
+    const got = judge({}, () => ({ ok: true }), ran({ how: "terraform plan -detailed-exitcode" }));
+    expect(got.answer.status).toBe("pass");
+    expect(got.answer.evidence?.host).toBeUndefined();
+    expect(got.answer.detail).toBe("terraform plan -detailed-exitcode");
+  });
+
+  // A failure says WHY with no name hanging off a colon.
+  it("gives a failure no host prefix", () => {
+    const got = judge({}, () => ({ ok: false, why: "差分がある" }), ran());
+    expect(got.answer.status).toBe("fail");
+    expect(got.answer.reason).toBe("差分がある");
+  });
+
+  // Its bytes still travel, and still without a host.
+  it("carries its text as evidence without one", () => {
+    const got = judge({}, () => ({ ok: true }), ran({ how: "terraform plan", text: "No changes." }));
+    expect(got.documents).toHaveLength(1);
+    expect(got.documents[0]!.host).toBeUndefined();
+    expect(got.documents[0]!.command).toBe("terraform plan");
+  });
+
+  // The rule is handed an EMPTY `held` rather than undefined: a rule reaching
+  // for `ctx.held.commands` finds nothing, which is the truthful answer, where
+  // undefined would throw inside somebody's plugin.
+  it("hands the rule something to read", () => {
+    let held: unknown;
+    judge({}, (_p, c) => ((held = (c as { held?: unknown }).held), { ok: true }), ran());
+    expect(held).toEqual({ files: {} });
+  });
+
+  // FOLDED IN, not instead of: a project that collects both gets both read,
+  // and the worst answer still wins.
+  it("is folded together with the hosts' own probes", () => {
+    const got = judge({ web01: held({ ports: ran() }) }, (_p, c) => (c.host === undefined ? { ok: false, why: "差分がある" } : { ok: true }), ran());
+    expect(got.answer.status).toBe("fail");
+    expect(got.answer.detail).toBe("ss -lntp（2 ホスト）");
+    expect(got.answer.reason).toBe("差分がある");
   });
 
   // The three ways a host can fail to answer, kept apart. Collapsing any of

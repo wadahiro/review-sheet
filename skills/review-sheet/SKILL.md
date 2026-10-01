@@ -4158,6 +4158,33 @@ than holding a blank where a machine would go. Put it under a host only where a
 host really is the answer: a product's API answered BY that node, a file that
 machine holds.
 
+**A PROBE that belongs to no host goes in the same place.** `terraform plan`,
+run on a workstation or in CI, answers "does the code still match the account" —
+a fact about the ACCOUNT, which no server was asked about:
+
+```yaml
+environment: prod
+probes:                         # beside hosts:, belonging to none of them
+  plan-no-drift:
+    how: terraform plan -detailed-exitcode
+    ran: true
+    ok: true
+    text: "No changes. Your infrastructure matches the configuration."
+hosts: {}
+```
+
+Keyed by the functional item's id, exactly as a host's own `probes` map is, and
+FOLDED IN beside any host's probe for the same item rather than replacing it —
+a project that collects both gets both read, and the worst answer still wins. A
+`ProbeRule` sees `ctx.host` absent and `ctx.held` empty, so a rule that only
+reads `probe` needs no change; one that names the host in its own words asks
+whether there is one.
+
+**The host count appears only where it says something.** `ss -lntp (2 hosts)`
+tells a reader the verdict is the worst of two readings; at one host the same
+note states nothing, so it is left off — including for a hostless probe, which
+is one reading by construction.
+
 The observation's shape is otherwise OPEN on purpose — a project's own channels
 ride along beside the fields this tool reads, and a real one carries several. So
 an unknown key is allowed and ignored; a NEAR-MISS of a declared name is not,

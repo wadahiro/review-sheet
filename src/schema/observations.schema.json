@@ -64,6 +64,38 @@
         }
       }
     },
+    "probes": {
+      "type": "object",
+      "description": "What a PROBE found for a check that belongs to NO host, keyed by the functional item's id. `terraform plan` run on a workstation or in CI answers \"does the code still match the account\", which is a fact about the account: no server was asked, and filing it under an invented one puts a fictional machine in the record's host line. Folded together with any host's probe for the same item rather than replacing it.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "how": {
+            "type": "string",
+            "description": "What was asked, for the record's evidence."
+          },
+          "ran": {
+            "type": "boolean",
+            "description": "Whether it ran at all. A probe that did not is a THIRD answer, never a failure."
+          },
+          "why": {
+            "type": "string",
+            "description": "…and why not, in the collector's own words."
+          },
+          "ok": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "A verdict the collector itself could reach (an HTTP status is not a rule, it is the answer). Null where judging it needs one."
+          },
+          "text": {
+            "type": "string",
+            "description": "What came back, carried into the record as the material the verdict was read from."
+          }
+        }
+      }
+    },
     "hosts": {
       "type": "object",
       "description": "One entry per host that was reached. A host nobody reached is absent, which is an answer.",

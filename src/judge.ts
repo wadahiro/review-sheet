@@ -66,6 +66,17 @@ export type Observation = {
   // the host as optional, so a verdict citing one of these carries no host and
   // its label is what was ASKED, with nothing in front of it.
   documents?: ObservedDocument[];
+  // …and PROBES that belong to no host, for the same reason. `terraform plan`
+  // run on a workstation or in CI answers "does the code still match the
+  // account", which is a fact about the account: no server was asked, and
+  // filing it under an invented one put a fictional machine in the record's
+  // host line. Keyed by the functional item's id, exactly as a host's own
+  // `probes` map is.
+  //
+  // Folded together with any host's probe for the same item rather than
+  // replacing it — nothing is dropped, and a project that collects both gets
+  // both read.
+  probes?: Record<string, ProbeResult>;
   // What an importer's placeholders resolved to in THIS environment. Only the
   // project read the files the importer read, so only it can say.
   substitutions?: Record<string, string>;
@@ -317,7 +328,14 @@ export type HostVerdict = {
 // never drift.
 // What a rule is told about the run it is judging.
 export type ProbeContext = {
-  host: string;
+  // WHICH host answered — absent for a probe that belongs to none (see
+  // Observation.probes). A rule that names the host in its own words asks
+  // whether it has one; most only read `probe`.
+  host?: string;
+  // Everything that host holds. An EMPTY one for a hostless probe rather than
+  // undefined: a rule reaching for `ctx.held.commands` finds nothing there,
+  // which is the truthful answer, where `undefined` would throw inside
+  // somebody's plugin.
   held: ObservedHost;
   // How many hosts THIS observation carries. See ProbeRule in channel.ts for
   // why that is not the design's node count.
@@ -335,14 +353,14 @@ export type ProbeContext = {
 const warnedAbout = new Set<string>();
 
 function probeContext(
-  host: string,
+  host: string | undefined,
   held: ObservedHost,
   observedHosts: number,
   lang: "ja" | "en" | undefined,
   rule: string | undefined
 ): ProbeContext {
   const ctx = {
-    host,
+    ...(host === undefined ? {} : { host }),
     held,
     observedHosts,
     ...(lang === undefined ? {} : { lang }),
@@ -382,6 +400,10 @@ export function judgeProbes(
     // Where the probe for this item lives on a host. The default is the
     // declared `probes` map; the `check:` path reads a command's output instead.
     read?: (held: ObservedHost, id: string, host: string) => ProbeResult | undefined;
+    // …and the probe for this item that belongs to NO host (see
+    // `Observation.probes`). Resolved by the caller, which holds the
+    // observation; `read` answers for a host and has none to be given.
+    hostless?: ProbeResult;
   } = {}
 ): {
   answer: NonNullable<TestResults["functional"]>[number];
@@ -399,12 +421,15 @@ export function judgeProbes(
   const read = opts.read ?? ((held: ObservedHost) => held.probes?.[id]);
   const documents: NonNullable<TestResults["evidence"]> = [];
   const entries = Object.entries(hosts);
-  const seen: { host: string; ran: boolean; ok?: boolean; why?: string; how?: string; line?: number }[] = [];
-  for (const [host, held] of entries) {
-    const probe = read(held, id, host);
+  const seen: { host?: string; ran: boolean; ok?: boolean; why?: string; how?: string; line?: number }[] = [];
+  // ONE fold, whether the probe came from a host or from none. A hostless probe
+  // is simply one more reading to fold in — which is also what keeps a project
+  // that happens to collect both from losing either.
+  const consider = (probe: ProbeResult | undefined, host: string | undefined, held: ObservedHost): void => {
+    const whose = host === undefined ? {} : { host };
     if (probe === undefined) {
-      seen.push({ host, ran: false, why: t.notProbed });
-      continue;
+      seen.push({ ...whose, ran: false, why: t.notProbed });
+      return;
     }
     if (probe.ran !== true) {
       // An INTRUSIVE item nobody ran did not fall through a gap — answering it
@@ -413,29 +438,34 @@ export function judgeProbes(
       // An EMPTY `why` is not a reason. A collector that always writes the
       // field (which is what a templating language makes easy) would otherwise
       // put a blank where the record has to say which of the two happened.
-      seen.push({ host, ran: false, why: probe.why || (item.intrusive === true ? t.consentNeeded : t.notProbed) });
-      continue;
+      seen.push({ ...whose, ran: false, why: probe.why || (item.intrusive === true ? t.consentNeeded : t.notProbed) });
+      return;
     }
     // The document's language reaches the rule here. Nowhere else does: a rule
     // is registered once, at load, and cannot be told then which document it
     // will end up in.
     const got = verdict(probe, probeContext(host, held, entries.length, opts.lang, opts.rule));
     if (got.ok === null) {
-      seen.push({ host, ran: false, why: got.why || t.notProbed });
-      continue;
+      seen.push({ ...whose, ran: false, why: got.why || t.notProbed });
+      return;
     }
-    seen.push({ host, ran: true, ok: got.ok, why: got.why, how: probe.how, line: got.line });
+    seen.push({ ...whose, ran: true, ok: got.ok, why: got.why, how: probe.how, line: got.line });
     if (typeof probe.text === "string" && probe.text !== "") {
       documents.push({
         instance: item.instance,
-        host,
+        ...whose,
         at,
         sheet: opts.sheet ?? "",
         ...(probe.how === undefined ? {} : { command: probe.how }),
         text: probe.text,
       });
     }
-  }
+  };
+  for (const [host, held] of entries) consider(read(held, id, host), host, held);
+  // An EMPTY `held` for the hostless one, never undefined: a rule reaching for
+  // `ctx.held.commands` finds nothing there, which is the truthful answer,
+  // where undefined would throw inside somebody's plugin.
+  if (opts.hostless !== undefined) consider(opts.hostless, undefined, { files: {} });
   const ran = seen.filter((x) => x.ran);
   if (ran.length === 0) {
     return { answer: { ...base, status: "not_run", reason: seen[0]?.why ?? t.notCollected }, documents };
@@ -446,10 +476,25 @@ export function judgeProbes(
     answer: {
       ...base,
       status: failed.length === 0 ? "pass" : "fail",
-      detail: t.acrossHosts(point.how ?? id, ran.length),
-      ...(failed.length === 0 ? {} : { reason: `${failed.map((x) => x.host).join(", ")}: ${failed[0]!.why ?? ""}` }),
+      // THE HOST COUNT ONLY WHERE IT SAYS SOMETHING. "ss -lntp (2 hosts)"
+      // tells a reader the verdict is the worst of two readings; "(1 host)" is
+      // the same sentence with the information removed, repeated down every
+      // row of a single-host project. Decided here rather than in each
+      // language's wording, because "a note that carries nothing" is one rule
+      // and not two translations of one.
+      detail: ran.length > 1 ? t.acrossHosts(point.how ?? id, ran.length) : (point.how ?? id),
+      // WHICH hosts failed, where any of them has a name. A hostless probe has
+      // none, so its reason is the collector's words with no prefix rather than
+      // ": " hanging off nothing.
+      ...(failed.length === 0
+        ? {}
+        : {
+            reason: ((named) => (named === "" ? (failed[0]!.why ?? "") : `${named}: ${failed[0]!.why ?? ""}`))(
+              failed.map((x) => x.host).filter((h): h is string => h !== undefined).join(", ")
+            ),
+          }),
       evidence: {
-        host: point.host,
+        ...(point.host === undefined ? {} : { host: point.host }),
         ...(point.how === undefined ? {} : { command: point.how }),
         ...(point.line === undefined ? {} : { line: point.line }),
       },
@@ -564,6 +609,9 @@ export type JudgeWords = {
   fromDocument: string;
   notInDocument: (how: string) => string;
   emptyAndAbsent: string;
+  // What was asked, and across how many hosts the answer was folded. Never
+  // called with one: the caller drops the note instead, since at one host it
+  // states nothing.
   acrossHosts: (how: string, hosts: number) => string;
   expected: (got: string, want: string) => string;
 };
@@ -1702,12 +1750,13 @@ export function judgeFunctional(
     const rule = f.id === undefined ? undefined : listProbeRules().find((r) => r.covers(f.id!));
     if (rule !== undefined) {
       const obs = byEnv.get(f.instance);
-      const { answer, documents } = judgeProbes(
-        f,
-        obs?.hosts ?? {},
-        (probe, ctx) => rule.verdict(probe, ctx),
-        { lang: opts.lang, at, rule: rule.name, ...((rule.sheet ?? f.sheet) === undefined ? {} : { sheet: (rule.sheet ?? f.sheet)! }) }
-      );
+      const { answer, documents } = judgeProbes(f, obs?.hosts ?? {}, (probe, ctx) => rule.verdict(probe, ctx), {
+        lang: opts.lang,
+        at,
+        rule: rule.name,
+        ...(obs?.probes?.[f.id ?? ""] === undefined ? {} : { hostless: obs.probes[f.id ?? ""]! }),
+        ...((rule.sheet ?? f.sheet) === undefined ? {} : { sheet: (rule.sheet ?? f.sheet)! }),
+      });
       out.push(answer);
       for (const d of documents) {
         if (channelDocuments.some((x) => x.instance === d.instance && x.host === d.host && x.command === d.command)) continue;
@@ -1726,6 +1775,7 @@ export function judgeFunctional(
       const { answer, documents } = judgeProbes(f, obs?.hosts ?? {}, (probe) => ({ ok: probe.ok === true }), {
         lang: opts.lang,
         at,
+        ...(obs?.probes?.[f.id ?? ""] === undefined ? {} : { hostless: obs.probes[f.id ?? ""]! }),
         ...(f.sheet === undefined ? {} : { sheet: f.sheet }),
       });
       out.push(answer);
@@ -1765,7 +1815,9 @@ export function judgeFunctional(
           { target: { sheet: "", path: [], key: f.id ?? "", instance: f.instance } } as never,
           ctx.held.commands ?? {}
         );
-        if (got === undefined) return { ok: null, why: t.channelSilent(ctx.host, command) };
+        // Always a host here: a `check:` runs a command ON one, and this path
+        // is never given a hostless probe.
+        if (got === undefined) return { ok: null, why: t.channelSilent(ctx.host ?? "", command) };
         return { ok: got.value === f.check!.expect, why: t.expected(String(got.value), String(f.check!.expect)), line: got.line };
       },
       {
