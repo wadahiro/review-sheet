@@ -4220,7 +4220,26 @@ tr.rs-jump-flash th {
 
 .rs-app.rs-with-evidence {
   padding-right: 0;
-  padding-bottom: var(--rs-evidence-h, 22rem);
+  /* min(), because the panel's own height is capped at 60vh: on a short window
+     it takes less than the variable says, and padding that reserved the full
+     amount left a strip of dead space under the document. The two numbers have
+     to be the same number. */
+  padding-bottom: min(var(--rs-evidence-h, 22rem), 60vh);
+}
+
+/* THE NAVIGATION HAS TO END ABOVE THE PANEL.
+ *
+ * The tree is fixed and full height, so the app's padding does not reach it: the
+ * bottom panel spans the whole width and simply covered its last entries, and a
+ * fixed element has nowhere to scroll them in from — the chapters at the end of
+ * a document became unreachable while any evidence was open.
+ *
+ * Shortened rather than inset, which is what was asked for and also the right
+ * answer: the bottom dock exists because a nine-column record needs WIDTH, so
+ * taking 19rem off the panel to keep the tree tall would spend the very thing
+ * the dock was chosen for. */
+.rs-app.rs-with-evidence .rs-navtree {
+  height: calc(100vh - var(--rs-tabbar-h, 41px) - min(var(--rs-evidence-h, 22rem), 60vh));
 }
 
 /* Where the panel sits, chosen in its own corner — beside the close button and

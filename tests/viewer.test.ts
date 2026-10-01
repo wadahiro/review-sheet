@@ -3565,6 +3565,41 @@ describe("a dropped set's record, opened at its evidence", () => {
     expect(here, "no line is marked").not.toBeNull();
     expect(here!.textContent).toContain("10.0.0.9 web01");
   });
+
+  // THE NAVIGATION HAS TO END ABOVE THE PANEL.
+  //
+  // The bottom dock spans the whole width, and the tree is a FIXED element of
+  // its own height — so the app's padding does not reach it and the panel simply
+  // covered its last entries, with nowhere to scroll them in from: the chapters
+  // at the end of a document were unreachable while any evidence was open.
+  //
+  // What is asserted is the one half a page with no layout engine can answer,
+  // and it is the half this project has actually got wrong before — twice, with
+  // two different wrong ancestries (see .claude/rules/verifying.md): that the
+  // selector doing the shortening MATCHES something in the real tree. A rule
+  // whose ancestry is wrong is indistinguishable from no rule at all.
+  it("puts the evidence class where the stylesheet looks for it", async () => {
+    const host = droppedRecord();
+    verdictLink(host).dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 30));
+    // Docked below, which is what evidence does by default.
+    expect(host.querySelector(".rs-artifact-panel.rs-artifact-below")).not.toBeNull();
+    // …and the ancestry the rule names resolves.
+    expect(host.querySelector(".rs-app.rs-with-evidence")).not.toBeNull();
+    expect(host.querySelector(".rs-app.rs-with-evidence .rs-navtree")).not.toBeNull();
+  });
+
+  // …and it is gone again once the panel is, or the tree stays short with
+  // nothing under it.
+  it("takes the class away when the panel closes", async () => {
+    const host = droppedRecord();
+    verdictLink(host).dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 30));
+    (host.querySelector(".rs-artifact-close") as HTMLElement).click();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(host.querySelector(".rs-app.rs-with-evidence")).toBeNull();
+    expect(host.querySelector(".rs-navtree")).not.toBeNull();
+  });
 });
 
 
