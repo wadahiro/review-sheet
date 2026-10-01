@@ -4258,6 +4258,30 @@ tr.rs-jump-flash th {
   height: calc(100vh - var(--rs-tabbar-h, 41px) - min(var(--rs-evidence-h, 22rem), 60vh));
 }
 
+/* THE WAY BACK, in the panel's own corner beside the dock buttons. A word
+   rather than an arrow glyph: this one does not move the panel, it moves the
+   reader, and the two sitting side by side have to be told apart at a glance. */
+.rs-artifact-back {
+  position: absolute;
+  top: 0.4rem;
+  right: 5.6rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--rs-primary-dark);
+  background: var(--rs-primary-light);
+  border: 1px solid var(--rs-border-light);
+  border-radius: 3px;
+  cursor: pointer;
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rs-artifact-back:hover { background: var(--rs-subtle); }
+.rs-artifact-back:focus-visible { outline: 2px solid var(--rs-primary); outline-offset: 1px; }
+
 /* Where the panel sits, chosen in its own corner — beside the close button and
    before it, since "move it" is the commoner intent of the two once a reader
    has decided they want the file at all. */

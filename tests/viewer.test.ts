@@ -3694,6 +3694,89 @@ describe("a dropped set's record, opened at its evidence", () => {
     expect(host.querySelector(".rs-app.rs-with-evidence .rs-navtree")).not.toBeNull();
   });
 
+  // THE WAY BACK, AND THE WAY TO SEND IT.
+  //
+  // Evidence is reached from a verdict in a record, and from nowhere else: its
+  // lines carry no key by design (a row resolves to exactly one document, and an
+  // observed copy of the same file would make which one opens depend on emission
+  // order), so the panel had no backjump at all. The way back is therefore not
+  // to a row but to the VERDICT — and a record's table rows are addressable per
+  // row, so it is nameable.
+  describe("opened from a verdict", () => {
+    const openEvidence = async (host: HTMLElement): Promise<HTMLElement> => {
+      verdictLink(host).dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+      for (let i = 0; i < 100; i++) {
+        if (host.querySelector(".rs-artifact-panel") !== null) break;
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      // ASSERTED, not hoped for: a helper that returns whether or not the panel
+      // opened makes every test below it report the wrong thing.
+      expect(host.querySelector(".rs-artifact-panel"), "the verdict did not open its evidence").not.toBeNull();
+      // …and the panel being on screen is one step ahead of the effects: Preact
+      // defers them, so the fragment is written after the render that opened it.
+      await waitForEffects();
+      return host;
+    };
+
+    it("offers the way back to the verdict", async () => {
+      const host = await openEvidence(droppedRecord());
+      const back = host.querySelector(".rs-artifact-back");
+      expect(back, "no way back is offered").not.toBeNull();
+      expect(back!.textContent).toBe("判定に戻る");
+    });
+
+    // …and it takes the reader there, marking the row so they can see which of
+    // the record's rows sent them.
+    it("marks the verdict it goes back to", async () => {
+      const host = await openEvidence(droppedRecord());
+      (host.querySelector(".rs-artifact-back") as HTMLElement).click();
+      await waitForEffects();
+      const marked = host.querySelector(".rs-doc .rs-jump-flash");
+      expect(marked, "the verdict row is not marked").not.toBeNull();
+      expect(marked!.getAttribute("data-rs-line")).not.toBeNull();
+    });
+
+    // The panel STAYS open: the bottom dock exists so the record and its
+    // evidence are both on screen, and closing it would undo the reason the
+    // reader opened it.
+    it("leaves the evidence open", async () => {
+      const host = await openEvidence(droppedRecord());
+      (host.querySelector(".rs-artifact-back") as HTMLElement).click();
+      await waitForEffects();
+      expect(host.querySelector(".rs-artifact-panel")).not.toBeNull();
+    });
+
+    // AND IT IS AN ADDRESS. "This document, at this line" is what a reviewer
+    // sends about a verdict, and before this nothing about an open panel reached
+    // the URL at all.
+    it("puts the open document in the fragment", async () => {
+      const host = await openEvidence(droppedRecord());
+      const hash = decodeURIComponent(location.hash);
+      expect(hash, `hash was ${location.hash}`).toContain("ev=");
+      expect(hash).toContain("web01");
+      expect(hash).toContain("l=2");
+    });
+
+    // …which the back button undoes, because opening it was a navigation.
+    it("closes again when the fragment goes back", async () => {
+      const host = await openEvidence(droppedRecord());
+      history.replaceState(null, "", "#1");
+      window.dispatchEvent(new window.PopStateEvent("popstate"));
+      await waitForEffects();
+      expect(host.querySelector(".rs-artifact-panel")).toBeNull();
+    });
+
+    // A row's own file is NOT offered a way back: the reader reached it from a
+    // row the page still shows, so there is nothing to lead them to.
+    it("offers no way back for a row's own file", async () => {
+      const host = mountArtifact();
+      (rowFor(host, "Listen").querySelector(".rs-artifact-chip") as HTMLElement).click();
+      await waitForEffects();
+      expect(host.querySelector(".rs-artifact-panel")).not.toBeNull();
+      expect(host.querySelector(".rs-artifact-back")).toBeNull();
+    });
+  });
+
   // …and it is gone again once the panel is, or the tree stays short with
   // nothing under it.
   it("takes the class away when the panel closes", async () => {

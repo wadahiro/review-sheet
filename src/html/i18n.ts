@@ -131,6 +131,8 @@ type Messages = {
   // What clicking an embedded image does. Only ever read by a screen reader —
   // the picture itself is the affordance for everyone else.
   imageZoom: string;
+  // The way back to the verdict an evidence document was opened from.
+  artifactBack: string;
   artifactDockRight: string;
   artifactDockBelow: string;
   artifactKindAbsent: string;
@@ -356,6 +358,7 @@ const ja: Messages = {
   artifactCollectedFrom: "{host} から {at} に取得",
   artifactCollectedAt: "{at} に取得",
   imageZoom: "クリックで拡大",
+  artifactBack: "判定に戻る",
   artifactDockRight: "右に表示",
   artifactDockBelow: "下に表示",
   artifactKindAbsent: "この環境では出力されない（条件: {reason}）",
@@ -528,6 +531,7 @@ const en: Messages = {
   artifactCollectedFrom: "Collected from {host} at {at}",
   artifactCollectedAt: "Collected at {at}",
   imageZoom: "click to enlarge",
+  artifactBack: "Back to the verdict",
   artifactDockRight: "Dock to the right",
   artifactDockBelow: "Dock to the bottom",
   artifactKindAbsent: "not rendered for this instance (condition: {reason})",
