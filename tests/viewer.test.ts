@@ -3791,3 +3791,106 @@ describe("the overview page", () => {
     expect(draw({ title: "t", project: "p", version: "current" }).querySelector(".rs-overview-grid")).toBeNull();
   });
 });
+
+// AN EMBEDDED IMAGE, OPENED AT A SIZE SOMEBODY CAN READ.
+//
+// A screen capture pasted into a record is evidence, and markdown puts it in
+// the text flow — scaled to the column, which for a console screenshot means
+// the detail the capture was taken FOR cannot be read. Opening the file beside
+// the document is the workaround, and only a reader who has the folder can do
+// it: a delivered single-file page has no file to open.
+describe("viewer: an embedded image", () => {
+  const doc = (body: string) => ({
+    name: "rec",
+    categories: [],
+    document: { html: body, headings: [] },
+  });
+
+  function mountDoc(body: string): HTMLElement {
+    const payload = { metadata: { title: "t" }, versions: [{ version: "current", sheets: [doc(body)] }] };
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    return host;
+  }
+
+  const SHOT = '<p><img src="shot.png" alt="ログイン画面" /></p>\n';
+
+  // A REAL MouseEvent, like the set-address test above: `.click()` leaves
+  // `button` undefined in this environment, and the handler's own guard reads
+  // anything but 0 as "not the primary button" — so a test using it would
+  // exercise the guard rather than the feature.
+  const clickOn = (el: HTMLElement): void => {
+    el.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+  };
+
+  // AWAITED, not timed: a state update SCHEDULES a render, it does not perform
+  // one, so a synchronous assertion reads the tree from before the click.
+  const open = async (host: HTMLElement): Promise<void> => {
+    clickOn(host.querySelector(".rs-doc img") as HTMLElement);
+    await waitForEffects();
+  };
+
+  it("opens it over the page when it is clicked", async () => {
+    const host = mountDoc(SHOT);
+    expect(host.querySelector(".rs-zoom-overlay")).toBeNull();
+    await open(host);
+    const big = host.querySelector(".rs-zoom-image") as HTMLImageElement | null;
+    expect(big).not.toBeNull();
+    expect(big!.getAttribute("src")).toBe("shot.png");
+  });
+
+  // The alt text is what the author wrote the picture to say, and at this size
+  // there is room to read it.
+  it("carries the alt text as a caption", async () => {
+    const host = mountDoc(SHOT);
+    await open(host);
+    expect(host.querySelector(".rs-zoom-alt")?.textContent).toBe("ログイン画面");
+  });
+
+  it("closes again", async () => {
+    const host = mountDoc(SHOT);
+    await open(host);
+    (host.querySelector(".rs-zoom-close") as HTMLElement).click();
+    await waitForEffects();
+    expect(host.querySelector(".rs-zoom-overlay")).toBeNull();
+  });
+
+  // AN IMAGE INSIDE A LINK IS THE AUTHOR'S OWN AFFORDANCE. Taking that click
+  // would replace a navigation somebody wrote on purpose.
+  it("leaves a linked image to its link", async () => {
+    const host = mountDoc('<p><a href="docs/shot.png"><img src="shot.png" alt="x" /></a></p>\n');
+    await open(host);
+    expect(host.querySelector(".rs-zoom-overlay")).toBeNull();
+  });
+
+  // It has to be reachable without a mouse: a bare <img> takes no focus and
+  // announces nothing, which is the keyboard reader's version of an affordance
+  // that opens nothing.
+  it("is focusable and announces what it does", async () => {
+    const host = mountDoc(SHOT);
+    await waitForEffects();
+    const img = host.querySelector(".rs-doc img") as HTMLElement;
+    expect(img.getAttribute("tabindex")).toBe("0");
+    expect(img.getAttribute("role")).toBe("button");
+    expect(img.getAttribute("aria-label")).toContain("拡大");
+  });
+
+  it("opens on Enter", async () => {
+    const host = mountDoc(SHOT);
+    await waitForEffects();
+    const img = host.querySelector(".rs-doc img") as HTMLElement;
+    img.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await waitForEffects();
+    expect(host.querySelector(".rs-zoom-image")).not.toBeNull();
+  });
+
+  // …and a linked image is not marked either, or a keyboard reader is told the
+  // picture does something it does not.
+  it("does not mark a linked image focusable", async () => {
+    const host = mountDoc('<p><a href="docs/shot.png"><img src="shot.png" alt="x" /></a></p>\n');
+    await waitForEffects();
+    expect((host.querySelector(".rs-doc img") as HTMLElement).getAttribute("tabindex")).toBeNull();
+  });
+});

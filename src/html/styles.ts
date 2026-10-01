@@ -2599,6 +2599,64 @@ code {
   animation: rs-fade-in 0.15s ease;
 }
 
+/* AN EMBEDDED IMAGE, OPENED AT A SIZE SOMEBODY CAN READ.
+   A screen capture pasted into a record is evidence, and in the text flow it is
+   scaled to the column — which for a console screenshot hides the detail the
+   capture was taken for. */
+.rs-main img:not(a img) {
+  cursor: zoom-in;
+}
+
+/* It takes focus now (the viewer marks it), so it has to SHOW that it does.
+   A focusable thing with no focus ring is the keyboard reader's version of an
+   affordance that opens nothing. */
+.rs-main img:not(a img):focus-visible {
+  outline: 2px solid var(--rs-accent, #2563eb);
+  outline-offset: 2px;
+}
+
+.rs-zoom-overlay {
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 2.5rem;
+  cursor: zoom-out;
+}
+
+/* NO width or height of its own below the cap: a small capture is shown at its
+   own size rather than stretched into mush, and a large one is brought down to
+   what the window can hold. The pale ground is not decoration — a screenshot
+   saved with transparency would otherwise be read against the dark backdrop. */
+.rs-zoom-image {
+  max-width: 100%;
+  max-height: 100%;
+  min-height: 0;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  cursor: zoom-out;
+}
+
+/* The alt text, as a caption: it is what the author wrote the picture to say,
+   and at this size there is room to read it. */
+.rs-zoom-alt {
+  margin: 0;
+  max-width: 60ch;
+  text-align: center;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* The close button belongs to the WINDOW here, not to a modal header: this
+   overlay has no header to sit in. */
+.rs-zoom-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 1rem;
+  color: #e2e8f0;
+}
+
 @keyframes rs-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }

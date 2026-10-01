@@ -1188,6 +1188,16 @@ sheets:
   that cannot be read, or a remote URL (which would make the delivered file
   fetch over the network when opened), **fails the build**, naming every bad
   reference at once.
+- **An embedded image opens at a readable size when it is clicked.** A screen
+  capture is evidence, and in the text flow it is scaled to the column — which
+  for a console screenshot hides the detail the capture was taken for. Clicking
+  it (or Enter on it, since the viewer makes it focusable) opens it over the
+  page, capped at the window and never enlarged past its own size; Escape, the
+  backdrop or the picture itself puts it away, and its alt text is shown as the
+  caption. Nothing to declare, and it covers every rendered image on the page —
+  a document body, a markdown sheet's cell, a prose page read back out of a
+  dropped folder. An image inside a LINK is left alone: that click is the
+  affordance the author wrote.
 - **Raw HTML is filtered to a display-only allowlist** (`br`, `img`, `sub`,
   `sup`, `kbd`, `abbr`, `mark`, `small`, `s`, `u`, `del`, `ins`, `details`,
   `summary`); anything else is escaped and shown as text. `id`, `class`, `style`

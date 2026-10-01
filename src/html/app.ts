@@ -966,6 +966,38 @@ function splitHead(wrapper: HTMLElement): void {
   }, [html_]);
 
 
+  // AN IMAGE HAS TO BE REACHABLE WITHOUT A MOUSE. The click itself is
+  // delegated at `<main>` (one rule for every rendered image on the page), but
+  // a bare `<img>` takes no focus and announces nothing, so a keyboard reader
+  // has an affordance they cannot use — the weaker form of the "affordance
+  // that opens nothing" this project refuses to ship.
+  //
+  // Marked HERE because this is where markdown-produced html is already
+  // enhanced after rendering (sections, table heads, diagrams), and the html
+  // is replaced wholesale on every render, so the marking goes with it.
+  // Skipped inside a link: that is the author's own affordance.
+  useLayoutEffect(() => {
+    for (const img of body.current?.querySelectorAll("img") ?? []) {
+      if (img.closest("a[href]") !== null) continue;
+      img.setAttribute("tabindex", "0");
+      img.setAttribute("role", "button");
+      if (img.getAttribute("aria-label") === null) {
+        img.setAttribute("aria-label", `${img.getAttribute("alt") ?? ""} — ${t.imageZoom}`.replace(/^ — /, ""));
+      }
+    }
+  }, [html_, t]);
+
+  // …and Enter or Space does what the click does. Delegated the same way, and
+  // it is the browser that then fires the click, so there is one code path
+  // deciding what opening an image means.
+  const zoomByKey = (e: KeyboardEvent): void => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const img = (e.target as HTMLElement | null)?.closest?.("img");
+    if (img === null || img === undefined || img.closest("a[href]") !== null) return;
+    e.preventDefault();
+    (img as HTMLElement).click();
+  };
+
   // An evidence cell's link, delegated at the document root: the cells are
   // markdown the record wrote, so nothing here can attach a handler per cell
   // without re-rendering somebody's document.
@@ -980,7 +1012,48 @@ function splitHead(wrapper: HTMLElement): void {
   };
 
   return html`
-    <div class="rs-doc" ref=${body} onClick=${openEvidence} dangerouslySetInnerHTML=${{ __html: html_ }}></div>
+    <div class="rs-doc" ref=${body} onClick=${openEvidence} onKeyDown=${zoomByKey} dangerouslySetInnerHTML=${{ __html: html_ }}></div>
+  `;
+}
+
+// AN EMBEDDED IMAGE, AT A SIZE SOMEBODY CAN READ.
+//
+// A screen capture pasted into a record is evidence, and markdown puts it in
+// the text flow — scaled to the column, which for a console screenshot means
+// the detail the capture was taken FOR is unreadable. Opening the file beside
+// the document is the workaround, and it is only available to a reader who has
+// the folder; a delivered single-file page has no file to open.
+//
+// The same overlay shell every other modal here uses, deliberately, rather
+// than a native `<dialog>`: this page already has one answer to "how does a
+// modal behave" — the backdrop click, the Escape handler, the focus styles —
+// and a second mechanism would be two answers that drift apart.
+function ImageZoom({ src, alt, onClose, t }: { src: string; alt: string; onClose: () => void; t: Messages }) {
+  const handleOverlayClick = useCallback(
+    (e: Event) => {
+      // The backdrop AND the image itself: a reader who clicked to enlarge
+      // clicks again to put it away, which is what every picture viewer does.
+      const el = e.target as HTMLElement;
+      if (el.classList.contains("rs-overlay") || el.tagName === "IMG") onClose();
+    },
+    [onClose]
+  );
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return html`
+    <div class="rs-overlay rs-zoom-overlay" onClick=${handleOverlayClick}>
+      <button class="rs-modal-close rs-zoom-close" onClick=${onClose} aria-label="${t.shortcutClose}">\u00d7</button>
+      ${/* No width or height: the CSS caps it at the viewport and leaves it
+            alone below that, so a small capture is shown at its own size
+            rather than blown up into mush. */ ""}
+      <img class="rs-zoom-image" src=${src} alt=${alt} />
+      ${alt !== "" && html`<p class="rs-zoom-alt">${alt}</p>`}
+    </div>
   `;
 }
 
@@ -4345,6 +4418,8 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   const title = data.metadata?.title ?? t.defaultTitle;
 
   const [artifactTarget, setArtifactTarget] = useState<ArtifactTarget | null>(null);
+  // An embedded image a reader asked to see properly — see ImageZoom.
+  const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
   // Which SHAPE the open document wants. An observed document was reached from
   // a record whose rows are nine columns wide, and a panel that takes 34rem off
   // the width leaves that table unreadable — see the CSS. Read off the document
@@ -4590,6 +4665,19 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
             outside it. */ ""}
       <main class="rs-main" onClick=${(e: MouseEvent) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        // AN IMAGE, anywhere in the page: a document body, a markdown sheet's
+        // cell, a prose page read back out of a dropped folder. One delegated
+        // handler because it is one rule, and because none of those three can
+        // attach a handler per image without re-rendering somebody's markdown.
+        //
+        // Not an image inside a LINK: that click belongs to the link, which the
+        // author wrote on purpose and which the branch below answers.
+        const img = (e.target as HTMLElement | null)?.closest?.("img") as HTMLImageElement | null;
+        if (img !== null && img.closest("a[href]") === null) {
+          e.preventDefault();
+          setZoom({ src: img.getAttribute("src") ?? "", alt: img.getAttribute("alt") ?? "" });
+          return;
+        }
         const a = (e.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
         const raw = a?.getAttribute("href");
         if (raw === null || raw === undefined || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("#")) return;
@@ -4832,6 +4920,10 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                           onClose=${() => setArtifactTarget(null)}
                           onPick=${(instance: string | undefined) => setArtifactTarget((c) => (c ? { ...c, instance } : c))}
                           onJumpRow=${jumpToRow} t=${t} />
+      `}
+
+      ${zoom !== null && html`
+        <${ImageZoom} src=${zoom.src} alt=${zoom.alt} onClose=${() => setZoom(null)} t=${t} />
       `}
 
       <${CellToolbarHost} onOpenReview=${openReview} t=${t} />

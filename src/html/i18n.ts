@@ -128,6 +128,9 @@ type Messages = {
   // …and for a document that belongs to no host, where naming a machine would
   // be a provenance claim nobody made.
   artifactCollectedAt: string;
+  // What clicking an embedded image does. Only ever read by a screen reader —
+  // the picture itself is the affordance for everyone else.
+  imageZoom: string;
   artifactDockRight: string;
   artifactDockBelow: string;
   artifactKindAbsent: string;
@@ -352,6 +355,7 @@ const ja: Messages = {
   artifactSourceFile: "ソースファイル",
   artifactCollectedFrom: "{host} から {at} に取得",
   artifactCollectedAt: "{at} に取得",
+  imageZoom: "クリックで拡大",
   artifactDockRight: "右に表示",
   artifactDockBelow: "下に表示",
   artifactKindAbsent: "この環境では出力されない（条件: {reason}）",
@@ -523,6 +527,7 @@ const en: Messages = {
   artifactSourceFile: "Source file",
   artifactCollectedFrom: "Collected from {host} at {at}",
   artifactCollectedAt: "Collected at {at}",
+  imageZoom: "click to enlarge",
   artifactDockRight: "Dock to the right",
   artifactDockBelow: "Dock to the bottom",
   artifactKindAbsent: "not rendered for this instance (condition: {reason})",
