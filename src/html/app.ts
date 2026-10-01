@@ -4109,6 +4109,16 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // keeps the strip it has always had.
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [currentNavId, setCurrentNavId] = useState<string | null>(null);
+  // THE ROW A READER JUMPED TO, kept marked. The jump used to flash it for 1.7s
+  // and let go, which answers "where did it go" and not "which one am I looking
+  // at" — a reader who clicked a line in a file, read the row, and then looked
+  // away had nothing to come back to. A SELECTION persists until they pick
+  // another place.
+  const [selectedRow, setSelectedRow] = useState<string | null>(null);
+  // Whether the next address written to the fragment is a NAVIGATION ACT and
+  // deserves a history entry. Scrolling is not one — see the hash effect — so
+  // the default stays `replaceState` and a deliberate jump says otherwise.
+  const pushNext = useRef(false);
   // After an outline/palette click we pin the highlight to the clicked target and
   // suppress the scroll-spy briefly, so the programmatic scroll settling doesn't
   // re-select whatever category happens to sit in the top band (which is what
@@ -4132,6 +4142,17 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
       void (el as HTMLElement).offsetWidth;
       el.classList.add("rs-jump-flash");
       window.setTimeout(() => el.classList.remove("rs-jump-flash"), 1700);
+      // The flash says WHERE IT WENT; the selection says WHICH ONE THIS IS, and
+      // a reader needs the second for as long as they are reading it.
+      setSelectedRow(el.id);
+      // …and the row becomes the document's ADDRESS, which is what makes this a
+      // link somebody can send: the fragment already carries where in a
+      // document a reader is (`#2/<id>`), and a jump is exactly the moment that
+      // changes. Pushed rather than replaced, so the back button undoes it —
+      // this is a navigation the reader performed, unlike the scrolling the
+      // same fragment follows.
+      pushNext.current = true;
+      setCurrentNavId(el.id);
       return true;
     };
     if (land()) return;
@@ -4155,6 +4176,9 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   };
   const jumpToNav = useCallback((sheetIndex: number, id: string, fallbackId?: string, sheetName?: string, categoryPath?: string) => {
     setPaletteOpen(false);
+    // A reader who picks a section from the tree has picked another place, so
+    // the row they were on stops being the answer to "where am I".
+    setSelectedRow(null);
     // Instant jump (no smooth animation) so far-away targets land immediately.
     // Fall back to the category when the exact row is not rendered (e.g. a
     // transposed table, where a parameter is a column rather than a row).
@@ -4268,11 +4292,85 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // button. The section is dropped on the overview, which has none.
   useEffect(() => {
     const base = activeSheet === -1 ? "overview" : String(activeSheet + 1);
-    const next = currentNavId === null || activeSheet === -1
+    // A SELECTED ROW OUTRANKS THE SECTION THE SPY IS WATCHING, and it has to:
+    // the spy recomputes on every scroll, and `scrollIntoView` fires one — so a
+    // row address written by a jump was overwritten by the enclosing section
+    // before the reader could copy it. (Found by testing the address rather than
+    // the highlight; the highlight was right the whole time.)
+    //
+    // The section is what the fragment follows while nothing is selected, which
+    // is the ordinary case. Picking any other place clears the selection, so
+    // this never gets stuck pointing at a row the reader has left.
+    const where = selectedRow ?? currentNavId;
+    const next = where === null || activeSheet === -1
       ? `#${base}`
-      : `#${base}/${encodeURIComponent(currentNavId)}`;
-    if (location.hash !== next) history.replaceState(null, "", next);
-  }, [currentNavId, activeSheet]);
+      : `#${base}/${encodeURIComponent(where)}`;
+    if (location.hash !== next) {
+      if (pushNext.current) history.pushState(null, "", next);
+      else history.replaceState(null, "", next);
+    }
+    // Cleared whether or not it was used: a jump to where the fragment already
+    // points writes nothing, and a flag left standing would make the next
+    // scroll push an entry.
+    pushNext.current = false;
+  }, [currentNavId, activeSheet, selectedRow]);
+
+  // THE MARK, re-asserted after every render.
+  //
+  // Imperative, like the flash beside it: the row is rendered deep inside the
+  // table and threading a "you are here" prop through every level would make
+  // every cell re-render to move one highlight. Re-asserted with no dependency
+  // list because Preact owns that element's `class` — a diff of the row for any
+  // other reason (a filter, a review, the unset-rows toggle) would otherwise
+  // drop a mark the reader is still using.
+  useLayoutEffect(() => {
+    const want = selectedRow === null ? null : document.getElementById(selectedRow);
+    for (const el of document.querySelectorAll(".rs-row-here")) {
+      if (el !== want) el.classList.remove("rs-row-here");
+    }
+    want?.classList.add("rs-row-here");
+  });
+
+  // BACK AND FORWARD. The fragment has always been an address — the comment
+  // above says it is what a reader copies into a mail — but nothing listened
+  // for it changing, so the buttons moved the URL and left the page where it
+  // was: pressing back from one document to another showed the first document's
+  // hash over the second document's content. Measured before this, and true of
+  // every address in the fragment, not only a row's.
+  //
+  // Applied through the state rather than by assigning `location.hash` (which
+  // `setActiveSheet` does): the browser has ALREADY moved the URL by the time
+  // this fires, and writing it again would push a second entry over the one the
+  // reader just came back to.
+  useEffect(() => {
+    const onPop = (): void => {
+      const raw = location.hash.replace("#", "");
+      const slash = raw.indexOf("/");
+      const base = slash < 0 ? raw : raw.slice(0, slash);
+      let anchor_: string | null = null;
+      if (slash >= 0) {
+        try { anchor_ = decodeURIComponent(raw.slice(slash + 1)) || null; } catch { anchor_ = null; }
+      }
+      const idx = base === "overview" ? -1 : Number.parseInt(base, 10) - 1;
+      if (!Number.isNaN(idx) && idx >= -1 && idx < data.sheets.length) {
+        jumpOwnsScroll.current = anchor_ !== null;
+        setActiveSheetState(idx);
+      }
+      // A row address selects its row again, so coming back shows the reader
+      // the same thing they left. An address naming something this document no
+      // longer has selects nothing and stays where it is, which is what a stale
+      // link should do.
+      setSelectedRow(anchor_);
+      if (anchor_ === null) return;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const el = document.getElementById(anchor_!);
+        if (el !== null) aimAt(el);
+        jumpOwnsScroll.current = false;
+      }));
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [data.sheets.length]);
 
   // Arriving with one: the document is already the right one (getInitialTab
   // reads the same fragment), so all that is left is to land on the place it
@@ -4284,7 +4382,13 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     if (initialAnchor === null) return;
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const el = document.getElementById(initialAnchor);
-      if (el !== null) aimAt(el);
+      if (el !== null) {
+        aimAt(el);
+        // A PASTED LINK SHOWS WHAT THE SENDER SAW. The address already brought
+        // the reader to the right place; marking the row is what tells them
+        // which of the fifty on screen was meant.
+        setSelectedRow(initialAnchor);
+      }
     }));
   }, []);
 

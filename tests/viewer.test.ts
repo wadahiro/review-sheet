@@ -1566,6 +1566,111 @@ describe("artifact panel", () => {
     expect(keys).toContain("Mutex");
   });
 
+  // THE ROW A BACKJUMP LANDED ON, and the address that names it.
+  //
+  // Clicking a line in the file takes the reader to its row. It used to flash
+  // for 1.7 seconds and let go — which answers "where did it go" and not "which
+  // one am I looking at", so a reader who read the row and looked away had
+  // nothing to come back to. And the jump left no address, though the fragment
+  // has carried where-in-a-document all along.
+  describe("after a backjump from the file", () => {
+    const backjump = async (host: HTMLElement): Promise<HTMLElement> => {
+      (rowFor(host, "Listen").querySelector(".rs-artifact-chip") as HTMLElement).click();
+      await Promise.resolve();
+      const line = [...host.querySelectorAll(".rs-artifact-line.rs-has-row")].find((l) =>
+        l.querySelector(".rs-artifact-text")?.textContent?.includes("Listen")
+      ) as HTMLElement;
+      expect(line).toBeDefined();
+      line.click();
+      // WAITED FOR, not timed. Preact defers effects, so the render that marks
+      // the row and the one that writes the address are two steps away from the
+      // click — a fixed delay made this pass or fail depending on the machine.
+      for (let i = 0; i < 100; i++) {
+        if (host.querySelector("tr.rs-row-here") !== null) break;
+        await waitForEffects();
+      }
+      return host;
+    };
+
+    it("marks the row it landed on", async () => {
+      const host = await backjump(mountArtifact());
+      const here = host.querySelector("tr.rs-row-here");
+      expect(here, "no row is marked").not.toBeNull();
+      expect(here!.querySelector(".rs-col-key code")?.textContent).toBe("Listen");
+    });
+
+    // One at a time: the mark says which row this is, and two of them say
+    // nothing.
+    it("marks only one", async () => {
+      const host = await backjump(mountArtifact());
+      expect(host.querySelectorAll("tr.rs-row-here").length).toBe(1);
+    });
+
+    // …and the row becomes the document's address, which is what makes it a
+    // link somebody can send.
+    it("puts the row in the fragment", async () => {
+      const host = await backjump(mountArtifact());
+      const id = (host.querySelector("tr.rs-row-here") as HTMLElement).id;
+      expect(id).not.toBe("");
+      expect(decodeURIComponent(location.hash), `hash was ${location.hash}`).toContain(id);
+    });
+
+    // …AND IT SURVIVES THE NEXT SCROLL. The fragment otherwise follows the
+    // section the scroll-spy is watching, and `scrollIntoView` fires a scroll —
+    // so the row address was overwritten by its enclosing section before a
+    // reader could copy it. The selection is the stronger statement and outranks
+    // the spy for as long as it stands.
+    it("keeps the row in the fragment when the reader scrolls", async () => {
+      const host = await backjump(mountArtifact());
+      const id = (host.querySelector("tr.rs-row-here") as HTMLElement).id;
+      window.dispatchEvent(new window.Event("scroll"));
+      await waitForEffects();
+      expect(decodeURIComponent(location.hash), `hash was ${location.hash}`).toContain(id);
+    });
+
+    // PUSHED, not replaced: this is a navigation the reader performed, so the
+    // back button has to undo it. Scrolling is not one, which is why the
+    // fragment's own updates stay replaceState — counted, because history.length
+    // grows for either of them and cannot tell them apart.
+    it("pushes a history entry rather than replacing one", async () => {
+      const host = mountArtifact();
+      const real = history.pushState.bind(history);
+      let pushed = 0;
+      history.pushState = ((...args: Parameters<typeof real>) => {
+        pushed += 1;
+        return real(...args);
+      }) as typeof real;
+      try {
+        await backjump(host);
+      } finally {
+        history.pushState = real;
+      }
+      expect(pushed).toBe(1);
+    });
+
+    // …and a scroll afterwards does NOT, or a reader who read down the page
+    // could not get back out with the back button.
+    it("does not push one for scrolling", async () => {
+      const host = await backjump(mountArtifact());
+      // Away from the selection, so the fragment is free to follow the spy.
+      (host.querySelector(".rs-navtree-item") as HTMLElement | null)?.click();
+      await waitForEffects();
+      const real = history.pushState.bind(history);
+      let pushed = 0;
+      history.pushState = ((...args: Parameters<typeof real>) => {
+        pushed += 1;
+        return real(...args);
+      }) as typeof real;
+      try {
+        window.dispatchEvent(new window.Event("scroll"));
+        await waitForEffects();
+      } finally {
+        history.pushState = real;
+      }
+      expect(pushed).toBe(0);
+    });
+  });
+
   it("closes, and stays out of the way of print", async () => {
     const host = mountArtifact();
     (rowFor(host, "Listen").querySelector(".rs-artifact-chip") as HTMLElement).click();

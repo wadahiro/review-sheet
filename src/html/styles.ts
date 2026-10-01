@@ -3189,6 +3189,22 @@ code {
 /* A table ROW cannot carry a pseudo-element reliably (display: table-row), so
    its cells keep the inset-shadow fill — they are the elements with the
    backgrounds there anyway. */
+/* THE ROW A READER IS LOOKING AT, for as long as they are looking at it.
+   The flash beside this says where a jump went; this says which one this is, and
+   the second is what a reader needs while they read it.
+
+   On the CELLS, not the row: a background on a tr is painted under whatever the
+   tds paint, which on this table is most of them. The left edge is the quiet
+   part doing the work — a full-strength fill would fight every per-cell colour
+   the sheet already uses to mean something. */
+tr.rs-row-here > td {
+  background: var(--rs-primary-light);
+}
+
+tr.rs-row-here > td:first-child {
+  box-shadow: inset 3px 0 0 var(--rs-primary);
+}
+
 tr.rs-jump-flash::after {
   content: none;
 }
