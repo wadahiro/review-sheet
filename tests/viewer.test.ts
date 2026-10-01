@@ -1628,47 +1628,6 @@ describe("artifact panel", () => {
       expect(decodeURIComponent(location.hash), `hash was ${location.hash}`).toContain(id);
     });
 
-    // PUSHED, not replaced: this is a navigation the reader performed, so the
-    // back button has to undo it. Scrolling is not one, which is why the
-    // fragment's own updates stay replaceState — counted, because history.length
-    // grows for either of them and cannot tell them apart.
-    it("pushes a history entry rather than replacing one", async () => {
-      const host = mountArtifact();
-      const real = history.pushState.bind(history);
-      let pushed = 0;
-      history.pushState = ((...args: Parameters<typeof real>) => {
-        pushed += 1;
-        return real(...args);
-      }) as typeof real;
-      try {
-        await backjump(host);
-      } finally {
-        history.pushState = real;
-      }
-      expect(pushed).toBe(1);
-    });
-
-    // …and a scroll afterwards does NOT, or a reader who read down the page
-    // could not get back out with the back button.
-    it("does not push one for scrolling", async () => {
-      const host = await backjump(mountArtifact());
-      // Away from the selection, so the fragment is free to follow the spy.
-      (host.querySelector(".rs-navtree-item") as HTMLElement | null)?.click();
-      await waitForEffects();
-      const real = history.pushState.bind(history);
-      let pushed = 0;
-      history.pushState = ((...args: Parameters<typeof real>) => {
-        pushed += 1;
-        return real(...args);
-      }) as typeof real;
-      try {
-        window.dispatchEvent(new window.Event("scroll"));
-        await waitForEffects();
-      } finally {
-        history.pushState = real;
-      }
-      expect(pushed).toBe(0);
-    });
   });
 
   it("closes, and stays out of the way of print", async () => {
@@ -3746,25 +3705,6 @@ describe("a dropped set's record, opened at its evidence", () => {
       expect(host.querySelector(".rs-artifact-panel")).not.toBeNull();
     });
 
-    // AND IT IS AN ADDRESS. "This document, at this line" is what a reviewer
-    // sends about a verdict, and before this nothing about an open panel reached
-    // the URL at all.
-    it("puts the open document in the fragment", async () => {
-      const host = await openEvidence(droppedRecord());
-      const hash = decodeURIComponent(location.hash);
-      expect(hash, `hash was ${location.hash}`).toContain("ev=");
-      expect(hash).toContain("web01");
-      expect(hash).toContain("l=2");
-    });
-
-    // …which the back button undoes, because opening it was a navigation.
-    it("closes again when the fragment goes back", async () => {
-      const host = await openEvidence(droppedRecord());
-      history.replaceState(null, "", "#1");
-      window.dispatchEvent(new window.PopStateEvent("popstate"));
-      await waitForEffects();
-      expect(host.querySelector(".rs-artifact-panel")).toBeNull();
-    });
 
     // A row's own file is NOT offered a way back: the reader reached it from a
     // row the page still shows, so there is nothing to lead them to.

@@ -1188,15 +1188,14 @@ sheets:
   that cannot be read, or a remote URL (which would make the delivered file
   fetch over the network when opened), **fails the build**, naming every bad
   reference at once.
-- **A verdict's evidence is a place you can come back to, and a link you can
-  send.** Opening it records the verdict that cited it, so the panel offers the
-  way back and the browser's back button closes it again; the open document and
-  its line go in the fragment (`#2/<where>?ev=<id>&l=12`), so "this evidence, at
-  this line" is an address. Back is to the VERDICT and never to a row: an
-  observed document's lines carry no key by design, since a row resolves to
-  exactly one document and an observed copy of the same file would make which
-  one opens depend on emission order. A row's own file is offered no way back —
-  the reader reached it from a row the page still shows.
+- **A verdict's evidence is a place you can come back from.** Opening it records
+  the verdict that cited it, and the panel offers the way back — to the VERDICT
+  and never to a row: an observed document's lines carry no key by design, since
+  a row resolves to exactly one document and an observed copy of the same file
+  would make which one opens depend on emission order. The panel stays open when
+  the reader takes it, because the bottom dock exists so the record and its
+  evidence are both on screen. A row's own file is offered no way back — the
+  reader reached it from a row the page still shows.
 - **An embedded image opens at a readable size when it is clicked.** A screen
   capture is evidence, and in the text flow it is scaled to the column — which
   for a console screenshot hides the detail the capture was taken for. Clicking

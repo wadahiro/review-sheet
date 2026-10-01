@@ -3537,51 +3537,6 @@ function PivotView({ sheet, pivot, sheetIndex, hiddenInstances, showDefaults, re
 // `line` is how the test record's evidence opens it: a verdict was read at a
 // line number, not at a key, and an observed document carries no keys at all
 // (types.ts) precisely so it can never be reached the other way.
-// THE FRAGMENT, IN ONE PLACE.
-//
-// It carries which document a reader has open, where in it they are, and — once
-// evidence could be opened from a record — which observed document is on screen
-// and at which line. Four facts, and for as long as only the first two existed
-// they were read in one place and written in another. A third fact arriving made
-// that two readers that have to agree, which is the shape this project keeps
-// finding broken, so both directions live here.
-//
-// `?ev=` rather than a fourth slash-separated segment, for one reason: every
-// address already handed out has the two-segment shape, and a reader of the old
-// shape must keep working. A query suffix is invisible to it.
-type Fragment = { sheet: number; where: string | null; evidence?: { id: string; line?: number } };
-
-function formatFragment(f: Fragment): string {
-  const base = f.sheet === -1 ? "overview" : String(f.sheet + 1);
-  const head = f.where === null || f.sheet === -1 ? `#${base}` : `#${base}/${encodeURIComponent(f.where)}`;
-  if (f.evidence === undefined) return head;
-  const line = f.evidence.line === undefined ? "" : `&l=${f.evidence.line}`;
-  return `${head}?ev=${encodeURIComponent(f.evidence.id)}${line}`;
-}
-
-function parseFragment(hash: string, sheets: number): Fragment | null {
-  const raw = hash.replace(/^#/, "");
-  if (raw === "") return null;
-  const q = raw.indexOf("?");
-  const path = q < 0 ? raw : raw.slice(0, q);
-  const query = new URLSearchParams(q < 0 ? "" : raw.slice(q + 1));
-  const slash = path.indexOf("/");
-  const base = slash < 0 ? path : path.slice(0, slash);
-  const sheet = base === "overview" ? -1 : Number.parseInt(base, 10) - 1;
-  if (Number.isNaN(sheet) || sheet < -1 || sheet >= sheets) return null;
-  let where: string | null = null;
-  if (slash >= 0) {
-    try { where = decodeURIComponent(path.slice(slash + 1)) || null; } catch { where = null; }
-  }
-  const ev = query.get("ev");
-  const line = Number.parseInt(query.get("l") ?? "", 10);
-  return {
-    sheet,
-    where,
-    ...(ev === null || ev === "" ? {} : { evidence: { id: ev, ...(Number.isNaN(line) ? {} : { line }) } }),
-  };
-}
-
 type ArtifactTarget = {
   id: string;
   key?: string;
@@ -3964,11 +3919,12 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // delivered document is opened from a file:// URL, where pushState with a
   // path is a SecurityError (measured), so the fragment is the only address
   // this document can have.
-  const [initialAnchor] = useState(() => parseFragment(location.hash, Number.MAX_SAFE_INTEGER)?.where ?? null);
-  // …and the EVIDENCE it names, opened once the page exists. A link to "this
-  // document, at this line" is the thing a reviewer sends about a verdict, and
-  // before this the panel was reachable only by clicking.
-  const [initialEvidence] = useState(() => parseFragment(location.hash, Number.MAX_SAFE_INTEGER)?.evidence ?? null);
+  const [initialAnchor] = useState(() => {
+    const raw = location.hash.replace("#", "");
+    const slash = raw.indexOf("/");
+    if (slash < 0) return null;
+    try { return decodeURIComponent(raw.slice(slash + 1)) || null; } catch { return null; }
+  });
 
   // Set while a JUMP is switching sheets (jumpToNav). A jump names a place
   // inside the document it opens; choosing a document from the navigation names
@@ -4180,10 +4136,6 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // away had nothing to come back to. A SELECTION persists until they pick
   // another place.
   const [selectedRow, setSelectedRow] = useState<string | null>(null);
-  // Whether the next address written to the fragment is a NAVIGATION ACT and
-  // deserves a history entry. Scrolling is not one — see the hash effect — so
-  // the default stays `replaceState` and a deliberate jump says otherwise.
-  const pushNext = useRef(false);
   // After an outline/palette click we pin the highlight to the clicked target and
   // suppress the scroll-spy briefly, so the programmatic scroll settling doesn't
   // re-select whatever category happens to sit in the top band (which is what
@@ -4210,13 +4162,8 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
       // The flash says WHERE IT WENT; the selection says WHICH ONE THIS IS, and
       // a reader needs the second for as long as they are reading it.
       setSelectedRow(el.id);
-      // …and the row becomes the document's ADDRESS, which is what makes this a
-      // link somebody can send: the fragment already carries where in a
-      // document a reader is (`#2/<id>`), and a jump is exactly the moment that
-      // changes. Pushed rather than replaced, so the back button undoes it —
-      // this is a navigation the reader performed, unlike the scrolling the
-      // same fragment follows.
-      pushNext.current = true;
+      // …and the row becomes what the fragment names, which is the address a
+      // reader copies. Still replaceState: see the hash effect.
       setCurrentNavId(el.id);
       return true;
     };
@@ -4368,49 +4315,6 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     want?.classList.add("rs-row-here");
   });
 
-  // BACK AND FORWARD. The fragment has always been an address — the comment
-  // above says it is what a reader copies into a mail — but nothing listened
-  // for it changing, so the buttons moved the URL and left the page where it
-  // was: pressing back from one document to another showed the first document's
-  // hash over the second document's content. Measured before this, and true of
-  // every address in the fragment, not only a row's.
-  //
-  // Applied through the state rather than by assigning `location.hash` (which
-  // `setActiveSheet` does): the browser has ALREADY moved the URL by the time
-  // this fires, and writing it again would push a second entry over the one the
-  // reader just came back to.
-  useEffect(() => {
-    const onPop = (): void => {
-      const f = parseFragment(location.hash, data.sheets.length);
-      if (f === null) return;
-      const anchor_ = f.where;
-      {
-        jumpOwnsScroll.current = anchor_ !== null;
-        setActiveSheetState(f.sheet);
-      }
-      // …and the evidence that was open, or was not. Both directions: going back
-      // past the opening closes the panel, and going forward into it opens the
-      // same document at the same line.
-      setArtifactTarget(
-        f.evidence === undefined
-          ? null
-          : { id: f.evidence.id, ...(f.evidence.line === undefined ? {} : { line: f.evidence.line }) }
-      );
-      // A row address selects its row again, so coming back shows the reader
-      // the same thing they left. An address naming something this document no
-      // longer has selects nothing and stays where it is, which is what a stale
-      // link should do.
-      setSelectedRow(anchor_);
-      if (anchor_ === null) return;
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        const el = document.getElementById(anchor_!);
-        if (el !== null) aimAt(el);
-        jumpOwnsScroll.current = false;
-      }));
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, [data.sheets.length]);
 
   // Arriving with one: the document is already the right one (getInitialTab
   // reads the same fragment), so all that is left is to land on the place it
@@ -4577,50 +4481,22 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // The reader's choice, or what the document being opened wants.
   const dockNow: Dock = dock ?? (evidenceOpen ? "below" : "right");
 
-  // A PASTED LINK OPENS THE DOCUMENT IT NAMES. Done here rather than beside the
-  // anchor's own effect because it needs the artifacts: an id naming a document
-  // this delivery does not carry opens nothing and says nothing, which is what a
-  // stale link should do.
-  useEffect(() => {
-    if (initialEvidence === null) return;
-    if (!(artifacts ?? []).some((a) => a.id === initialEvidence.id)) return;
-    setArtifactTarget({ id: initialEvidence.id, ...(initialEvidence.line === undefined ? {} : { line: initialEvidence.line }) });
-  }, []);
 
   // …and that is what goes in the fragment. replaceState, not an assignment to
   // location.hash: a reader scrolling through a document would otherwise leave
   // a history entry per section and could not get back out with the back
   // button. The section is dropped on the overview, which has none.
   useEffect(() => {
-    const dockedDoc = artifactTarget !== null && dockNow === "below" ? artifactTarget : null;
-    // A SELECTED ROW OUTRANKS THE SECTION THE SPY IS WATCHING, and it has to:
-    // the spy recomputes on every scroll, and `scrollIntoView` fires one — so a
-    // row address written by a jump was overwritten by the enclosing section
-    // before the reader could copy it. (Found by testing the address rather than
-    // the highlight; the highlight was right the whole time.)
-    //
-    // The section is what the fragment follows while nothing is selected, which
-    // is the ordinary case. Picking any other place clears the selection, so
-    // this never gets stuck pointing at a row the reader has left.
+    const base = activeSheet === -1 ? "overview" : String(activeSheet + 1);
+    // A selected row outranks the section the spy is watching: the spy
+    // recomputes on every scroll and `scrollIntoView` fires one, so a row this
+    // fragment named was overwritten by its enclosing section. Still
+    // replaceState, as it always was — the fragment FOLLOWS the reader here and
+    // a history entry per section is what that comment below is about.
     const where = selectedRow ?? currentNavId;
-    // …and the EVIDENCE a reader has open, so "this document, at this line" is
-    // an address they can send. Only the bottom dock: the side panel is a row's
-    // own file, reachable from the row the fragment already names, while an
-    // observed document is reached from a record and from nowhere else.
-    const next = formatFragment({
-      sheet: activeSheet,
-      where,
-      ...(dockedDoc === null ? {} : { evidence: { id: dockedDoc.id, ...(dockedDoc.line === undefined ? {} : { line: dockedDoc.line }) } }),
-    });
-    if (location.hash !== next) {
-      if (pushNext.current) history.pushState(null, "", next);
-      else history.replaceState(null, "", next);
-    }
-    // Cleared whether or not it was used: a jump to where the fragment already
-    // points writes nothing, and a flag left standing would make the next
-    // scroll push an entry.
-    pushNext.current = false;
-  }, [currentNavId, activeSheet, selectedRow, artifactTarget, dockNow]);
+    const next = where === null || activeSheet === -1 ? `#${base}` : `#${base}/${encodeURIComponent(where)}`;
+    if (location.hash !== next) history.replaceState(null, "", next);
+  }, [currentNavId, activeSheet, selectedRow]);
   // Which preview a row belongs to, and where in it — resolved once per
   // document by the shared index (`artifact-index.ts`), because `md-set` asks
   // the same question when it writes the link into the carried markdown, and
@@ -4885,7 +4761,6 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
         // only the line, because a document's blocks are addressed by line and
         // the document is whichever one is open.
         const at = a?.closest("[data-rs-line]")?.getAttribute("data-rs-line");
-        pushNext.current = true;
         setArtifactTarget({
           id: hit.id,
           ...(line === null ? {} : { line: Number(line[1]) }),
@@ -5053,9 +4928,6 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                 ? html`<${DocumentBody} sheet=${sheet}
                                         onEvidence=${(artifacts ?? []).some((a) => a.nature === "observed")
                                           ? (id: string, line?: number, from?: string) => {
-                                              // A navigation the reader performed, so the back
-                                              // button closes it again.
-                                              pushNext.current = true;
                                               setArtifactTarget({ id, ...(line === undefined ? {} : { line }), ...(from === undefined ? {} : { from }) });
                                             }
                                           : undefined} t=${t} />`
