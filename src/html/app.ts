@@ -29,6 +29,7 @@ import { isEdit, targetKey } from "../edits.js";
 import { toMarkdownSheet, renderSheetMarkdown, parseSheetMarkdown, liftMarkdownSheet } from "../sheet-markdown.js";
 import { getMarkdownRenderer } from "./markdown-runtime.js";
 import { EVIDENCE_SCHEME, parseEvidenceRef } from "../evidence.js";
+import { buildCitationIndex, citationKey, type Citation } from "./citations.js";
 import { inlineMarkdown } from "./inline-markdown.js";
 import { NavTree, chapterPath } from "./nav-tree.js";
 import { sectionize } from "./doc-sections.js";
@@ -991,6 +992,51 @@ function splitHead(wrapper: HTMLElement): void {
 
   return html`
     <div class="rs-doc" ref=${body} onKeyDown=${zoomByKey} dangerouslySetInnerHTML=${{ __html: html_ }}></div>
+  `;
+}
+
+// WHICH OF THEM. A line can be the evidence for more than one verdict — ten
+// lines of one real delivery are — and jumping to the first would answer a
+// question the reader did not ask. The same overlay shell the rest of this page
+// uses, because this is a choice and not a view.
+function CiterPicker({ citers, onPick, onClose, t }: {
+  citers: Citation[];
+  onPick: (c: Citation) => void;
+  onClose: () => void;
+  t: Messages;
+}) {
+  const handleOverlayClick = useCallback(
+    (e: Event) => {
+      if ((e.target as HTMLElement).classList.contains("rs-overlay")) onClose();
+    },
+    [onClose]
+  );
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return html`
+    <div class="rs-overlay" onClick=${handleOverlayClick}>
+      <div class="rs-modal rs-citer-modal">
+        <div class="rs-modal-head">
+          <h2>${t.artifactPickCiter}</h2>
+          <button class="rs-modal-close" onClick=${onClose} aria-label="${t.shortcutClose}">\u00d7</button>
+        </div>
+        <ul class="rs-citer-list">
+          ${citers.map((c) => html`
+            <li key=${`${c.sheetIndex}:${c.address}`}>
+              <button class="rs-citer" onClick=${() => onPick(c)}>
+                <span class="rs-citer-label">${c.label}</span>
+                <span class="rs-citer-sheet">${c.sheet}</span>
+              </button>
+            </li>
+          `)}
+        </ul>
+      </div>
+    </div>
   `;
 }
 
@@ -3546,7 +3592,7 @@ export type ArtifactAccess = {
   open: (id: string, key: string, keys?: string[]) => void;
 };
 
-function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, onBack, dock, onDock, t }: {
+function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, onBack, citersOf, onCite, dock, onDock, t }: {
   previews: ArtifactPreview[];
   target: ArtifactTarget;
   onClose: () => void;
@@ -3557,6 +3603,12 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, onBack, d
   // reached from a record, and its lines carry no key to jump back by (see
   // ArtifactTarget.from), so the way back has to be offered.
   onBack?: () => void;
+  // WHO CITES A LINE of this document, and what to do about it. Only ever
+  // non-empty on an OBSERVED document: a citation names the bytes a verdict was
+  // read from, and the row affordance beside it (`rs-has-row`) never appears on
+  // one, so the two cannot land on the same line.
+  citersOf?: (line: number) => Citation[];
+  onCite?: (citers: Citation[]) => void;
   // Where the panel sits, and how the reader moves it. Both are here rather
   // than in the CSS because the choice is the reader's: a wide monitor wants
   // the file beside the sheet, a laptop wants it under a nine-column table.
@@ -3701,9 +3753,18 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, onBack, d
                   ? t.artifactJumpRow
                   : undefined;
           return html`
-            <div class=${`rs-artifact-line rs-kind-${line.kind} ${line.key !== undefined ? "rs-has-row" : ""} ${here ? "rs-here" : ""}`}
-                 title=${title}
-                 onClick=${line.key !== undefined ? () => onJumpRow(shown.sheet, line.key!) : undefined}>
+            ${/* WHO WAS DECIDED ON THIS LINE. A reader partway down a long
+                  document wants to know whether the line in front of them is
+                  one some item was judged on — which the delivery records as a
+                  citation, and which nothing could answer from this end. */ ""}
+            ${""}
+            <div class=${`rs-artifact-line rs-kind-${line.kind} ${line.key !== undefined ? "rs-has-row" : ""} ${(citersOf?.(i + 1) ?? []).length > 0 ? "rs-has-cite" : ""} ${here ? "rs-here" : ""}`}
+                 title=${(citersOf?.(i + 1) ?? []).length > 0 ? t.artifactCitedBy.replace("{n}", String((citersOf?.(i + 1) ?? []).length)) : title}
+                 onClick=${line.key !== undefined
+                   ? () => onJumpRow(shown.sheet, line.key!)
+                   : (citersOf?.(i + 1) ?? []).length > 0
+                     ? () => onCite?.(citersOf!(i + 1))
+                     : undefined}>
               <span class="rs-artifact-no">${i + 1}</span>
               <span class="rs-artifact-text">${line.text === "" ? "\u00a0" : line.text}</span>
             </div>
@@ -4212,6 +4273,23 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     }
   }, [activeSheet, setActiveSheet]);
 
+  // GO TO A VERDICT DECIDED ON THIS LINE. The address is either a block of
+  // prose or a sheet's row, and `jumpToNav` already crosses sheets and resolves
+  // both; the flash is what tells the reader which of fifty rows was meant.
+  const goToCiter = useCallback((c: Citation) => {
+    setCiters(null);
+    jumpToNav(c.sheetIndex, c.address);
+    window.setTimeout(() => {
+      const el = resolveNavTarget(c.address);
+      if (el === null) return;
+      el.classList.remove("rs-jump-flash");
+      void el.offsetWidth;
+      el.classList.add("rs-jump-flash");
+      window.setTimeout(() => el.classList.remove("rs-jump-flash"), 1700);
+    }, 0);
+  }, [jumpToNav]);
+
+
 
   // Cmd/Ctrl+K opens search; Escape closes the overlays.
   useEffect(() => {
@@ -4441,6 +4519,9 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   const [artifactTarget, setArtifactTarget] = useState<ArtifactTarget | null>(null);
   // An embedded image a reader asked to see properly — see ImageZoom.
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
+  // …and the verdicts decided on a line a reader pointed at, when there is more
+  // than one of them to choose between.
+  const [citers, setCiters] = useState<Citation[] | null>(null);
   // Which SHAPE the open document wants. An observed document was reached from
   // a record whose rows are nine columns wide, and a panel that takes 34rem off
   // the width leaves that table unreadable — see the CSS. Read off the document
@@ -4476,6 +4557,10 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // the two answering differently would be one document with two opinions
   // about where a row's line is.
   const artifactIndex = useMemo(() => buildArtifactIndex(artifacts), [artifacts]);
+  // WHO CITES EACH LINE, inverted from what the delivery already carries — see
+  // citations.ts. Over the whole model and not the rendered page: a document may
+  // be cited by a sheet the reader does not have open.
+  const citations = useMemo(() => buildCitationIndex(data.sheets), [data.sheets]);
   const artifactAccess = useMemo<ArtifactAccess | undefined>(
     () =>
       (artifacts?.length ?? 0) === 0
@@ -5010,7 +5095,19 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                             void el.offsetWidth;
                             el.classList.add("rs-jump-flash");
                             window.setTimeout(() => el.classList.remove("rs-jump-flash"), 1700);
+                          }}
+                          citersOf=${(line: number) => citations.get(citationKey(artifactTarget.id, line)) ?? []}
+                          onCite=${(found: Citation[]) => {
+                            // ONE goes straight there; several are a choice, and
+                            // taking the first would answer a question the reader
+                            // did not ask.
+                            if (found.length === 1) goToCiter(found[0]!);
+                            else setCiters(found);
                           }} t=${t} />
+      `}
+
+      ${citers !== null && html`
+        <${CiterPicker} citers=${citers} onPick=${goToCiter} onClose=${() => setCiters(null)} t=${t} />
       `}
 
       ${zoom !== null && html`

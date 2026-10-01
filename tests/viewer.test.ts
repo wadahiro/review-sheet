@@ -4193,3 +4193,121 @@ describe("viewer: evidence cited from a table cell", () => {
     expect(host.querySelector(".rs-artifact-back"), "no way back is offered").not.toBeNull();
   });
 });
+
+// FROM THE EVIDENCE BACK TO THE VERDICTS DECIDED ON A LINE.
+//
+// The panel's lines had no affordance at all: an observed document carries no
+// line keys, deliberately, so a row can never route to an observed copy of a
+// file. A CITATION is the other fact — a verdict pointed here — and it is what
+// lets a reader partway down a long document ask which item this line decided.
+describe("viewer: the verdicts decided on a line", () => {
+  const ID = "observed poc terraform show -json";
+  const cite = (line: number): string => `rs-evidence:${encodeURIComponent(`${ID}#L${line}`)}`;
+
+  function mountWith(rows: { line: number; no: string; what: string; at: number }[]): HTMLElement {
+    const html_ = `<h2 id="p-r">R</h2>\n<table><tbody>${rows
+      .map((r) => `<tr data-rs-line="${r.line}"><td>${r.no}</td><td>${r.what}</td><td><a href="${cite(r.at)}">e</a></td></tr>`)
+      .join("")}</tbody></table>\n`;
+    const payload = {
+      metadata: { title: "t" },
+      versions: [
+        {
+          version: "current",
+          sheets: [{ name: "rec", categories: [], document: { html: html_, headings: [{ level: 2, text: "R", id: "p-r" }] } }],
+          artifacts: [
+            {
+              id: ID,
+              sheet: "rec",
+              source_file: "terraform show -json",
+              nature: "observed",
+              observed: { host: "acct", at: "T" },
+              instances: ["poc"],
+              lines: Array.from({ length: 12 }, (_, i) => ({ text: `line ${i + 1}`, kind: "verbatim" as const })),
+            },
+          ],
+        },
+      ],
+    };
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: payload as never, reviewEnabled: false, initialLang: "ja", server: false }), host);
+    return host;
+  }
+
+  const openPanel = async (host: HTMLElement): Promise<void> => {
+    (host.querySelector('a[href^="rs-evidence:"]') as HTMLElement).dispatchEvent(
+      new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 })
+    );
+    for (let i = 0; i < 100; i++) {
+      if (host.querySelector(".rs-artifact-panel") !== null) break;
+      await waitForEffects();
+    }
+    expect(host.querySelector(".rs-artifact-panel"), "the evidence did not open").not.toBeNull();
+  };
+
+  const lineAt = (host: HTMLElement, n: number): HTMLElement =>
+    [...host.querySelectorAll(".rs-artifact-line")][n - 1] as HTMLElement;
+
+  it("marks the lines some verdict was decided on, and only those", async () => {
+    const host = mountWith([{ line: 5, no: "1", what: "a", at: 3 }]);
+    await openPanel(host);
+    expect(lineAt(host, 3).classList.contains("rs-has-cite")).toBe(true);
+    expect(lineAt(host, 4).classList.contains("rs-has-cite")).toBe(false);
+  });
+
+  it("says how many, where a reader can see it", async () => {
+    const host = mountWith([{ line: 5, no: "1", what: "a", at: 3 }]);
+    await openPanel(host);
+    expect(lineAt(host, 3).getAttribute("title")).toContain("1 件");
+  });
+
+  // ONE goes straight there.
+  it("goes to the verdict when there is one", async () => {
+    const host = mountWith([{ line: 5, no: "1", what: "a", at: 3 }]);
+    await openPanel(host);
+    lineAt(host, 3).click();
+    await waitForEffects();
+    expect(host.querySelector(".rs-citer-list"), "a single verdict should need no choosing").toBeNull();
+    const marked = host.querySelector('.rs-doc [data-rs-line="5"].rs-jump-flash');
+    expect(marked, "the verdict was not marked").not.toBeNull();
+  });
+
+  // SEVERAL are a choice: taking the first would answer a question the reader
+  // did not ask.
+  it("offers the choice when a line decided more than one", async () => {
+    const host = mountWith([
+      { line: 5, no: "24", what: "secrets.sh", at: 3 },
+      { line: 6, no: "25", what: "secrets.sh", at: 3 },
+    ]);
+    await openPanel(host);
+    lineAt(host, 3).click();
+    await waitForEffects();
+    const items = [...host.querySelectorAll(".rs-citer-label")].map((e) => e.textContent);
+    expect(items).toEqual(["24 secrets.sh", "25 secrets.sh"]);
+  });
+
+  it("goes to the one that was chosen", async () => {
+    const host = mountWith([
+      { line: 5, no: "24", what: "secrets.sh", at: 3 },
+      { line: 6, no: "25", what: "secrets.sh", at: 3 },
+    ]);
+    await openPanel(host);
+    lineAt(host, 3).click();
+    await waitForEffects();
+    ([...host.querySelectorAll(".rs-citer")][1] as HTMLElement).click();
+    await waitForEffects();
+    expect(host.querySelector(".rs-citer-list"), "the choice stayed open").toBeNull();
+    expect(host.querySelector('.rs-doc [data-rs-line="6"].rs-jump-flash'), "it went to the wrong verdict").not.toBeNull();
+  });
+
+  // …and a line nothing cites does nothing, rather than opening an empty choice.
+  it("leaves an uncited line alone", async () => {
+    const host = mountWith([{ line: 5, no: "1", what: "a", at: 3 }]);
+    await openPanel(host);
+    lineAt(host, 7).click();
+    await waitForEffects();
+    expect(host.querySelector(".rs-citer-list")).toBeNull();
+    expect(host.querySelector(".rs-doc .rs-jump-flash")).toBeNull();
+  });
+});

@@ -4258,6 +4258,53 @@ tr.rs-jump-flash th {
   height: calc(100vh - var(--rs-tabbar-h, 41px) - min(var(--rs-evidence-h, 22rem), 60vh));
 }
 
+/* A LINE SOME VERDICT WAS DECIDED ON. The same affordance a line with a row
+   gets, since it is the same promise: there is somewhere to go from here. They
+   never appear together — a citation only ever names an observed document, whose
+   lines carry no row. */
+.rs-artifact-line.rs-has-cite {
+  cursor: pointer;
+}
+
+.rs-artifact-line.rs-has-cite:hover {
+  background: var(--rs-primary-light);
+}
+
+.rs-artifact-line.rs-has-cite .rs-artifact-no {
+  color: var(--rs-primary);
+  font-weight: 600;
+}
+
+/* …and WHICH of them, where a line answered more than one. */
+.rs-citer-modal { max-width: 34rem; }
+
+.rs-citer-list {
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.rs-citer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  width: 100%;
+  padding: 0.45rem 0.7rem;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--rs-border-light);
+  cursor: pointer;
+  font: inherit;
+}
+
+.rs-citer:hover { background: var(--rs-subtle); }
+.rs-citer:focus-visible { outline: 2px solid var(--rs-primary); outline-offset: -2px; }
+.rs-citer-label { color: var(--rs-text); }
+.rs-citer-sheet { font-size: 0.75rem; color: var(--rs-text-muted); }
+
 /* THE WAY BACK, in the panel's own corner beside the dock buttons. A word
    rather than an arrow glyph: this one does not move the panel, it moves the
    reader, and the two sitting side by side have to be told apart at a glance. */

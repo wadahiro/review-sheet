@@ -1188,6 +1188,16 @@ sheets:
   that cannot be read, or a remote URL (which would make the delivered file
   fetch over the network when opened), **fails the build**, naming every bad
   reference at once.
+- **…and a line of it says which verdicts were decided on it.** A reader partway
+  down a 5,000-line plan can ask the other question — is this line one some item
+  was judged on, and which — which the delivery already records as a citation and
+  which nothing could answer from that end. Cited lines are marked; clicking one
+  goes to the verdict, or offers the choice where a line decided more than one
+  (ten lines of one real delivery do). Nothing is declared, and no line gains a
+  `key`: a key asserts "this line IS that row's value", and the no-keys
+  invariant is what stops a row ever routing to an observed copy of a file. A
+  citation is the other fact, and many-to-many is its shape rather than a case
+  to handle.
 - **A verdict's evidence is a place you can come back from.** Opening it records
   the verdict that cited it, and the panel offers the way back — to the VERDICT
   and never to a row: an observed document's lines carry no key by design, since

@@ -133,6 +133,9 @@ type Messages = {
   imageZoom: string;
   // The way back to the verdict an evidence document was opened from.
   artifactBack: string;
+  // …and, on an observed document, how many verdicts were decided on a line.
+  artifactCitedBy: string;
+  artifactPickCiter: string;
   artifactDockRight: string;
   artifactDockBelow: string;
   artifactKindAbsent: string;
@@ -359,6 +362,8 @@ const ja: Messages = {
   artifactCollectedAt: "{at} に取得",
   imageZoom: "クリックで拡大",
   artifactBack: "判定に戻る",
+  artifactCitedBy: "この行を根拠にした判定が {n} 件（クリックで表示）",
+  artifactPickCiter: "この行を根拠にした判定",
   artifactDockRight: "右に表示",
   artifactDockBelow: "下に表示",
   artifactKindAbsent: "この環境では出力されない（条件: {reason}）",
@@ -532,6 +537,8 @@ const en: Messages = {
   artifactCollectedAt: "Collected at {at}",
   imageZoom: "click to enlarge",
   artifactBack: "Back to the verdict",
+  artifactCitedBy: "{n} verdict(s) were decided on this line — click to go there",
+  artifactPickCiter: "Decided on this line",
   artifactDockRight: "Dock to the right",
   artifactDockBelow: "Dock to the bottom",
   artifactKindAbsent: "not rendered for this instance (condition: {reason})",
