@@ -3567,14 +3567,6 @@ type ArtifactTarget = {
   keys?: string[];
   instance?: string;
   line?: number;
-  // WHERE THIS WAS OPENED FROM — the address of the verdict that cited it, so a
-  // reader can go back to the row they came from. An evidence document answers a
-  // VERDICT, not a row: its lines carry no key by design (evidence.ts), because a
-  // row resolves to exactly one document and an observed copy of the same file
-  // would make which one opens depend on emission order. So "back" means back to
-  // the record, and the record's own table rows are addressable
-  // (`data-rs-line`, per ROW — markdown.ts).
-  from?: string;
 };
 
 // Re-exported so the viewer's own importers keep one name for it; it lives in
@@ -3592,17 +3584,12 @@ export type ArtifactAccess = {
   open: (id: string, key: string, keys?: string[]) => void;
 };
 
-function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, onBack, citersOf, onCite, dock, onDock, t }: {
+function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, citersOf, onCite, dock, onDock, t }: {
   previews: ArtifactPreview[];
   target: ArtifactTarget;
   onClose: () => void;
   onPick: (instance: string | undefined) => void;
   onJumpRow: (sheet: string, key: string) => void;
-  // BACK TO THE VERDICT THAT CITED THIS. Absent for a row's own file, which the
-  // reader reached from a row the page still shows; an observed document is
-  // reached from a record, and its lines carry no key to jump back by (see
-  // ArtifactTarget.from), so the way back has to be offered.
-  onBack?: () => void;
   // WHO CITES A LINE of this document, and what to do about it. Only ever
   // non-empty on an OBSERVED document: a citation names the bytes a verdict was
   // read from, and the row affordance beside it (`rs-has-row`) never appears on
@@ -3718,9 +3705,6 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, onBack, c
             ? html`<br /><span class="rs-artifact-warn">${t.artifactUnrendered.replace("{n}", String(gaps))}</span>`
             : null}
         </div>
-        ${onBack !== undefined && html`
-          <button class="rs-artifact-back" onClick=${onBack} title=${t.artifactBack}>${t.artifactBack}</button>
-        `}
         ${mine.length > 1 && html`
           <div class="rs-artifact-tabs">
             ${mine.map((a) => {
@@ -4164,12 +4148,30 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // keeps the strip it has always had.
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [currentNavId, setCurrentNavId] = useState<string | null>(null);
-  // THE ROW A READER JUMPED TO, kept marked. The jump used to flash it for 1.7s
-  // and let go, which answers "where did it go" and not "which one am I looking
-  // at" — a reader who clicked a line in a file, read the row, and then looked
-  // away had nothing to come back to. A SELECTION persists until they pick
-  // another place.
-  const [selectedRow, setSelectedRow] = useState<string | null>(null);
+  // WHERE A LINE OF THE PANEL LED, kept marked.
+  //
+  // One state for both panels, which they did not have: a preview's line jumps
+  // to the row it IS and an evidence line to the verdicts decided on it, and
+  // those two destinations had grown two behaviours — the first marked the row
+  // and the second only flashed it. The panel is one component; the callbacks
+  // either side of it were written at different times and never reconciled.
+  //
+  // The ELEMENT and not its id, because the two destinations are addressed
+  // differently: a sheet's row has an id, a record's row carries only its line
+  // (markdown.ts). Holding the element is the one thing true of both — and the
+  // mark is the same CSS either way, since both are a table row.
+  const [marked, setMarked] = useState<HTMLElement | null>(null);
+
+  // …and landing on one is one operation. The flash says WHERE IT WENT; the
+  // mark says WHICH ONE THIS IS, and a reader needs the second for as long as
+  // they are reading it.
+  const landOn = useCallback((el: HTMLElement) => {
+    el.classList.remove("rs-jump-flash");
+    void el.offsetWidth;
+    el.classList.add("rs-jump-flash");
+    window.setTimeout(() => el.classList.remove("rs-jump-flash"), 1700);
+    setMarked(el);
+  }, []);
   // After an outline/palette click we pin the highlight to the clicked target and
   // suppress the scroll-spy briefly, so the programmatic scroll settling doesn't
   // re-select whatever category happens to sit in the top band (which is what
@@ -4189,13 +4191,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
       const el = document.querySelector(`[id$="--${cssEscape(encodeIdPart(key))}"]`);
       if (!el) return false;
       el.scrollIntoView({ block: "center" });
-      el.classList.remove("rs-jump-flash");
-      void (el as HTMLElement).offsetWidth;
-      el.classList.add("rs-jump-flash");
-      window.setTimeout(() => el.classList.remove("rs-jump-flash"), 1700);
-      // The flash says WHERE IT WENT; the selection says WHICH ONE THIS IS, and
-      // a reader needs the second for as long as they are reading it.
-      setSelectedRow(el.id);
+      landOn(el as HTMLElement);
       // …and the row becomes what the fragment names, which is the address a
       // reader copies. Still replaceState: see the hash effect.
       setCurrentNavId(el.id);
@@ -4211,7 +4207,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     // A macrotask, not a microtask: the re-render is queued by the state change
     // above and has to have happened before the row can be found.
     window.setTimeout(land, 0);
-  }, []);
+  }, [landOn]);
 
   // An ordinary anchor, or a document LINE — which has no id, because the
   // markdown a reader edits is what those blocks are addressed by.
@@ -4224,7 +4220,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     setPaletteOpen(false);
     // A reader who picks a section from the tree has picked another place, so
     // the row they were on stops being the answer to "where am I".
-    setSelectedRow(null);
+    setMarked(null);
     // Instant jump (no smooth animation) so far-away targets land immediately.
     // Fall back to the category when the exact row is not rendered (e.g. a
     // transposed table, where a parameter is a column rather than a row).
@@ -4279,15 +4275,13 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   const goToCiter = useCallback((c: Citation) => {
     setCiters(null);
     jumpToNav(c.sheetIndex, c.address);
+    // A macrotask, because crossing sheets is a state change and the
+    // destination has to exist before it can be landed on.
     window.setTimeout(() => {
       const el = resolveNavTarget(c.address);
-      if (el === null) return;
-      el.classList.remove("rs-jump-flash");
-      void el.offsetWidth;
-      el.classList.add("rs-jump-flash");
-      window.setTimeout(() => el.classList.remove("rs-jump-flash"), 1700);
+      if (el !== null) landOn(el);
     }, 0);
-  }, [jumpToNav]);
+  }, [jumpToNav, landOn]);
 
 
 
@@ -4359,7 +4353,9 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // other reason (a filter, a review, the unset-rows toggle) would otherwise
   // drop a mark the reader is still using.
   useLayoutEffect(() => {
-    const want = selectedRow === null ? null : document.getElementById(selectedRow);
+    // A destination the page no longer holds — the reader changed sheets, or the
+    // document was re-rendered — is not a place to mark.
+    const want = marked !== null && document.contains(marked) ? marked : null;
     for (const el of document.querySelectorAll(".rs-row-here")) {
       if (el !== want) el.classList.remove("rs-row-here");
     }
@@ -4382,7 +4378,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
         // A PASTED LINK SHOWS WHAT THE SENDER SAW. The address already brought
         // the reader to the right place; marking the row is what tells them
         // which of the fifty on screen was meant.
-        setSelectedRow(initialAnchor);
+        setMarked(el);
       }
     }));
   }, []);
@@ -4547,10 +4543,10 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     // fragment named was overwritten by its enclosing section. Still
     // replaceState, as it always was — the fragment FOLLOWS the reader here and
     // a history entry per section is what that comment below is about.
-    const where = selectedRow ?? currentNavId;
+    const where = (marked?.id ?? "") !== "" ? marked!.id : currentNavId;
     const next = where === null || activeSheet === -1 ? `#${base}` : `#${base}/${encodeURIComponent(where)}`;
     if (location.hash !== next) history.replaceState(null, "", next);
-  }, [currentNavId, activeSheet, selectedRow]);
+  }, [currentNavId, activeSheet, marked]);
   // Which preview a row belongs to, and where in it — resolved once per
   // document by the shared index (`artifact-index.ts`), because `md-set` asks
   // the same question when it writes the link into the carried markdown, and
@@ -4804,17 +4800,6 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
         const a = (e.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
         const raw = a?.getAttribute("href");
         if (raw === null || raw === undefined) return;
-        // WHERE THE CITATION IS, for the way back. A document's blocks are
-        // addressed by line and a sheet's rows by id, so the enclosing one of
-        // either is the answer — which is what makes "back to the verdict" work
-        // from a table as well as from a record.
-        const citedAt = (): string | undefined => {
-          if (a === null) return undefined;
-          const block = a.closest("[data-rs-line]")?.getAttribute("data-rs-line");
-          if (block !== null && block !== undefined) return `rs-doc-line:0:${block}`;
-          const row = a.closest("tr[id]")?.getAttribute("id");
-          return row === null || row === undefined ? undefined : row;
-        };
         // THE EVIDENCE SCHEME, WHEREVER IT WAS WRITTEN.
         //
         // It used to be handled inside the document body alone, so it worked on
@@ -4834,8 +4819,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
           // affordance that opens nothing is one this tool does not perform.
           if (!(artifacts ?? []).some((x) => x.id === id)) return;
           e.preventDefault();
-          const from = citedAt();
-          setArtifactTarget({ id, ...(line === undefined ? {} : { line }), ...(from === undefined ? {} : { from }) });
+          setArtifactTarget({ id, ...(line === undefined ? {} : { line }) });
           return;
         }
         if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("#")) return;
@@ -4845,14 +4829,8 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
         e.preventDefault();
         const line = /^L(\d+)$/.exec(frag);
         // The PATH form, which is how a record read back out of a markdown set
-        // names its evidence. Same citation lookup as the scheme above: the two
-        // spellings are one question asked in two deliveries.
-        const at = citedAt();
-        setArtifactTarget({
-          id: hit.id,
-          ...(line === null ? {} : { line: Number(line[1]) }),
-          ...(at === undefined ? {} : { from: at }),
-        });
+        // names its evidence — one question asked in two deliveries.
+        setArtifactTarget({ id: hit.id, ...(line === null ? {} : { line: Number(line[1]) }) });
       }}>
         ${activeSheet === OVERVIEW_TAB && hasMetadata && html`
           <section class="rs-overview">
@@ -5083,19 +5061,6 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                           onClose=${() => setArtifactTarget(null)}
                           onPick=${(instance: string | undefined) => setArtifactTarget((c) => (c ? { ...c, instance } : c))}
                           onJumpRow=${jumpToRow}
-                          onBack=${artifactTarget?.from === undefined ? undefined : () => {
-                            const el = resolveNavTarget(artifactTarget.from!);
-                            if (el === null) return;
-                            aimAt(el);
-                            // Marked, so a reader coming back from a 1500-line
-                            // document can see WHICH of the record's rows sent
-                            // them. The panel stays open: the bottom dock exists
-                            // so the record and its evidence are both on screen.
-                            el.classList.remove("rs-jump-flash");
-                            void el.offsetWidth;
-                            el.classList.add("rs-jump-flash");
-                            window.setTimeout(() => el.classList.remove("rs-jump-flash"), 1700);
-                          }}
                           citersOf=${(line: number) => citations.get(citationKey(artifactTarget.id, line)) ?? []}
                           onCite=${(found: Citation[]) => {
                             // ONE goes straight there; several are a choice, and

@@ -44,3 +44,27 @@ describe("the stylesheet", () => {
     expect(lightColours.filter((v) => !darkNames.has(v))).toEqual([]);
   });
 });
+
+// ONE PROMISE, ONE APPEARANCE.
+//
+// A panel line that leads somewhere is either a row's own line or one some
+// verdict was decided on. Both say "there is somewhere to go from here", and
+// one of them said it only on hover — so in a 60-line document the handful of
+// lines that lead anywhere could not be told from the rest without putting a
+// mouse on each.
+describe("a panel line that leads somewhere", () => {
+  const rule = (prop: string): string[] =>
+    [...customStyles.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+      .filter((m) => m[2]!.includes(prop))
+      .map((m) => m[1]!.trim());
+
+  it("marks a row's line and a cited line the same way", () => {
+    // Whatever rule colours the gutter must name both, or one of them is
+    // invisible until hovered.
+    const colouring = rule("font-weight: 600").filter((sel) => sel.includes(".rs-artifact-no"));
+    expect(colouring.length).toBeGreaterThan(0);
+    const named = colouring.join(" ");
+    expect(named).toContain(".rs-has-row");
+    expect(named).toContain(".rs-has-cite");
+  });
+});

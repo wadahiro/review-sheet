@@ -131,8 +131,6 @@ type Messages = {
   // What clicking an embedded image does. Only ever read by a screen reader —
   // the picture itself is the affordance for everyone else.
   imageZoom: string;
-  // The way back to the verdict an evidence document was opened from.
-  artifactBack: string;
   // …and, on an observed document, how many verdicts were decided on a line.
   artifactCitedBy: string;
   artifactPickCiter: string;
@@ -361,7 +359,6 @@ const ja: Messages = {
   artifactCollectedFrom: "{host} から {at} に取得",
   artifactCollectedAt: "{at} に取得",
   imageZoom: "クリックで拡大",
-  artifactBack: "判定に戻る",
   artifactCitedBy: "この行を根拠にした判定が {n} 件（クリックで表示）",
   artifactPickCiter: "この行を根拠にした判定",
   artifactDockRight: "右に表示",
@@ -536,7 +533,6 @@ const en: Messages = {
   artifactCollectedFrom: "Collected from {host} at {at}",
   artifactCollectedAt: "Collected at {at}",
   imageZoom: "click to enlarge",
-  artifactBack: "Back to the verdict",
   artifactCitedBy: "{n} verdict(s) were decided on this line — click to go there",
   artifactPickCiter: "Decided on this line",
   artifactDockRight: "Dock to the right",

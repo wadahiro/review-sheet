@@ -4262,19 +4262,6 @@ tr.rs-jump-flash th {
    gets, since it is the same promise: there is somewhere to go from here. They
    never appear together — a citation only ever names an observed document, whose
    lines carry no row. */
-.rs-artifact-line.rs-has-cite {
-  cursor: pointer;
-}
-
-.rs-artifact-line.rs-has-cite:hover {
-  background: var(--rs-primary-light);
-}
-
-.rs-artifact-line.rs-has-cite .rs-artifact-no {
-  color: var(--rs-primary);
-  font-weight: 600;
-}
-
 /* …and WHICH of them, where a line answered more than one. */
 .rs-citer-modal { max-width: 34rem; }
 
@@ -4304,30 +4291,6 @@ tr.rs-jump-flash th {
 .rs-citer:focus-visible { outline: 2px solid var(--rs-primary); outline-offset: -2px; }
 .rs-citer-label { color: var(--rs-text); }
 .rs-citer-sheet { font-size: 0.75rem; color: var(--rs-text-muted); }
-
-/* THE WAY BACK, in the panel's own corner beside the dock buttons. A word
-   rather than an arrow glyph: this one does not move the panel, it moves the
-   reader, and the two sitting side by side have to be told apart at a glance. */
-.rs-artifact-back {
-  position: absolute;
-  top: 0.4rem;
-  right: 5.6rem;
-  padding: 0.1rem 0.45rem;
-  font-size: 0.72rem;
-  line-height: 1.5;
-  color: var(--rs-primary-dark);
-  background: var(--rs-primary-light);
-  border: 1px solid var(--rs-border-light);
-  border-radius: 3px;
-  cursor: pointer;
-  max-width: 10rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rs-artifact-back:hover { background: var(--rs-subtle); }
-.rs-artifact-back:focus-visible { outline: 2px solid var(--rs-primary); outline-offset: 1px; }
 
 /* Where the panel sits, chosen in its own corner — beside the close button and
    before it, since "move it" is the commoner intent of the two once a reader
@@ -4452,14 +4415,33 @@ tr.rs-jump-flash th {
   flex: 1;
 }
 
-/* A line that IS a row: clickable, and it says so only on hover so the file
-   still reads as a file. */
-.rs-artifact-line.rs-has-row {
+/* A LINE THERE IS SOMEWHERE TO GO FROM — the row this line is, or the verdicts
+   that were decided on it. Two different destinations and one promise, so one
+   appearance.
+
+   It used to say so ON HOVER ONLY, on the stated grounds that the file should
+   still read as a file. That was the wrong trade and the panel it was written
+   for proved it: a reader cannot hover every line of a 60-line document to find
+   the handful that lead anywhere, and the ones that do are exactly what they
+   came to the panel for.
+
+   The NUMBER carries it, not the text. The text is the collected bytes and is
+   read as such; the gutter is this tool's own column, so marking it there costs
+   the file nothing. */
+.rs-artifact-line.rs-has-row,
+.rs-artifact-line.rs-has-cite {
   cursor: pointer;
 }
 
-.rs-artifact-line.rs-has-row:hover {
-  background: var(--rs-subtle);
+.rs-artifact-line.rs-has-row:hover,
+.rs-artifact-line.rs-has-cite:hover {
+  background: var(--rs-primary-light);
+}
+
+.rs-artifact-line.rs-has-row .rs-artifact-no,
+.rs-artifact-line.rs-has-cite .rs-artifact-no {
+  color: var(--rs-primary);
+  font-weight: 600;
 }
 
 /* THE line — the one the row is, or the one a verdict was read at.

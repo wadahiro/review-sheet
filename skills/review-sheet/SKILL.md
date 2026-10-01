@@ -1198,14 +1198,6 @@ sheets:
   invariant is what stops a row ever routing to an observed copy of a file. A
   citation is the other fact, and many-to-many is its shape rather than a case
   to handle.
-- **A verdict's evidence is a place you can come back from.** Opening it records
-  the verdict that cited it, and the panel offers the way back — to the VERDICT
-  and never to a row: an observed document's lines carry no key by design, since
-  a row resolves to exactly one document and an observed copy of the same file
-  would make which one opens depend on emission order. The panel stays open when
-  the reader takes it, because the bottom dock exists so the record and its
-  evidence are both on screen. A row's own file is offered no way back — the
-  reader reached it from a row the page still shows.
 - **An embedded image opens at a readable size when it is clicked.** A screen
   capture is evidence, and in the text flow it is scaled to the column — which
   for a console screenshot hides the detail the capture was taken for. Clicking

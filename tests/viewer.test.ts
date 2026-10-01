@@ -3653,70 +3653,6 @@ describe("a dropped set's record, opened at its evidence", () => {
     expect(host.querySelector(".rs-app.rs-with-evidence .rs-navtree")).not.toBeNull();
   });
 
-  // THE WAY BACK, AND THE WAY TO SEND IT.
-  //
-  // Evidence is reached from a verdict in a record, and from nowhere else: its
-  // lines carry no key by design (a row resolves to exactly one document, and an
-  // observed copy of the same file would make which one opens depend on emission
-  // order), so the panel had no backjump at all. The way back is therefore not
-  // to a row but to the VERDICT — and a record's table rows are addressable per
-  // row, so it is nameable.
-  describe("opened from a verdict", () => {
-    const openEvidence = async (host: HTMLElement): Promise<HTMLElement> => {
-      verdictLink(host).dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
-      for (let i = 0; i < 100; i++) {
-        if (host.querySelector(".rs-artifact-panel") !== null) break;
-        await new Promise((r) => setTimeout(r, 10));
-      }
-      // ASSERTED, not hoped for: a helper that returns whether or not the panel
-      // opened makes every test below it report the wrong thing.
-      expect(host.querySelector(".rs-artifact-panel"), "the verdict did not open its evidence").not.toBeNull();
-      // …and the panel being on screen is one step ahead of the effects: Preact
-      // defers them, so the fragment is written after the render that opened it.
-      await waitForEffects();
-      return host;
-    };
-
-    it("offers the way back to the verdict", async () => {
-      const host = await openEvidence(droppedRecord());
-      const back = host.querySelector(".rs-artifact-back");
-      expect(back, "no way back is offered").not.toBeNull();
-      expect(back!.textContent).toBe("判定に戻る");
-    });
-
-    // …and it takes the reader there, marking the row so they can see which of
-    // the record's rows sent them.
-    it("marks the verdict it goes back to", async () => {
-      const host = await openEvidence(droppedRecord());
-      (host.querySelector(".rs-artifact-back") as HTMLElement).click();
-      await waitForEffects();
-      const marked = host.querySelector(".rs-doc .rs-jump-flash");
-      expect(marked, "the verdict row is not marked").not.toBeNull();
-      expect(marked!.getAttribute("data-rs-line")).not.toBeNull();
-    });
-
-    // The panel STAYS open: the bottom dock exists so the record and its
-    // evidence are both on screen, and closing it would undo the reason the
-    // reader opened it.
-    it("leaves the evidence open", async () => {
-      const host = await openEvidence(droppedRecord());
-      (host.querySelector(".rs-artifact-back") as HTMLElement).click();
-      await waitForEffects();
-      expect(host.querySelector(".rs-artifact-panel")).not.toBeNull();
-    });
-
-
-    // A row's own file is NOT offered a way back: the reader reached it from a
-    // row the page still shows, so there is nothing to lead them to.
-    it("offers no way back for a row's own file", async () => {
-      const host = mountArtifact();
-      (rowFor(host, "Listen").querySelector(".rs-artifact-chip") as HTMLElement).click();
-      await waitForEffects();
-      expect(host.querySelector(".rs-artifact-panel")).not.toBeNull();
-      expect(host.querySelector(".rs-artifact-back")).toBeNull();
-    });
-  });
-
   // …and it is gone again once the panel is, or the tree stays short with
   // nothing under it.
   it("takes the class away when the panel closes", async () => {
@@ -4181,17 +4117,6 @@ describe("viewer: evidence cited from a table cell", () => {
     expect(here!.textContent).toContain("line 5134");
   });
 
-  // …and the way back is to the ROW that cited it, since a sheet's rows are
-  // addressed by id where a document's blocks are addressed by line.
-  it("offers the way back to the row that cited it", async () => {
-    const host = mountCiting();
-    click(host.querySelector('a[href^="rs-evidence:"]') as HTMLElement);
-    for (let i = 0; i < 100; i++) {
-      if (host.querySelector(".rs-artifact-back") !== null) break;
-      await waitForEffects();
-    }
-    expect(host.querySelector(".rs-artifact-back"), "no way back is offered").not.toBeNull();
-  });
 });
 
 // FROM THE EVIDENCE BACK TO THE VERDICTS DECIDED ON A LINE.
@@ -4271,6 +4196,43 @@ describe("viewer: the verdicts decided on a line", () => {
     expect(host.querySelector(".rs-citer-list"), "a single verdict should need no choosing").toBeNull();
     const marked = host.querySelector('.rs-doc [data-rs-line="5"].rs-jump-flash');
     expect(marked, "the verdict was not marked").not.toBeNull();
+  });
+
+  // …AND IT STAYS MARKED, exactly as a preview's jump to a row does.
+  //
+  // The two panels are one component and had grown two behaviours: a preview's
+  // line marked the row it landed on and an evidence line only flashed it, so a
+  // reader who read the verdict and glanced away had nothing to come back to on
+  // one side and everything on the other. One landing now, for both.
+  it("leaves the verdict marked, not merely flashed", async () => {
+    const host = mountWith([{ line: 5, no: "1", what: "a", at: 3 }]);
+    await openPanel(host);
+    lineAt(host, 3).click();
+    for (let i = 0; i < 100; i++) {
+      if (host.querySelector(".rs-doc tr.rs-row-here") !== null) break;
+      await waitForEffects();
+    }
+    const here = host.querySelector(".rs-doc tr.rs-row-here");
+    expect(here, "the verdict was flashed and let go").not.toBeNull();
+    expect(here!.getAttribute("data-rs-line")).toBe("5");
+  });
+
+  // One at a time, whichever panel put it there.
+  it("marks one place", async () => {
+    const host = mountWith([
+      { line: 5, no: "24", what: "a", at: 3 },
+      { line: 6, no: "25", what: "b", at: 9 },
+    ]);
+    await openPanel(host);
+    lineAt(host, 3).click();
+    await waitForEffects();
+    lineAt(host, 9).click();
+    for (let i = 0; i < 100; i++) {
+      if (host.querySelector('.rs-doc tr[data-rs-line="6"].rs-row-here') !== null) break;
+      await waitForEffects();
+    }
+    expect(host.querySelectorAll(".rs-doc tr.rs-row-here").length).toBe(1);
+    expect(host.querySelector(".rs-doc tr.rs-row-here")!.getAttribute("data-rs-line")).toBe("6");
   });
 
   // SEVERAL are a choice: taking the first would answer a question the reader
