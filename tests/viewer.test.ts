@@ -4087,3 +4087,109 @@ describe("viewer: an embedded image", () => {
     expect((host.querySelector(".rs-zoom-image") as HTMLImageElement).getAttribute("src")).toBe("data:image/png;base64,iVBORw0KGgo=");
   });
 });
+
+// AN ORDINARY VALUE SHEET WHOSE CELLS CITE EVIDENCE.
+//
+// A judge that answers a row from a collected document fills `result.evidence`
+// with a command and a line, and the cell is written as an `rs-evidence:` link —
+// the same link a test record carries. It did NOTHING when clicked: the handler
+// lived inside the document body, so the scheme worked on a `recipe: document`
+// page and nowhere else, and the delegated handler on `<main>` treated every
+// `x:` href as external and returned before looking at it.
+//
+// Reported from a real project, on a terraform-plan sheet.
+describe("viewer: evidence cited from a table cell", () => {
+  const ID = "observed poc terraform show -json";
+
+  function mountCiting(): HTMLElement {
+    const payload = {
+      metadata: { title: "t" },
+      versions: [
+        {
+          version: "current",
+          sheets: [
+            {
+              name: "aws",
+              instances: ["poc"],
+              categories: [
+                {
+                  name: "alb",
+                  params: [
+                    {
+                      key: "idle_timeout",
+                      value: "60",
+                      description: "d",
+                      // The cell's own markdown, exactly as a judge writes it.
+                      remarks: `[terraform show -json](${"rs-evidence:"}${encodeURIComponent(ID)}%23L5134)`,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          artifacts: [
+            {
+              id: ID,
+              sheet: "aws",
+              source_file: "terraform show -json",
+              nature: "observed",
+              observed: { host: "acct", at: "T" },
+              instances: ["poc"],
+              lines: Array.from({ length: 5200 }, (_, i) => ({ text: `line ${i + 1}`, kind: "verbatim" as const })),
+            },
+          ],
+        },
+      ],
+    };
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: payload as never, reviewEnabled: false, initialLang: "ja", server: false }), host);
+    return host;
+  }
+
+  const click = (el: HTMLElement): void => {
+    el.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+  };
+
+  it("renders the citation as a link", () => {
+    const host = mountCiting();
+    expect(host.querySelector('a[href^="rs-evidence:"]'), "the cell did not render a link").not.toBeNull();
+  });
+
+  it("opens the collected document when it is clicked", async () => {
+    const host = mountCiting();
+    expect(host.querySelector(".rs-artifact-panel")).toBeNull();
+    click(host.querySelector('a[href^="rs-evidence:"]') as HTMLElement);
+    for (let i = 0; i < 100; i++) {
+      if (host.querySelector(".rs-artifact-panel") !== null) break;
+      await waitForEffects();
+    }
+    expect(host.querySelector(".rs-artifact-panel"), "the cell's link opened nothing").not.toBeNull();
+  });
+
+  // …at the line the citation names, which is the whole point of citing one.
+  it("lands on the line the citation names", async () => {
+    const host = mountCiting();
+    click(host.querySelector('a[href^="rs-evidence:"]') as HTMLElement);
+    for (let i = 0; i < 100; i++) {
+      if (host.querySelector(".rs-artifact-line.rs-here") !== null) break;
+      await waitForEffects();
+    }
+    const here = host.querySelector(".rs-artifact-line.rs-here");
+    expect(here, "no line is marked").not.toBeNull();
+    expect(here!.textContent).toContain("line 5134");
+  });
+
+  // …and the way back is to the ROW that cited it, since a sheet's rows are
+  // addressed by id where a document's blocks are addressed by line.
+  it("offers the way back to the row that cited it", async () => {
+    const host = mountCiting();
+    click(host.querySelector('a[href^="rs-evidence:"]') as HTMLElement);
+    for (let i = 0; i < 100; i++) {
+      if (host.querySelector(".rs-artifact-back") !== null) break;
+      await waitForEffects();
+    }
+    expect(host.querySelector(".rs-artifact-back"), "no way back is offered").not.toBeNull();
+  });
+});

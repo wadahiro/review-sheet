@@ -817,18 +817,8 @@ export function docIdPrefix(sheetName: string): string {
 }
 
 // A document sheet's body.
-function DocumentBody({ sheet, onEvidence, t }: {
+function DocumentBody({ sheet, t }: {
   sheet: SheetData["sheets"][number];
-  // Open the document a verdict's evidence cell cites. Absent when this page
-  // carries no evidence, and then the cell was never a link either — the
-  // rule is decided once, where the cell is written (evidence.ts).
-  //
-  // Only ever sees its OWN scheme. A record read back out of a markdown set
-  // names its evidence by path instead (md-set.ts), and a path is already
-  // opened by the delegated handler on `<main>` that every address in a set
-  // goes through — teaching this one to do it too would be a second answer to
-  // one question.
-  onEvidence?: (id: string, line?: number, from?: string) => void;
   t: Messages;
 }) {
   // Rendered at BUILD time and carried — except in a set somebody dropped,
@@ -998,26 +988,9 @@ function splitHead(wrapper: HTMLElement): void {
     (img as HTMLElement).click();
   };
 
-  // An evidence cell's link, delegated at the document root: the cells are
-  // markdown the record wrote, so nothing here can attach a handler per cell
-  // without re-rendering somebody's document.
-  const openEvidence = (e: Event): void => {
-    if (onEvidence === undefined) return;
-    const a = (e.target as Element | null)?.closest?.(`a[href^="${EVIDENCE_SCHEME}"]`);
-    const ref = a?.getAttribute("href");
-    if (ref === null || ref === undefined) return;
-    e.preventDefault();
-    const { id, line } = parseEvidenceRef(ref);
-    // THE VERDICT THAT CITED IT, as an address. A record's table carries
-    // `data-rs-line` per ROW, so the row the reader clicked in is nameable in
-    // the same spelling `resolveNavTarget` already resolves — which is what lets
-    // the panel offer the way back, and the fragment say where back is.
-    const at = a?.closest("[data-rs-line]")?.getAttribute("data-rs-line");
-    onEvidence(id, line, at === null || at === undefined ? undefined : `rs-doc-line:0:${at}`);
-  };
 
   return html`
-    <div class="rs-doc" ref=${body} onClick=${openEvidence} onKeyDown=${zoomByKey} dangerouslySetInnerHTML=${{ __html: html_ }}></div>
+    <div class="rs-doc" ref=${body} onKeyDown=${zoomByKey} dangerouslySetInnerHTML=${{ __html: html_ }}></div>
   `;
 }
 
@@ -4745,26 +4718,55 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
         }
         const a = (e.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
         const raw = a?.getAttribute("href");
-        if (raw === null || raw === undefined || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("#")) return;
+        if (raw === null || raw === undefined) return;
+        // WHERE THE CITATION IS, for the way back. A document's blocks are
+        // addressed by line and a sheet's rows by id, so the enclosing one of
+        // either is the answer — which is what makes "back to the verdict" work
+        // from a table as well as from a record.
+        const citedAt = (): string | undefined => {
+          if (a === null) return undefined;
+          const block = a.closest("[data-rs-line]")?.getAttribute("data-rs-line");
+          if (block !== null && block !== undefined) return `rs-doc-line:0:${block}`;
+          const row = a.closest("tr[id]")?.getAttribute("id");
+          return row === null || row === undefined ? undefined : row;
+        };
+        // THE EVIDENCE SCHEME, WHEREVER IT WAS WRITTEN.
+        //
+        // It used to be handled inside the document body alone, so it worked on
+        // a `recipe: document` page and nowhere else — and an ordinary value
+        // sheet whose cells cite evidence (a judge answering from a document
+        // fills `result.evidence` with a command and a line) had links that did
+        // NOTHING when clicked. The scheme test below treats every `x:` href as
+        // external and returned before ever looking at it.
+        //
+        // One handler, here, because the cells of a table and the blocks of a
+        // document are both markdown somebody else wrote: neither can be given
+        // a handler of its own without re-rendering it.
+        if (raw.startsWith(EVIDENCE_SCHEME)) {
+          const { id, line } = parseEvidenceRef(raw);
+          // A page that carries no such document leaves the click alone — the
+          // cell was written as a link by whoever wrote the markdown, and an
+          // affordance that opens nothing is one this tool does not perform.
+          if (!(artifacts ?? []).some((x) => x.id === id)) return;
+          e.preventDefault();
+          const from = citedAt();
+          setArtifactTarget({ id, ...(line === undefined ? {} : { line }), ...(from === undefined ? {} : { from }) });
+          return;
+        }
+        if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("#")) return;
         const [path = "", frag = ""] = decodeURI(raw).split("#");
         const hit = (artifacts ?? []).find((x) => x.id === path);
         if (hit === undefined) return;
         e.preventDefault();
         const line = /^L(\d+)$/.exec(frag);
-        // …AND WHERE IT WAS OPENED FROM. A record read back out of a markdown set
-        // names its evidence by PATH, so this handler is the one that opens it —
-        // the `rs-evidence:` scheme never reaches a dropped set. Both openings
-        // have to record the citing verdict or the way back appears in one
-        // reading of the document and not the other.
-        //
-        // The sheet number in the address is cosmetic: `resolveNavTarget` reads
-        // only the line, because a document's blocks are addressed by line and
-        // the document is whichever one is open.
-        const at = a?.closest("[data-rs-line]")?.getAttribute("data-rs-line");
+        // The PATH form, which is how a record read back out of a markdown set
+        // names its evidence. Same citation lookup as the scheme above: the two
+        // spellings are one question asked in two deliveries.
+        const at = citedAt();
         setArtifactTarget({
           id: hit.id,
           ...(line === null ? {} : { line: Number(line[1]) }),
-          ...(at === null || at === undefined ? {} : { from: `rs-doc-line:0:${at}` }),
+          ...(at === undefined ? {} : { from: at }),
         });
       }}>
         ${activeSheet === OVERVIEW_TAB && hasMetadata && html`
@@ -4925,12 +4927,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                                      onOpenReview=${() => {}}
                                      onLeave=${alwaysPivoted.has(sheet.name) ? undefined : () => setPivoted((prev) => { const next = new Set(prev); next.delete(sheet.name); return next; })} t=${t} />`
                 : sheet.document && sheet.document.mode !== "sheet"
-                ? html`<${DocumentBody} sheet=${sheet}
-                                        onEvidence=${(artifacts ?? []).some((a) => a.nature === "observed")
-                                          ? (id: string, line?: number, from?: string) => {
-                                              setArtifactTarget({ id, ...(line === undefined ? {} : { line }), ...(from === undefined ? {} : { from }) });
-                                            }
-                                          : undefined} t=${t} />`
+                ? html`<${DocumentBody} sheet=${sheet} t=${t} />`
                 : pivoted.has(sheet.name)
                 ? html`<${PivotView} sheet=${sheet} sheetIndex=${idx} hiddenInstances=${hiddenInstances} showDefaults=${showDefaults || sheet.unset_is_content === true}
                                      reviews=${reviews} reviewEnabled=${effReviewEnabled}
