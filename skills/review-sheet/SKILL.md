@@ -4283,6 +4283,25 @@ answered and counted with no page anyone could read them on, and the build
 exited 0. (`--unit X -d file.md` still writes one, for a project that declares
 nothing.)
 
+**`--sheets` is the other axis.** A unit decides which DOCUMENTS are written;
+this decides what goes in them. The cut a record has to be made along is not
+always the unit: one unit holds the sheet a customer reads beside a sheet of the
+build's own internals, and `generate --sheets` cannot separate those afterwards,
+because a record is ONE document sheet with every table already inside it.
+
+```sh
+review-sheet test-doc -i input.json -r results.json --sheets "httpd" "os baseline"
+```
+
+It narrows the plan AND the plan's report, since the item tables come from one
+and the out-of-scope table from the other — a sheet dropped from only one would
+be half hidden, its rows gone and its reasons still named. A name the model does
+not have is refused with the near miss, because the flag exists to leave
+something out and a typo would leave out the sheet somebody meant to keep. What
+went is reported where the person who ran it is standing and never in the
+document: a line saying a sheet was omitted states the very thing the omission
+is for.
+
 **Several runs, one record.** A results file is what ONE run produced, and a run
 answers ONE environment. A record covering several is therefore several files,
 collected at different moments by whoever could reach each — so both readers

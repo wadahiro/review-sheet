@@ -1,0 +1,37 @@
+{
+  "metadata": { "title": "t" },
+  "groups": [
+    {
+      "name": "unit",
+      "label": { "ja": "ひとつの単位", "en": "one unit" },
+      "test": { "method": { "ja": "読む", "en": "read it" } }
+    }
+  ],
+  "sheets": [
+    {
+      "name": "shown",
+      "group": "unit",
+      "instances": ["prod"],
+      "categories": [{ "name": "c", "params": [{ "key": "kept-key", "value": "1", "description": { "en": "d" } }] }]
+    },
+    {
+      "name": "internal",
+      "group": "unit",
+      "instances": ["prod"],
+      "categories": [
+        {
+          "name": "c",
+          "params": [
+            { "key": "hidden-key", "value": "2", "description": { "en": "d" } },
+            {
+              "key": "hidden-oos",
+              "value": "3",
+              "description": { "en": "d" },
+              "out_of_scope": { "reason": { "ja": "内部値", "en": "an input of the build" } }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

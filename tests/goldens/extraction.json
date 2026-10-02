@@ -1080,6 +1080,18 @@
     "sha": "86f1c3aceff3bb67"
   },
   {
+    "file": "tests/fixtures/testdoc-sheets/doc.md",
+    "parser": "generic",
+    "count": 4,
+    "sha": "872e44d79588fd72"
+  },
+  {
+    "file": "tests/fixtures/testdoc-sheets/input.json",
+    "parser": "json",
+    "count": 17,
+    "sha": "8210332431bc62b6"
+  },
+  {
     "file": "tests/fixtures/web-middleware.json",
     "parser": "json",
     "count": 305,

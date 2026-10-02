@@ -259,7 +259,7 @@ describe("the moment a functional item's evidence carries", () => {
       units: [{ name: "u", declaration: { method: { ja: "m" } }, sheets: [] }],
       items: [],
       functional: instances.map((i) => ({ unit: "u", id: "time", text: { en: "the clock is in step" }, instance: i })),
-    }) as TestPlan;
+    }) as never as TestPlan;
 
   it("is when the host was read, not when the judge ran", () => {
     const { evidence } = judgeFunctional(planFor(["stg"]), [probed("stg", COLLECTED)], { lang: "en" });

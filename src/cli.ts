@@ -1198,6 +1198,12 @@ program
   .requiredOption("-i, --input <file>", "Model (input.json)")
   .option("-u, --unit <name>", "One unit only (default: every unit, each written to the document its `test: { document: }` names)")
   .option("-d, --doc <file>", "That unit's markdown document, edited IN PLACE between its <!-- test:*:start --> markers. Only with --unit")
+  // A SHEET axis beside the unit one, because a unit is not always the cut a
+  // record has to be made along: one unit can hold the sheet a customer reads
+  // and a sheet of the build's own internals, and `generate --sheets` cannot
+  // separate them afterwards — a record is ONE document sheet with every
+  // table already inside it.
+  .option("--sheets <names...>", "Write only these sheets' tables, within whichever units are written. The unit axis says which documents; this says what goes in them. What is left out is reported here, never in the document")
   // SEVERAL, because a run answers one environment and a record covers as many
   // as it has. Reading only the newest wrote "not run" over every row of the
   // others — see testresults.ts's mergeResults for what two runs of ONE
@@ -1217,7 +1223,7 @@ program
     "--timezone <zone>",
     "Read the recorded instants in this IANA zone (Asia/Tokyo), offset kept. The instant is the fact and the zone is how it is read, so it is decided here rather than recorded; omitted, times print exactly as the results file holds them. It moves the per-row date too — that one was not merely raw but wrong, taking the date off the UTC instant, so a run at 23:30Z showed the day before the one the operator was standing in"
   )
-  .action((opts: { input: string; unit?: string; doc?: string; results?: string[]; lang: string; includeDefaults?: boolean; defaultsSummary?: boolean; productExclusions?: boolean; timezone?: string }) => {
+  .action((opts: { input: string; unit?: string; doc?: string; sheets?: string[]; results?: string[]; lang: string; includeDefaults?: boolean; defaultsSummary?: boolean; productExclusions?: boolean; timezone?: string }) => {
     if (opts.timezone !== undefined) {
       // A zone nobody recognises must not fall back to UTC silently: the whole
       // point is that the reader trusts the time in front of them.
@@ -1250,6 +1256,61 @@ program
         }
       }
       const lang = opts.lang === "en" ? "en" : "ja";
+      // WHAT GOES IN THE DOCUMENTS, which is not the same question as which
+      // documents. Applied AFTER the completeness gate above, deliberately: the
+      // results answer the whole plan either way, and narrowing what is PRINTED
+      // must not weaken the check that the run is complete.
+      //
+      // A name this model does not have is refused rather than matching
+      // nothing — the whole point of the flag is to leave something out, so a
+      // typo would leave out the sheet somebody meant to keep.
+      const known = new Set(model.sheets.map((sh) => sh.name));
+      const unknown = (opts.sheets ?? []).filter((n) => !known.has(n));
+      if (unknown.length > 0) {
+        throw new Error(
+          `--sheets names ${unknown.length} sheet(s) this model does not have: ${unknown.join(", ")}` +
+            `${suggestNearest(unknown[0]!, [...known]) ? ` — did you mean "${suggestNearest(unknown[0]!, [...known])}"?` : ""}\n` +
+            `It has: ${[...known].join(", ")}`
+        );
+      }
+      const kept = (sheet: string | undefined): boolean =>
+        opts.sheets === undefined || sheet === undefined || opts.sheets.includes(sheet);
+      // The plan AND the report, because the record is made of both: the item
+      // tables come from the plan and the out-of-scope table from the report,
+      // and a sheet left out of one and not the other would be half hidden.
+      const shownPlan: TestPlan =
+        opts.sheets === undefined
+          ? plan
+          : {
+              ...plan,
+              items: plan.items.filter((i) => kept(i.target.sheet)),
+              // A functional item belongs to a UNIT and names a sheet only to
+              // say where its evidence is filed, so one that names none is not
+              // any sheet's to leave out.
+              functional: plan.functional.filter((f) => kept(f.sheet)),
+            };
+      const shownReport =
+        opts.sheets === undefined
+          ? report
+          : {
+              ...report,
+              excluded: report.excluded.filter((r) => kept(r.sheet)),
+              coveredElsewhere: report.coveredElsewhere.filter((r) => kept(r.sheet)),
+            };
+      if (opts.sheets !== undefined) {
+        // NEVER IN THE DOCUMENT. The same claim `--instances` makes about
+        // columns: what a delivery does not cover is not in the file, never a
+        // hidden section — and a line saying "a sheet was omitted" would state
+        // the very thing the omission is for. Said here instead, where whoever
+        // ran it is standing.
+        const left = [...new Set(plan.items.filter((i) => !kept(i.target.sheet)).map((i) => i.target.sheet))];
+        if (left.length > 0) {
+          console.error(
+            `--sheets: ${left.length} sheet(s) are not written into any record — ${left.join(", ")} ` +
+              `(${plan.items.length - shownPlan.items.length} item(s))`
+          );
+        }
+      }
       // Every unit's document, from what each unit declares — or the one pair a
       // caller named. The default is every one because the failure this closes
       // is a unit nobody wrote an invocation for: its items are planned,
@@ -1259,7 +1320,7 @@ program
           ? [{ unit: opts.unit, path: opts.doc }]
           : unitDocuments(plan, model.sheets);
       for (const t of targets) {
-        const blocks = renderTestDoc(plan, results, t.unit, {
+        const blocks = renderTestDoc(shownPlan, results, t.unit, {
           lang,
           includeDefaults: opts.includeDefaults === true,
           // commander's own convention for `--no-x`: the field is `x`, it
@@ -1273,10 +1334,10 @@ program
           ...(opts.timezone === undefined ? {} : { timezone: opts.timezone }),
         });
         blocks["test:excluded"] = renderExcluded(
-          report.excluded,
+          shownReport.excluded,
           t.unit,
           lang,
-          { rows: report.coveredElsewhere, test: coveringTestText(plan, lang) },
+          { rows: shownReport.coveredElsewhere, test: coveringTestText(shownPlan, lang) },
           {
             productExclusions: opts.productExclusions !== false,
             onProductOmitted: (o) =>
