@@ -532,3 +532,79 @@ describe("a component left with no environment at all", () => {
     expect(said).toContain("removed whole");
   });
 });
+
+// WHAT THE HEADING SAYS IT COMPARES, after the narrowing.
+//
+// The page prints the declared pairs under the sheet's heading ("Compared: dev
+// ↔ local ／ prod ↔ poc"), straight off the model — so a delivery narrowed to
+// one pair went on claiming it compares the other, whose values are not in it.
+// Every other half of the narrowing was already right (the rows, the sheet's
+// own instance list, the report), which is what made this one easy to miss: the
+// document contradicted itself in one line of prose.
+//
+// Filtered by the SAME set the rows are, so the line cannot say something the
+// rows do not: `keepFor` has already widened it to the partner of a delivered
+// environment, which is why the surviving pair survives WHOLE.
+describe("the comparisons a narrowed sheet still states", () => {
+  const pairsOf = (input: ParameterSheetInput, name = "upgrade") =>
+    input.sheets.find((s) => s.name === name)!.compare_instances;
+
+  const compared = sheet({ compare_components: "always", compare_instances: [["dev", "local"], ["prod", "poc"]] });
+
+  it("keeps the pair the delivery carries", () => {
+    const { input } = restrictInstances(model(compared), ["poc"]);
+    expect(pairsOf(input)).toEqual([["prod", "poc"]]);
+  });
+
+  it("drops the pair it does not", () => {
+    const { input } = restrictInstances(model(compared), ["poc"]);
+    expect(pairsOf(input)).not.toContainEqual(["dev", "local"]);
+  });
+
+  it("changes nothing when every environment is delivered", () => {
+    const { input } = restrictInstances(model(compared), ["dev", "prod", "local", "poc"]);
+    expect(pairsOf(input)).toEqual([["dev", "local"], ["prod", "poc"]]);
+  });
+
+  // A pair with ONE side delivered is a comparison the delivery cannot make:
+  // the sheet still shows that side and no longer shows what it was compared
+  // against, so the claim goes — and is reported, since the heading simply
+  // stops saying it. This is the shape a sheet whose components SHARE their
+  // environments takes, where nothing is emptied and nothing is widened.
+  const shared = (): Sheet => ({
+    name: "upgrade",
+    instances: ["prod", "poc"],
+    compare_components: "always",
+    compare_instances: [["prod", "poc"]],
+    categories: [
+      { name: "old", categories: [{ name: "Network", params: [row("listen", { prod: "80", poc: "443" })] }] },
+      { name: "new", categories: [{ name: "Network", params: [row("listen", { prod: "8080", poc: "8443" })] }] },
+    ],
+  });
+
+  it("drops a pair the delivery can only half carry", () => {
+    const { input } = restrictInstances({ sheets: [shared()] } as never, ["poc"]);
+    expect(pairsOf(input)).toBeUndefined();
+  });
+
+  it("says so, naming the comparison it stopped stating", () => {
+    const { report } = restrictInstances({ sheets: [shared()] } as never, ["poc"]);
+    expect(report.droppedComparisons).toEqual([{ sheet: "upgrade", pairs: [["prod", "poc"]] }]);
+    expect(formatRestrictReport(report)).toContain("no longer states the comparison(s) prod <-> poc");
+  });
+
+  // …and a pair with NEITHER side delivered is not reported here: `dropped`
+  // already names both environments, and saying it twice would bury the half
+  // case, which is the one a reader cannot find out any other way.
+  it("says nothing about a pair wholly outside the delivery", () => {
+    const { report } = restrictInstances(model(compared), ["poc"]);
+    expect(report.droppedComparisons).toEqual([]);
+  });
+
+  // A sheet that declares no pairs is untouched — the field means "this sheet
+  // compares these", so an empty list would say it compares nothing.
+  it("leaves a sheet that declares none without the field", () => {
+    const { input } = restrictInstances(model(sheet({ compare_components: "always" })), ["poc"]);
+    expect(pairsOf(input)).toBeUndefined();
+  });
+});

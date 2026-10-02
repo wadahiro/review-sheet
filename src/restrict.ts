@@ -48,6 +48,12 @@ export type RestrictReport = {
   // Named with the rows that went, because the point of the flag is that the
   // document no longer mentions them: the only place it can be seen is here.
   droppedComponents: { sheet: string; path: string; rows: number }[];
+  // A declared comparison the delivery can no longer carry: one side of the
+  // pair is delivered and the other is not, so the sheet still shows the first
+  // and no longer shows what it was being compared AGAINST. Named because the
+  // heading simply stops saying it — a pair with NEITHER side delivered is
+  // already accounted for by `dropped`, and saying it twice would bury this one.
+  droppedComparisons: { sheet: string; pairs: string[][] }[];
   // Previews of a sheet that lost a component, which carry no component of
   // their own — so nothing here can say whether they belonged to it. The
   // reader's complaint is not that they stayed: it is that nothing said so, and
@@ -221,8 +227,31 @@ function restrictSheet(
   emptied: string[],
   dropEmpty: boolean,
   dropped: RestrictReport["droppedComponents"],
-  sections: RestrictReport["droppedSections"]
+  sections: RestrictReport["droppedSections"],
+  comparisons: RestrictReport["droppedComparisons"] = []
 ): Sheet {
+  // WHICH COMPARISONS THE DELIVERY STILL CARRIES. The page prints these pairs
+  // under the sheet's heading, and the declaration is the whole build's: a
+  // delivery narrowed to one of them went on claiming it compares the others,
+  // whose values are no longer in it.
+  //
+  // A pair survives only when BOTH of its sides do, which is what the line
+  // means — "this sheet shows A against B". `keepFor` has already widened the
+  // set for a comparison sheet whose component would otherwise be emptied, so
+  // the partner of a delivered environment is normally here; a pair left with
+  // one side is a comparison the delivery cannot make, and it is reported.
+  // Filtered rather than recomputed, so the sheet's own declared order stands.
+  const pairs = s.compare_instances?.filter((pair) => pair.every((i) => keep.has(i)));
+  const half = (s.compare_instances ?? []).filter((pair) => pair.some((i) => keep.has(i)) && !pair.every((i) => keep.has(i)));
+  if (half.length > 0 && !comparisons.some((c) => c.sheet === s.name)) comparisons.push({ sheet: s.name, pairs: half });
+  // Dropped rather than left empty when nothing survives: the field means "this
+  // sheet compares these", and an empty list says it compares nothing, which is
+  // not what a sheet with no deliverable pair is.
+  // Removed outright rather than left empty when nothing survives — the field
+  // means "this sheet compares these", and an empty list says it compares
+  // nothing, which is not what a sheet with no deliverable pair is. Written as
+  // an explicit `undefined` because the spread below carries the declaration.
+  const compared = pairs === undefined ? {} : { compare_instances: pairs.length > 0 ? pairs : undefined };
   // A PROSE sheet, narrowed by what its own markers say. Both halves of it: the
   // html is what the page shows and the markdown is what an editor and a
   // markdown set are given, and a delivery whose two readings disagreed about
@@ -251,6 +280,7 @@ function restrictSheet(
       return {
         ...s,
         ...(s.instances === undefined ? {} : { instances: s.instances.filter((i) => keep.has(i)) }),
+        ...compared,
         document: {
           ...doc,
           html: inHtml.text,
@@ -265,6 +295,7 @@ function restrictSheet(
     // The sheet's own order is kept — which environments it has is the sheet's
     // business, and this only removes.
     ...(s.instances === undefined ? {} : { instances: s.instances.filter((i) => keep.has(i)) }),
+    ...compared,
     categories: (s.categories ?? [])
       .map((c) => restrictCategory(c, keep, s.name, [], emptied, dropEmpty, dropped))
       .filter((x) => x.category !== DROPPED)
@@ -454,6 +485,7 @@ export function restrictInstances<T extends ParameterSheetInput | VersionedSheet
   const unjudgedPreviews: RestrictReport["unjudgedPreviews"] = [];
   let previews = 0;
   const compared: RestrictReport["compared"] = [];
+  const droppedComparisons: RestrictReport["droppedComparisons"] = [];
   // A preview belongs to a sheet, so it is kept by that sheet's own set — the
   // rendering of the old release's file is exactly what a comparison sheet's
   // extra environment is FOR, and dropping it would leave the kept column
@@ -471,7 +503,7 @@ export function restrictInstances<T extends ParameterSheetInput | VersionedSheet
         }
         for (const i of per.also.kept) previewKeep.add(i);
       }
-      return restrictSheet(s, per.keep, emptied, opts.dropEmptyComponents === true, droppedComponents, droppedSections);
+      return restrictSheet(s, per.keep, emptied, opts.dropEmptyComponents === true, droppedComponents, droppedSections, droppedComparisons);
     });
     const art = restrictPreviews(doc.artifacts, previewKeep, droppedComponents, unjudgedPreviews);
     previews += art.dropped;
@@ -497,6 +529,7 @@ export function restrictInstances<T extends ParameterSheetInput | VersionedSheet
       previews,
       compared,
       droppedSections,
+      droppedComparisons,
       droppedComponents,
       unjudgedPreviews,
     },
@@ -521,6 +554,14 @@ export function formatRestrictReport(r: RestrictReport): string {
         : `  sheet "${c.sheet}" also kept ${c.kept.join(", ")} — the delivery would have left one of its ` +
           `components with no environment at all, and it declares no "compare_instances" to say which one ` +
           `answers which`
+    );
+  }
+  for (const c of r.droppedComparisons) {
+    // The heading used to print the pair and now does not, which is the whole
+    // of what a reader can see: this says what it stopped saying.
+    lines.push(
+      `  sheet "${c.sheet}" no longer states the comparison(s) ${c.pairs.map((p) => p.join(" <-> ")).join(", ")} — ` +
+        `one side of each is not delivered`
     );
   }
   for (const d of r.droppedSections) {

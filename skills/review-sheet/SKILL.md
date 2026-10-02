@@ -1962,6 +1962,12 @@ A sheet whose component IS emptied and that declares no `compare_instances`
 keeps that component's environments whole, and the report says why: with no
 correspondence to follow, any subset would be a guess.
 
+The pairs the page PRINTS under the sheet's heading are narrowed with the rows,
+so the line cannot claim a comparison the delivery does not carry: a pair
+survives only when both of its sides do (the widening above is what normally
+keeps the partner), a pair left with one side is removed and reported, and a
+sheet with no deliverable pair stops stating any.
+
 **A PROSE sheet is narrowed by its own markers.** A `recipe: document` sheet has
 no parameters, so none of the narrowing above could take hold of it and a
 delivery for one environment carried every other environment's sections in full.
