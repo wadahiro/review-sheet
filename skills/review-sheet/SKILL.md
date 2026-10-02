@@ -1430,6 +1430,16 @@ the environment variable feeding a member's field is the case. The split's own
 step runs first, and when further steps follow, a non-member survives it to
 reach them instead of being filed under no component.
 
+A **`static_files[].component:`** is the opposite case and is REFUSED when the
+split divides that file's own rows: `component:` says the file owns its rows,
+the split says they belong to the members it finds in them, and a file holding
+several members is not one member's file. Drop the `component:` and let the
+split name them, or point the entry at a file that holds only the one. A file
+whose rows the split does not reach keeps its `component:` — the list in one
+file, a member's own variables in another is the ordinary shape — and so does
+every file under `as: prefix` or `as: none`, where the component slot is the
+source's by design.
+
 ##### `members:` — when the element's own id cannot select it
 
 `only:` matches ids literally, which is enough until the id is not this

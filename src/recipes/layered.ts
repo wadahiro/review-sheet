@@ -439,6 +439,13 @@ function makeComponentDeriver(
   };
 }
 
+// Whether the split fills the COMPONENT slot. Under `prefix` it belongs to the
+// source and under `none` there is no member identity to record, which is what
+// `splitComponentSteps` says by deriving nothing for either.
+function assignsComponent(split: StructuralSplit): boolean {
+  return split.as === undefined || split.as === "component";
+}
+
 function componentIdOf(deriver: ComponentDeriver | undefined, entryKey: string, entryPath: string | undefined): string {
   return deriver ? deriver.idFor(entryKey, entryPath) : "";
 }
@@ -1009,6 +1016,7 @@ function buildEmbeddedFromStaticFiles(
         nestedMembers.set(owner, bucket);
       }
     }
+    const contested = new Set<string>();
     for (const e of rawEntries) {
       const derived = transformer ? transformer.apply(selectKeySource(sf.key!.from, e.key, e.source.path)) : (e.source.path ?? e.key);
       const key = withNestPrefix(derived, e.source.path, split, prefixes);
@@ -1018,6 +1026,23 @@ function buildEmbeddedFromStaticFiles(
       // declares its own include/exclude owns its selection — the sheet's
       // transform is not consulted for it, and must not count these rows
       // towards its own `names:` two-way check.
+      const derivedHere = componentIdOf(component, e.key, e.source.path) || undefined;
+      // Collected over the WHOLE file and reported after it, so the message can
+      // name everything the split says this file holds rather than whichever row
+      // came first.
+      //
+      // Asked of the ROW's own address (is it a member of the list the split
+      // reads) rather than of the derived id, which answers this question only
+      // on the plainest sheet: under `as: prefix` the component slot belongs to
+      // the source BY DESIGN and nothing derives a component at all, so the
+      // deriver hands back the path untouched — and a check reading that as a
+      // component refused a shape this recipe deliberately supports.
+      if (sf.component !== undefined && split !== undefined && assignsComponent(split)) {
+        const member = componentOfPath(split, e.source.path ?? "");
+        // The split's own name for it where one was derived — `members:` names
+        // a member the file does not call it — and the address's otherwise.
+        if (member !== undefined) contested.add(derivedHere !== e.source.path ? (derivedHere ?? member) : member);
+      }
       if (sf.component === undefined) component?.note(e.key, e.source.path, key);
       // Two entries of ONE file landing on one key means the key does not
       // identify them. `buildMapFromSources` has always hard-errored on this
@@ -1030,7 +1055,7 @@ function buildEmbeddedFromStaticFiles(
       // Scoped by COMPONENT, because that is what a component is for: one
       // `protocol` per client is two rows; two in the same client is a real
       // collision. Entries outside any component share one scope.
-      const scope = sf.component ?? componentIdOf(component, e.key, e.source.path);
+      const scope = sf.component ?? derivedHere ?? "";
       const entryComponent = scope || undefined;
       const seen = seenInFile.get(scope) ?? new Map<string, string[]>();
       const where = seen.get(key);
@@ -1052,6 +1077,33 @@ function buildEmbeddedFromStaticFiles(
         ...(nestedCategory(split, e.source.path) ?? {}),
         ...(sf.origin ? { origin: sf.origin } : {}),
       });
+    }
+    // A FILE CANNOT BOTH NAME ITS COMPONENT AND BE SPLIT INTO SEVERAL.
+    //
+    // `component:` means the sheet's derivation is not consulted for this file
+    // — it owns its rows, the way a file with its own include/exclude owns its
+    // selection — so nothing above registers a member, and a `split` asking for
+    // members by name then finds that NOBODY produced them. The error said
+    // exactly that, about a sheet-wide selection, far from the declaration that
+    // caused it.
+    //
+    // Refused rather than reconciled: the two declarations say opposite things
+    // about the same rows and no reading honours both — a file holding several
+    // components is not ONE component's file. It follows that such a file is not
+    // dropped when one of them is; see restrict.ts's unjudged previews, which is
+    // the honest answer for a file shared between components.
+    //
+    // Asked of the ROWS and not of the spec, so a static file that genuinely is
+    // one component's stays legal on a sheet whose other sources split.
+    if (sf.component !== undefined && contested.size > 0) {
+      const says = [...contested].sort();
+      throw new Error(
+        `layered recipe: sheet "${sheetName}": static file ${sf.path} declares component "${sf.component}", and ` +
+          `the sheet's split assigns its rows to ${says.map((x) => `"${x}"`).join(", ")} — a file cannot both name ` +
+          `its component and be divided by the split.\n` +
+          `Drop the "component:" and let the split name them (its members are already this sheet's components), or ` +
+          `point this entry at a file that holds only "${sf.component}".`
+      );
     }
     const clashes: InFileCollision[] = [];
     for (const seen of seenInFile.values()) {
