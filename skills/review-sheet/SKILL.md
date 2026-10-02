@@ -1946,8 +1946,17 @@ A record is exactly that kind of sheet and is written per environment, so
 ### SSO server (staging)
 ```
 
-`--instances` then removes the sections no delivered environment claims — from
-the html the page shows AND the markdown an editor and a markdown set are given,
+A record's opening SUMMARY is one table counting what was checked, and it belongs
+to no section — so it carries one COLUMN per environment, which is the axis the
+rest of this tool already puts environments on, with the marker inside the header
+cell (one between two rows would end the table). Narrowing removes the column,
+and the numbers are then right by construction: nothing is recomputed and no
+second copy of that formatting exists. There is deliberately no total column — it
+is the one number a narrowing could not keep honest.
+
+`--instances` then removes the sections no delivered environment claims, and the
+columns it owns — from the html the page shows AND the markdown an editor and a
+markdown set are given,
 or the two readings would disagree about which environments the delivery covers,
 with the outline following what survived. A section ends where the next heading
 of its own level or above begins, which is the rule a reader already sees;

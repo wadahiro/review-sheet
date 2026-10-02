@@ -280,15 +280,44 @@ describe("the tables a document is given", () => {
     expect(all["test:items"]).toContain("`Timeout`");
   });
 
+  // ONE COLUMN PER ENVIRONMENT, which is the axis the rest of this tool already
+  // puts environments on. It used to be one column of totals with the breakdown
+  // written into the first cell as prose (`8（local 5 / prod 3）`) — and prose is
+  // exactly what a narrowing cannot touch, so every number stayed as it was in a
+  // delivery for one environment, reading as that environment's own.
   it("computes the summary rather than trusting a written one", () => {
     const b = renderTestDoc(plan(), results(), "server");
     // 4 rows shown (the default-in-force one is counted separately): Listen×2,
     // pw, Gone — plus the 4 functional items, which are items of this unit test
-    // and not a postscript to it. Answered: 3 rows and 1 functional.
-    expect(b["test:summary"]).toContain("| テスト項目数 | 8（local 5 / prod 3） |");
-    expect(b["test:summary"]).toContain("| 実施済み | 4 |");
-    expect(b["test:summary"]).toContain("| 未実施 | 4 |");
-    expect(b["test:summary"]).toContain("| 判定 | OK 3 / NG 1 |");
+    // and not a postscript to it. Answered: 3 rows and 1 functional, all local.
+    expect(b["test:summary"]).toContain("| テスト項目数 | 5 | 3 |");
+    expect(b["test:summary"]).toContain("| 実施済み | 4 | 0 |");
+    expect(b["test:summary"]).toContain("| 未実施 | 1 | 3 |");
+    expect(b["test:summary"]).toContain("| 判定 | OK 3 / NG 1 | OK 0 / NG 0 |");
+  });
+
+  // A RE-ARRANGEMENT, not a recount: the columns still add up to what the one
+  // column of totals used to say. Without this the numbers could have moved and
+  // the assertions above would simply have been rewritten to match.
+  it("counts the same things it always counted", () => {
+    const b = renderTestDoc(plan(), results(), "server");
+    const row = (name: string): number[] =>
+      (b["test:summary"].split("\n").find((l) => l.startsWith(`| ${name} |`)) ?? "")
+        .split("|")
+        .slice(2, -1)
+        .map((c) => Number(c.trim()));
+    const sum = (ns: number[]): number => ns.reduce((a, c) => a + c, 0);
+    expect(sum(row("テスト項目数"))).toBe(8);
+    expect(sum(row("実施済み"))).toBe(4);
+    expect(sum(row("未実施"))).toBe(4);
+  });
+
+  // …and the header carries the marker a narrowing is driven by, INSIDE the
+  // cell: one between two rows would end the table.
+  it("marks each environment's column", () => {
+    const head = renderTestDoc(plan(), results(), "server")["test:summary"].split("\n")[0]!;
+    expect(head).toContain("<!-- rs:env local -->local");
+    expect(head).toContain("<!-- rs:env prod -->prod");
   });
 
   // An item with no row behind it is still an item of THIS environment's unit

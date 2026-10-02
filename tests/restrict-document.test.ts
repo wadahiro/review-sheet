@@ -13,11 +13,18 @@
 
 import { describe, it, expect } from "bun:test";
 import { restrictInstances, formatRestrictReport } from "../src/restrict";
-import { dropInstanceSections, instanceMark, renderMarkdown } from "../src/markdown";
+import { dropInstanceSections, dropInstanceColumns, instanceMark, renderMarkdown } from "../src/markdown";
 
 const record = (): string =>
   [
     "# Record",
+    "",
+    // The summary a record opens with: one column per environment, each marked.
+    // It belongs to no section, so dropping sections alone leaves its numbers
+    // reading as the delivered environment's own.
+    `| Item | ${instanceMark("local")}local | ${instanceMark("prod")}prod |`,
+    "| --- | --- | --- |",
+    "| Items | 376 | 357 |",
     "",
     "## Items",
     "",
@@ -119,6 +126,67 @@ describe("the sections an environment owns", () => {
   });
 });
 
+// THE SUMMARY'S COLUMNS, narrowed with the delivery.
+//
+// A record opens with a table counting what was checked. It used to be one
+// column of totals with the breakdown written into a cell as prose — and prose
+// is exactly what a narrowing cannot touch, so every number stayed as it was in
+// a delivery for one environment, reading as that environment's own. The
+// environments are columns now, which is the axis the rest of this tool already
+// puts them on, and the column goes.
+describe("the columns an environment owns", () => {
+  const summary = (): string =>
+    [
+      "## Summary",
+      "",
+      `| Item | ${instanceMark("local")}local | ${instanceMark("prod")}prod |`,
+      "| --- | --- | --- |",
+      "| Items | 376 | 357 |",
+      "| Verdict | OK 376 / NG 0 | OK 357 / NG 0 |",
+      "",
+      "## Another table",
+      "",
+      "| a | b |",
+      "| --- | --- |",
+      "| 1 | 2 |",
+      "",
+    ].join("\n");
+
+  it("takes the column, not the row", () => {
+    const { text, dropped } = dropInstanceColumns(summary(), new Set(["prod"]));
+    expect(dropped).toEqual(["local"]);
+    expect(text).toContain("| Items | 357 |");
+    expect(text).toContain("| Verdict | OK 357 / NG 0 |");
+    expect(text).not.toContain("376");
+  });
+
+  // A table with no marked header is nobody's environment and is left alone —
+  // the summary is the only one of its kind in a document.
+  it("leaves an unmarked table alone", () => {
+    const { text } = dropInstanceColumns(summary(), new Set(["prod"]));
+    expect(text).toContain("| a | b |");
+    expect(text).toContain("| 1 | 2 |");
+  });
+
+  // The same in the html, where every cell already says which column it is — so
+  // the drop is exact rather than a second count of the same pipes.
+  it("reads the html the same way", () => {
+    const html = renderMarkdown(summary(), () => null, { navDepth: 4, idPrefix: "p-" }).html;
+    const { text, dropped } = dropInstanceColumns(html, new Set(["prod"]));
+    expect(dropped).toEqual(["local"]);
+    expect(text).toContain("357");
+    expect(text).not.toContain("376");
+    // …and the table after it keeps both of its own columns.
+    expect(text).toContain(">a<");
+    expect(text).toContain(">b<");
+  });
+
+  it("changes nothing when every environment is delivered", () => {
+    const whole = summary();
+    expect(dropInstanceColumns(whole, new Set(["local", "prod"])).text).toBe(whole);
+  });
+});
+
 describe("a document sheet in a narrowed delivery", () => {
   const model = () => {
     const md = record();
@@ -158,6 +226,18 @@ describe("a document sheet in a narrowed delivery", () => {
     expect(texts).toContain("Unit (prod)");
     expect(texts).not.toContain("Unit (local)");
     expect(texts).toContain("Out of scope");
+  });
+
+  // THE WIRING, end to end: a narrowed delivery's summary counts only what it
+  // delivers. Without this nothing checked that restrict asks for the column
+  // drop at all — the sections would go and the numbers would stay.
+  it("narrows the summary's columns as well as the sections", () => {
+    const { input } = restrictInstances(model(), ["prod"]);
+    const doc = (input as { sheets: { document: { html: string; markdown: string } }[] }).sheets[0]!.document;
+    for (const text of [doc.markdown, doc.html]) {
+      expect(text).toContain("357");
+      expect(text, "the undelivered environment's count is still there").not.toContain("376");
+    }
   });
 
   it("says which sheet lost which environments", () => {

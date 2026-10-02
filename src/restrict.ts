@@ -17,7 +17,7 @@
 
 import type { ParameterSheetInput, VersionedSheetInput, Sheet, Category, Parameter, ArtifactPreview, SheetGroup } from "./types.js";
 import { effectiveOrigin } from "./prompt.js";
-import { dropInstanceSections } from "./markdown.js";
+import { dropInstanceSections, dropInstanceColumns } from "./markdown.js";
 
 export type RestrictReport = {
   kept: string[];
@@ -227,8 +227,18 @@ function restrictSheet(
   // walk would be a second thing to keep in step.
   const doc = s.document;
   if (doc !== undefined) {
-    const inHtml = dropInstanceSections(doc.html, keep);
-    const inMd = doc.markdown === undefined ? undefined : dropInstanceSections(doc.markdown, keep);
+    // TWO SHAPES, one marker. A SECTION an environment owns goes whole; a
+    // COLUMN of a summary table goes from every row of it. The summary counts
+    // every environment in one table that belongs to no section, so dropping
+    // sections alone left its numbers reading as the delivered environment's
+    // own.
+    const narrow = (text: string): { text: string; dropped: string[] } => {
+      const cols = dropInstanceColumns(text, keep);
+      const secs = dropInstanceSections(cols.text, keep);
+      return { text: secs.text, dropped: [...new Set([...cols.dropped, ...secs.dropped])] };
+    };
+    const inHtml = narrow(doc.html);
+    const inMd = doc.markdown === undefined ? undefined : narrow(doc.markdown);
     const gone = [...new Set([...inHtml.dropped, ...(inMd?.dropped ?? [])])];
     if (gone.length > 0) {
       if (!sections.some((x) => x.sheet === s.name)) sections.push({ sheet: s.name, instances: gone });

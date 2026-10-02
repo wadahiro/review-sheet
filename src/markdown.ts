@@ -12,6 +12,7 @@
 // Every image is already bytes by the time the model exists.
 
 import { Marked, type Tokens } from "marked";
+import { splitCells, TABLE_ROW, SEPARATOR } from "./sheet-markdown.js";
 
 export type DocHeading = {
   // 1..6, as written. Carried through so the outline can indent the way the
@@ -562,6 +563,87 @@ export function dropInstanceSections(text: string, keep: ReadonlySet<string>): {
       if (here !== undefined && here <= level) break;
       i += 1;
     }
+  }
+  return { text: out.join("\n"), dropped };
+}
+
+// THE SUMMARY'S COLUMNS, narrowed with the delivery.
+//
+// A record opens with a table counting what was checked, one column per
+// environment — the same axis a parameter sheet puts its environments on, and
+// narrowed the same way: the column goes. Section-dropping cannot serve here,
+// because the counts of every environment sit in ONE table that belongs to no
+// section.
+//
+// Driven by the marker in the HEADER cell, not by reading the environment's name
+// out of it: a heading or a header a recipient reworded would otherwise take
+// their numbers with it. (A marker between two table rows would end the table,
+// which is why it rides inside the cell — see the rs: rule.)
+export function dropInstanceColumns(text: string, keep: ReadonlySet<string>): { text: string; dropped: string[] } {
+  const dropped: string[] = [];
+  const lines = text.split("\n");
+  const out: string[] = [];
+
+  // WHICH COLUMNS, from a header row. Returns nothing where the row marks none,
+  // which is every table in a document but this one.
+  const markedIn = (cells: string[]): number[] => {
+    const cut: number[] = [];
+    cells.forEach((c, i) => {
+      const m = /<!--\s*rs:env\s+(.+?)\s*-->/.exec(c);
+      if (m !== null && !keep.has(m[1]!)) {
+        cut.push(i);
+        if (!dropped.includes(m[1]!)) dropped.push(m[1]!);
+      }
+    });
+    return cut;
+  };
+  const without = (cells: string[], cut: readonly number[]): string[] => cells.filter((_, i) => !cut.includes(i));
+  const row = (cells: string[]): string => `| ${cells.map((c) => c.trim()).join(" | ")} |`;
+
+  let i = 0;
+  while (i < lines.length) {
+    const here = lines[i]!;
+    // A MARKDOWN table: a header row with a separator under it.
+    if (TABLE_ROW.test(here) && i + 1 < lines.length && SEPARATOR.test(lines[i + 1]!)) {
+      const head = splitCells(here);
+      const cut = markedIn(head);
+      if (cut.length === 0) {
+        out.push(here);
+        i += 1;
+        continue;
+      }
+      out.push(row(without(head, cut)));
+      out.push(row(without(splitCells(lines[i + 1]!), cut)));
+      i += 2;
+      while (i < lines.length && TABLE_ROW.test(lines[i]!) && !SEPARATOR.test(lines[i]!)) {
+        out.push(row(without(splitCells(lines[i]!), cut)));
+        i += 1;
+      }
+      continue;
+    }
+    // …and the HTML it was rendered to, where every cell says which column it
+    // is (`data-rs-cell`) — so the drop is exact rather than a second count.
+    if (/<th\b[^>]*>(?:(?!<\/th>)[\s\S])*?rs:env/.test(here)) {
+      const cells = [...here.matchAll(/<th\b[^>]*data-rs-cell="(\d+)"[^>]*>([\s\S]*?)<\/th>/g)];
+      const cut = markedIn(cells.map((m) => m[2]!));
+      const at = new Set(cut.map((n) => Number(cells[n]![1])));
+      const strip = (line: string): string =>
+        line.replace(/<(th|td)\b[^>]*data-rs-cell="(\d+)"[^>]*>[\s\S]*?<\/\1>/g, (whole, _tag, n: string) =>
+          at.has(Number(n)) ? "" : whole
+        );
+      out.push(strip(here));
+      i += 1;
+      // To the end of this table, so a later one's columns are its own.
+      while (i < lines.length && !/<\/table>/.test(lines[i]!)) {
+        out.push(strip(lines[i]!));
+        i += 1;
+      }
+      if (i < lines.length) out.push(strip(lines[i]!));
+      i += 1;
+      continue;
+    }
+    out.push(here);
+    i += 1;
   }
   return { text: out.join("\n"), dropped };
 }

@@ -863,10 +863,14 @@ export function comparesComponents(text: string): boolean | "always" | undefined
   // A marker with no value predates the two spellings and meant `always`.
   return m[1] === "offer" ? true : "always";
 }
-const TABLE_ROW = /^\s*\|(.*)\|\s*$/;
-const SEPARATOR = /^\s*\|[\s:|-]+\|\s*$/;
+export const TABLE_ROW = /^\s*\|(.*)\|\s*$/;
+export const SEPARATOR = /^\s*\|[\s:|-]+\|\s*$/;
 
-function splitCells(line: string): string[] {
+// Exported for the ONE other reader of a pipe table: narrowing a document's
+// summary removes a COLUMN, which means splitting every row of it the same way
+// the set's own reader does. A second splitter would be a second answer to "what
+// is a cell", and `\|` is a pipe inside one.
+export function splitCells(line: string): string[] {
   const inner = TABLE_ROW.exec(line)![1];
   // Split on unescaped pipes only — `\|` is a pipe inside a cell.
   const cells: string[] = [];

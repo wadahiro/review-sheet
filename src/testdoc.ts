@@ -455,17 +455,37 @@ export function renderTestDoc(
   // Per environment AND in total, because the two are not one number divided by
   // the other: a row that states nothing in one environment has an item in the
   // others, so the count differs between them and dividing produced a fraction.
+  // ONE COLUMN PER ENVIRONMENT, which is the axis the rest of this tool already
+  // puts environments on — a parameter sheet's values sit in columns and
+  // `--instances` narrows them by taking one out. The summary used to be one
+  // column of totals with the breakdown written into the first cell as prose
+  // (`733（local 376 / poc 357）`), and prose is exactly what a narrowing cannot
+  // touch: every number stayed as it was in a delivery for one environment,
+  // reading as that environment's own.
+  //
+  // So the environments become columns, each marked with the environment it is,
+  // and narrowing removes the column. The numbers are then right by
+  // construction: nothing is recomputed, and no second copy of this formatting
+  // lives anywhere else. There is deliberately no TOTAL column — it is the one
+  // number a narrowing could not keep honest, and a reader who wants it across
+  // several environments is reading a table that shows each.
   const countIn = (i: string): number =>
     shown.filter((x) => x.target.instance === i).length + mineFunctional.filter((f) => f.instance === i).length;
-  const per = instances.map((i) => `${i} ${countIn(i)}`).join(" / ");
-  const total = shown.length + mineFunctional.length;
+  const answeredIn = (i: string): number =>
+    answered.filter((x) => x.target.instance === i).length + fAnswered.filter((f) => f.instance === i).length;
+  const okIn = (i: string): number =>
+    answered.filter((x) => x.target.instance === i && answerFor(index, x)!.status === "pass").length +
+    fAnswered.filter((f) => f.instance === i && functionalAnswers.get(f)!.status === "pass").length;
   const summary: string[][] = [
-    [t.count, `${total}（${per}）`],
-    [t.done, String(answered.length + fAnswered.length)],
-    [t.todo, String(total - answered.length - fAnswered.length)],
-    [t.result, `${t.pass} ${ok} / ${t.fail} ${ng}`],
+    [t.count, ...instances.map((i) => String(countIn(i)))],
+    [t.done, ...instances.map((i) => String(answeredIn(i)))],
+    [t.todo, ...instances.map((i) => String(countIn(i) - answeredIn(i)))],
+    [t.result, ...instances.map((i) => `${t.pass} ${okIn(i)} / ${t.fail} ${answeredIn(i) - okIn(i)}`)],
   ];
-  const summaryBlock = [table([t.summaryItem, t.summaryValue], summary)];
+  // The marker rides INSIDE the header cell: one between two rows would end the
+  // table (see the rs: rule), and the environment's own name in that cell is
+  // prose a recipient may reword.
+  const summaryBlock = [table([t.summaryItem, ...instances.map((i) => `${instanceMark(i)}${i}`)], summary)];
   if (defaults.length > 0 && opts.includeDefaults !== true) {
     const dAnswered = defaults.map((i) => answerFor(index, i)).filter((r): r is TestResult => r !== undefined && r.status !== "not_run");
     if (opts.defaultsSummary === false) {
