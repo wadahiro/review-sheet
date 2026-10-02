@@ -47,7 +47,13 @@ export type RestrictReport = {
   // NOTHING in the delivery said anything about them — see restrictCategory.
   // Named with the rows that went, because the point of the flag is that the
   // document no longer mentions them: the only place it can be seen is here.
-  droppedComponents: { path: string; rows: number }[];
+  droppedComponents: { sheet: string; path: string; rows: number }[];
+  // Previews of a sheet that lost a component, which carry no component of
+  // their own — so nothing here can say whether they belonged to it. The
+  // reader's complaint is not that they stayed: it is that nothing said so, and
+  // "I removed the rows and the file is still in the delivery" is exactly the
+  // shape this project refuses to leave quiet.
+  unjudgedPreviews: { sheet: string; source_file: string }[];
 };
 
 const label = (sheet: string, path: string[], key: string): string => [sheet, ...path, key].join(" > ");
@@ -120,9 +126,9 @@ function restrictCategory(
     // things where one client went.
     const inside = `${here.join(" / ")} / `;
     for (let i = dropped.length - 1; i >= 0; i--) {
-      if (dropped[i]!.path.startsWith(inside)) dropped.splice(i, 1);
+      if (dropped[i]!.sheet === sheet && dropped[i]!.path.startsWith(inside)) dropped.splice(i, 1);
     }
-    dropped.push({ path: here.join(" / "), rows });
+    dropped.push({ sheet, path: here.join(" / "), rows });
     return { category: DROPPED, rows, emptiedRows };
   }
   return {
@@ -269,11 +275,40 @@ function restrictSheet(
 // A preview with no `instances` is one rendering that stands for the file, not
 // a per-environment variant, and it stays. One that names environments keeps
 // only the delivered ones — and belongs to nobody once they are all gone.
-function restrictPreviews(previews: ArtifactPreview[] | undefined, keep: ReadonlySet<string>): { previews: ArtifactPreview[] | undefined; dropped: number } {
+function restrictPreviews(
+  previews: ArtifactPreview[] | undefined,
+  keep: ReadonlySet<string>,
+  // The components `--drop-empty-components` removed, so the file a component
+  // was previewed FROM goes with its rows. Dropping the rows and keeping the
+  // file is one delivery saying two things — and the file often says which
+  // environment it is for in its own first line, so it is the more conspicuous
+  // half of the pair.
+  gone: RestrictReport["droppedComponents"] = [],
+  unjudged: RestrictReport["unjudgedPreviews"] = []
+): { previews: ArtifactPreview[] | undefined; dropped: number } {
   if (previews === undefined) return { previews, dropped: 0 };
   let dropped = 0;
   const out: ArtifactPreview[] = [];
+  // A component is a sheet's TOP-LEVEL category, which is the only level a
+  // preview is ever scoped to; a nested category that went matches nothing here
+  // and is not looked for.
+  const lost = new Set(gone.map((d) => `${d.sheet}\u0000${d.path}`));
+  const lostSheets = new Set(gone.map((d) => d.sheet));
   for (const a of previews) {
+    if (a.component !== undefined && lost.has(`${a.sheet}\u0000${a.component}`)) {
+      dropped += 1;
+      continue;
+    }
+    // NOTHING TO JUDGE IT BY. A preview that names no component and no
+    // environment belongs to its sheet and nothing narrower, so whether it was
+    // the removed component's file is not a question this model can answer.
+    // Said, never guessed: a name that merely looks like the component's would
+    // be a proxy standing in for the fact.
+    if (a.component === undefined && a.instances === undefined && lostSheets.has(a.sheet)) {
+      if (!unjudged.some((u) => u.sheet === a.sheet && u.source_file === a.source_file)) {
+        unjudged.push({ sheet: a.sheet, source_file: a.source_file });
+      }
+    }
     if (a.instances === undefined) {
       out.push(a);
       continue;
@@ -416,6 +451,7 @@ export function restrictInstances<T extends ParameterSheetInput | VersionedSheet
   const emptied: string[] = [];
   const droppedComponents: RestrictReport["droppedComponents"] = [];
   const droppedSections: RestrictReport["droppedSections"] = [];
+  const unjudgedPreviews: RestrictReport["unjudgedPreviews"] = [];
   let previews = 0;
   const compared: RestrictReport["compared"] = [];
   // A preview belongs to a sheet, so it is kept by that sheet's own set — the
@@ -437,7 +473,7 @@ export function restrictInstances<T extends ParameterSheetInput | VersionedSheet
       }
       return restrictSheet(s, per.keep, emptied, opts.dropEmptyComponents === true, droppedComponents, droppedSections);
     });
-    const art = restrictPreviews(doc.artifacts, previewKeep);
+    const art = restrictPreviews(doc.artifacts, previewKeep, droppedComponents, unjudgedPreviews);
     previews += art.dropped;
     return {
       ...doc,
@@ -462,6 +498,7 @@ export function restrictInstances<T extends ParameterSheetInput | VersionedSheet
       compared,
       droppedSections,
       droppedComponents,
+      unjudgedPreviews,
     },
   };
 }
@@ -491,6 +528,14 @@ export function formatRestrictReport(r: RestrictReport): string {
     // of them it lost, so this is the only place it can be read.
     lines.push(`  sheet "${d.sheet}" dropped the section(s) written for ${d.instances.join(", ")}`);
   }
+  for (const u of r.unjudgedPreviews) {
+    // The one thing a reader cannot find out any other way: the rows went and
+    // the file did not, and nothing on the page says which component it was.
+    lines.push(
+      `  sheet "${u.sheet}" lost a component, and its previewed file "${u.source_file}" names no component — ` +
+        `it is KEPT, because nothing here can say whether it belonged to the one that went`
+    );
+  }
   if (r.droppedComponents.length > 0) {
     // The ONLY place this can be seen: the document no longer mentions them,
     // which is what the flag was for.
@@ -498,7 +543,7 @@ export function formatRestrictReport(r: RestrictReport): string {
     lines.push(
       `  ${r.droppedComponents.length} component(s) were removed whole — nothing delivered says anything about them (${rows} row(s)):`
     );
-    for (const c of r.droppedComponents.slice(0, 5)) lines.push(`    ${c.path} (${c.rows} row(s))`);
+    for (const c of r.droppedComponents.slice(0, 5)) lines.push(`    ${c.sheet} > ${c.path} (${c.rows} row(s))`);
     if (r.droppedComponents.length > 5) lines.push(`    … and ${r.droppedComponents.length - 5} more`);
   }
   if (r.previews > 0) lines.push(`  ${r.previews} previewed file(s) rendered only for those environments were left out`);

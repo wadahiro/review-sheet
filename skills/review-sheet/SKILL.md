@@ -1997,6 +1997,16 @@ per-environment and none named a delivered environment. The outermost removed
 category is named in the report with its row count — the only place it can be
 seen, since the document no longer mentions it.
 
+A component's own PREVIEWED FILE goes with its rows: dropping the rows and
+keeping the file is one delivery saying two things, and such a file often states
+which environment it is for in its own first line. A preview that names no
+component belongs to its sheet and nothing narrower, so whether it was the
+removed component's file is not a question the model can answer — it is KEPT and
+REPORTED, because guessing from a file name would be a proxy standing in for the
+fact, and "I removed the rows and the file is still in the delivery" is the one
+thing a reader could not find out any other way. Said only where a component
+actually went, since every delivery has previews that name none.
+
 A `static_files` entry that names no `instances:` is unchanged — it is a FILE of
 the sheet, and several of them stay several sections, which is what a legacy
 sheet built from a handful of recorded files wants. An entry opts in to being an

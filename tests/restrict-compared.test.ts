@@ -357,7 +357,7 @@ describe("a component left with no environment at all", () => {
   it("goes whole when the delivery asks", () => {
     const { input, report } = restrictInstances(sheet(), ["B"], { dropEmptyComponents: true });
     expect(names(input as never)).toEqual(["client-Y"]);
-    expect(report.droppedComponents).toEqual([{ path: "client-X", rows: 2 }]);
+    expect(report.droppedComponents).toEqual([{ sheet: "clients", path: "client-X", rows: 2 }]);
   });
 
   // …and the component that IS delivered is untouched, or the flag would be
@@ -440,6 +440,87 @@ describe("a component left with no environment at all", () => {
     // is the client.
     expect(report.droppedComponents.map((c) => c.path)).toEqual(["client-X"]);
     expect(report.droppedComponents[0]!.rows).toBe(2);
+  });
+
+  // THE FILE GOES WITH THE ROWS IT WAS PREVIEWED FOR.
+  //
+  // Dropping the rows and keeping the file is one delivery saying two things —
+  // and the file often says which environment it is for in its own first line,
+  // so it is the more conspicuous half of the pair.
+  describe("the component's own previewed file", () => {
+    const withPreviews = (previews: unknown[]) =>
+      ({
+        metadata: { title: "t" },
+        sheets: [
+          {
+            name: "clients",
+            instances: ["A", "B"],
+            categories: [
+              { name: "client-X", params: [{ key: "rootUrl", instances: [{ name: "A", value: "https://x" }] }] },
+              { name: "client-Y", params: [{ key: "rootUrl", instances: [{ name: "B", value: "https://y" }] }] },
+            ],
+          },
+        ],
+        artifacts: previews,
+      }) as never;
+
+    const file = (component: string | undefined, source: string) => ({
+      id: component === undefined ? `clients::${source}` : `clients::${component}`,
+      sheet: "clients",
+      ...(component === undefined ? {} : { component }),
+      source_file: source,
+      lines: [{ text: "x", kind: "verbatim" }],
+    });
+
+    it("goes when its component does", () => {
+      const { input, report } = restrictInstances(
+        withPreviews([file("client-X", "x.json"), file("client-Y", "y.json")]),
+        ["B"],
+        { dropEmptyComponents: true }
+      );
+      const left = (input as { artifacts: { source_file: string }[] }).artifacts.map((a) => a.source_file);
+      expect(left).toEqual(["y.json"]);
+      expect(report.previews).toBe(1);
+      expect(report.unjudgedPreviews).toEqual([]);
+    });
+
+    it("stays when its component does", () => {
+      const { input } = restrictInstances(withPreviews([file("client-Y", "y.json")]), ["B"], { dropEmptyComponents: true });
+      expect((input as { artifacts: unknown[] }).artifacts).toHaveLength(1);
+    });
+
+    // A PREVIEW THAT NAMES NO COMPONENT cannot be judged: it belongs to its
+    // sheet and nothing narrower. Kept — guessing from a file name would be a
+    // proxy standing in for the fact — and SAID, because "I removed the rows and
+    // the file is still in the delivery" is the one thing a reader could not
+    // find out any other way.
+    it("is kept and reported when it names no component", () => {
+      const { input, report } = restrictInstances(withPreviews([file(undefined, "shared.json")]), ["B"], {
+        dropEmptyComponents: true,
+      });
+      expect((input as { artifacts: unknown[] }).artifacts).toHaveLength(1);
+      expect(report.unjudgedPreviews).toEqual([{ sheet: "clients", source_file: "shared.json" }]);
+      expect(formatRestrictReport(report)).toContain("shared.json");
+    });
+
+    // …and only where a component actually went. Every delivery has previews
+    // that name no component, and a line about each of them in every build is
+    // noise that teaches a reader to skip the report.
+    it("says nothing when no component went", () => {
+      const { report } = restrictInstances(withPreviews([file(undefined, "shared.json")]), ["A", "B"], {
+        dropEmptyComponents: true,
+      });
+      expect(report.droppedComponents).toEqual([]);
+      expect(report.unjudgedPreviews).toEqual([]);
+    });
+
+    // The default keeps the rows, so it keeps the file too: nothing was removed
+    // for it to be out of step with.
+    it("is untouched when the rows are kept", () => {
+      const { input, report } = restrictInstances(withPreviews([file("client-X", "x.json")]), ["B"]);
+      expect((input as { artifacts: unknown[] }).artifacts).toHaveLength(1);
+      expect(report.unjudgedPreviews).toEqual([]);
+    });
   });
 
   // …and the only place it can be seen is the report, since the document no
