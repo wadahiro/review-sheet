@@ -560,7 +560,7 @@ async function writeMarkdownSet(
   });
   const index = buildArtifactIndex(previews);
 
-  const { files, problems } = toMarkdownSet(data, lang, {
+  const { files, images, problems } = toMarkdownSet(data, lang, {
     stamp,
     ...(narrowed === undefined ? {} : { instances: narrowed }),
     ...(withoutUnset ? { withoutUnset: true } : {}),
@@ -593,8 +593,12 @@ async function writeMarkdownSet(
   // that says what this is, and the folder you edit. See `set-block.ts` for why
   // the page stays out of the folder, and `md-set.ts`'s `frontDoor` for why the
   // note and the set's own index are two files rather than one.
-  const whole = [
+  const whole: ({ path: string; text: string } | { path: string; bytes: Uint8Array })[] = [
     ...files.map((f) => ({ path: `${SET_DIR}/${f.path}`, text: f.text.endsWith("\n") ? f.text : `${f.text}\n` })),
+    // The pictures the pages reference, as real files beside them. The single
+    // HTML carries them inlined and read correctly all along; the set kept the
+    // references and not the bytes, so every image in it was broken.
+    ...images.map((f) => ({ path: `${SET_DIR}/${f.path}`, bytes: f.bytes })),
     { path: "README.md", text: `${frontDoor(data, lang)}\n`.replace(/\n+$/, "\n") },
     { path: "viewer.html", text: viewer },
   ];
@@ -633,7 +637,8 @@ async function writeMarkdownSet(
     for (const f of whole) {
       const at = join(outDir, f.path);
       mkdirSync(dirname(at), { recursive: true });
-      writeFileSync(at, f.text, "utf-8");
+      if ("bytes" in f) writeFileSync(at, f.bytes);
+      else writeFileSync(at, f.text, "utf-8");
     }
     // …and what this run did NOT write, which is still sitting in the delivery.
     //

@@ -1188,6 +1188,14 @@ sheets:
   that cannot be read, or a remote URL (which would make the delivered file
   fetch over the network when opened), **fails the build**, naming every bad
   reference at once.
+- **A markdown SET gets them as files**, written at the href the page references
+  and so needing no rewriting of it — the single HTML carries them inlined, and
+  the set used to keep every reference and none of the bytes, which reads with
+  every picture broken. From the MODEL, like everything else `generate` writes:
+  going back to the project's own directory for them would be a second, quietly
+  different answer to what the document contains. An href that climbs out of the
+  set is reported and not carried, since a delivery's paths stay inside the
+  directory it was given.
 - **…and a line of it says which verdicts were decided on it.** A reader partway
   down a 5,000-line plan can ask the other question — is this line one some item
   was judged on, and which — which the delivery already records as a citation and

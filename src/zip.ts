@@ -14,7 +14,11 @@
 
 import { deflateRawSync } from "zlib";
 
-export type ZipEntry = { path: string; text: string };
+// A file of the archive: text, or BYTES for one that is not text at all. An
+// image a document references is the second kind — the model carries it as a
+// data URI and a delivery has to put the real file beside the page, or the set
+// reads with every picture broken.
+export type ZipEntry = { path: string; text: string } | { path: string; bytes: Uint8Array };
 
 // CRC-32, which every reader checks and no reader can be told to skip.
 const TABLE = (() => {
@@ -67,7 +71,7 @@ export function zipOf(entries: ZipEntry[]): Uint8Array {
 
   for (const e of entries) {
     const name = enc.encode(e.path);
-    const raw = enc.encode(e.text);
+    const raw = "bytes" in e ? e.bytes : enc.encode(e.text);
     const body = new Uint8Array(deflateRawSync(raw));
     // Deflate can make small or already-compressed data LARGER. Storing it then
     // is what every writer does, and costs one branch.

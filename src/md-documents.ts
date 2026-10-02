@@ -8,7 +8,7 @@
 // depends on and nowhere else.
 
 import type { ArtifactPreview } from "./types.js";
-import { slug, modelStamp } from "./md-set.js";
+import { slug, modelStamp, containedPath } from "./md-set.js";
 
 // The documents a sheet's rows are about, as files of the set.
 //
@@ -103,46 +103,11 @@ export function carriedDocuments(previews: ArtifactPreview[], instances: string[
   return withDistinctPaths(carriedDocumentsRaw(previews, instances, notes));
 }
 
-// A path INSIDE the set, out of a path that names a place on a filesystem.
-//
-// The two are different spaces, and this is the boundary between them. A
-// recorded path is a filesystem path — `import --spec` records it relative to
-// the directory the command was run from, which is a legal and documented
-// contract, and `verify`/`apply` read it back that way. Concatenated onto
-// `sources/` as if it were already a suffix, the ways it is NOT one come
-// through: a leading `/` (an absolute path — which is how a collected file is
-// named, on purpose), a `..` from a CWD that sat below what the spec points at,
-// a `\` or a drive letter from a Windows recording.
-//
-// Measured, on the real CLI, before this existed:
-//   `../../../../x.txt`  wrote OUTSIDE the directory `-o` named, silently — the
-//                        stale-file scan only looks inside it, so nothing saw.
-//   the same, as a .zip   put `docs/sources/../../../../x.txt` in the archive: a
-//                        deliverable that writes outside wherever it is opened.
-//   `x.conf` and `a/../x.conf` with DIFFERENT bytes: two documents, distinct as
-//                        strings, one file on disk — the first silently gone,
-//                        while the run reported carrying two.
-//
-// So: normalised, lexically. A `..` pops what precedes it and is DROPPED where
-// there is nothing to pop — which is not a loss of information but the recovery
-// of the one spelling every CWD agrees on: `sources/../../platforms/x.tf` and
-// the `sources/platforms/x.tf` a run from the repository root already writes
-// become the same path, rather than a third.
-export function containedPath(raw: string): string {
-  const out: string[] = [];
-  // A drive prefix is not a segment, and a backslash is a separator wherever
-  // the path was written down — an archive entry carrying either is the same
-  // escape as `..`, for whoever opens it on Windows.
-  for (const seg of raw.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/").split("/")) {
-    if (seg === "" || seg === ".") continue;
-    if (seg === "..") {
-      out.pop();
-      continue;
-    }
-    out.push(seg);
-  }
-  return out.join("/");
-}
+// Where a set's paths are kept inside it — moved to md-set.ts, which this
+// module already imports from, so the two cannot form a cycle. Re-exported
+// because every caller reached for it here.
+export { containedPath } from "./md-set.js";
+
 
 // …and ONE segment, for the parts a set's own tree is built from rather than
 // read from a file: which environment, which host. A separator in one of those

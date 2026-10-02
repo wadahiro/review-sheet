@@ -817,3 +817,135 @@ describe("a prose page's outline, in the page", () => {
     expect(renderMarkdown(body, () => null, { navDepth: 6 }).headings.map((h) => h.text)).toEqual(["Env"]);
   });
 });
+
+// THE PICTURES A PAGE REFERENCES, as real files beside it.
+//
+// Markdown has no way to size an image, so an author writes the tag — and either
+// way the reference is a path relative to the file the markdown is in. The set
+// kept every reference and none of the bytes, so a handed-over folder read with
+// every picture broken, while the single HTML (which inlines them) was fine.
+//
+// From the MODEL and never from the project's own directory: the bytes are
+// inlined at import precisely so a delivery reads nothing but JSON, and a
+// generator going back to the original files would be a second, quietly
+// different answer to what the document contains.
+describe("a document's images", () => {
+  const PNG = "iVBORw0KGgo=";
+  const withImages = (images: Record<string, string>, markdown: string) =>
+    ({
+      metadata: { title: "t" },
+      sheets: [
+        {
+          name: "record",
+          categories: [],
+          document: { html: "<p>x</p>", markdown, images },
+        },
+      ],
+    }) as never;
+
+  const model = () =>
+    withImages(
+      { "evidence-images/shot.png": `data:image/png;base64,${PNG}` },
+      '# R\n\n<img src="evidence-images/shot.png" alt="a">\n'
+    );
+
+  it("travels as a file at the path the page references", () => {
+    const { images } = toMarkdownSet(model(), "ja");
+    expect(images.map((f) => f.path)).toEqual(["evidence-images/shot.png"]);
+  });
+
+  it("carries the bytes the model holds", () => {
+    const { images } = toMarkdownSet(model(), "ja");
+    expect(Buffer.from(images[0]!.bytes).toString("base64")).toBe(PNG);
+  });
+
+  // The reference is NOT rewritten: the href already resolves against the page's
+  // own file, which is where the image is written.
+  it("leaves the reference as the author wrote it", () => {
+    const { files } = toMarkdownSet(model(), "ja");
+    const page = files.find((f) => f.path.endsWith(".md") && f.path !== INDEX)!;
+    expect(page.text).toContain('src="evidence-images/shot.png"');
+  });
+
+  // …and it is written beside the PAGE, which in a chapter is a directory down.
+  it("goes under the page's own directory", () => {
+    const nested = model() as unknown as { groups?: unknown; sheets: { group?: string }[] };
+    nested.groups = [{ name: "ch", label: { ja: "章" } }];
+    nested.sheets[0]!.group = "ch";
+    const { images } = toMarkdownSet(nested as never, "ja");
+    expect(images.map((f) => f.path)).toEqual(["ch/evidence-images/shot.png"]);
+  });
+
+  it("says nothing for a document with no images", () => {
+    expect(toMarkdownSet(withImages({}, "# R\n\nno pictures\n"), "ja").images).toEqual([]);
+  });
+
+  // AN HREF THAT CLIMBS OUT OF THE SET is reported rather than written: a
+  // delivery whose paths escape the directory it was given is the one thing this
+  // writer refuses, and a broken image a reader would have to notice is worse
+  // than a line saying so.
+  it("refuses to carry one from outside the set, and says so", () => {
+    const out = toMarkdownSet(
+      withImages({ "../secrets/shot.png": `data:image/png;base64,${PNG}` }, '# R\n\n<img src="../secrets/shot.png">\n'),
+      "ja"
+    );
+    expect(out.images).toEqual([]);
+    expect(out.problems.join(" ")).toContain("outside the set");
+  });
+
+  it("says so for an image the model did not inline", () => {
+    const out = toMarkdownSet(withImages({ "x.png": "https://example.com/x.png" }, "# R\n"), "ja");
+    expect(out.images).toEqual([]);
+    expect(out.problems.join(" ")).toContain("not a data URI");
+  });
+});
+
+// …AND THE CLI WRITES THEM, which is the end of the chain the reader depends on.
+// Collecting the bytes and never putting them on disk would look exactly like
+// the bug this closes.
+describe("a written set's images", () => {
+  const cli = resolvePath(import.meta.dir, "..", "src", "cli.ts");
+  const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUg==", "base64");
+
+  const project = (): string => {
+    const at = mkdtempSync(join(tmpdir(), "rs-imgset-"));
+    const model = {
+      metadata: { title: "t" },
+      sheets: [
+        {
+          name: "record",
+          categories: [],
+          document: {
+            html: '<p><img src="evidence-images/shot.png" alt="a"></p>',
+            markdown: '# R\n\n<img src="evidence-images/shot.png" alt="a">\n',
+            images: { "evidence-images/shot.png": `data:image/png;base64,${PNG.toString("base64")}` },
+          },
+        },
+      ],
+    };
+    writeFileSync(join(at, "input.json"), JSON.stringify(model));
+    return at;
+  };
+
+  it("puts the file on disk, byte for byte", () => {
+    const at = project();
+    const out = join(at, "set");
+    const r = Bun.spawnSync(["bun", "run", cli, "generate", "-i", "input.json", "--format", "md", "-o", out], { cwd: at });
+    expect(r.exitCode, r.stderr.toString().slice(0, 400)).toBe(0);
+    const wrote = join(out, "docs", "evidence-images", "shot.png");
+    expect(existsSync(wrote), "the image the page references was not written").toBe(true);
+    expect(readFileSync(wrote).equals(PNG)).toBe(true);
+  });
+
+  // The archive is the same set in an envelope, so it carries the same bytes —
+  // and a text-only writer would have mangled them.
+  it("puts it in the archive too, byte for byte", async () => {
+    const at = project();
+    const zip = join(at, "set.zip");
+    const r = Bun.spawnSync(["bun", "run", cli, "generate", "-i", "input.json", "--format", "md", "-o", zip], { cwd: at });
+    expect(r.exitCode, r.stderr.toString().slice(0, 400)).toBe(0);
+    const listed = Bun.spawnSync(["unzip", "-p", zip, "docs/evidence-images/shot.png"]);
+    expect(listed.exitCode, "the archive has no such entry").toBe(0);
+    expect(Buffer.from(listed.stdout).equals(PNG)).toBe(true);
+  });
+});

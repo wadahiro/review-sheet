@@ -31,6 +31,67 @@ import { NO_NAV_MARKER } from "./markdown.js";
 
 export type MarkdownFile = { path: string; text: string };
 
+// A FILE OF THE SET THAT IS NOT TEXT. An image a document references: the model
+// carries it as a data URI (inlined at import, so `generate` reads nothing but
+// JSON), and a set has to put the real file beside the page or every picture in
+// it is broken. Kept apart from MarkdownFile rather than widening it, because
+// every other reader of that type writes `f.text` and would have to learn which
+// kind it is holding.
+// A path INSIDE the set, out of a path that names a place on a filesystem.
+//
+// The two are different spaces, and this is the boundary between them. A
+// recorded path is a filesystem path — `import --spec` records it relative to
+// the directory the command was run from, which is a legal and documented
+// contract, and `verify`/`apply` read it back that way. Concatenated onto
+// `sources/` as if it were already a suffix, the ways it is NOT one come
+// through: a leading `/` (an absolute path — which is how a collected file is
+// named, on purpose), a `..` from a CWD that sat below what the spec points at,
+// a `\` or a drive letter from a Windows recording.
+//
+// Measured, on the real CLI, before this existed:
+//   `../../../../x.txt`  wrote OUTSIDE the directory `-o` named, silently — the
+//                        stale-file scan only looks inside it, so nothing saw.
+//   the same, as a .zip   put `docs/sources/../../../../x.txt` in the archive: a
+//                        deliverable that writes outside wherever it is opened.
+//   `x.conf` and `a/../x.conf` with DIFFERENT bytes: two documents, distinct as
+//                        strings, one file on disk — the first silently gone,
+//                        while the run reported carrying two.
+//
+// So: normalised, lexically. A `..` pops what precedes it and is DROPPED where
+// there is nothing to pop — which is not a loss of information but the recovery
+// of the one spelling every CWD agrees on: `sources/../../platforms/x.tf` and
+// the `sources/platforms/x.tf` a run from the repository root already writes
+// become the same path, rather than a third.
+export function containedPath(raw: string): string {
+  const out: string[] = [];
+  // A drive prefix is not a segment, and a backslash is a separator wherever
+  // the path was written down — an archive entry carrying either is the same
+  // escape as `..`, for whoever opens it on Windows.
+  for (const seg of raw.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/").split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      out.pop();
+      continue;
+    }
+    out.push(seg);
+  }
+  return out.join("/");
+}
+
+export type BinaryFile = { path: string; bytes: Uint8Array };
+
+// A data URI back to the bytes it was made of. Anything else is not a picture
+// this set can write, and the caller says so rather than writing a broken file.
+function bytesOfDataUri(uri: string): Uint8Array | undefined {
+  const at = /^data:[^;,]*;base64,(.*)$/s.exec(uri);
+  if (at === null) return undefined;
+  try {
+    return Uint8Array.from(Buffer.from(at[1]!, "base64"));
+  } catch {
+    return undefined;
+  }
+}
+
 export type MarkdownSetOptions = {
   // The way into the file each row is a LINE OF, as an address relative to the
   // sheet the row is in. Given the SHEET, not its path: which of a sheet's
@@ -133,10 +194,11 @@ export function toMarkdownSet(
   data: SheetData,
   lang: Lang = "ja",
   opts: MarkdownSetOptions = {}
-): { files: MarkdownFile[]; problems: string[] } {
+): { files: MarkdownFile[]; images: BinaryFile[]; problems: string[] } {
   const { placed, problems } = place(data);
   const sheets: MarkdownFile[] = [];
   const carried: MarkdownFile[] = [];
+  const images: BinaryFile[] = [];
   const taken = new Map<string, string>();
 
   for (const { sheet, dir } of placed) {
@@ -166,6 +228,34 @@ export function toMarkdownSet(
     sheets.push({ path: finalPath, text: linked });
     const under = dir.join("/");
     for (const d of mine) carried.push({ path: under === "" ? d.path : `${under}/${d.path}`, text: d.text });
+    // THE PICTURES THE PAGE REFERENCES. A document's markdown keeps the href it
+    // was written with (`evidence-images/x.png`), which resolves against the
+    // file the markdown is in — so the image goes at that href relative to the
+    // page's own path here, and the reference needs no rewriting.
+    //
+    // From the MODEL and never from the original directory: the bytes were
+    // inlined at import precisely so a delivery reads nothing but JSON, and a
+    // generator that went back to the project's files would be a second,
+    // quietly different answer to "what does this document contain".
+    for (const [href_, uri] of Object.entries(sheet.document?.images ?? {})) {
+      // Relative to the page's own directory, which is what the href in the
+      // markdown resolves against — so the reference needs no rewriting.
+      const wanted = [...dir, href_].filter((x) => x !== "").join("/");
+      const inSet = containedPath(wanted);
+      if (inSet !== wanted) {
+        // An href that climbs out of the set. The page keeps it — it is what the
+        // author wrote — and the picture is not carried, which is said rather
+        // than left to be noticed as a broken image.
+        problems.push(`sheet "${sheet.name}" references an image outside the set (${href_}) — it is not carried`);
+        continue;
+      }
+      const bytes = bytesOfDataUri(uri);
+      if (bytes === undefined) {
+        problems.push(`sheet "${sheet.name}" carries an image that is not a data URI (${href_}) — it is not carried`);
+        continue;
+      }
+      images.push({ path: inSet, bytes });
+    }
   }
 
   // Two sheets of one chapter describing the same deployed file would write it
@@ -238,6 +328,7 @@ export function toMarkdownSet(
   const paths = new Map(placed.map((p, i) => [p.sheet.name, sheets[i]!.path]));
   return {
     files: [{ path: INDEX, text: index(data, paths, lang, opts.stamp, opts.instances, opts.withoutUnset === true, opts.unsetKept ?? []) }, ...sheets, ...documents],
+    images,
     problems,
   };
 }
