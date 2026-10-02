@@ -400,7 +400,23 @@ export function renderMarkdown(source: string, resolveImage: ImageResolver, opts
         return `<img src="${escapeHtml(src)}" alt="${escapeHtml(token.text)}"${title} />`;
       },
       html(token: Tokens.HTML | Tokens.Tag): string {
-        return sanitizeFragment(token.text, resolveImage);
+        const out = sanitizeFragment(token.text, resolveImage);
+        // A BLOCK CLOSES ITS LINE.
+        //
+        // Two html blocks separated by a blank line arrive as two tokens whose
+        // `\n\n` has been moved into a `space` token between them — and a space
+        // renders to nothing, so the blocks ran together on one line. Invisible
+        // for a block that renders to something a reader sees, and not invisible
+        // at all for a COMMENT: three marker comments written as three blocks
+        // came out as one line, and a marker read back by matching a line of its
+        // own (`rs:env`) then matched nothing. The sections it governs stayed in
+        // a narrowed delivery, which is the quietest way this could fail.
+        //
+        // Only a BLOCK. `Tokens.Tag` is inline html — a `<br>` inside a
+        // paragraph — and a newline after that is whitespace injected into
+        // somebody's prose.
+        const block = "block" in token && token.block === true;
+        return block && !out.endsWith("\n") ? `${out}\n` : out;
       },
     },
   });
@@ -491,7 +507,13 @@ export function imageRefs(source: string): string[] {
 // as every other marker here is. It states the document's SHAPE and never a
 // value, which is the rule that makes a marker safe to trust.
 export const instanceMark = (instance: string): string => `<!-- rs:env ${instance.replace(/>/g, "&gt;")} -->`;
-const INSTANCE_MARK = /^\s*<!--\s*rs:env\s+(.+?)\s*-->\s*$/;
+// Other COMMENTS may share its line, and nothing else may. A renderer is free
+// to join blocks that were written apart (the html one above did, until it was
+// fixed), and a marker that fails to match is a section left in a delivery —
+// the quietest failure available here. Prose before it is a different matter: an
+// inline mention is not a block claiming the heading below, so the line may hold
+// comments and nothing more.
+const INSTANCE_MARK = /^\s*(?:<!--(?:(?!rs:env)[\s\S])*?-->\s*)*<!--\s*rs:env\s+(.+?)\s*-->\s*$/;
 
 // A heading's level, in either of the two forms a document is held in: the
 // markdown it was written as and the html it was rendered to. One rule, two

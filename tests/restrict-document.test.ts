@@ -77,6 +77,38 @@ describe("the sections an environment owns", () => {
     expect(text).toContain("Out of scope");
   });
 
+  // A BLOCK THAT RENDERS TO NOTHING STILL CLOSES ITS LINE.
+  //
+  // Two html blocks separated by a blank line arrive as two tokens whose blank
+  // line has been moved into a `space` between them — and a space renders to
+  // nothing, so the blocks ran together. Invisible for a block a reader sees,
+  // and not invisible at all for a COMMENT: three markers written as three
+  // blocks came out as one line, and a marker read back by matching a line of
+  // its own matched nothing. The sections it governs stayed in a narrowed
+  // delivery, which is the quietest way this could fail.
+  it("keeps adjacent comment blocks on their own lines", () => {
+    const md = ["# T", "", "<!-- other:one -->", "", "<!-- other:two -->", "", instanceMark("local"), "### U (local)", "", "body", ""].join("\n");
+    const html = renderMarkdown(md, () => null, { navDepth: 4, idPrefix: "p-" }).html;
+    expect(html.split("\n")).toContain(instanceMark("local"));
+    expect(dropInstanceSections(html, new Set(["prod"])).dropped).toEqual(["local"]);
+  });
+
+  // …and the marker is read even where something DID join them, because a
+  // marker that fails to match is a section left in a delivery.
+  it("is read when other comments share its line", () => {
+    const joined = `<!-- other:one --><!-- other:two -->${instanceMark("local")}\n<h3 id="x">U</h3>\n<p>body</p>\n`;
+    const { text, dropped } = dropInstanceSections(joined, new Set(["prod"]));
+    expect(dropped).toEqual(["local"]);
+    expect(text).not.toContain("body");
+  });
+
+  // Prose before it is a different matter: an inline mention is not a block
+  // claiming the heading below it.
+  it("is not read when prose shares its line", () => {
+    const inline = `the marker ${instanceMark("local")}\n<h3 id="x">U</h3>\n<p>body</p>\n`;
+    expect(dropInstanceSections(inline, new Set(["prod"])).dropped).toEqual([]);
+  });
+
   // A marker with no heading under it claims nothing, so it covers itself alone:
   // guessing a span for it would remove prose nobody assigned to an environment.
   it("takes only itself where it governs no heading", () => {
