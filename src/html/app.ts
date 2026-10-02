@@ -922,22 +922,21 @@ function splitHead(wrapper: HTMLElement): void {
 
 // A table's column header sticks while its rows are read — the same rule the
   // sheet's tables follow, and for the same reason a hundred-row test table
-  // needs it. Two things only the running page can know, so both are measured
-  // here rather than written into the stylesheet:
+  // needs it. One thing only the running page can know, so it is measured here
+  // rather than written into the stylesheet: WHETHER it sticks at all. A wrapper
+  // wide enough to scroll horizontally is a scroll container, and a header
+  // inside one pins to the container instead of the page — parked partway down
+  // the table. Measured, marked, and the stylesheet gives the header up exactly
+  // there.
   //
-  //   * WHERE it sticks. Under the tab bar and under the section heading that
-  //     sticks below it; that heading is styled prose, and its rendered height
-  //     is not a number any rule here could carry.
-  //   * WHETHER it sticks at all. A wrapper wide enough to scroll horizontally
-  //     is a scroll container, and a header inside one pins to the container
-  //     instead of the page — parked partway down the table. Measured, marked,
-  //     and the stylesheet gives the header up exactly there.
+  // WHERE it sticks is no longer measured. It used to be the height of the one
+  // heading that stuck, which was styled prose; the bands are one shared height
+  // now and how many stand above a table is the depth its section carries
+  // (doc-sections.ts), so the stylesheet computes the offset itself.
   useLayoutEffect(() => {
     const root = body.current;
     if (root === null) return;
     const measure = (): void => {
-      const head = root.querySelector("h2");
-      root.style.setProperty("--rs-doc-head-h", head === null ? "0px" : `${Math.round(head.getBoundingClientRect().height)}px`);
       for (const w of root.querySelectorAll<HTMLElement>(".rs-doc-table")) {
         const over = w.scrollWidth - w.clientWidth > 1;
         w.classList.toggle("rs-overflowing", over);

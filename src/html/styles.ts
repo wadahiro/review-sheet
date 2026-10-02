@@ -4603,15 +4603,12 @@ tr.rs-jump-flash th {
   /* The section stays on screen while it is being read, the way a parameter
      sheet's category heading does (.rs-category-header) — a page of prose is
      read section by section too, and a reader scrolled into the middle of one
-     had nothing on screen saying which. Stacked the same way: h2 under the tab
+     had nothing on screen saying which.
      What RELEASES a heading is the end of its containing block, and markdown
      renders a flat run with no such block — so the viewer cuts the rendered
-     document into sections (doc-sections.ts) and this offset depends on that.
-     Without them nothing is ever released: six headings stack at this one
+     document into sections (doc-sections.ts) and the offset below depends on
+     that. Without them nothing is ever released: six headings stack at one
      offset, with only the last of them visible. */
-  position: sticky;
-  top: var(--rs-tabbar-h, 41px);
-  z-index: 59;
 }
 /* A filled band with a coloured bar is what a HELD heading looks like on this
    page, so an h3 wearing one promised something it cannot do — a reader watched
@@ -4629,17 +4626,54 @@ tr.rs-jump-flash th {
    sticky box is measured where the scroll has pushed it, so a heading whose
    section is far above reports its own section's bottom edge, and a jump to it
    lands there instead of at the section's start. */
-.rs-doc.rs-doc-unstuck h2 { position: static; }
+.rs-doc.rs-doc-unstuck h2,
+.rs-doc.rs-doc-unstuck h3,
+.rs-doc.rs-doc-unstuck h4 { position: static; }
 
-/* An h3 does NOT stick, and that is the whole of the second lesson here. Two
-   levels held at two offsets must CROSS whenever a subsection is the last thing
+/* STACKED, one band per section a reader is inside — the parameter sheet's own
+   arrangement (.rs-category-header), which this page had no equivalent of.
+   A record is a unit heading over a sheet heading over a table of several
+   screens, so holding only the outermost left the reader scrolled into the
+   middle of one item table with nothing on screen saying which it was.
+   Two levels held at two offsets CROSS whenever a subsection is the last thing
    in its section: both are released by the same edge, the lower one starts
-   moving first, and it slides up through the heading above it — measured, a
-   band of the subsection's fill tore out from under its section's title for the
-   last 33px of every such section. No offset avoids it; the child's block ends
-   where the parent's does, and no CSS says "leave together". So one heading is
-   held at a time: the SECTION's, which is the one a reader scrolled into the
-   middle of and cannot otherwise name. */
+   moving first, and it passes through the band above it. What that needed was
+   not an offset but a PAINTING ORDER — the deeper band goes UNDER (descending
+   z-index) and both are opaque, which is how the category headings have always
+   survived the same crossing. An earlier reading of the same measurement
+   concluded one band was the limit; it was the order that was missing.
+   The depth is the SECTION's, set by doc-sections.ts: a record's headings go
+   h2 -> h4 with no h3, and a depth read off the tag name would leave a gap in
+   the stack. The band height is the sheet's own (--rs-cat-h), so the two
+   readings of one document hold their headings at the same rhythm — which is
+   also what makes the offset computable without measuring anything. */
+.rs-doc-section > h2:first-child,
+.rs-doc-section > h3:first-child,
+.rs-doc-section > h4:first-child {
+  position: sticky;
+  top: calc(var(--rs-tabbar-h, 41px) + (var(--rs-doc-depth, 1) - 1) * var(--rs-cat-h));
+  z-index: calc(60 - var(--rs-doc-depth, 1));
+  /* One line, centred in a band of the shared height: the heading's own font
+     size decides its padding, so each level fills the same band. A heading
+     longer than the column is cut with an ellipsis rather than growing the
+     band — a taller heading than the offsets assume would sit partly behind
+     the band above it, and the whole heading is in the chapter tree beside it. */
+  box-sizing: border-box;
+  height: var(--rs-cat-h);
+  padding-top: calc((var(--rs-cat-h) - 1.5em) / 2);
+  padding-bottom: calc((var(--rs-cat-h) - 1.5em) / 2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* Opaque, or the text being held above shows through it — and a heading that
+   holds may now look like one. The h2 keeps the fill it already had (with its
+   own dark-mode values above); the levels under it take the page's ground,
+   exactly as .rs-category-header does. */
+.rs-doc-section > h3:first-child,
+.rs-doc-section > h4:first-child {
+  background: var(--rs-bg);
+}
 /* A dark page paints its own: the light fills above are literals (the sheet's
    own category headings are, too), and a sticky heading has to be opaque or the
    text it is holding above shows through it. */
@@ -4755,9 +4789,18 @@ tr.rs-jump-flash th {
   color: var(--rs-text-secondary);
 }
 /* …and it stays put while its rows are read, below whatever the page already
-   holds there: the tab bar, and the section heading (h2) that sticks under it.
-   That height is measured by the viewer into --rs-doc-head-h, because the band
-   is styled prose and nothing here can know how tall it renders.
+   holds there: the tab bar, and the heading band of EVERY section the table is
+   inside. That used to be one band whose height the viewer measured, because a
+   heading was styled prose and nothing here knew how tall it rendered. Both
+   halves of that are gone: the bands are one shared height (--rs-cat-h) and how
+   many of them stand above this table is the section depth the sections carry
+   (doc-sections.ts), inherited down to the cell. Nothing is measured, and a
+   table under a sheet heading inside a unit heading no longer parks its header
+   behind the second band — which is what a reader sees as a header that stopped
+   sticking.
+
+   A table in no section at all inherits nothing, so the depth falls back to 0
+   and the header sticks straight under the tab bar: there is no band above it.
 
    Only while the table FITS. Once the wrapper scrolls horizontally it is a
    scroll container, sticky inside it would pin to the container rather than to
@@ -4765,7 +4808,7 @@ tr.rs-jump-flash th {
    the sheet gives its own header up at exactly this point. */
 .rs-doc .rs-table-wrapper:not(.rs-overflowing) thead th {
   position: sticky;
-  top: calc(var(--rs-tabbar-h, 41px) + var(--rs-doc-head-h, 0px));
+  top: calc(var(--rs-tabbar-h, 41px) + var(--rs-doc-depth, 0) * var(--rs-cat-h));
   z-index: 3;
 }
 /* …and a table too wide to fit gets its header lifted out of the scroller
@@ -4775,7 +4818,7 @@ tr.rs-jump-flash th {
   margin: 0.8rem 0;
 }
 .rs-doc .rs-doc-sticky-head {
-  top: calc(var(--rs-tabbar-h, 41px) + var(--rs-doc-head-h, 0px));
+  top: calc(var(--rs-tabbar-h, 41px) + var(--rs-doc-depth, 0) * var(--rs-cat-h));
   background: transparent;
   border: 0;
   border-radius: 0;
