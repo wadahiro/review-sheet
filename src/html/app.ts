@@ -3048,6 +3048,30 @@ function collectDocLines(data: SheetData): NavEntry[] {
 
 function collectParams(data: SheetData, showDefaults: boolean): NavEntry[] {
   const showsUnset = (sheet: SheetData["sheets"][number]): boolean => showDefaults || sheet.unset_is_content === true;
+  // WHAT THE PAGE HIDES, THE SEARCH MUST NOT FIND.
+  //
+  // `--no-sources` takes the under_key column off every row, because where THIS
+  // PROJECT keeps a value is not what a delivered document is read for:
+  // `httpd_listen` is a name the recipient has never seen and cannot act on. The
+  // index went on carrying it, so the name was one Cmd-K away — and the palette
+  // prints the matched text, so it was on screen after all. "Hidden on the page,
+  // findable by search" is not hidden.
+  //
+  // Only the fields the under_key column SHOWS, not everything in `extra`: a
+  // harmless one (the provenance a row carries) is displayed elsewhere and
+  // staying findable is right. The rule is that display and search agree about
+  // what is hidden, field by field — so this reads the same declarations the
+  // column does. `extra.var` and a bare `var` name the same place
+  // (`resolveColumnValue`); a dotted path into anything else is not an `extra`
+  // field at all and has nothing here to drop.
+  const hiddenExtra = showSources()
+    ? new Set<string>()
+    : new Set(
+        (data.columns ?? [])
+          .filter((c) => c.place === "under_key")
+          .map((c) => (c.field.startsWith("extra.") ? c.field.slice("extra.".length) : c.field))
+          .filter((f) => !f.includes("."))
+      );
   const out: NavEntry[] = [];
   data.sheets.forEach((sheet, sheetIndex) => {
     const walk = (cats: CategoryData[], parentPath: string, depth: number) => {
@@ -3056,7 +3080,10 @@ function collectParams(data: SheetData, showDefaults: boolean): NavEntry[] {
         (c.params ?? []).forEach((p) => {
           if (!showsUnset(sheet) && effectiveOrigin(p) === "default") return;
           const value = p.value ?? (p.instances ?? []).map((i) => `${i.name} ${i.value}`).join(" ");
-          const extra = Object.values(p.extra ?? {}).join(" ");
+          const extra = Object.entries(p.extra ?? {})
+            .filter(([field]) => !hiddenExtra.has(field))
+            .map(([, v]) => v)
+            .join(" ");
           const text = `${p.key} = ${value} ${p.default ? `(default ${p.default})` : ""} ${pickLang(p.description, "en") ?? ""} ${pickLang(p.remarks, "en") ?? ""} ${extra}`.replace(/\s+/g, " ").trim();
           out.push({
             kind: "param", sheetIndex, sheetName: sheet.name, path, name: p.key, depth,

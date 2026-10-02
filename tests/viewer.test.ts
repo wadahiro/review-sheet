@@ -3310,7 +3310,19 @@ describe("--no-sources and a row's backing variable", () => {
           {
             name: "web",
             categories: [
-              { name: "c", params: [{ key: "Listen", value: "80", description: "d", extra: { var: "httpd_listen" } }] },
+              {
+                name: "c",
+                params: [
+                  {
+                    key: "Listen",
+                    value: "80",
+                    description: "d",
+                    // One field the under_key column shows, and one no column
+                    // does — the rule is per FIELD, not "everything in extra".
+                    extra: { var: "httpd_listen", provenance: "official-docs" },
+                  },
+                ],
+              },
             ],
           },
         ],
@@ -3336,6 +3348,52 @@ describe("--no-sources and a row's backing variable", () => {
     const host = mount(false);
     expect(host.querySelector("tbody .rs-col-key")!.textContent).not.toContain("httpd_listen");
     expect(host.querySelector("tbody .rs-col-key")!.textContent).toContain("Listen");
+  });
+
+  // …AND THE SEARCH AGREES. The index carried the name whatever the page showed,
+  // so it was one Cmd-K away — and the palette prints the matched text, so it was
+  // on screen after all. "Hidden on the page, findable by search" is not hidden.
+  describe("the search index", () => {
+    async function palette(host: HTMLElement): Promise<HTMLElement> {
+      await waitForEffects();
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
+      await Promise.resolve();
+      const p = host.querySelector(".rs-palette") as HTMLElement | null;
+      if (p === null) throw new Error("palette did not open");
+      return p;
+    }
+    // AWAITED. An empty query lists every entry, so reading the list before the
+    // typing has been applied reads the UNFILTERED one — which is never empty,
+    // and would make both of these pass whatever the index holds.
+    const hits = async (p: HTMLElement, q: string): Promise<string[]> => {
+      const input = p.querySelector(".rs-palette-input") as HTMLInputElement;
+      input.value = q;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await waitForEffects();
+      return [...p.querySelectorAll(".rs-palette-name")].map((e) => e.textContent ?? "");
+    };
+
+    it("finds the backing variable while the column shows it", async () => {
+      expect(await hits(await palette(mount(true)), "httpd_listen")).not.toEqual([]);
+    });
+
+    it("does not find it once the column is hidden", async () => {
+      expect(await hits(await palette(mount(false)), "httpd_listen")).toEqual([]);
+    });
+
+    // …and the row itself is still findable by what the page DOES show, or
+    // hiding one name would have cost the search the row.
+    it("still finds the row by the product's own key", async () => {
+      expect(await hits(await palette(mount(false)), "Listen")).not.toEqual([]);
+    });
+
+    // PER FIELD, and that is the whole care of it: `--no-sources` hides the
+    // under_key column, not the row's provenance, so dropping everything in
+    // `extra` would make the search disagree with the page in the other
+    // direction — a word that IS shown becoming unfindable.
+    it("leaves an extra field no column hides alone", async () => {
+      expect(await hits(await palette(mount(false)), "official-docs")).not.toEqual([]);
+    });
   });
 });
 
