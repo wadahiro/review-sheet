@@ -4166,6 +4166,13 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // mark says WHICH ONE THIS IS, and a reader needs the second for as long as
   // they are reading it.
   const landOn = useCallback((el: HTMLElement) => {
+    // CENTRED, and that is not a preference. `aimAt` aims at the TOP and leans
+    // on the scroll-margin its destination declares — which a heading declares
+    // and a table ROW does not, so a row aimed at that way lands flush against
+    // the viewport and under the sticky bar, highlighted and invisible. The
+    // middle of the screen needs nothing declared and can never be behind
+    // anything.
+    el.scrollIntoView({ block: "center" });
     el.classList.remove("rs-jump-flash");
     void el.offsetWidth;
     el.classList.add("rs-jump-flash");
@@ -4190,7 +4197,6 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     const land = (): boolean => {
       const el = document.querySelector(`[id$="--${cssEscape(encodeIdPart(key))}"]`);
       if (!el) return false;
-      el.scrollIntoView({ block: "center" });
       landOn(el as HTMLElement);
       // …and the row becomes what the fragment names, which is the address a
       // reader copies. Still replaceState: see the hash effect.
@@ -4216,7 +4222,19 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     if (at === null) return document.getElementById(id);
     return document.querySelector(`.rs-doc [data-rs-line="${at[1]}"]`);
   };
-  const jumpToNav = useCallback((sheetIndex: number, id: string, fallbackId?: string, sheetName?: string, categoryPath?: string) => {
+  const jumpToNav = useCallback((
+    sheetIndex: number,
+    id: string,
+    fallbackId?: string,
+    sheetName?: string,
+    categoryPath?: string,
+    // …and WHEN IT HAS LANDED, for a caller that has something of its own to do
+    // there. Crossing sheets defers the scroll by two frames (the target is not
+    // in the DOM until the new sheet has rendered), so a caller timing it with
+    // a `setTimeout(0)` of its own ran FIRST — measured as a highlight on a row
+    // the page had not scrolled to yet. One place knows when it is done.
+    after?: (el: HTMLElement) => void
+  ) => {
     setPaletteOpen(false);
     // A reader who picks a section from the tree has picked another place, so
     // the row they were on stops being the answer to "where am I".
@@ -4257,6 +4275,9 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
       // categories, so a param jump highlights its containing category).
       setCurrentNavId(fallbackId ?? id);
       spySuppressUntil.current = Date.now() + 700;
+      // Last, inside the same frame: whatever it does wins over the aim above,
+      // which is what a caller asking to land somewhere specific means.
+      after?.(el as HTMLElement);
     };
     const sheetChanged = sheetIndex !== activeSheet;
     if (sheetChanged) { jumpOwnsScroll.current = true; setActiveSheet(sheetIndex); }
@@ -4274,13 +4295,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // both; the flash is what tells the reader which of fifty rows was meant.
   const goToCiter = useCallback((c: Citation) => {
     setCiters(null);
-    jumpToNav(c.sheetIndex, c.address);
-    // A macrotask, because crossing sheets is a state change and the
-    // destination has to exist before it can be landed on.
-    window.setTimeout(() => {
-      const el = resolveNavTarget(c.address);
-      if (el !== null) landOn(el);
-    }, 0);
+    jumpToNav(c.sheetIndex, c.address, undefined, undefined, undefined, landOn);
   }, [jumpToNav, landOn]);
 
 

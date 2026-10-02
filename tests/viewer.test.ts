@@ -4263,6 +4263,98 @@ describe("viewer: the verdicts decided on a line", () => {
     expect(host.querySelector('.rs-doc [data-rs-line="6"].rs-jump-flash'), "it went to the wrong verdict").not.toBeNull();
   });
 
+  // ACROSS SHEETS, which is the only place the ordering can go wrong.
+  //
+  // Crossing sheets defers the scroll by two frames — the destination is not in
+  // the DOM until the new sheet has rendered — so a caller that timed the
+  // landing with a `setTimeout(0)` of its own ran FIRST, against a row that did
+  // not exist yet. Same sheet, the scroll is synchronous and nothing shows.
+  it("lands on a verdict that lives on another sheet", async () => {
+    const ID2 = "observed poc other";
+    const recHtml = `<h2 id="p-r">R</h2>\n<table><tbody><tr data-rs-line="9"><td>7</td><td>elsewhere</td><td><a href="rs-evidence:${encodeURIComponent(`${ID2}#L2`)}">e</a></td></tr></tbody></table>\n`;
+    const payload = {
+      metadata: { title: "t" },
+      versions: [
+        {
+          version: "current",
+          sheets: [
+            // The sheet the reader is ON, whose own row cites the same document…
+            { name: "aws", instances: ["poc"], categories: [{ name: "alb", params: [{ key: "k", value: "1", description: "d", remarks: `[e](rs-evidence:${encodeURIComponent(`${ID2}#L2`)})` }] }] },
+            // …and the RECORD, on another sheet, citing line 2 as well.
+            { name: "rec", categories: [], document: { html: recHtml, headings: [{ level: 2, text: "R", id: "p-r" }] } },
+          ],
+          artifacts: [
+            {
+              id: ID2,
+              sheet: "rec",
+              source_file: "other",
+              nature: "observed",
+              observed: { host: "acct", at: "T" },
+              instances: ["poc"],
+              lines: [{ text: "a", kind: "verbatim" as const }, { text: "b", kind: "verbatim" as const }],
+            },
+          ],
+        },
+      ],
+    };
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: payload as never, reviewEnabled: false, initialLang: "ja", server: false }), host);
+    await waitForEffects();
+    // Open the evidence from the SHEET, so the record's row is on another tab.
+    (host.querySelector('a[href^="rs-evidence:"]') as HTMLElement).dispatchEvent(
+      new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 })
+    );
+    for (let i = 0; i < 100; i++) {
+      if (host.querySelector(".rs-artifact-panel") !== null) break;
+      await waitForEffects();
+    }
+    // Line 2 is cited twice — once by this sheet's row, once by the record.
+    ([...host.querySelectorAll(".rs-artifact-line")][1] as HTMLElement).click();
+    await waitForEffects();
+    const rec = [...host.querySelectorAll(".rs-citer")].find((b) => (b.textContent ?? "").includes("elsewhere")) as HTMLElement;
+    expect(rec, "the record was not offered as a destination").not.toBeUndefined();
+    rec.click();
+    for (let i = 0; i < 100; i++) {
+      if (host.querySelector('.rs-doc tr[data-rs-line="9"].rs-row-here') !== null) break;
+      await waitForEffects();
+    }
+    expect(
+      host.querySelector('.rs-doc tr[data-rs-line="9"].rs-row-here'),
+      "the verdict on the other sheet was never landed on"
+    ).not.toBeNull();
+  });
+
+  // IT HAS TO BE ON SCREEN, which "highlighted" does not imply.
+  //
+  // `aimAt` aims at the TOP of its destination and leans on the scroll-margin
+  // that destination declares — a heading declares one, a table ROW does not —
+  // so a row aimed at that way lands flush against the viewport, behind the
+  // sticky bar: marked, and invisible. Centring needs nothing declared.
+  it("scrolls the verdict into the middle of the screen, not under the header", async () => {
+    const host = mountWith([{ line: 5, no: "1", what: "a", at: 3 }]);
+    await openPanel(host);
+    const seen: (string | undefined)[] = [];
+    const real = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (arg?: boolean | ScrollIntoViewOptions) {
+      if (this instanceof window.HTMLTableRowElement) seen.push(typeof arg === "object" ? arg.block : String(arg));
+      return real.call(this, arg as never);
+    };
+    try {
+      lineAt(host, 3).click();
+      for (let i = 0; i < 100; i++) {
+        if (host.querySelector(".rs-doc tr.rs-row-here") !== null) break;
+        await waitForEffects();
+      }
+    } finally {
+      Element.prototype.scrollIntoView = real;
+    }
+    // The LAST scroll aimed at the row decides where it ends up.
+    expect(seen.length, "the verdict row was never scrolled to").toBeGreaterThan(0);
+    expect(seen[seen.length - 1]).toBe("center");
+  });
+
   // …and a line nothing cites does nothing, rather than opening an empty choice.
   it("leaves an uncited line alone", async () => {
     const host = mountWith([{ line: 5, no: "1", what: "a", at: 3 }]);
