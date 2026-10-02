@@ -949,3 +949,81 @@ describe("a written set's images", () => {
     expect(Buffer.from(listed.stdout).equals(PNG)).toBe(true);
   });
 });
+
+// …AND THE WRITTEN SET LOSES THE FILE TOO, which is where it was noticed.
+//
+// The rows going and the file staying was reported as a file left under
+// `docs/sources/` — so the check is asked of the directory, not of the model the
+// directory was written from. Those are two steps apart (the narrowing happens,
+// then the set is written from what survived), and a check on the first alone
+// would pass with the second still carrying it.
+describe("a set written for one environment", () => {
+  const cli = resolvePath(import.meta.dir, "..", "src", "cli.ts");
+
+  const project = (): string => {
+    const at = mkdtempSync(join(tmpdir(), "rs-dropsrc-"));
+    const preview = (component: string | undefined, source: string) => ({
+      id: component === undefined ? `clients::${source}` : `clients::${component}`,
+      sheet: "clients",
+      ...(component === undefined ? {} : { component }),
+      source_file: source,
+      nature: "source",
+      lines: [{ text: `# ${source}`, kind: "verbatim" }],
+    });
+    const model = {
+      metadata: { title: "t" },
+      sheets: [
+        {
+          name: "clients",
+          instances: ["A", "B"],
+          categories: [
+            { name: "client-X", params: [{ key: "rootUrl", description: { ja: "d" }, instances: [{ name: "A", value: "https://x" }] }] },
+            { name: "client-Y", params: [{ key: "rootUrl", description: { ja: "d" }, instances: [{ name: "B", value: "https://y" }] }] },
+          ],
+        },
+      ],
+      artifacts: [preview("client-X", "x.tf"), preview("client-Y", "y.tf"), preview(undefined, "shared.tf")],
+    };
+    writeFileSync(join(at, "input.json"), JSON.stringify(model));
+    return at;
+  };
+
+  const write = (args: string[]): { dir: string; files: string[]; stderr: string } => {
+    const dir = project();
+    const out = join(dir, "set");
+    const r = Bun.spawnSync(["bun", "run", cli, "generate", "-i", "input.json", "--format", "md", ...args, "-o", out], { cwd: dir });
+    expect(r.exitCode, r.stderr.toString().slice(0, 500)).toBe(0);
+    const walk = (d: string): string[] =>
+      readdirSync(d).flatMap((e) => (statSync(join(d, e)).isDirectory() ? walk(join(d, e)) : [join(d, e).slice(out.length + 1)]));
+    return { dir, files: walk(out).sort(), stderr: r.stderr.toString() };
+  };
+
+  it("carries every component's source file when it delivers every environment", () => {
+    const { files } = write([]);
+    expect(files).toContain("docs/sources/x.tf");
+    expect(files).toContain("docs/sources/y.tf");
+  });
+
+  it("does not write the dropped component's source file", () => {
+    const { files } = write(["--instances", "B", "--drop-empty-components"]);
+    expect(files).toContain("docs/sources/y.tf");
+    expect(files, "the removed component's file is still in the delivery").not.toContain("docs/sources/x.tf");
+  });
+
+  // …and the one nothing can judge is still there, with the line that says so —
+  // which is the half a reader could not otherwise discover.
+  it("keeps the unjudgeable one and says it did", () => {
+    const { files, stderr } = write(["--instances", "B", "--drop-empty-components"]);
+    expect(files).toContain("docs/sources/shared.tf");
+    expect(stderr).toContain("shared.tf");
+    expect(stderr).toContain("names no component");
+  });
+
+  // The default keeps the rows, so the files stay: there is nothing for them to
+  // be out of step with.
+  it("keeps both when the rows are kept", () => {
+    const { files } = write(["--instances", "B"]);
+    expect(files).toContain("docs/sources/x.tf");
+    expect(files).toContain("docs/sources/y.tf");
+  });
+});
