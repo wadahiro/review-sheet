@@ -3017,6 +3017,33 @@ function collectNav(data: SheetData, showDefaults: boolean, pivoted: Set<string>
 // line and `jumpToNav` resolves it by that attribute.
 export const docLineId = (sheetIndex: number, line: number): string => `rs-doc-line:${sheetIndex}:${line}`;
 
+// THE DOCUMENT'S ADDRESS: which sheet, and where in it. One spelling, read by
+// everything that writes the fragment (the effect that follows the reader, the
+// push a deliberate jump leaves) and by the one that reads it back on
+// back/forward — three places that must agree about what an address IS, and
+// would not if each wrote its own.
+//
+// A fragment and never a path: a delivered document is opened from a file://
+// URL, where pushState with a path is a SecurityError (measured).
+export const docFragment = (sheet: number, where?: string | null): string =>
+  sheet === -1 ? "#overview" : (where ?? "") === "" ? `#${sheet + 1}` : `#${sheet + 1}/${encodeURIComponent(where!)}`;
+
+// …and the same address read back. `null` for anything this document cannot
+// answer for, which is what a stale link pasted from another version is.
+export const parseFragment = (hash: string, sheets: number): { sheet: number; where: string | null } | null => {
+  const raw = hash.replace(/^#/, "");
+  const slash = raw.indexOf("/");
+  const base = slash < 0 ? raw : raw.slice(0, slash);
+  let where: string | null = null;
+  if (slash >= 0) {
+    try { where = decodeURIComponent(raw.slice(slash + 1)) || null; } catch { where = null; }
+  }
+  if (base === "overview") return { sheet: -1, where: null };
+  const n = Number.parseInt(base, 10);
+  if (Number.isNaN(n) || n < 1 || n > sheets) return null;
+  return { sheet: n - 1, where };
+};
+
 function collectDocLines(data: SheetData): NavEntry[] {
   const out: NavEntry[] = [];
   data.sheets.forEach((sheet, sheetIndex) => {
@@ -3976,10 +4003,40 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // so, and the selection below stands aside.
   const jumpOwnsScroll = useRef(false);
 
+
+  // A DELIBERATE MOVE LEAVES AN ENTRY; FOLLOWING THE READER DOES NOT.
+  //
+  // Both write the same address (`docFragment`) and that is the whole design:
+  // the fragment follows the reader by REPLACING (see the effect below, which is
+  // why scrolling through fifty sections does not fill the history), and an act
+  // of navigation — a click in the chapter tree, a result from the palette, a
+  // sheet chosen by name — PUSHES, so back returns to where the reader was.
+  //
+  // Only half of this existed: `location.hash = …` on a sheet change pushed an
+  // entry and nothing ever read one back, so the button rewrote the URL and left
+  // the page where it stood, while a jump inside one document pushed nothing at
+  // all. Half a mechanism is worse than neither — a button that looks available
+  // and does nothing.
+  const pushAddress = useCallback((sheet: number, where?: string | null) => {
+    const next = docFragment(sheet, where);
+    // The same place is not a new entry: a reader clicking the section they are
+    // already in would otherwise need two presses to leave it. This is also
+    // what keeps a RESTORE from pushing — by the time the page reacts to a
+    // traversal the browser has already put that address in the bar, so the jump
+    // that follows asks for the place it is at. A flag for "the browser is
+    // navigating" was written first and removed: it could not be made to fire,
+    // which means it was not the thing doing the work.
+    if (location.hash === next) return;
+    history.pushState(null, "", next);
+  }, []);
+
   // Update URL hash on tab change (1-based)
   const setActiveSheet = useCallback((idx: number) => {
     setActiveSheetState(idx);
-    location.hash = idx === -1 ? "overview" : String(idx + 1);
+    // A sheet chosen by name is a place with no section in it; a jump that
+    // crosses sheets names one and has already pushed it (jumpToNav), so this
+    // stands aside exactly where it stands aside over the scroll.
+    if (!jumpOwnsScroll.current) pushAddress(idx);
     // …and the document opens at its BEGINNING. Switching sheets replaces what
     // is on screen and leaves the scroll where it was, so choosing a document
     // while deep inside another one landed that far down the new one —
@@ -3990,7 +4047,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     // the middle of it and then clicks its name in the tree is asking to go
     // back to the top of it, and an act that does nothing looks broken.
     if (!jumpOwnsScroll.current) window.scrollTo({ top: 0 });
-  }, []);
+  }, [pushAddress]);
   const [filterCommented, setFilterCommented] = useState(false);
   const [hideOutOfScope, setHideOutOfScope] = useState(false);
   // Rows nobody set, at the product's own default. Off by default: the sheet's
@@ -4265,6 +4322,11 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     // A reader who picks a section from the tree has picked another place, so
     // the row they were on stops being the answer to "where am I".
     setMarked(null);
+    // BEFORE anything moves: the entry being left is already the reader's own
+    // position (the effect below keeps it current), so this one is the place
+    // they asked for. `fallbackId` is what the highlight and the fragment use
+    // where the exact row is not rendered — one address, not two.
+    pushAddress(sheetIndex, fallbackId ?? id);
     // Instant jump (no smooth animation) so far-away targets land immediately.
     // Fall back to the category when the exact row is not rendered (e.g. a
     // transposed table, where a parameter is a column rather than a row).
@@ -4314,7 +4376,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     } else {
       scroll();
     }
-  }, [activeSheet, setActiveSheet]);
+  }, [activeSheet, setActiveSheet, pushAddress]);
 
   // GO TO A VERDICT DECIDED ON THIS LINE. The address is either a block of
   // prose or a sheet's row, and `jumpToNav` already crosses sheets and resolves
@@ -4578,16 +4640,49 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // a history entry per section and could not get back out with the back
   // button. The section is dropped on the overview, which has none.
   useEffect(() => {
-    const base = activeSheet === -1 ? "overview" : String(activeSheet + 1);
+    // The same spelling a push uses (`docFragment`), so the two cannot disagree
+    // about what this place is called.
     // A selected row outranks the section the spy is watching: the spy
     // recomputes on every scroll and `scrollIntoView` fires one, so a row this
     // fragment named was overwritten by its enclosing section. Still
     // replaceState, as it always was — the fragment FOLLOWS the reader here and
     // a history entry per section is what that comment below is about.
     const where = (marked?.id ?? "") !== "" ? marked!.id : currentNavId;
-    const next = where === null || activeSheet === -1 ? `#${base}` : `#${base}/${encodeURIComponent(where)}`;
+    const next = docFragment(activeSheet, where);
     if (location.hash !== next) history.replaceState(null, "", next);
   }, [currentNavId, activeSheet, marked]);
+
+  // BACK AND FORWARD, which is the other half of pushing an entry at all.
+  //
+  // `popstate` and deliberately not `hashchange`: popstate means a TRAVERSAL and
+  // nothing else, while the fragment here changes constantly without anybody
+  // having navigated — this page rewrites it as the reader scrolls. A listener
+  // on hashchange therefore has to tell its own writing apart from the reader's
+  // press, which was tried: it re-entered the jump it had just made and took the
+  // mark off the row it had landed on (and in a real browser a traversal fires
+  // both events, so the listener would also have fired twice). An in-page link
+  // to `#some-heading` needs no listener at all — the browser scrolls to the id
+  // itself, and the fragment effect above then carries on from there.
+  //
+  // The restore is the ordinary jump, so landing from the back button looks
+  // exactly like landing from the tree: the flash says where you arrived. It
+  // pushes nothing, which is what `travelling` is for.
+  //
+  // Scroll restoration is handed to this page in the same breath: the browser
+  // restores a position before the content that would make it exist has been
+  // built (the same reason the fragment carries the place at all), and its guess
+  // then fights the jump below.
+  useEffect(() => {
+    try { history.scrollRestoration = "manual"; } catch { /* not every browser offers it */ }
+    const onTravel = (): void => {
+      const at = parseFragment(location.hash, data.sheets.length);
+      if (at === null) return;
+      if (at.where === null) { if (at.sheet !== activeSheet) setActiveSheet(at.sheet); }
+      else jumpToNav(at.sheet, at.where);
+    };
+    window.addEventListener("popstate", onTravel);
+    return () => window.removeEventListener("popstate", onTravel);
+  }, [activeSheet, data.sheets.length, jumpToNav, setActiveSheet]);
   // Which preview a row belongs to, and where in it — resolved once per
   // document by the shared index (`artifact-index.ts`), because `md-set` asks
   // the same question when it writes the link into the carried markdown, and

@@ -4423,3 +4423,159 @@ describe("viewer: the verdicts decided on a line", () => {
     expect(host.querySelector(".rs-doc .rs-jump-flash")).toBeNull();
   });
 });
+
+// THE HISTORY THE NAVIGATION LEAVES, and the button that reads it back.
+//
+// Only half of this existed: a sheet chosen by name assigned `location.hash`,
+// which pushes an entry, and nothing ever read one back — so the back button
+// rewrote the URL and left the page where it stood. A jump WITHIN a document
+// pushed nothing at all, so for the commonest move in the tree (a heading of
+// the page already open) there was nothing to go back to. Half a mechanism is
+// worse than neither: a button that looks available and does nothing.
+//
+// The rule is one sentence. A deliberate move PUSHES; the fragment following
+// the reader REPLACES. Both write the same address, and `popstate` reads it.
+describe("viewer: the history the navigation leaves", () => {
+  const TWO: ParameterSheetInput = {
+    metadata: { title: "t" },
+    sheets: [
+      {
+        name: "first",
+        instances: ["staging"],
+        categories: [
+          { name: "Alpha", params: [{ key: "a", origin: "common", value: "1", description: "d" }] },
+          { name: "Beta", params: [{ key: "b", origin: "common", value: "2", description: "d" }] },
+        ],
+      },
+      {
+        name: "second",
+        instances: ["staging"],
+        categories: [{ name: "Gamma", params: [{ key: "c", origin: "common", value: "3", description: "d" }] }],
+      },
+    ],
+  } as never;
+
+  let pushed: string[] = [];
+  let replaced: string[] = [];
+  const real = { push: history.pushState, replace: history.replaceState };
+
+  const mountTwo = (): HTMLElement => {
+    location.hash = "#1";
+    pushed = [];
+    replaced = [];
+    history.pushState = function (this: History, a: unknown, b: unknown, url: string) {
+      pushed.push(url);
+      return real.push.call(this, a as never, b as never, url);
+    } as never;
+    history.replaceState = function (this: History, a: unknown, b: unknown, url: string) {
+      replaced.push(url);
+      return real.replace.call(this, a as never, b as never, url);
+    } as never;
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: { metadata: TWO.metadata, versions: [{ version: "current", sheets: TWO.sheets }] }, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    return host;
+  };
+  afterEach(() => {
+    history.pushState = real.push;
+    history.replaceState = real.replace;
+  });
+
+  const itemFor = (host: HTMLElement, text: string): HTMLElement =>
+    [...host.querySelectorAll(".rs-navtree-item")].find((e) => (e.textContent ?? "").includes(text)) as HTMLElement;
+  const heading = (host: HTMLElement): string => host.querySelector(".rs-sheet-header h2")?.textContent ?? "";
+
+  it("leaves an entry for a jump inside the document being read", async () => {
+    const host = mountTwo();
+    await waitForEffects();
+    pushed = [];
+    itemFor(host, "Beta").click();
+    await waitForEffects();
+    expect(pushed).toHaveLength(1);
+    expect(decodeURIComponent(pushed[0]!)).toContain("Beta");
+  });
+
+  // …and none at all while the reader simply reads: the fragment follows them
+  // by replacing, which is why scrolling a fifty-section record does not fill
+  // the history with places nobody chose.
+  it("leaves none while the reader scrolls", async () => {
+    const host = mountTwo();
+    await waitForEffects();
+    pushed = [];
+    for (let i = 0; i < 3; i++) {
+      window.dispatchEvent(new window.Event("scroll"));
+      await waitForEffects();
+    }
+    expect(pushed).toEqual([]);
+    expect(host.querySelector(".rs-navtree")).not.toBeNull();
+  });
+
+  // The place already open is not a new place — otherwise leaving it would take
+  // two presses.
+  it("does not stack an entry for the place already open", async () => {
+    const host = mountTwo();
+    await waitForEffects();
+    itemFor(host, "Beta").click();
+    await waitForEffects();
+    pushed = [];
+    itemFor(host, "Beta").click();
+    await waitForEffects();
+    expect(pushed).toEqual([]);
+  });
+
+  // THE OTHER HALF. Crossing documents is the move where the old code left an
+  // entry and ignored it, so the button changed the URL and nothing else.
+  it("comes back to the document the reader came from", async () => {
+    const host = mountTwo();
+    await waitForEffects();
+    expect(heading(host)).toContain("first");
+    itemFor(host, "Gamma").click();
+    await waitForEffects();
+    expect(heading(host), "the jump never crossed to the second sheet").toContain("second");
+    history.back();
+    await waitForEffects();
+    expect(heading(host)).toContain("first");
+  });
+
+  // …and within one document it comes back to the SECTION, which is the move
+  // that used to leave no entry at all.
+  //
+  // Read off the landing flash and not off the tree's highlight: the highlight
+  // is the scroll-spy's, and a test environment with no layout has no scroll for
+  // it to answer from. The flash is put there by the jump and by nothing else,
+  // so it is cleared first — otherwise the flash still burning from the click
+  // that went TO Beta would pass this whether the button worked or not.
+  it("comes back to the section the reader came from", async () => {
+    const host = mountTwo();
+    await waitForEffects();
+    itemFor(host, "Alpha").click();
+    await waitForEffects();
+    itemFor(host, "Beta").click();
+    await waitForEffects();
+    for (const el of [...host.querySelectorAll(".rs-jump-flash")]) el.classList.remove("rs-jump-flash");
+    history.back();
+    await waitForEffects();
+    const landed = [...host.querySelectorAll(".rs-jump-flash")].map((e) => e.textContent ?? "");
+    expect(landed.join(" "), `the fragment says ${location.hash}`).toContain("Alpha");
+    expect(landed.join(" ")).not.toContain("Beta");
+  });
+
+  // Coming back must not push the place being returned FROM, or one press
+  // would need two.
+  it("pushes nothing of its own on the way back", async () => {
+    const host = mountTwo();
+    await waitForEffects();
+    // TWO jumps, so the entry being returned to names a section and the restore
+    // actually runs a jump. With one, back lands on a bare `#1` the page is
+    // already on and nothing happens — which would pass this whether the
+    // restore pushes or not.
+    itemFor(host, "Alpha").click();
+    await waitForEffects();
+    itemFor(host, "Beta").click();
+    await waitForEffects();
+    pushed = [];
+    history.back();
+    await waitForEffects();
+    expect(pushed, `pushed ${pushed.join(", ")}`).toEqual([]);
+  });
+});
