@@ -306,3 +306,101 @@ describe("a markdown set written into a directory that already holds files", () 
     expect(proc.stderr.toString()).not.toContain("not written by this run");
   });
 });
+
+// A NARROWED DELIVERY CARRIES ONLY ITS OWN EVIDENCE.
+//
+// Two halves that only work together, which is why this is asked of the written
+// file and not of either one. `--instances` has always narrowed evidence — EXCEPT
+// where a document the delivery carries still cites it, and a unit-test record
+// cited every environment it had been run for, because nothing could narrow a
+// record. Dropping the bytes it named would have left its links opening nothing.
+//
+// Records narrow now (`rs:env`), so the exception stops applying by itself: the
+// sections go, nothing cites the other environments' bytes, and the bytes go
+// with them. If either half regressed, this would read as a delivery quietly
+// handing over another environment's collected files.
+describe("generate --instances and a record's evidence", () => {
+  const ID = (env: string): string => `observed ${env} host1 /etc/thing`;
+  const mark = (env: string): string => `<!-- rs:env ${env} -->`;
+  const link = (env: string): string => `rs-evidence:${encodeURIComponent(ID(env))}`;
+
+  // One record citing both environments, and the collected bytes of each.
+  const project = (): { dir: string; model: string; results: string } => {
+    const dir = mkdtempSync(join(tmpdir(), "rs-ev-narrow-"));
+    const html = [
+      "<h2>Items</h2>",
+      mark("local"),
+      '<h3 id="u-local">Unit (local)</h3>',
+      `<p><a href="${link("local")}">host1 /etc/thing</a></p>`,
+      mark("prod"),
+      '<h3 id="u-prod">Unit (prod)</h3>',
+      `<p><a href="${link("prod")}">host1 /etc/thing</a></p>`,
+    ].join("\n");
+    const model = {
+      metadata: { title: "t" },
+      sheets: [
+        { name: "values", instances: ["local", "prod"], categories: [{ name: "c", params: [{ key: "k", instances: [{ name: "local", value: "1" }, { name: "prod", value: "2" }] }] }] },
+        { name: "record", instances: ["local", "prod"], categories: [], document: { html, markdown: html, headings: [] } },
+      ],
+    };
+    const results = {
+      results: [],
+      evidence: ["local", "prod"].map((env) => ({
+        instance: env,
+        host: "host1",
+        at: "T",
+        sheet: "values",
+        path: "/etc/thing",
+        text: `bytes read on ${env}\n`,
+      })),
+    };
+    writeFileSync(join(dir, "input.json"), JSON.stringify(model));
+    writeFileSync(join(dir, "results.json"), JSON.stringify(results));
+    return { dir, model: "input.json", results: "results.json" };
+  };
+
+  const carried = (args: string[]): { ids: string[]; stderr: string } => {
+    const { dir, model, results } = project();
+    const out = join(dir, "sheet.html");
+    const proc = Bun.spawnSync(["bun", "run", cli, "generate", "-i", model, "--evidence", results, ...args, "-o", out], { cwd: dir });
+    if (proc.exitCode !== 0) throw new Error(proc.stderr.toString().slice(0, 600));
+    const html = readFileSync(out, "utf-8");
+    const block = /id="sheet-data-gz"[^>]*>([^<]*)</.exec(html);
+    const json = block
+      ? gunzipSync(Buffer.from(block[1]!.trim(), "base64")).toString("utf-8")
+      : /id="sheet-data"[^>]*>([\s\S]*?)<\/script>/.exec(html)![1]!;
+    const data = JSON.parse(json) as { versions: { artifacts?: { id: string; nature?: string }[] }[] };
+    return {
+      ids: data.versions.flatMap((v) => (v.artifacts ?? []).filter((a) => a.nature === "observed").map((a) => a.id)),
+      stderr: proc.stderr.toString(),
+    };
+  };
+
+  it("carries both environments' bytes when it delivers both", () => {
+    expect(carried([]).ids.sort()).toEqual([ID("local"), ID("prod")].sort());
+  });
+
+  it("carries only the delivered environment's", () => {
+    const got = carried(["--instances", "prod"]);
+    expect(got.ids).toEqual([ID("prod")]);
+  });
+
+  // NOT IN THE FILE, which is the claim `--instances` makes everywhere else —
+  // never a hidden section.
+  it("leaves the other environment's bytes out of the document altogether", () => {
+    const { dir, model, results } = project();
+    const out = join(dir, "sheet.html");
+    const proc = Bun.spawnSync(["bun", "run", cli, "generate", "-i", model, "--evidence", results, "--instances", "prod", "-o", out], { cwd: dir });
+    expect(proc.exitCode, proc.stderr.toString().slice(0, 400)).toBe(0);
+    const html = readFileSync(join(dir, "sheet.html"), "utf-8");
+    const block = /id="sheet-data-gz"[^>]*>([^<]*)</.exec(html);
+    const json = block ? gunzipSync(Buffer.from(block[1]!.trim(), "base64")).toString("utf-8") : html;
+    expect(json).toContain("bytes read on prod");
+    expect(json, "the undelivered environment's collected bytes are in the delivery").not.toContain("bytes read on local");
+  });
+
+  // …and it says so, because what a delivery left out is never silent.
+  it("says how many it left out", () => {
+    expect(carried(["--instances", "prod"]).stderr).toContain("left out by --instances");
+  });
+});

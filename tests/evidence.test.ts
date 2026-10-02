@@ -212,11 +212,18 @@ describe("an evidence reference", () => {
 // A record that travels and evidence that does not is one document
 // contradicting itself.
 describe("evidence a carried record already cites", () => {
-  // A unit-test record is a DOCUMENT sheet: its verdicts and their links are
-  // baked in at import, and `--instances` never narrowed them. So a delivery
-  // for prod hands over every verdict read on `local` — and dropping the bytes
-  // those verdicts name leaves links that open nothing, which is the one thing
-  // this tool refuses to ship.
+  // The rule is about what a carried document CITES, not about which
+  // environment the bytes came from: dropping bytes a delivered page links to
+  // leaves a link that opens nothing, which is the one thing this tool refuses
+  // to ship.
+  //
+  // It was written for a unit-test record, whose verdicts and their links are
+  // baked in at import — and which `--instances` could not narrow at all, so a
+  // delivery for prod carried every verdict read on `local` and had to carry
+  // their bytes with them. A record narrows now (`rs:env` sections, see
+  // restrict.ts), so that case mostly answers itself: the sections go, nothing
+  // cites the other environment, and the bytes go too. The rule stands for
+  // whatever a delivered page does still cite, which is what these two check.
   const localId = "observed local web01 /etc/httpd/conf/httpd.conf";
 
   it("drops an environment's evidence when nothing carried cites it", () => {
