@@ -265,6 +265,13 @@
         },
         "note": {
           "type": "string"
+        },
+        "also": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          },
+          "description": "THE OTHER HOSTS that answered the same thing, where several did. The verdict is the worst of them and points at the host that produced it; these are the rest, so a reader following it reaches every set of bytes it was read from rather than one. Recorded rather than derived: a functional item is folded across hosts by the JUDGE, so the results hold one answer and nothing downstream can recover which hosts stood behind it. (A value row is stored per host and folded at render instead, which is why that half never needed this field.)"
         }
       }
     }

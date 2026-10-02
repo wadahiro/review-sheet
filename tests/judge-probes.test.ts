@@ -7,6 +7,7 @@
 // "cannot be asked here" and "ran and failed" apart.
 
 import { describe, it, expect } from "bun:test";
+import { validateResults } from "../src/validate";
 import { judgeProbes, type ProbeResult, type ObservedHost, type Observation, type ProbeContext } from "../src/judge";
 import type { TestPlan } from "../src/testplan";
 import { CHANNEL_WORDS } from "../src/channel-words";
@@ -43,6 +44,70 @@ describe("one functional item across every host", () => {
 
   it("passes only when every host that ran passed", () => {
     expect(judge(two(ran(), ran())).answer.status).toBe("pass");
+  });
+
+  // EVERY HOST THAT ANSWERED, reachable from the record.
+  //
+  // The documents always carried every host's bytes; only the verdict's own
+  // pointer was single, so a record said "(2 ホスト)" beside a link to one of
+  // them while the other set of bytes — collected, carried, sitting in the
+  // delivery — had nothing pointing at it. `evidenceCell` has rendered a list
+  // from this field all along; it was never given one.
+  describe("the hosts a verdict points at", () => {
+    it("names the rest beside the one it is", () => {
+      const got = judge(two(ran(), ran({ how: "ss -lntp", text: "LISTEN 8080" })));
+      expect(got.answer.evidence?.host).toBe("web01");
+      expect((got.answer.evidence?.also ?? []).map((a) => a.host)).toEqual(["web02"]);
+    });
+
+    // Every host that RAN, not only the failing ones — which is what the file
+    // channel's own fold does. The two fields answer different questions:
+    // `reason` diagnoses, so it names who failed; this is the evidence, and on a
+    // failure the passing hosts' bytes are what a reader diffs the failure
+    // against.
+    it("keeps the passing hosts beside a failing one", () => {
+      const got = judge(two(ran(), ran()), (_p, c) => (c.host === "web01" ? { ok: false, why: "8080 が開いていない" } : { ok: true }));
+      expect(got.answer.status).toBe("fail");
+      expect(got.answer.evidence?.host).toBe("web01");
+      expect((got.answer.evidence?.also ?? []).map((a) => a.host)).toEqual(["web02"]);
+    });
+
+    // A host that could not be asked is left out: nothing was read from it, so
+    // there is nothing to reach — and an affordance that opens nothing is worse
+    // than none.
+    it("leaves out a host that never answered", () => {
+      const got = judge({ web01: held({ ports: ran() }), web02: held({}) });
+      expect(got.answer.evidence?.also).toBeUndefined();
+    });
+
+    it("says nothing extra when one host answered", () => {
+      expect(judge({ web01: held({ ports: ran() }) }).answer.evidence?.also).toBeUndefined();
+    });
+
+    // …and what it points at is reachable: each entry carries what was ASKED, so
+    // the cell can find the document that answered it.
+    it("carries what each host was asked", () => {
+      const got = judge(two(ran(), ran()));
+      expect((got.answer.evidence?.also ?? []).map((a) => a.command)).toEqual(["ss -lntp"]);
+    });
+
+    // WHAT THE JUDGE WRITES, THE READERS MUST ACCEPT.
+    //
+    // This field had to be RECORDED rather than derived: a functional item is
+    // folded across hosts by the judge, so the results hold one answer and
+    // nothing downstream can recover which hosts stood behind it. (A value row
+    // is stored per host and folded at render, which is why that half never
+    // needed the field — and why the schema had never been asked to allow it.)
+    //
+    // So the schema and the judge had been disagreeing with nothing to notice:
+    // `$defs/evidence` is `additionalProperties: false` and listed no `also`, so
+    // every reader that validates a results file — `test-doc`, `generate
+    // --evidence` — refused the judge's own output the moment it carried one.
+    it("writes a results document its own readers accept", () => {
+      const got = judge(two(ran(), ran()));
+      expect(got.answer.evidence?.also).not.toBeUndefined();
+      expect(() => validateResults({ results: [], functional: [got.answer], evidence: got.documents })).not.toThrow();
+    });
   });
 
   // THE HOST COUNT ONLY WHERE IT SAYS SOMETHING. "(2 ホスト)" tells a reader

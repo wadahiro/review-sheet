@@ -497,6 +497,31 @@ export function judgeProbes(
         ...(point.host === undefined ? {} : { host: point.host }),
         ...(point.how === undefined ? {} : { command: point.how }),
         ...(point.line === undefined ? {} : { line: point.line }),
+        // EVERY OTHER HOST THAT ANSWERED, so the record can reach all of them.
+        //
+        // The documents already carried every host's bytes; only the verdict's
+        // own pointer was single, so a record said "(2 hosts)" beside a link to
+        // one of them and the other set of bytes — collected, carried, sitting
+        // in the delivery — had nothing pointing at it. `evidenceCell` has
+        // rendered a list from this field all along; it was never given one.
+        //
+        // Every host that RAN, not only the failing ones, which is what the file
+        // channel's own fold does (`foldByTarget`: the worst, and then the rest
+        // of the group). The two fields answer different questions: `reason`
+        // diagnoses, so it names who failed; this is the evidence, and on a
+        // failure the passing hosts' bytes are exactly what a reader diffs the
+        // failure against. A host that could not be asked is left out — nothing
+        // was read from it, so there is nothing to reach.
+        ...(() => {
+          const rest = ran
+            .filter((x) => x !== point)
+            .map((x) => ({
+              ...(x.host === undefined ? {} : { host: x.host }),
+              ...(x.how === undefined ? {} : { command: x.how }),
+              ...(x.line === undefined ? {} : { line: x.line }),
+            }));
+          return rest.length === 0 ? {} : { also: rest };
+        })(),
       },
     },
     documents,
