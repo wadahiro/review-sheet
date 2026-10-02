@@ -304,3 +304,150 @@ describe("the two lists count different things", () => {
     expect(report.emptied).toEqual(["upgrade > new > Network > debug", "upgrade > new > Network > debug"]);
   });
 });
+
+// A COMPONENT NOTHING DELIVERED SAYS ANYTHING ABOUT.
+//
+// Not the same fact as an emptied ROW. A parameter whose values all lived
+// elsewhere is still part of the system, so it stays with empty cells —
+// removing it would say the setting does not exist. A whole COMPONENT in that
+// state is the other claim: a client that exists only in another environment,
+// left as a heading over twenty-seven blank rows, tells the reader it exists
+// here and is unconfigured. Both readings are a statement and that one is
+// false.
+//
+// Opt-in, because nothing here can tell "exists, unconfigured" from "nobody
+// described it": the default keeps it.
+describe("a component left with no environment at all", () => {
+  // Two clients, one per environment — the same sheet, components that are
+  // genuinely different things depending on where you look.
+  const sheet = () =>
+    ({
+      metadata: { title: "t" },
+      sheets: [
+        {
+          name: "clients",
+          instances: ["A", "B"],
+          categories: [
+            {
+              name: "client-X",
+              params: [
+                { key: "rootUrl", instances: [{ name: "A", value: "https://x.example.com" }] },
+                { key: "enabled", instances: [{ name: "A", value: "true" }] },
+              ],
+            },
+            {
+              name: "client-Y",
+              params: [{ key: "rootUrl", instances: [{ name: "B", value: "https://y.example.com" }] }],
+            },
+          ],
+        },
+      ],
+    }) as never;
+
+  const names = (out: { sheets: { categories?: { name: string }[] }[] }): string[] =>
+    (out.sheets[0]!.categories ?? []).map((c) => c.name);
+
+  it("is kept blank by default, as a row is", () => {
+    const { input, report } = restrictInstances(sheet(), ["B"]);
+    expect(names(input as never)).toEqual(["client-X", "client-Y"]);
+    expect(report.emptied).toHaveLength(2);
+    expect(report.droppedComponents).toEqual([]);
+  });
+
+  it("goes whole when the delivery asks", () => {
+    const { input, report } = restrictInstances(sheet(), ["B"], { dropEmptyComponents: true });
+    expect(names(input as never)).toEqual(["client-Y"]);
+    expect(report.droppedComponents).toEqual([{ path: "client-X", rows: 2 }]);
+  });
+
+  // …and the component that IS delivered is untouched, or the flag would be
+  // taking the sheet rather than narrowing it.
+  it("leaves the delivered component alone", () => {
+    const { input } = restrictInstances(sheet(), ["A"], { dropEmptyComponents: true });
+    expect(names(input as never)).toEqual(["client-X"]);
+  });
+
+  // A COMPONENT THAT EXISTS WITH NOTHING SET is not this case, and cannot be
+  // mistaken for it: only a per-environment row can be emptied, so a product
+  // default (no instances) or a shared value (Pattern A) keeps its component.
+  it("keeps a component whose rows are the product's defaults", () => {
+    const withDefaults = () =>
+      ({
+        metadata: { title: "t" },
+        sheets: [
+          {
+            name: "clients",
+            instances: ["A", "B"],
+            categories: [
+              { name: "client-X", params: [{ key: "ttl", origin: "default", default: "300" }] },
+              { name: "client-Y", params: [{ key: "rootUrl", instances: [{ name: "B", value: "https://y" }] }] },
+            ],
+          },
+        ],
+      }) as never;
+    const { input, report } = restrictInstances(withDefaults(), ["B"], { dropEmptyComponents: true });
+    expect(names(input as never)).toEqual(["client-X", "client-Y"]);
+    expect(report.droppedComponents).toEqual([]);
+  });
+
+  it("keeps a component whose value is shared across every environment", () => {
+    const shared = () =>
+      ({
+        metadata: { title: "t" },
+        sheets: [
+          {
+            name: "clients",
+            instances: ["A", "B"],
+            categories: [
+              { name: "client-X", params: [{ key: "proto", value: "openid-connect" }] },
+              { name: "client-Y", params: [{ key: "rootUrl", instances: [{ name: "B", value: "https://y" }] }] },
+            ],
+          },
+        ],
+      }) as never;
+    expect(names(restrictInstances(shared(), ["B"], { dropEmptyComponents: true }).input as never)).toEqual([
+      "client-X",
+      "client-Y",
+    ]);
+  });
+
+  // BOTTOM-UP: an inner category that says nothing goes on its own, and the
+  // component above it is then a component whose every row was emptied.
+  it("takes a component whose every subcategory went", () => {
+    const nested = () =>
+      ({
+        metadata: { title: "t" },
+        sheets: [
+          {
+            name: "clients",
+            instances: ["A", "B"],
+            categories: [
+              {
+                name: "client-X",
+                categories: [
+                  { name: "mappers", params: [{ key: "a", instances: [{ name: "A", value: "1" }] }] },
+                  { name: "flows", params: [{ key: "b", instances: [{ name: "A", value: "2" }] }] },
+                ],
+              },
+              { name: "client-Y", params: [{ key: "rootUrl", instances: [{ name: "B", value: "https://y" }] }] },
+            ],
+          },
+        ],
+      }) as never;
+    const { input, report } = restrictInstances(nested(), ["B"], { dropEmptyComponents: true });
+    expect(names(input as never)).toEqual(["client-Y"]);
+    // Named by the component, not by each inner category: what the reader lost
+    // is the client.
+    expect(report.droppedComponents.map((c) => c.path)).toEqual(["client-X"]);
+    expect(report.droppedComponents[0]!.rows).toBe(2);
+  });
+
+  // …and the only place it can be seen is the report, since the document no
+  // longer mentions it.
+  it("says what it removed", () => {
+    const { report } = restrictInstances(sheet(), ["B"], { dropEmptyComponents: true });
+    const said = formatRestrictReport(report);
+    expect(said).toContain("client-X");
+    expect(said).toContain("removed whole");
+  });
+});

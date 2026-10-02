@@ -36,6 +36,11 @@ export type RestrictReport = {
   // partner of a delivered one came with it. `unpaired`: it declares that it
   // compares but not what against what, so nothing here can narrow it honestly.
   compared: { sheet: string; kept: string[]; why: "paired" | "unpaired" }[];
+  // Categories removed whole, where `dropEmptyComponents` asked for it and
+  // NOTHING in the delivery said anything about them — see restrictCategory.
+  // Named with the rows that went, because the point of the flag is that the
+  // document no longer mentions them: the only place it can be seen is here.
+  droppedComponents: { path: string; rows: number }[];
 };
 
 const label = (sheet: string, path: string[], key: string): string => [sheet, ...path, key].join(" > ");
@@ -48,23 +53,85 @@ function restrictParam(p: Parameter, keep: ReadonlySet<string>): { param: Parame
   return { param: { ...p, instances }, emptied: instances.length === 0 && p.instances.length > 0 };
 }
 
-function restrictCategory(c: Category, keep: ReadonlySet<string>, sheet: string, path: string[], emptied: string[]): Category {
+// A CATEGORY NOTHING IN THE DELIVERY SAYS ANYTHING ABOUT.
+//
+// Not the same fact as an emptied ROW, and the difference is the whole of this.
+// A parameter whose values all lived elsewhere is still part of the system, so
+// it is KEPT with nothing in its cells — removing it would say the setting does
+// not exist. A whole COMPONENT in that state is the other claim: a client that
+// exists only in another environment, left on the page as a heading with
+// twenty-seven blank rows under it, tells the reader it exists here and is
+// unconfigured. Both readings are a statement, and that one is false.
+//
+// WHICH IT IS cannot be guessed from blankness alone, which is why this is
+// opt-in. What makes the signal usable at all is what `restrictParam` counts:
+// only a PER-ENVIRONMENT row can be emptied, so a component that exists with
+// its settings at the product's defaults (`origin: default`, no instances) or
+// with a shared value (Pattern A) never reaches this state. Every row emptied
+// therefore means every row was per-environment and none of them named a
+// delivered environment.
+//
+// The residual risk is stated rather than hidden: a component may exist in the
+// delivered environment with the project simply never having said so, and then
+// this removes a heading for something real. That is why the default keeps it.
+type Restricted = { category: Category; rows: number; emptiedRows: number };
+
+function restrictCategory(
+  c: Category,
+  keep: ReadonlySet<string>,
+  sheet: string,
+  path: string[],
+  emptied: string[],
+  dropEmpty: boolean,
+  dropped: RestrictReport["droppedComponents"]
+): Restricted {
   const here = [...path, c.name];
+  let emptiedHere = 0;
   const params = (c.params ?? []).map((p) => {
     const done = restrictParam(p, keep);
     // Once per VERSION, deliberately — see restrict.test.ts. This counts empty
     // CELLS, and a version history renders the row once per version, so both
     // are really blank. `compared` above dedupes for the opposite reason: it
     // names a SHEET, and a versioned document has one sheet per name.
-    if (done.emptied) emptied.push(label(sheet, here, p.key));
+    if (done.emptied) {
+      emptied.push(label(sheet, here, p.key));
+      emptiedHere += 1;
+    }
     return done.param;
   });
+  // BOTTOM-UP, so a component goes when everything under it has: an inner
+  // category that says nothing is removed on its own, and the component above
+  // it is then a component whose every row was emptied.
+  const inner = (c.categories ?? []).map((x) => restrictCategory(x, keep, sheet, here, emptied, dropEmpty, dropped));
+  const kept = inner.filter((x) => x.category !== DROPPED);
+  const rows = params.length + inner.reduce((n, x) => n + x.rows, 0);
+  const emptiedRows = emptiedHere + inner.reduce((n, x) => n + x.emptiedRows, 0);
+  if (dropEmpty && rows > 0 && emptiedRows === rows) {
+    // The OUTERMOST one is what a reader lost. The walk is bottom-up, so an
+    // inner category has already named itself by now — and a report saying
+    // "client-X / mappers", "client-X / flows" and "client-X" says three
+    // things where one client went.
+    const inside = `${here.join(" / ")} / `;
+    for (let i = dropped.length - 1; i >= 0; i--) {
+      if (dropped[i]!.path.startsWith(inside)) dropped.splice(i, 1);
+    }
+    dropped.push({ path: here.join(" / "), rows });
+    return { category: DROPPED, rows, emptiedRows };
+  }
   return {
-    ...c,
-    ...(c.params === undefined ? {} : { params }),
-    ...(c.categories === undefined ? {} : { categories: c.categories.map((x) => restrictCategory(x, keep, sheet, here, emptied)) }),
+    category: {
+      ...c,
+      ...(c.params === undefined ? {} : { params }),
+      ...(c.categories === undefined ? {} : { categories: kept.map((x) => x.category) }),
+    },
+    rows,
+    emptiedRows,
   };
 }
+
+// A sentinel, so "removed" is not confused with "a category that happens to be
+// empty" — which is a shape this model has for its own reasons.
+const DROPPED = { name: "\u0000dropped" } as Category;
 
 // THE ENVIRONMENTS THIS SHEET KEEPS, which is not always the ones asked for.
 //
@@ -135,13 +202,22 @@ function keepFor(
   return { keep: new Set([...keep, ...add]), also: { kept: [...add], why } };
 }
 
-function restrictSheet(s: Sheet, keep: ReadonlySet<string>, emptied: string[]): Sheet {
+function restrictSheet(
+  s: Sheet,
+  keep: ReadonlySet<string>,
+  emptied: string[],
+  dropEmpty: boolean,
+  dropped: RestrictReport["droppedComponents"]
+): Sheet {
   return {
     ...s,
     // The sheet's own order is kept — which environments it has is the sheet's
     // business, and this only removes.
     ...(s.instances === undefined ? {} : { instances: s.instances.filter((i) => keep.has(i)) }),
-    categories: (s.categories ?? []).map((c) => restrictCategory(c, keep, s.name, [], emptied)),
+    categories: (s.categories ?? [])
+      .map((c) => restrictCategory(c, keep, s.name, [], emptied, dropEmpty, dropped))
+      .filter((x) => x.category !== DROPPED)
+      .map((x) => x.category),
   };
 }
 
@@ -284,10 +360,16 @@ export function instancesOf(input: ParameterSheetInput | VersionedSheetInput): s
 
 export function restrictInstances<T extends ParameterSheetInput | VersionedSheetInput>(
   input: T,
-  keep: readonly string[]
+  keep: readonly string[],
+  // OPT-IN. Keeping an emptied row is right and keeping an emptied COMPONENT is
+  // a false claim, and nothing here can tell "exists, unconfigured" from "does
+  // not exist" — see restrictCategory. So the default stays, and a delivery that
+  // knows which it is says so.
+  opts: { dropEmptyComponents?: boolean } = {}
 ): { input: T; report: RestrictReport } {
   const wanted = new Set(keep);
   const emptied: string[] = [];
+  const droppedComponents: RestrictReport["droppedComponents"] = [];
   let previews = 0;
   const compared: RestrictReport["compared"] = [];
   // A preview belongs to a sheet, so it is kept by that sheet's own set — the
@@ -307,7 +389,7 @@ export function restrictInstances<T extends ParameterSheetInput | VersionedSheet
         }
         for (const i of per.also.kept) previewKeep.add(i);
       }
-      return restrictSheet(s, per.keep, emptied);
+      return restrictSheet(s, per.keep, emptied, opts.dropEmptyComponents === true, droppedComponents);
     });
     const art = restrictPreviews(doc.artifacts, previewKeep);
     previews += art.dropped;
@@ -332,6 +414,7 @@ export function restrictInstances<T extends ParameterSheetInput | VersionedSheet
       emptied,
       previews,
       compared,
+      droppedComponents,
     },
   };
 }
@@ -355,6 +438,16 @@ export function formatRestrictReport(r: RestrictReport): string {
           `components with no environment at all, and it declares no "compare_instances" to say which one ` +
           `answers which`
     );
+  }
+  if (r.droppedComponents.length > 0) {
+    // The ONLY place this can be seen: the document no longer mentions them,
+    // which is what the flag was for.
+    const rows = r.droppedComponents.reduce((n, c) => n + c.rows, 0);
+    lines.push(
+      `  ${r.droppedComponents.length} component(s) were removed whole — nothing delivered says anything about them (${rows} row(s)):`
+    );
+    for (const c of r.droppedComponents.slice(0, 5)) lines.push(`    ${c.path} (${c.rows} row(s))`);
+    if (r.droppedComponents.length > 5) lines.push(`    … and ${r.droppedComponents.length - 5} more`);
   }
   if (r.previews > 0) lines.push(`  ${r.previews} previewed file(s) rendered only for those environments were left out`);
   return lines.join("\n");

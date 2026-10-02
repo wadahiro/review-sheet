@@ -1935,6 +1935,24 @@ A sheet whose component IS emptied and that declares no `compare_instances`
 keeps that component's environments whole, and the report says why: with no
 correspondence to follow, any subset would be a guess.
 
+**`--drop-empty-components` is the other answer, for a sheet that is not a
+comparison at all.** Where the components themselves differ per environment — a
+client that exists only in `A` beside one that exists only in `B` — narrowing to
+`B` leaves the first as a heading over blank rows, which tells the reader it
+exists here and is unconfigured. That is a false sentence, where an emptied ROW
+is a true one ("the setting exists, and nothing here sets it"), so the two are
+not decided the same way: the row stays always, the component goes only when
+asked.
+
+Opt-in because nothing can tell "exists, unconfigured" from "nobody described
+it". What makes the signal usable is which rows can be emptied at all: only a
+per-environment one, so a component whose settings are the product's defaults
+(`origin: default`) or shared across every environment (Pattern A) never reaches
+this state and is never removed. Every row emptied therefore means every row was
+per-environment and none named a delivered environment. The outermost removed
+category is named in the report with its row count — the only place it can be
+seen, since the document no longer mentions it.
+
 A `static_files` entry that names no `instances:` is unchanged — it is a FILE of
 the sheet, and several of them stay several sections, which is what a legacy
 sheet built from a handful of recorded files wants. An entry opts in to being an

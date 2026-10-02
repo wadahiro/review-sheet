@@ -686,6 +686,16 @@ program
   .option("--no-previews", "Leave the previewed files out: the panel that shows a row's line in its deployed file, and the affordance that opens it. They are the file as it was AT GENERATION — a document maintained by hand afterwards keeps its values current and the preview does not, so a delivery that will be edited for a long time may prefer not to carry a picture that quietly ages. Also the biggest single part of the file (measured on a real document: 1.1 MB of payload against 0.6 MB without)")
   .option("--sheets <names...>", "Make this document out of these sheets only. A requirements note, a parameter sheet and a test record are separate documents in the world — approved separately, revised on their own cycles — and one build can produce each of them. The sheets keep the document's own order; what is left out is reported")
   .option("--instances <names...>", "Deliver only these environments: the columns, the per-environment values and the previews rendered for the others are left out of the document. Not every environment a build knows belongs to the same handover — one of them is usually the one an engineer keeps in order to build the others. What it drops is reported, including rows left with nothing to show. A sheet that compares its components keeps what the delivered environments are compared against, and says which")
+  // A COMPONENT nothing delivered says anything about, removed whole.
+  //
+  // Opt-in, and the default is right for a ROW: a parameter whose values all
+  // lived elsewhere is still part of the system, so it stays with empty cells.
+  // A whole component in that state is the other claim — a client that exists
+  // only in another environment, left as a heading over blank rows, tells the
+  // reader it exists here and is unconfigured — and nothing here can tell that
+  // from a component the project simply never described. So the delivery says
+  // which it is.
+  .option("--drop-empty-components", "Remove a category whose EVERY row was emptied by --instances, instead of showing it blank. For a sheet whose components differ per environment; what went is reported")
   .option(
     "--no-unset",
     "Leave out the rows nobody set — the ones a materialized sheet carries so the ledger is exhaustive, showing the product's own default and marked 未設定 / unset. The page already hides them behind a filter and collapses a category made of nothing else; this takes the same cut one stage earlier, so a recipient's document does not carry them at all. A row the vendor shipped and this project removed (`baseline`), and one marked out of scope, are decisions and stay. What it drops is reported, per sheet"
@@ -699,7 +709,7 @@ program
     "--timezone <zone>",
     "Read the instants this document carries in this IANA zone (Asia/Tokyo), offset kept — today, when each piece of evidence was collected. Decided here for the same reason --lang is: a document has one reader, and an instant resolved once is one the viewer never has to think about. Omitted, they print exactly as recorded"
   )
-  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; unset: boolean; lang: string; format: string; instances?: string[]; sheets?: string[]; keepUnset?: string[]; evidence?: string[]; timezone?: string }) => {
+  .action(async (opts: { input: string[]; output?: string; title?: string; review: boolean; readonly?: boolean; allow?: string; sources: boolean; previews: boolean; unset: boolean; lang: string; format: string; instances?: string[]; dropEmptyComponents?: boolean; sheets?: string[]; keepUnset?: string[]; evidence?: string[]; timezone?: string }) => {
     try {
       if (opts.timezone !== undefined && !knownZone(opts.timezone)) {
         console.error(`unknown timezone: ${opts.timezone} — use an IANA name such as Asia/Tokyo or UTC`);
@@ -759,7 +769,9 @@ program
           console.error(`Error: --instances: ${unknown.join(", ")} — this document has ${has.join(", ")}`);
           process.exit(1);
         }
-        const done = restrictInstances(input, opts.instances);
+        const done = restrictInstances(input, opts.instances, {
+          dropEmptyComponents: opts.dropEmptyComponents === true,
+        });
         input = done.input;
         // Always printed: a delivery that quietly left an environment out is
         // the thing this flag must never be used to do by accident.
