@@ -115,8 +115,19 @@ const T: Record<TestDocLang, Words> = {
     // document ever meets) and not what happens when it goes wrong: "a gap
     // fails the build" is this tool's own guarantee mechanism, and a customer's
     // paperwork is not where a tool explains how it keeps its promises.
+    //
+    // The TOP level's sentence is fixed, and that is not an assumption about
+    // how a project raises its items — it is what this writer does: a record is
+    // one section per environment, headed by the unit (see the `###` below), and
+    // every project's document has that shape whether its unit is a server, a
+    // platform or a release. The project's own rule for raising a unit is the
+    // column BEFORE this one (`taxonomy[].raised`), and building this one out of
+    // that would make two columns say one thing — and say it unchecked, since
+    // what this column claims is a fact about the page, which a test can hold
+    // (`tests/testdoc-scope.test.ts`) and a restatement of somebody's prose
+    // cannot.
     taxonomyWhere: (f: boolean, every: boolean) => [
-      "この文書の単位。環境ごとの見出しが環境名とともに掲げる",
+      "この文書の単位。環境ごとに節を分け、その見出しに単位名と環境名を書く",
       f
         ? `その環境の中の見出し。${every ? "詳細設計シート1つにつき1つ" : "行を持つ詳細設計シート1つにつき1つ"}、および「機能確認」`
         : `${every ? "" : "行を持つ"}詳細設計シート。その環境の中の見出しで、項目表ごとに1つ`,
@@ -161,7 +172,7 @@ const T: Record<TestDocLang, Words> = {
     coveredBy: (test) => `Covered instead by the functional test "${test}".`,
     taxonomyCols: ["No.", "Level", "How items are raised", "In this document"],
     taxonomyWhere: (f: boolean, every: boolean) => [
-      "This document's unit, named by each environment's heading beside the environment",
+      "This document's unit. The document is divided into one section per environment, and each heading names the unit and the environment",
       f
         ? `A heading inside that environment: one per sheet of the detailed design${every ? "" : " that has rows in this document"}, plus the functional checks`
         : `A sheet of the detailed design${every ? "" : " that has rows in this document"} — a heading inside that environment, one per item table`,

@@ -4444,6 +4444,22 @@ WORDS are the project's — an organisation's test standard states them, and a
 tool quoting one organisation's sentences would publish them to every other
 project it builds.
 
+**The taxonomy table is two halves.** The project writes `level` and `raised` —
+what each level is called and how ITS items are raised. The tool writes the last
+column, "in this document": where that level actually is on the page it just
+wrote. So the two never restate each other, and the tool's half is a fact a test
+holds rather than prose (it was corrected once, for claiming a heading per sheet
+where a sheet of all-unset rows has none).
+
+What that means for the TOP level is worth knowing before declaring it: **a
+record is one section per environment, headed by the unit**, whatever the unit
+is. A project that raises its units per platform or per server still gets that
+shape, and the document says both things — its own rule in `raised`, the page's
+shape in the last column. The middle level is the design SHEET and the bottom
+level is one row of its item table (plus the declared functional items, where
+the unit has any), which is why `raised` for the bottom level is usually some
+form of "derived from the sheet's rows".
+
 ### The judge — the part the tool does, and the part you write
 
 Nothing above touches a live system, and reaching one stays outside. What does

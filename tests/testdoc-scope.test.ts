@@ -250,3 +250,60 @@ describe("what the taxonomy says about the headings", () => {
     expect(en({ includeDefaults: true })).not.toContain("that has rows in this document");
   });
 });
+
+// THE TOP LEVEL'S SENTENCE, held against the document it describes.
+//
+// It is the one row of the four whose wording does not vary, and a project read
+// that as an assumption about how IT raises its units ("we raise one per
+// platform, not per environment"). It is not: it is what this writer does, and
+// the project's own rule is the column before it. What makes the difference
+// safe to state is that this column is a fact about the page — so it is checked
+// against the page rather than argued about.
+describe("where the taxonomy says the top level is", () => {
+  const two = (): TestPlan =>
+    ({
+      metadata: { title: "t" },
+      units: [
+        {
+          name: "u",
+          label: { ja: "基盤" },
+          sheets: ["set"],
+          declaration: {
+            method: { ja: "読む" },
+            // The project raises its units by platform, which is NOT how the
+            // document is divided — and the document says so in its own column.
+            taxonomy: [
+              { level: { ja: "大項目" }, raised: { ja: "サーバ／基盤単位" } },
+              { level: { ja: "中項目" }, raised: { ja: "モジュール単位" } },
+              { level: { ja: "小項目" }, raised: { ja: "シートの行から自動導出" } },
+            ],
+          },
+        },
+      ],
+      items: [
+        { target: { sheet: "set", path: [], key: "Listen", instance: "dev" }, unit: "u", kind: "value", decider: "project", expected: "80" },
+        { target: { sheet: "set", path: [], key: "Listen", instance: "prod" }, unit: "u", kind: "value", decider: "project", expected: "443" },
+      ],
+      functional: [],
+    }) as never;
+
+  const blocks = (lang = "ja") => renderTestDoc(two(), { runs: {}, results: [] } as unknown as TestResults, "u", { lang } as never);
+
+  // The claim: one section per environment, each heading naming the unit and
+  // the environment. Read off the headings the run actually wrote.
+  it("is one section per environment, headed by the unit", () => {
+    const heads = blocks()["test:items"].split("\n").filter((l) => l.startsWith("### "));
+    expect(heads).toEqual(["### 基盤 (dev)", "### 基盤 (prod)"]);
+  });
+
+  it("says that, and not how the project raises its units", () => {
+    const tax = blocks()["test:taxonomy"];
+    expect(tax).toContain("環境ごとに節を分け");
+    // The project's own rule keeps its own column, unaltered.
+    expect(tax).toContain("サーバ／基盤単位");
+  });
+
+  it("says it in English too", () => {
+    expect(blocks("en")["test:taxonomy"]).toContain("one section per environment");
+  });
+});
