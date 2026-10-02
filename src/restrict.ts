@@ -17,6 +17,7 @@
 
 import type { ParameterSheetInput, VersionedSheetInput, Sheet, Category, Parameter, ArtifactPreview, SheetGroup } from "./types.js";
 import { effectiveOrigin } from "./prompt.js";
+import { dropInstanceSections } from "./markdown.js";
 
 export type RestrictReport = {
   kept: string[];
@@ -36,6 +37,12 @@ export type RestrictReport = {
   // partner of a delivered one came with it. `unpaired`: it declares that it
   // compares but not what against what, so nothing here can narrow it honestly.
   compared: { sheet: string; kept: string[]; why: "paired" | "unpaired" }[];
+  // Sections of a PROSE sheet an environment owned, removed — see
+  // dropInstanceSections. A `recipe: document` sheet has no parameters, so
+  // every other kind of narrowing here passed straight over it: a delivery for
+  // one environment carried every other environment's results in full. Named by
+  // sheet and environment, because the document no longer says either.
+  droppedSections: { sheet: string; instances: string[] }[];
   // Categories removed whole, where `dropEmptyComponents` asked for it and
   // NOTHING in the delivery said anything about them — see restrictCategory.
   // Named with the rows that went, because the point of the flag is that the
@@ -207,8 +214,36 @@ function restrictSheet(
   keep: ReadonlySet<string>,
   emptied: string[],
   dropEmpty: boolean,
-  dropped: RestrictReport["droppedComponents"]
+  dropped: RestrictReport["droppedComponents"],
+  sections: RestrictReport["droppedSections"]
 ): Sheet {
+  // A PROSE sheet, narrowed by what its own markers say. Both halves of it: the
+  // html is what the page shows and the markdown is what an editor and a
+  // markdown set are given, and a delivery whose two readings disagreed about
+  // which environments it covers would be one document saying two things.
+  //
+  // The headings are then filtered by what SURVIVED rather than narrowed in
+  // parallel — the ids are in the html, so asking it is exact, where a second
+  // walk would be a second thing to keep in step.
+  const doc = s.document;
+  if (doc !== undefined) {
+    const inHtml = dropInstanceSections(doc.html, keep);
+    const inMd = doc.markdown === undefined ? undefined : dropInstanceSections(doc.markdown, keep);
+    const gone = [...new Set([...inHtml.dropped, ...(inMd?.dropped ?? [])])];
+    if (gone.length > 0) {
+      if (!sections.some((x) => x.sheet === s.name)) sections.push({ sheet: s.name, instances: gone });
+      return {
+        ...s,
+        ...(s.instances === undefined ? {} : { instances: s.instances.filter((i) => keep.has(i)) }),
+        document: {
+          ...doc,
+          html: inHtml.text,
+          ...(inMd === undefined ? {} : { markdown: inMd.text }),
+          ...(doc.headings === undefined ? {} : { headings: doc.headings.filter((h) => inHtml.text.includes(`id="${h.id}"`)) }),
+        },
+      };
+    }
+  }
   return {
     ...s,
     // The sheet's own order is kept — which environments it has is the sheet's
@@ -370,6 +405,7 @@ export function restrictInstances<T extends ParameterSheetInput | VersionedSheet
   const wanted = new Set(keep);
   const emptied: string[] = [];
   const droppedComponents: RestrictReport["droppedComponents"] = [];
+  const droppedSections: RestrictReport["droppedSections"] = [];
   let previews = 0;
   const compared: RestrictReport["compared"] = [];
   // A preview belongs to a sheet, so it is kept by that sheet's own set — the
@@ -389,7 +425,7 @@ export function restrictInstances<T extends ParameterSheetInput | VersionedSheet
         }
         for (const i of per.also.kept) previewKeep.add(i);
       }
-      return restrictSheet(s, per.keep, emptied, opts.dropEmptyComponents === true, droppedComponents);
+      return restrictSheet(s, per.keep, emptied, opts.dropEmptyComponents === true, droppedComponents, droppedSections);
     });
     const art = restrictPreviews(doc.artifacts, previewKeep);
     previews += art.dropped;
@@ -414,6 +450,7 @@ export function restrictInstances<T extends ParameterSheetInput | VersionedSheet
       emptied,
       previews,
       compared,
+      droppedSections,
       droppedComponents,
     },
   };
@@ -438,6 +475,11 @@ export function formatRestrictReport(r: RestrictReport): string {
           `components with no environment at all, and it declares no "compare_instances" to say which one ` +
           `answers which`
     );
+  }
+  for (const d of r.droppedSections) {
+    // The document no longer says either the sheet's own environments or which
+    // of them it lost, so this is the only place it can be read.
+    lines.push(`  sheet "${d.sheet}" dropped the section(s) written for ${d.instances.join(", ")}`);
   }
   if (r.droppedComponents.length > 0) {
     // The ONLY place this can be seen: the document no longer mentions them,

@@ -22,6 +22,7 @@ import { pickLang } from "./types.js";
 import type { FunctionalTestItem, TestItem, TestPlan, TestUnit } from "./testplan.js";
 import type { TestResult, TestResults } from "./testresults.js";
 import { foldByTarget } from "./testresults.js";
+import { instanceMark } from "./markdown.js";
 import { evidenceCell } from "./evidence.js";
 
 export type TestDocLang = "ja" | "en";
@@ -538,6 +539,20 @@ export function renderTestDoc(
   for (const instance of instances) {
     const run = results.runs?.[instance];
     sections.push(
+      // WHICH ENVIRONMENT THIS SECTION IS, for a delivery that carries only
+      // some of them. The heading says it in words a reader understands and in
+      // nothing a program can rely on — a recipient may reword it — so the fact
+      // is written beside the thing it is about, as the markers everywhere else
+      // in this tool are (`rs:no-nav`, `rs:name`). It is a fact about the
+      // document's SHAPE and never about a value, which is what makes a marker
+      // safe to trust (see the rs: rule in .claude/rules/architecture.md).
+      //
+      // A record is one file holding every environment that has been judged,
+      // and it has to stay that way: the internal document shows all of them,
+      // and a delivery for one is the SAME record narrowed. Writing a narrowed
+      // record instead would take the other environments out of the project's
+      // own copy.
+      instanceMark(instance),
       `### ${unitShown} (${instance})`,
       "",
       // "—" where this unit cites no host at all. The run may well have read

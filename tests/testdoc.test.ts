@@ -139,6 +139,25 @@ describe("the tables a document is given", () => {
     expect(b["test:items"]).toContain("実施日時: — ／ 対象ホスト: — （未実施）");
   });
 
+  // WHICH ENVIRONMENT EACH SECTION IS, for a delivery that carries only some of
+  // them. A record is prose — a `recipe: document` sheet with no parameters — so
+  // `--instances` had nothing to take hold of and passed straight over it,
+  // leaving every other environment's results in a delivery for one.
+  //
+  // The heading says it in words, which a program must not read back: a
+  // recipient may reword it. The fact is written beside the thing it is about,
+  // as every other marker here is.
+  it("marks each environment's section for a narrowed delivery", () => {
+    const b = renderTestDoc(plan(), results(), "server");
+    const items = b["test:items"].split("\n");
+    for (const instance of ["local", "prod"]) {
+      const at = items.findIndex((l) => l.includes(`### SSO サーバ (${instance})`));
+      expect(at, `no heading for ${instance}`).toBeGreaterThan(-1);
+      // ABOVE the heading it is about, so it moves when the heading moves.
+      expect(items[at - 1]).toBe(`<!-- rs:env ${instance} -->`);
+    }
+  });
+
   // WHICH HOSTS, asked of this unit's own answers rather than of the run.
   //
   // `runs.<env>.hosts` is every host the run read, which is an environment's

@@ -475,3 +475,71 @@ export function imageRefs(source: string): string[] {
   }
   return out;
 }
+
+// WHICH ENVIRONMENT A SECTION OF A DOCUMENT IS ABOUT.
+//
+// A `recipe: document` sheet is prose: it has no parameters, so the narrowing
+// every other sheet goes through (`--instances`, restrict.ts) had nothing to
+// take hold of and passed straight over it. A unit-test record is exactly that
+// kind of sheet AND is written per environment — so a delivery for one
+// environment carried every other environment's results, in full, under their
+// own headings.
+//
+// The heading already says which environment it is, in words. Reading those
+// words back would be a program trusting prose a recipient may reword, which
+// this project does not do: the fact is written BESIDE the thing it is about,
+// as every other marker here is. It states the document's SHAPE and never a
+// value, which is the rule that makes a marker safe to trust.
+export const instanceMark = (instance: string): string => `<!-- rs:env ${instance.replace(/>/g, "&gt;")} -->`;
+const INSTANCE_MARK = /^\s*<!--\s*rs:env\s+(.+?)\s*-->\s*$/;
+
+// A heading's level, in either of the two forms a document is held in: the
+// markdown it was written as and the html it was rendered to. One rule, two
+// spellings — and the rule is the one a reader already sees, since a section
+// ends where the next heading of its own level or higher begins.
+const levelOf = (line: string): number | undefined => {
+  const md = /^(#{1,6})\s/.exec(line);
+  if (md !== null) return md[1]!.length;
+  const html = /^\s*<h([1-6])\b/i.exec(line);
+  return html === null ? undefined : Number(html[1]);
+};
+
+// THE SECTIONS AN ENVIRONMENT OWNS, removed.
+//
+// A marked section runs from its marker to the next marker, or to the next
+// heading at its own level or above — never further. Anything the markers do
+// not cover is left exactly as written: a document is the project's, and a
+// narrowing may only remove what something said belonged to an environment it
+// is not delivering.
+export function dropInstanceSections(text: string, keep: ReadonlySet<string>): { text: string; dropped: string[] } {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  const dropped: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const mark = INSTANCE_MARK.exec(lines[i]!);
+    if (mark === null || keep.has(mark[1]!)) {
+      out.push(lines[i]!);
+      i += 1;
+      continue;
+    }
+    // The heading the marker is about decides where its section ends. A marker
+    // with no heading under it covers itself alone — it claims nothing, and
+    // guessing a span for it would remove prose nobody assigned.
+    const at = lines.slice(i + 1).findIndex((l) => l.trim() !== "");
+    const level = at < 0 ? undefined : levelOf(lines[i + 1 + at]!);
+    dropped.push(mark[1]!);
+    if (level === undefined) {
+      i += 1;
+      continue;
+    }
+    i += 1 + at + 1;
+    while (i < lines.length) {
+      if (INSTANCE_MARK.test(lines[i]!)) break;
+      const here = levelOf(lines[i]!);
+      if (here !== undefined && here <= level) break;
+      i += 1;
+    }
+  }
+  return { text: out.join("\n"), dropped };
+}

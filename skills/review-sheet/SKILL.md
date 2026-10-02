@@ -1935,6 +1935,33 @@ A sheet whose component IS emptied and that declares no `compare_instances`
 keeps that component's environments whole, and the report says why: with no
 correspondence to follow, any subset would be a guess.
 
+**A PROSE sheet is narrowed by its own markers.** A `recipe: document` sheet has
+no parameters, so none of the narrowing above could take hold of it and a
+delivery for one environment carried every other environment's sections in full.
+A record is exactly that kind of sheet and is written per environment, so
+`test-doc` marks each section with the environment it belongs to:
+
+```markdown
+<!-- rs:env staging -->
+### SSO server (staging)
+```
+
+`--instances` then removes the sections no delivered environment claims — from
+the html the page shows AND the markdown an editor and a markdown set are given,
+or the two readings would disagree about which environments the delivery covers,
+with the outline following what survived. A section ends where the next heading
+of its own level or above begins, which is the rule a reader already sees;
+anything the markers do not cover is the project's own prose and is left exactly
+as written, and a marker governing no heading covers itself alone.
+
+The heading already says which environment it is, in words — and reading those
+words back would be a program trusting prose a recipient may reword. Hence a
+marker, which states the document's SHAPE and never a value: the rule that makes
+every `rs:` marker safe to trust. This also means the record stays ONE file
+holding every environment judged so far: the internal document shows all of them
+and a delivery is the same record narrowed, where writing a narrowed record
+instead would take the other environments out of the project's own copy.
+
 **`--drop-empty-components` is the other answer, for a sheet that is not a
 comparison at all.** Where the components themselves differ per environment — a
 client that exists only in `A` beside one that exists only in `B` — narrowing to
