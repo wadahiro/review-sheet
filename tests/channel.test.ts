@@ -233,3 +233,57 @@ describe("what a collector must remove before anything travels", () => {
     expect(bound.login_marks).toEqual(["kc-form-login", 'name="username"', 'name="password"']);
   });
 });
+
+// WHEN THE HOST WAS READ, in the evidence a functional item carries.
+//
+// An evidence stamp is the one thing about it a reader checks against a log on
+// the machine. It was taken from the clock, so re-running the judge over a
+// month-old collection moved every functional item's evidence to today — the
+// record then says the host was read at a moment nobody read it. `judgeFiles`
+// has always used the observation's own `collected_at` for the documents it
+// carries; this path did not, so ONE observation produced two different answers
+// to "when" depending on which half of the record you read.
+describe("the moment a functional item's evidence carries", () => {
+  const COLLECTED = "2026-09-17T06:23:39Z";
+
+  const probed = (instance: string, at?: string): Observation =>
+    ({
+      environment: instance,
+      ...(at === undefined ? {} : { collected_at: at }),
+      hosts: { web01: { files: {}, probes: { time: { how: "chronyc tracking", ran: true, ok: true, text: "Leap status : Normal\n" } } } },
+    }) as Observation;
+
+  const planFor = (instances: string[]): TestPlan =>
+    ({
+      metadata: { title: "t" },
+      units: [{ name: "u", declaration: { method: { ja: "m" } }, sheets: [] }],
+      items: [],
+      functional: instances.map((i) => ({ unit: "u", id: "time", text: { en: "the clock is in step" }, instance: i })),
+    }) as TestPlan;
+
+  it("is when the host was read, not when the judge ran", () => {
+    const { evidence } = judgeFunctional(planFor(["stg"]), [probed("stg", COLLECTED)], { lang: "en" });
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0]!.at).toBe(COLLECTED);
+  });
+
+  // PER ENVIRONMENT: this walk spans them and each was collected at its own
+  // moment, so one stamp for the whole call cannot be right even when it comes
+  // from an observation.
+  it("is each environment's own moment", () => {
+    const later = "2026-09-20T01:00:00Z";
+    const { evidence } = judgeFunctional(planFor(["stg", "prod"]), [probed("stg", COLLECTED), probed("prod", later)], { lang: "en" });
+    expect(evidence.map((e) => [e.instance, e.at])).toEqual([
+      ["stg", COLLECTED],
+      ["prod", later],
+    ]);
+  });
+
+  // An observation that does not say when it was collected leaves the run's own
+  // moment as the only answer there is — and every item of that run gets the
+  // SAME one, rather than disagreeing by milliseconds.
+  it("falls back to one moment for the whole run", () => {
+    const { evidence } = judgeFunctional(planFor(["stg", "prod"]), [probed("stg"), probed("prod")], { at: "X", lang: "en" });
+    expect(evidence.map((e) => e.at)).toEqual(["X", "X"]);
+  });
+});

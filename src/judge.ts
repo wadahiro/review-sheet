@@ -1698,8 +1698,24 @@ export function judgeFunctional(
   opts: { lang?: "ja" | "en"; at?: string } = {}
 ): { answers: NonNullable<TestResults["functional"]>; evidence: NonNullable<TestResults["evidence"]> } {
   const t = JUDGE_WORDS[opts.lang ?? "ja"];
-  const at = opts.at ?? new Date().toISOString();
   const byEnv = new Map(mergeByEnvironment(observations).merged.map((o) => [o.environment, o]));
+  // WHEN THE HOST WAS READ — the observation's own moment, not this run's.
+  //
+  // Evidence is the raw material a verdict was read from, and its stamp is the
+  // one thing about it a reader checks against a log on the machine. Taken from
+  // the clock, it was rewritten to "now" on every judge, so re-running the
+  // judge over a month-old collection moved every functional item's evidence to
+  // today — the record then says the host was read at a moment nobody read it.
+  // `judgeFiles` has always used `collected_at` for the documents it carries;
+  // this path did not, so one observation produced two different answers to
+  // "when" depending on which half of the record you read.
+  //
+  // PER ENVIRONMENT, because this walk spans them and each was collected at its
+  // own moment — a single stamp for the whole call cannot be right even when it
+  // comes from an observation. The fallback is computed ONCE so two items of
+  // one run cannot disagree by milliseconds.
+  const judgedAt = opts.at ?? new Date().toISOString();
+  const atOf = (instance: string): string => byEnv.get(instance)?.collected_at ?? judgedAt;
   const out: NonNullable<TestResults["functional"]> = [];
   // The bytes a product channel read its answer from, for the record to carry.
   const channelDocuments: NonNullable<TestResults["evidence"]> = [];
@@ -1738,7 +1754,7 @@ export function judgeFunctional(
           // it twice puts two documents where a verdict's link resolves to
           // whichever came first.
           if (channelDocuments.some((x) => x.instance === f.instance && x.host === d.host && x.command === d.command)) continue;
-          channelDocuments.push({ instance: f.instance, host: d.host, at, sheet: d.sheet, ...(d.component === undefined ? {} : { component: d.component }), command: d.command, text: d.text });
+          channelDocuments.push({ instance: f.instance, host: d.host, at: atOf(f.instance), sheet: d.sheet, ...(d.component === undefined ? {} : { component: d.component }), command: d.command, text: d.text });
         }
         continue;
       }
@@ -1752,7 +1768,7 @@ export function judgeFunctional(
       const obs = byEnv.get(f.instance);
       const { answer, documents } = judgeProbes(f, obs?.hosts ?? {}, (probe, ctx) => rule.verdict(probe, ctx), {
         lang: opts.lang,
-        at,
+        at: atOf(f.instance),
         rule: rule.name,
         ...(obs?.probes?.[f.id ?? ""] === undefined ? {} : { hostless: obs.probes[f.id ?? ""]! }),
         ...((rule.sheet ?? f.sheet) === undefined ? {} : { sheet: (rule.sheet ?? f.sheet)! }),
@@ -1774,7 +1790,7 @@ export function judgeFunctional(
       const obs = byEnv.get(f.instance);
       const { answer, documents } = judgeProbes(f, obs?.hosts ?? {}, (probe) => ({ ok: probe.ok === true }), {
         lang: opts.lang,
-        at,
+        at: atOf(f.instance),
         ...(obs?.probes?.[f.id ?? ""] === undefined ? {} : { hostless: obs.probes[f.id ?? ""]! }),
         ...(f.sheet === undefined ? {} : { sheet: f.sheet }),
       });
@@ -1822,7 +1838,7 @@ export function judgeFunctional(
       },
       {
         lang: opts.lang,
-        at,
+        at: atOf(f.instance),
         // A command's output is already carried as evidence by `evidenceFrom`;
         // emitting it again would put two documents at one address.
         read: (held, _id, host) => {
