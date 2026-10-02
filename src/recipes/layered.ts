@@ -1017,6 +1017,11 @@ function buildEmbeddedFromStaticFiles(
       }
     }
     const contested = new Set<string>();
+    // WHICH COMPONENT THIS FILE IS, read off its rows. Collected for every file
+    // (not only one that declares `component:`) because the answer is what the
+    // PREVIEW is labelled with below.
+    const rowComponents = new Set<string>();
+    let componentlessRow = false;
     for (const e of rawEntries) {
       const derived = transformer ? transformer.apply(selectKeySource(sf.key!.from, e.key, e.source.path)) : (e.source.path ?? e.key);
       const key = withNestPrefix(derived, e.source.path, split, prefixes);
@@ -1057,6 +1062,8 @@ function buildEmbeddedFromStaticFiles(
       // collision. Entries outside any component share one scope.
       const scope = sf.component ?? derivedHere ?? "";
       const entryComponent = scope || undefined;
+      if (entryComponent === undefined) componentlessRow = true;
+      else rowComponents.add(entryComponent);
       const seen = seenInFile.get(scope) ?? new Map<string, string[]>();
       const where = seen.get(key);
       if (where) where.push(e.source.path ?? key);
@@ -1143,8 +1150,23 @@ function buildEmbeddedFromStaticFiles(
     // wants is still the one this file writes.
     const keys: LineKeys = new Map();
     for (const e of fileEntries) addLineKey(keys, e.source.line, e.key);
+    // WHOSE FILE THIS IS, where nobody said. A `split` already decides which
+    // component each row belongs to, and `component:` on a file the split
+    // divides is refused (above) — so a file the split reads could never be
+    // labelled at all, and the narrowing that drops a component had to keep its
+    // file and report it instead (restrict.ts's unjudged previews).
+    //
+    // Asked of the ROWS, which is the same question the refusal asks: a file
+    // every one of whose rows landed in ONE component IS that component's file,
+    // whoever derived it. A file holding several, or holding rows that belong to
+    // no component at all, is labelled with none — the preview IS the file, so
+    // dividing it into one preview per component would hand the reader a file
+    // that is not on the disk and whose line numbers belong to another; a shared
+    // file is shared, and saying so is what the unjudged report is for.
+    const previewComponent =
+      sf.component ?? (!componentlessRow && rowComponents.size === 1 ? [...rowComponents][0] : undefined);
     const preview = previewFile(
-      { id: previewId(sheetName, sf.component, file), sheet: sheetName, ...(sf.component !== undefined ? { component: sf.component } : {}), source_file: file },
+      { id: previewId(sheetName, previewComponent, file), sheet: sheetName, ...(previewComponent !== undefined ? { component: previewComponent } : {}), source_file: file },
       content,
       keys,
       warn

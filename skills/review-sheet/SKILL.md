@@ -1440,6 +1440,15 @@ file, a member's own variables in another is the ordinary shape — and so does
 every file under `as: prefix` or `as: none`, where the component slot is the
 source's by design.
 
+Nothing is lost by not declaring it: the file's **preview** is labelled from its
+ROWS, so a file every one of whose rows landed in one component is that
+component's file without being told, and a narrowing that drops the component
+(`generate --drop-empty-components`) takes the file with it. A file holding
+several components' rows — or holding rows that belong to no component — is
+labelled with none and kept, with a line saying so: the preview IS the file, and
+one preview per component would hand the reader a file that is not on the disk
+and whose line numbers belong to another.
+
 ##### `members:` — when the element's own id cannot select it
 
 `only:` matches ids literally, which is enough until the id is not this

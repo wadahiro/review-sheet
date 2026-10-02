@@ -26,6 +26,9 @@ const FILES: Record<string, string> = {
   // One key each, so nothing else goes wrong first: the sheet's own two rows
   // would key identically under one component, and that collision is a
   // different report.
+  "a-only.yml": "clients:\n  - clientId: client-A\n    protocol: openid-connect\n",
+  // The list AND something outside it: a row belonging to no component.
+  "a-plus-loose.yml": "smtp_host: mail.example.com\nclients:\n  - clientId: client-A\n    protocol: openid-connect\n",
   "one-each.yml": "clients:\n  - clientId: client-A\n    protocol: openid-connect\n  - clientId: client-B\n    rootUrl: https://b.example\n",
 };
 
@@ -132,5 +135,64 @@ describe("a split that leaves the component slot to the source", () => {
     const keys = loadPrefixed(RELEASE).embedded.map((e) => e.key);
     expect(keys).toContain("client-A.protocol");
     expect(keys).toContain("client-B.protocol");
+  });
+});
+
+// WHOSE FILE THIS IS, where nobody said it.
+//
+// `component:` on a file the split divides is refused (above), so a file the
+// split reads could never be labelled at all — and the preview panel's entry
+// carried no component either, which left the narrowing that drops a component
+// unable to drop that component's FILE with it: it kept it and reported it
+// instead (restrict.ts's unjudged previews). The split already knows which
+// component every row of the file belongs to, so nothing has to be declared;
+// the answer is read off the rows, which is the same question the refusal asks.
+describe("the component a preview is labelled with", () => {
+  const preview = (out: SheetInputs, file: string) => (out.artifacts ?? []).find((a) => a.source_file.endsWith(file))!;
+
+  // One file per member, the shape the report was written about.
+  it("is the one every row of the file landed in", () => {
+    const out = load([{ path: "a-only.yml", include: ["**"] }], ["client-A"]);
+    expect(preview(out, "a-only.yml").component).toBe("client-A");
+  });
+
+  // A file holding SEVERAL is labelled with none: the preview IS the file, so
+  // dividing it per component would hand the reader a file that is not on the
+  // disk and whose line numbers belong to another. A shared file is shared.
+  it("is nothing where the file holds more than one", () => {
+    const out = load([{ path: "one-each.yml", include: ["**"] }]);
+    expect(preview(out, "one-each.yml").component).toBeUndefined();
+  });
+
+  // …and the rows themselves are unaffected — they each keep their own.
+  it("leaves such a file's rows under their own components", () => {
+    const out = load([{ path: "one-each.yml", include: ["**"] }]);
+    const owners = new Set(out.embedded.map((e) => e.component));
+    expect([...owners].sort()).toEqual(["client-A", "client-B"]);
+  });
+
+  // A row belonging to NO component cannot route to a preview claiming one, so
+  // a file holding the list AND something outside it is labelled with none
+  // rather than labelled for the members and silently losing the rest.
+  it("is nothing where some row belongs to no component", () => {
+    const out = load([{ path: "a-plus-loose.yml", include: ["**"] }], ["client-A"]);
+    expect(preview(out, "a-plus-loose.yml").component).toBeUndefined();
+  });
+
+  // Declared still wins, unchanged: a file the split does not divide says what
+  // it is.
+  it("is the declared one where the file declares it", () => {
+    const out = load([
+      { path: "clients.yml", include: ["**"] },
+      { path: "vars.yml", include: ["**"], component: "client-A" },
+    ]);
+    expect(preview(out, "vars.yml").component).toBe("client-A");
+  });
+
+  // The id carries it too, or two files of one sheet would be drawn as instance
+  // tabs of each other (preview.ts's `previewId`).
+  it("puts it in the preview's id", () => {
+    const out = load([{ path: "a-only.yml", include: ["**"] }], ["client-A"]);
+    expect(preview(out, "a-only.yml").id).toContain("client-A");
   });
 });
