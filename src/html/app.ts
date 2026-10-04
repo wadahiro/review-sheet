@@ -4245,22 +4245,41 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // mark is the same CSS either way, since both are a table row.
   const [marked, setMarked] = useState<HTMLElement | null>(null);
 
-  // …and landing on one is one operation. The flash says WHERE IT WENT; the
-  // mark says WHICH ONE THIS IS, and a reader needs the second for as long as
-  // they are reading it.
-  const landOn = useCallback((el: HTMLElement) => {
-    // CENTRED, and that is not a preference. `aimAt` aims at the TOP and leans
-    // on the scroll-margin its destination declares — which a heading declares
-    // and a table ROW does not, so a row aimed at that way lands flush against
-    // the viewport and under the sticky bar, highlighted and invisible. The
-    // middle of the screen needs nothing declared and can never be behind
-    // anything.
-    el.scrollIntoView({ block: "center" });
-    el.classList.remove("rs-jump-flash");
-    void el.offsetWidth;
-    el.classList.add("rs-jump-flash");
-    window.setTimeout(() => el.classList.remove("rs-jump-flash"), 1700);
-    setMarked(el);
+  // …and landing on one is ONE operation, wherever the address came from: a
+  // click in the tree, a line of the panel, a verdict's citation, a pasted link,
+  // or the back button. Four of those five had grown their own landing — one
+  // centred and marked, one aimed and flashed, one marked without centring, and
+  // the traversal did the least of all — so the same address behaved differently
+  // depending on how the reader arrived at it, which is the complaint this
+  // answers.
+  //
+  // What differs is the DESTINATION and not the route, so that is what decides:
+  //
+  //   * A ROW is centred and MARKED. `aimAt` aims at the top and leans on the
+  //     scroll-margin its destination declares — a heading declares one and a
+  //     table row does not, so a row aimed at that way lands flush against the
+  //     viewport under the sticky bands, highlighted and invisible. And the mark
+  //     is what says WHICH of the fifty rows on screen was meant, for as long as
+  //     the reader is reading it; the flash alone answers "where did it go" and
+  //     then lets go.
+  //   * A SECTION is aimed at (its own scroll-margin, with the sticking
+  //     suspended for the measurement — see `aimAt`) and flashed on its header
+  //     box rather than on the width of its words. Nothing is marked: the mark
+  //     is `tr.rs-row-here` in the stylesheet, so a section wearing it would be
+  //     a claim with no appearance, and it would take the mark off the row the
+  //     reader actually came from.
+  const land = useCallback((el: HTMLElement) => {
+    const row = el.tagName === "TR";
+    if (row) el.scrollIntoView({ block: "center" });
+    else aimAt(el);
+    let flashEl: Element = el;
+    if (el.classList.contains("rs-category")) flashEl = el.querySelector(".rs-category-header") ?? el;
+    else if (el.classList.contains("rs-sheet")) flashEl = el.querySelector(".rs-sheet-header") ?? el;
+    flashEl.classList.remove("rs-jump-flash");
+    void (flashEl as HTMLElement).offsetWidth; // restart the animation if re-triggered
+    flashEl.classList.add("rs-jump-flash");
+    window.setTimeout(() => flashEl.classList.remove("rs-jump-flash"), 1700);
+    setMarked(row ? el : null);
   }, []);
   // After an outline/palette click we pin the highlight to the clicked target and
   // suppress the scroll-spy briefly, so the programmatic scroll settling doesn't
@@ -4277,16 +4296,20 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // `<sheet>--<category path>--<key>` and only the rendered tree knows which
   // category path this key ended up under.
   const jumpToRow = useCallback((_sheet: string, key: string) => {
-    const land = (): boolean => {
+    const go = (): boolean => {
       const el = document.querySelector(`[id$="--${cssEscape(encodeIdPart(key))}"]`);
       if (!el) return false;
-      landOn(el as HTMLElement);
-      // …and the row becomes what the fragment names, which is the address a
-      // reader copies. Still replaceState: see the hash effect.
+      // A LINE OF THE PANEL IS A MOVE LIKE ANY OTHER, so it leaves an entry to
+      // come back from — it used to leave only the replaced fragment, so the
+      // reader who followed a line into the sheet had nothing to press. The row
+      // becomes what the fragment names either way, which is the address a
+      // reader copies.
+      pushAddress(activeSheet, (el as HTMLElement).id);
+      land(el as HTMLElement);
       setCurrentNavId(el.id);
       return true;
     };
-    if (land()) return;
+    if (go()) return;
     // Not rendered — almost always because the row is a product default and the
     // unset rows are hidden. Show them and try again on the next paint, rather
     // than doing nothing: a click that silently accomplishes nothing is the
@@ -4295,8 +4318,8 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     setShowDefaults(true);
     // A macrotask, not a microtask: the re-render is queued by the state change
     // above and has to have happened before the row can be found.
-    window.setTimeout(land, 0);
-  }, [landOn]);
+    window.setTimeout(go, 0);
+  }, [land, pushAddress, activeSheet]);
 
   // An ordinary anchor, or a document LINE — which has no id, because the
   // markdown a reader edits is what those blocks are addressed by.
@@ -4346,18 +4369,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
       // the scroll-margin the heading already declares still applies. Nothing
       // is painted in between — the class is added and removed inside one
       // frame, around a call that scrolls synchronously.
-      aimAt(el);
-      // Briefly flash the landed-on target so it's easy to spot.
-      // The header ROW, not the heading inside it: the flash marks where you
-      // landed, and a tint the width of the words is not that. What it paints
-      // WITH is what had to change — see rs-flash in styles.ts.
-      let flashEl: Element = el;
-      if (el.classList.contains("rs-category")) flashEl = el.querySelector(".rs-category-header") ?? el;
-      else if (el.classList.contains("rs-sheet")) flashEl = el.querySelector(".rs-sheet-header") ?? el;
-      flashEl.classList.remove("rs-jump-flash");
-      void (flashEl as HTMLElement).offsetWidth; // restart the animation if re-triggered
-      flashEl.classList.add("rs-jump-flash");
-      window.setTimeout(() => flashEl.classList.remove("rs-jump-flash"), 1700);
+      land(el as HTMLElement);
       // Highlight the clicked target immediately and hold it against the
       // scroll-spy while the programmatic scroll settles (the outline shows
       // categories, so a param jump highlights its containing category).
@@ -4376,15 +4388,17 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     } else {
       scroll();
     }
-  }, [activeSheet, setActiveSheet, pushAddress]);
+  }, [activeSheet, setActiveSheet, pushAddress, land]);
 
   // GO TO A VERDICT DECIDED ON THIS LINE. The address is either a block of
   // prose or a sheet's row, and `jumpToNav` already crosses sheets and resolves
   // both; the flash is what tells the reader which of fifty rows was meant.
   const goToCiter = useCallback((c: Citation) => {
     setCiters(null);
-    jumpToNav(c.sheetIndex, c.address, undefined, undefined, undefined, landOn);
-  }, [jumpToNav, landOn]);
+    // Nothing of its own: the landing is the same one every address gets, and a
+    // callback here is how the two panels came to behave differently.
+    jumpToNav(c.sheetIndex, c.address);
+  }, [jumpToNav]);
 
 
 
@@ -4475,14 +4489,12 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   useEffect(() => {
     if (initialAnchor === null) return;
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      const el = document.getElementById(initialAnchor);
-      if (el !== null) {
-        aimAt(el);
-        // A PASTED LINK SHOWS WHAT THE SENDER SAW. The address already brought
-        // the reader to the right place; marking the row is what tells them
-        // which of the fifty on screen was meant.
-        setMarked(el);
-      }
+      // A PASTED LINK SHOWS WHAT THE SENDER SAW, by the same landing every
+      // other address gets — the address brought the reader to the right place,
+      // and the mark is what tells them which of the fifty rows on screen was
+      // meant.
+      const el = resolveNavTarget(initialAnchor);
+      if (el !== null) land(el);
     }));
   }, []);
 

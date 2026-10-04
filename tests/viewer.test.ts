@@ -4579,3 +4579,115 @@ describe("viewer: the history the navigation leaves", () => {
     expect(pushed, `pushed ${pushed.join(", ")}`).toEqual([]);
   });
 });
+
+// ONE LANDING, WHOEVER SENT THE READER THERE.
+//
+// A row reached from a line of the panel was centred and marked; the same row
+// reached by pressing BACK was aimed at the top of the viewport — under the
+// sticky bands — and not marked at all, so the reader could not see which of
+// the rows on screen they had been returned to. Four routes to one address had
+// four behaviours, each written at a different time: the tree, the panel, a
+// pasted link, and the button.
+//
+// What decides is the DESTINATION, not the route: a row is centred and marked,
+// a section is aimed at and flashed on its own header.
+describe("viewer: landing on an address, however it was reached", () => {
+  let pushed: string[] = [];
+  const realPush = history.pushState;
+  const patch = (): void => {
+    pushed = [];
+    history.pushState = function (this: History, a: unknown, b: unknown, url: string) {
+      pushed.push(url);
+      return realPush.call(this, a as never, b as never, url);
+    } as never;
+  };
+  afterEach(() => { history.pushState = realPush; });
+
+  // A line of the file, clicked: the panel's own way into the sheet.
+  const fromPanel = async (host: HTMLElement): Promise<void> => {
+    (rowFor(host, "Listen").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await Promise.resolve();
+    const line = [...host.querySelectorAll(".rs-artifact-line.rs-has-row")].find((l) =>
+      l.querySelector(".rs-artifact-text")?.textContent?.includes("Listen")
+    ) as HTMLElement;
+    line.click();
+    for (let i = 0; i < 100; i++) {
+      if (host.querySelector("tr.rs-row-here") !== null) break;
+      await waitForEffects();
+    }
+  };
+  const section = (host: HTMLElement): HTMLElement =>
+    [...host.querySelectorAll(".rs-navtree-item")].find((e) => (e.textContent ?? "").includes("httpd.conf")) as HTMLElement;
+
+  it("leaves an entry for the row a line of the panel led to", async () => {
+    const host = mountArtifact();
+    await waitForEffects();
+    patch();
+    await fromPanel(host);
+    expect(pushed, "the panel's jump left nothing to come back from").toHaveLength(1);
+    expect(decodeURIComponent(pushed[0]!)).toContain("Listen");
+  });
+
+  // THE POINT OF THE WHOLE THING: back puts the reader on the row, marked, not
+  // merely somewhere near it.
+  it("comes back to the row and marks it again", async () => {
+    const host = mountArtifact();
+    await waitForEffects();
+    await fromPanel(host);
+    expect(host.querySelector("tr.rs-row-here")).not.toBeNull();
+    // …away to a section, which clears the mark, and then back.
+    section(host).click();
+    await waitForEffects();
+    expect(host.querySelector("tr.rs-row-here"), "the section kept the row marked").toBeNull();
+    history.back();
+    await waitForEffects();
+    const here = host.querySelector("tr.rs-row-here");
+    expect(here, `nothing is marked; the fragment says ${location.hash}`).not.toBeNull();
+    expect(here!.querySelector(".rs-col-key code")?.textContent).toBe("Listen");
+  });
+
+  // …and a section is not a row: the mark is `tr.rs-row-here` in the
+  // stylesheet, so marking one would be a claim with no appearance — and it
+  // would take the mark off the row the reader came from.
+  it("marks nothing when the address it came back to names a section", async () => {
+    const host = mountArtifact();
+    await waitForEffects();
+    section(host).click();
+    await waitForEffects();
+    await fromPanel(host);
+    history.back();
+    await waitForEffects();
+    // Asked of EVERY element and not only of rows: the mark is `tr.rs-row-here`
+    // in the stylesheet, so a section wearing the class would look like nothing
+    // happening while the row the reader came from quietly lost its mark.
+    expect([...host.querySelectorAll(".rs-row-here")].map((e) => e.tagName)).toEqual([]);
+    expect(host.querySelectorAll(".rs-jump-flash").length).toBeGreaterThan(0);
+  });
+
+  // WHERE ON THE SCREEN, which no test environment with no layout can see
+  // directly — so it is asked of the call: a row is centred (`block: "center"`),
+  // a section is aimed at its own top and leans on the scroll-margin it
+  // declares (`aimAt`). A row aimed at the top lands under the sticky bands,
+  // marked and invisible, which is the state this distinction exists to avoid.
+  it("centres a row and aims a section at its own top", async () => {
+    const host = mountArtifact();
+    await waitForEffects();
+    const real = Element.prototype.scrollIntoView;
+    const calls: string[] = [];
+    Element.prototype.scrollIntoView = function (this: Element, opts?: unknown) {
+      calls.push(`${this.tagName}:${JSON.stringify(opts)}`);
+      return real.call(this, opts as never);
+    } as never;
+    try {
+      await fromPanel(host);
+      expect(calls.some((c) => c.startsWith("TR:") && c.includes('"center"')), `calls were ${calls.join(" | ")}`).toBe(true);
+      calls.length = 0;
+      section(host).click();
+      await waitForEffects();
+      expect(calls.some((c) => c.includes('"start"')), `calls were ${calls.join(" | ")}`).toBe(true);
+      expect(calls.some((c) => c.includes('"center"'))).toBe(false);
+    } finally {
+      Element.prototype.scrollIntoView = real;
+    }
+  });
+});
