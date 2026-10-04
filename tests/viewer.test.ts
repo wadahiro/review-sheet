@@ -4239,6 +4239,26 @@ describe("viewer: the verdicts decided on a line", () => {
     expect(lineAt(host, 4).classList.contains("rs-has-cite")).toBe(false);
   });
 
+  // THE SAME MARK FROM THE OTHER SIDE. The panel marks the line it was opened
+  // at, and a cited line the reader clicks is the line they are now on — the
+  // evidence panel left it unmarked, so after following a citation out of a long
+  // document nothing said which line that had been.
+  // TWO cited lines, and the panel opened at the FIRST: clicking the second has
+  // to move the mark, which is the only arrangement that can tell "the click was
+  // heard" from "the line was already marked by whatever opened the panel".
+  it("marks the cited line the reader clicked", async () => {
+    const host = mountWith([
+      { line: 5, no: "1", what: "a", at: 3 },
+      { line: 6, no: "2", what: "b", at: 7 },
+    ]);
+    await openPanel(host);
+    expect([...host.querySelectorAll(".rs-artifact-line.rs-here")].map((l) => l.querySelector(".rs-artifact-no")?.textContent)).toEqual(["3"]);
+    lineAt(host, 7).click();
+    await waitForEffects();
+    const here = [...host.querySelectorAll(".rs-artifact-line.rs-here")];
+    expect(here.map((l) => l.querySelector(".rs-artifact-no")?.textContent)).toEqual(["7"]);
+  });
+
   it("says how many, where a reader can see it", async () => {
     const host = mountWith([{ line: 5, no: "1", what: "a", at: 3 }]);
     await openPanel(host);
@@ -4689,5 +4709,77 @@ describe("viewer: landing on an address, however it was reached", () => {
     } finally {
       Element.prototype.scrollIntoView = real;
     }
+  });
+});
+
+// THE LINE THE READER POINTED AT, still said so by the panel.
+//
+// The panel marks the line it was OPENED at — a row's own line, or the one a
+// verdict was read from. A line the reader CLICKS is the same fact reached from
+// the other side, and it was not marked: the click moved the sheet behind the
+// panel and the panel itself went on highlighting whatever had opened it, so
+// after following a line out of a five-hundred-line file the reader could no
+// longer see which line that was. In both panels, which is one component — the
+// two callbacks either side of it were written at different times.
+describe("viewer: the line a panel was clicked on", () => {
+  const lineAt = (host: HTMLElement, text: string): HTMLElement =>
+    [...host.querySelectorAll(".rs-artifact-line")].find((l) =>
+      l.querySelector(".rs-artifact-text")?.textContent?.includes(text)
+    ) as HTMLElement;
+  const hereTexts = (host: HTMLElement): string[] =>
+    [...host.querySelectorAll(".rs-artifact-line.rs-here")].map((l) => l.querySelector(".rs-artifact-text")?.textContent ?? "");
+
+  const openPanel = (host: HTMLElement, key: string): void => {
+    (rowFor(host, key).querySelector(".rs-artifact-chip") as HTMLElement).click();
+  };
+
+  it("marks the clicked line, in a rendered artifact", async () => {
+    const host = mountArtifact();
+    openPanel(host, "Listen");
+    await Promise.resolve();
+    lineAt(host, "StartServers").click();
+    await waitForEffects();
+    expect(hereTexts(host).join(" ")).toContain("StartServers");
+  });
+
+  // ONE line, not the one that opened it as well: the reader has pointed
+  // somewhere else, and two marks answer "which line am I on" with two.
+  it("takes the mark off the line that opened the panel", async () => {
+    const host = mountArtifact();
+    openPanel(host, "Listen");
+    await Promise.resolve();
+    expect(hereTexts(host).join(" ")).toContain("Listen 80");
+    lineAt(host, "StartServers").click();
+    await waitForEffects();
+    expect(hereTexts(host)).toHaveLength(1);
+    expect(hereTexts(host).join(" ")).not.toContain("Listen 80");
+  });
+
+  // …and in a SOURCE preview, which is where the reader hit it: the panel is
+  // one component, so this is a test that no branch of it treats the natures
+  // differently.
+  it("marks the clicked line of an authored source file too", async () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: WITH_SOURCE_ARTIFACT, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    await waitForEffects();
+    openPanel(host, "instance_type");
+    await Promise.resolve();
+    // Opened from the row, so its own line is marked already; clicking it is
+    // the same line, and it stays marked rather than toggling off.
+    lineAt(host, "instance_type").click();
+    await waitForEffects();
+    expect(hereTexts(host).join(" ")).toContain("instance_type");
+  });
+
+  // Opening the panel from a row still marks every line that IS that row — a
+  // `count`ed resource writes one line per copy, and the mark is the answer to
+  // "where is this row in the file".
+  it("still marks the row's own line when the panel is opened from the sheet", async () => {
+    const host = mountArtifact();
+    openPanel(host, "Listen");
+    await Promise.resolve();
+    expect(hereTexts(host).join(" ")).toContain("Listen 80");
   });
 });

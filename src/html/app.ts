@@ -3637,12 +3637,19 @@ export type ArtifactAccess = {
   open: (id: string, key: string, keys?: string[]) => void;
 };
 
-function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, citersOf, onCite, dock, onDock, t }: {
+function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, onHere, citersOf, onCite, dock, onDock, t }: {
   previews: ArtifactPreview[];
   target: ArtifactTarget;
   onClose: () => void;
   onPick: (instance: string | undefined) => void;
   onJumpRow: (sheet: string, key: string) => void;
+  // WHICH LINE THE READER POINTED AT. The panel marks the line it was OPENED
+  // at — the row's own line, or the one a verdict was read from — and a line the
+  // reader clicks is the same fact arrived at from the other side, so it is the
+  // same mark. Without this the click moved the sheet behind the panel and left
+  // the panel itself saying nothing: the reader could no longer tell which of
+  // five hundred lines they had just followed, in either panel.
+  onHere: (line: number) => void;
   // WHO CITES A LINE of this document, and what to do about it. Only ever
   // non-empty on an OBSERVED document: a citation names the bytes a verdict was
   // read from, and the row affordance beside it (`rs-has-row`) never appears on
@@ -3798,9 +3805,9 @@ function ArtifactPanel({ previews, target, onClose, onPick, onJumpRow, citersOf,
             <div class=${`rs-artifact-line rs-kind-${line.kind} ${line.key !== undefined ? "rs-has-row" : ""} ${(citersOf?.(i + 1) ?? []).length > 0 ? "rs-has-cite" : ""} ${here ? "rs-here" : ""}`}
                  title=${(citersOf?.(i + 1) ?? []).length > 0 ? t.artifactCitedBy.replace("{n}", String((citersOf?.(i + 1) ?? []).length)) : title}
                  onClick=${line.key !== undefined
-                   ? () => onJumpRow(shown.sheet, line.key!)
+                   ? () => { onHere(i + 1); onJumpRow(shown.sheet, line.key!); }
                    : (citersOf?.(i + 1) ?? []).length > 0
-                     ? () => onCite?.(citersOf!(i + 1))
+                     ? () => { onHere(i + 1); onCite?.(citersOf!(i + 1)); }
                      : undefined}>
               <span class="rs-artifact-no">${i + 1}</span>
               <span class="rs-artifact-text">${line.text === "" ? "\u00a0" : line.text}</span>
@@ -5209,6 +5216,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
                           onClose=${() => setArtifactTarget(null)}
                           onPick=${(instance: string | undefined) => setArtifactTarget((c) => (c ? { ...c, instance } : c))}
                           onJumpRow=${jumpToRow}
+                          onHere=${(line: number) => setArtifactTarget((c) => (c ? { ...c, line } : c))}
                           citersOf=${(line: number) => citations.get(citationKey(artifactTarget.id, line)) ?? []}
                           onCite=${(found: Citation[]) => {
                             // ONE goes straight there; several are a choice, and
