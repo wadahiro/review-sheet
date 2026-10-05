@@ -4187,9 +4187,10 @@ describe("viewer: the verdicts decided on a line", () => {
   const ID = "observed poc terraform show -json";
   const cite = (line: number): string => `rs-evidence:${encodeURIComponent(`${ID}#L${line}`)}`;
 
-  function mountWith(rows: { line: number; no: string; what: string; at: number }[]): HTMLElement {
+  function mountWith(rows: { line: number; no: string; what: string; at: number; doc?: string }[], others: string[] = []): HTMLElement {
+    const citeIn = (doc: string, line: number): string => `rs-evidence:${encodeURIComponent(`${doc}#L${line}`)}`;
     const html_ = `<h2 id="p-r">R</h2>\n<table><tbody>${rows
-      .map((r) => `<tr data-rs-line="${r.line}"><td>${r.no}</td><td>${r.what}</td><td><a href="${cite(r.at)}">e</a></td></tr>`)
+      .map((r) => `<tr data-rs-line="${r.line}"><td>${r.no}</td><td>${r.what}</td><td><a href="${citeIn(r.doc ?? ID, r.at)}">e</a></td></tr>`)
       .join("")}</tbody></table>\n`;
     const payload = {
       metadata: { title: "t" },
@@ -4207,6 +4208,15 @@ describe("viewer: the verdicts decided on a line", () => {
               instances: ["poc"],
               lines: Array.from({ length: 12 }, (_, i) => ({ text: `line ${i + 1}`, kind: "verbatim" as const })),
             },
+            ...others.map((id) => ({
+              id,
+              sheet: "rec",
+              source_file: id,
+              nature: "observed" as const,
+              observed: { host: "acct", at: "T" },
+              instances: ["poc"],
+              lines: Array.from({ length: 12 }, (_, i) => ({ text: `other ${i + 1}`, kind: "verbatim" as const })),
+            })),
           ],
         },
       ],
@@ -4257,6 +4267,65 @@ describe("viewer: the verdicts decided on a line", () => {
     await waitForEffects();
     const here = [...host.querySelectorAll(".rs-artifact-line.rs-here")];
     expect(here.map((l) => l.querySelector(".rs-artifact-no")?.textContent)).toEqual(["7"]);
+  });
+
+  // …AND BACK MOVES IT BACK. The sheet behind the panel travels with the button
+  // (the jump a citation makes leaves an entry like any other move), and the
+  // panel used to go on marking the line the reader had just left — one document
+  // saying two things about where its reader is.
+  it("follows the button back to the line of the verdict returned to", async () => {
+    const host = mountWith([
+      { line: 5, no: "1", what: "a", at: 3 },
+      { line: 6, no: "2", what: "b", at: 7 },
+    ]);
+    await openPanel(host);
+    const no = (): (string | undefined)[] =>
+      [...host.querySelectorAll(".rs-artifact-line.rs-here")].map((l) => l.querySelector(".rs-artifact-no")?.textContent);
+    // Into the first verdict, then into the second: two moves, two entries.
+    lineAt(host, 3).click();
+    await waitForEffects();
+    lineAt(host, 7).click();
+    await waitForEffects();
+    expect(no()).toEqual(["7"]);
+    history.back();
+    await waitForEffects();
+    expect(no(), `the fragment says ${location.hash}`).toEqual(["3"]);
+  });
+
+  // …and never into a document the reader is not holding. A verdict returned to
+  // may have been read from another file; pointing THIS panel at that file's
+  // line number would mark an unrelated line of the file on screen.
+  it("leaves the mark alone when the verdict returned to was read elsewhere", async () => {
+    const OTHER = "observed poc other";
+    const host = mountWith(
+      [
+        { line: 5, no: "1", what: "a", at: 3, doc: OTHER },
+        { line: 6, no: "2", what: "b", at: 7 },
+      ],
+      [OTHER]
+    );
+    const openLink = async (n: number): Promise<void> => {
+      (host.querySelectorAll('a[href^="rs-evidence:"]')[n] as HTMLElement).dispatchEvent(
+        new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 })
+      );
+      for (let i = 0; i < 100; i++) {
+        if (host.querySelector(".rs-artifact-panel") !== null) break;
+        await waitForEffects();
+      }
+    };
+    // VISIT the first verdict, so there is an entry to come back TO, and leave
+    // the panel on the OTHER document — the second verdict's.
+    await openLink(0);
+    lineAt(host, 3).click();
+    await waitForEffects();
+    await openLink(1);
+    lineAt(host, 7).click();
+    await waitForEffects();
+    history.back();
+    await waitForEffects();
+    const here = [...host.querySelectorAll(".rs-artifact-line.rs-here")].map((l) => l.querySelector(".rs-artifact-no")?.textContent);
+    expect(host.querySelector(".rs-artifact-path")?.textContent, "the panel changed documents").toBe("terraform show -json");
+    expect(here, `the fragment says ${location.hash}`).toEqual(["7"]);
   });
 
   it("says how many, where a reader can see it", async () => {
@@ -4771,6 +4840,48 @@ describe("viewer: the line a panel was clicked on", () => {
     lineAt(host, "instance_type").click();
     await waitForEffects();
     expect(hereTexts(host).join(" ")).toContain("instance_type");
+  });
+
+  // A KEY WITH SEVERAL LINES is where the two marks differ: opening from the row
+  // marks all of them, and clicking one of them means that one. The landing that
+  // follows the click must not widen it back out — the reader pointed at a line.
+  it("keeps the click on the line that was clicked, not on every line of its row", async () => {
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const payload = {
+      metadata: { title: "t" },
+      versions: [
+        {
+          version: "current",
+          sheets: [{ name: "mod", categories: [{ name: "main.tf", params: [{ key: "ami", value: "x", description: "d" }] }] }],
+          artifacts: [
+            {
+              id: "mod",
+              sheet: "mod",
+              source_file: "main.tf",
+              nature: "source" as const,
+              // One `count`ed resource: two lines, one row.
+              lines: [
+                { text: 'ami = "x" # [0]', kind: "verbatim" as const, key: "ami" },
+                { text: "between", kind: "verbatim" as const },
+                { text: 'ami = "x" # [1]', kind: "verbatim" as const, key: "ami" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    render(h(Root, { payload: payload as never, reviewEnabled: true, initialLang: "ja", server: false }), host);
+    await waitForEffects();
+    openPanel(host, "ami");
+    await Promise.resolve();
+    // Opened from the row: both of its lines.
+    expect(hereTexts(host)).toHaveLength(2);
+    lineAt(host, "[1]").click();
+    await waitForEffects();
+    expect(hereTexts(host)).toHaveLength(1);
+    expect(hereTexts(host).join(" ")).toContain("[1]");
   });
 
   // Opening the panel from a row still marks every line that IS that row — a

@@ -4279,6 +4279,50 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     const row = el.tagName === "TR";
     if (row) el.scrollIntoView({ block: "center" });
     else aimAt(el);
+    // AND THE LENS FOLLOWS THE PLACE.
+    //
+    // An open panel marks the line the reader is on — that is what opening it
+    // from a row does, and what clicking one of its lines does. Arriving at a
+    // row any other way left it marking wherever it had been pointed before, so
+    // back and forward moved the sheet underneath a panel that went on
+    // highlighting the line the reader had just left.
+    //
+    // Which line THIS row is, asked of the panel's own text and of the row's own
+    // cell, never computed a third way:
+    //
+    //   * a record's row names a line of an observed document in its own
+    //     evidence link, which is the same thing clicking that link does;
+    //   * an ordinary row IS some line of the previewed file, and a line says so
+    //     by carrying the row's key — matched by the spelling `jumpToRow`
+    //     already looks rows up by, so the two cannot disagree.
+    //
+    // Only within the document already open: pressing back to a verdict read
+    // from another file would otherwise swap the panel for one the reader never
+    // asked for.
+    if (row) {
+      setArtifactTarget((cur) => {
+        if (cur === undefined || cur === null) return cur;
+        const shown = (artifacts ?? []).find((x) => x.id === cur.id);
+        if (shown === undefined) return cur;
+        const keysOf = (n: number): string[] => {
+          const l = shown.lines[n - 1];
+          return l === undefined ? [] : (l.keys ?? (l.key === undefined ? [] : [l.key]));
+        };
+        const isMine = (k: string): boolean => el.id.endsWith(`--${encodeIdPart(k)}`);
+        // Already pointing at this row — the reader clicked one of its lines, and
+        // moving the mark to "every line of that key" would undo the precision
+        // of the click.
+        if (cur.line !== undefined && keysOf(cur.line).some(isMine)) return cur;
+        const base = { id: cur.id, ...(cur.instance === undefined ? {} : { instance: cur.instance }) };
+        const cited = el.querySelector(`a[href^="${EVIDENCE_SCHEME}"]`)?.getAttribute("href");
+        if (cited !== null && cited !== undefined) {
+          const ref = parseEvidenceRef(cited);
+          if (ref.id === cur.id && ref.line !== undefined) return { ...base, line: ref.line };
+        }
+        const mine = shown.lines.flatMap((l) => l.keys ?? (l.key === undefined ? [] : [l.key])).find(isMine);
+        return mine === undefined ? cur : { ...base, key: mine };
+      });
+    }
     let flashEl: Element = el;
     if (el.classList.contains("rs-category")) flashEl = el.querySelector(".rs-category-header") ?? el;
     else if (el.classList.contains("rs-sheet")) flashEl = el.querySelector(".rs-sheet-header") ?? el;
@@ -4287,7 +4331,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     flashEl.classList.add("rs-jump-flash");
     window.setTimeout(() => flashEl.classList.remove("rs-jump-flash"), 1700);
     setMarked(row ? el : null);
-  }, []);
+  }, [artifacts]);
   // After an outline/palette click we pin the highlight to the clicked target and
   // suppress the scroll-spy briefly, so the programmatic scroll settling doesn't
   // re-select whatever category happens to sit in the top band (which is what
