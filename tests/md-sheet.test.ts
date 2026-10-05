@@ -51,6 +51,12 @@ const SHEET = {
 const MD = sheetToMarkdown(SHEET as never, "ja");
 
 afterEach(() => {
+  // UNMOUNTED, not just emptied: `innerHTML = ""` detaches a tree without
+  // telling Preact, so every effect it registered stays live — including the one
+  // that writes the document's ADDRESS as the reader moves, which a dead App
+  // then rewrites over the live one's (measured: a row's address replaced by a
+  // panel-less `#1/<category>` in the full run, never when the file ran alone).
+  for (const el of [...document.body.children]) render(null, el as HTMLElement);
   document.body.innerHTML = "";
   localStorage.clear();
 });

@@ -14,7 +14,7 @@ if (typeof (globalThis as { document?: unknown }).document === "undefined") Glob
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { h, render } from "preact";
-import { Root, artifactProvenance, payloadOfSet, docIdPrefix } from "../src/html/app";
+import { Root, artifactProvenance, payloadOfSet, docIdPrefix, docFragment, parseFragment } from "../src/html/app";
 import { readMarkdownSet } from "../src/md-read";
 import { setMarkdownRenderer } from "../src/html/markdown-runtime";
 import { renderMarkdown } from "../src/markdown";
@@ -103,10 +103,20 @@ beforeEach(() => localStorage.clear());
 // walking the document; the one test that measures what a scroll produced
 // failed about one run in three, and passed on its own every time.
 afterEach(() => {
-  for (const el of [...document.body.children]) render(null, el as HTMLElement);
-  document.body.innerHTML = "";
+  clearMounted();
   localStorage.clear();
 });
+
+// …and the same rule for a test that draws twice in one case. `innerHTML = ""`
+// detaches a tree without telling Preact, so every effect it registered stays
+// live — and those effects now write the FRAGMENT as the reader moves, so a dead
+// App rewrote the address of the live one (measured: a row's address replaced by
+// a panel-less `#1/<category>` on the next scroll event, in the full run and
+// never when the file ran alone).
+export function clearMounted(): void {
+  for (const el of [...document.body.children]) render(null, el as HTMLElement);
+  document.body.innerHTML = "";
+}
 
 function mount(reviews: ReviewDocument["reviews"] = []): HTMLElement {
   openSheetTab();
@@ -646,7 +656,7 @@ describe("viewer: sheet label", () => {
 
   it("names the tabs in the reader's language", () => {
     expect(tabs(mountSheets("ja"))).toEqual(["OS 設定", "Keycloak 設定"]);
-    document.body.innerHTML = "";
+    clearMounted();
     expect(tabs(mountSheets("en"))).toEqual(["OS baseline", "Keycloak configuration"]);
   });
 
@@ -1612,6 +1622,7 @@ describe("artifact panel", () => {
       const host = await backjump(mountArtifact());
       const id = (host.querySelector("tr.rs-row-here") as HTMLElement).id;
       expect(id).not.toBe("");
+      for (let i = 0; i < 50 && !decodeURIComponent(location.hash).includes(id); i++) await waitForEffects();
       expect(decodeURIComponent(location.hash), `hash was ${location.hash}`).toContain(id);
     });
 
@@ -1623,6 +1634,10 @@ describe("artifact panel", () => {
     it("keeps the row in the fragment when the reader scrolls", async () => {
       const host = await backjump(mountArtifact());
       const id = (host.querySelector("tr.rs-row-here") as HTMLElement).id;
+      // WAITED FOR, not timed, like the backjump above: the fragment is written
+      // by an effect two renders after the click, and a fixed delay made this
+      // pass or fail with the load on the machine.
+      for (let i = 0; i < 50 && !decodeURIComponent(location.hash).includes(id); i++) await waitForEffects();
       window.dispatchEvent(new window.Event("scroll"));
       await waitForEffects();
       expect(decodeURIComponent(location.hash), `hash was ${location.hash}`).toContain(id);
@@ -3753,7 +3768,7 @@ describe("the order the sheets are in", () => {
       ],
     };
     const titleAt = (tab: number): string => {
-      document.body.innerHTML = "";
+      clearMounted();
       location.hash = `#${tab}`;
       const host = document.createElement("div");
       document.body.appendChild(host);
@@ -3786,7 +3801,7 @@ describe("a sheet that says its unset rows are its content", () => {
     ...over,
   });
   const draw = (): HTMLElement => {
-    document.body.innerHTML = "";
+    clearMounted();
     location.hash = "#1";
     const host = document.createElement("div");
     document.body.appendChild(host);
@@ -3833,7 +3848,7 @@ describe("a sheet that says its unset rows are its content", () => {
 
 describe("the overview page", () => {
   const draw = (metadata: Record<string, unknown>): HTMLElement => {
-    document.body.innerHTML = "";
+    clearMounted();
     location.hash = "#overview";
     const host = document.createElement("div");
     document.body.appendChild(host);
@@ -3870,7 +3885,7 @@ describe("the overview page", () => {
   // reach the sheets at all. Measured on a real delivery: 8 of 19 sheets
   // listed, and the chapter holding the other 11 shown empty.
   const chapters = (): HTMLElement => {
-    document.body.innerHTML = "";
+    clearMounted();
     location.hash = "#overview";
     const host = document.createElement("div");
     document.body.appendChild(host);
@@ -4328,6 +4343,26 @@ describe("viewer: the verdicts decided on a line", () => {
     expect(here, `the fragment says ${location.hash}`).toEqual(["7"]);
   });
 
+  // THE ADDRESS OF A RECORD'S ROW HAS TO SURVIVE THE SCROLL THAT FOLLOWS.
+  //
+  // The fragment follows the reader, and a selected row outranks the section the
+  // spy is watching — for a SHEET's row, which has an id. A record's row has
+  // none (the markdown a reader edits is what those blocks are addressed by), so
+  // the fragment fell back to the spy's section as soon as the scroll settled:
+  // the entry just pushed for the verdict was overwritten by its heading, and
+  // back then returned to a heading instead of the verdict. Invisible to a test
+  // that never scrolls, which is why this dispatches one.
+  it("keeps the verdict in the fragment when the scroll settles", async () => {
+    const host = mountWith([{ line: 5, no: "1", what: "a", at: 3 }]);
+    await openPanel(host);
+    lineAt(host, 3).click();
+    await waitForEffects();
+    expect(decodeURIComponent(location.hash), `hash was ${location.hash}`).toContain("rs-doc-line");
+    window.dispatchEvent(new window.Event("scroll"));
+    await waitForEffects();
+    expect(decodeURIComponent(location.hash), `hash was ${location.hash}`).toContain("rs-doc-line");
+  });
+
   it("says how many, where a reader can see it", async () => {
     const host = mountWith([{ line: 5, no: "1", what: "a", at: 3 }]);
     await openPanel(host);
@@ -4713,8 +4748,10 @@ describe("viewer: landing on an address, however it was reached", () => {
     await waitForEffects();
     patch();
     await fromPanel(host);
-    expect(pushed, "the panel's jump left nothing to come back from").toHaveLength(1);
-    expect(decodeURIComponent(pushed[0]!)).toContain("Listen");
+    // Two moves, two entries: opening the panel and then following one of its
+    // lines. The second names the row.
+    expect(pushed, "the panel's jump left nothing to come back from").toHaveLength(2);
+    expect(decodeURIComponent(pushed[1]!)).toContain("Listen");
   });
 
   // THE POINT OF THE WHOLE THING: back puts the reader on the row, marked, not
@@ -4892,5 +4929,298 @@ describe("viewer: the line a panel was clicked on", () => {
     openPanel(host, "Listen");
     await Promise.resolve();
     expect(hereTexts(host).join(" ")).toContain("Listen 80");
+  });
+});
+
+
+// OPENING A PANEL IS A MOVE, so the button can undo it.
+//
+// It was not: the preview or the evidence opened, back did nothing, and closing
+// it by hand was the only way out — while a line clicked INSIDE it did leave an
+// entry, so the two halves of one gesture behaved differently. The fragment
+// still says nothing about it: a panel is a lens over the sheet, reached from the
+// row or the verdict it belongs to, and a pasted link must not reopen somebody
+// else's evidence at a line. It rides in the history ENTRY instead, which is the
+// difference between the session remembering it and it being sendable.
+describe("viewer: a panel in the history", () => {
+  const panel = (host: HTMLElement): Element | null => host.querySelector(".rs-artifact-panel");
+
+  // TWO OPENINGS, so the button has somewhere to go that is not "nothing open".
+  // Asserting only that back CLOSES the panel passes whether the opening was
+  // recorded or not — with no entry of its own, back simply leaves for the entry
+  // before, which also has no panel.
+  it("comes back to the file that was open before this one", async () => {
+    const host = mountArtifact();
+    await waitForEffects();
+    (rowFor(host, "Listen").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await waitForEffects();
+    (rowFor(host, "IfModule.StartServers").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await waitForEffects();
+    const marks = (): (string | undefined)[] =>
+      [...host.querySelectorAll(".rs-artifact-line.rs-here")].map((l) => l.querySelector(".rs-artifact-text")?.textContent?.trim());
+    expect(marks().join(" ")).toContain("StartServers");
+    history.back();
+    await waitForEffects();
+    expect(panel(host), "the panel went away instead of going back one").not.toBeNull();
+    expect(marks().join(" "), "the first opening left no entry to come back to").toContain("Listen 80");
+  });
+
+  // …and a traversal records nothing of its own, or one press would need two —
+  // and everything AHEAD of the entry returned to would be thrown away, which
+  // is the forward button.
+  it("records nothing of its own on the way back", async () => {
+    const host = mountArtifact();
+    await waitForEffects();
+    // A PLACE first, so the entry returned to names one and the restore really
+    // runs a jump — the jump is where an unguarded restore would push, and
+    // coming back to a bare `#1` the page is already on reaches nothing.
+    ([...host.querySelectorAll(".rs-navtree-item")].find((e) => (e.textContent ?? "").includes("httpd.conf")) as HTMLElement).click();
+    await waitForEffects();
+    (rowFor(host, "Listen").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await waitForEffects();
+    const real = history.pushState;
+    const pushed: string[] = [];
+    history.pushState = function (this: History, a: unknown, b: unknown, url: string) {
+      pushed.push(url);
+      return real.call(this, a as never, b as never, url);
+    } as never;
+    try {
+      history.back();
+      await waitForEffects();
+      expect(pushed, `pushed ${pushed.join(", ")}`).toEqual([]);
+    } finally {
+      history.pushState = real;
+    }
+  });
+
+  it("leaves an entry when a row's own file is opened", async () => {
+    const host = mountArtifact();
+    await waitForEffects();
+    (rowFor(host, "Listen").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await waitForEffects();
+    expect(panel(host)).not.toBeNull();
+    // …and the address says nothing about it: the lens is not sendable.
+    // The address says nothing about the panel: a fragment that has moved has
+    // moved because the reader is somewhere else, never because a lens is open.
+    expect(decodeURIComponent(location.hash)).not.toContain("httpd.conf.j2");
+    history.back();
+    await waitForEffects();
+    expect(panel(host), "the button did not close the panel it opened").toBeNull();
+  });
+
+  // FORWARD, held at the handler and not at the button: happy-dom's
+  // `replaceState` TRUNCATES the entries ahead of the current one (a real
+  // browser's does not), and this page replaces the fragment as the reader
+  // moves — so `history.forward()` has nothing left to go to HERE, whatever the
+  // browser would do. What can be held is that the traversal's own state
+  // reopens the panel, which is the half this page owns.
+  it("opens it again when a traversal hands the address back", async () => {
+    const host = mountArtifact();
+    await waitForEffects();
+    (rowFor(host, "Listen").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await waitForEffects();
+    const held = location.hash;
+    expect(decodeURIComponent(held), "the address does not name the open file").toContain("|web");
+    history.back();
+    await waitForEffects();
+    expect(panel(host)).toBeNull();
+    // The address, then the traversal — happy-dom's `replaceState` truncates
+    // whatever lies ahead of the current entry (a browser's does not), so
+    // `history.forward()` has nothing to go to here and the handler is held
+    // instead: given this address, the panel comes back.
+    history.replaceState(null, "", held);
+    window.dispatchEvent(new window.PopStateEvent("popstate"));
+    await waitForEffects();
+    expect(panel(host), "the address did not reopen the file it names").not.toBeNull();
+  });
+
+  // Closing is a move as well, or the reader who closed a panel and pressed
+  // back would be taken past the place they were reading.
+  it("leaves an entry when the panel is closed by hand", async () => {
+    const host = mountArtifact();
+    await waitForEffects();
+    (rowFor(host, "Listen").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await waitForEffects();
+    (host.querySelector(".rs-artifact-panel .rs-modal-close") as HTMLElement).click();
+    await waitForEffects();
+    expect(panel(host)).toBeNull();
+    history.back();
+    await waitForEffects();
+    expect(panel(host), "the close could not be undone").not.toBeNull();
+  });
+
+  // A document this delivery does not carry closes the panel rather than
+  // opening nothing — an entry may outlive the sheet it was made on (the reader
+  // dropped another folder into the page).
+  it("closes rather than opening a document the page does not have", async () => {
+    const host = mountArtifact();
+    await waitForEffects();
+    (rowFor(host, "Listen").querySelector(".rs-artifact-chip") as HTMLElement).click();
+    await waitForEffects();
+    history.replaceState(null, "", `#1|${encodeURIComponent("no such file")}`);
+    window.dispatchEvent(new window.PopStateEvent("popstate"));
+    await waitForEffects();
+    expect(panel(host)).toBeNull();
+  });
+});
+
+// THE SAME THING FOR THE EVIDENCE PANEL, which is where the reader hit it: the
+// record's own cell carries the link that opens an observed document, and that
+// click left no entry at all — while a line clicked inside the panel did. One
+// gesture, two halves, two behaviours.
+describe("viewer: the evidence panel in the history", () => {
+  const ID = "observed poc terraform show -json";
+  const mountRecord = (): HTMLElement => {
+    const href = `rs-evidence:${encodeURIComponent(`${ID}#L3`)}`;
+    const payload = {
+      metadata: { title: "t" },
+      versions: [
+        {
+          version: "current",
+          sheets: [
+            {
+              name: "rec",
+              categories: [],
+              document: {
+                html: `<h2 id="p-r">R</h2>\n<table><tbody><tr data-rs-line="5"><td>1</td><td>a</td><td><a href="${href}">e</a></td></tr></tbody></table>\n`,
+                headings: [{ level: 2, text: "R", id: "p-r" }],
+              },
+            },
+          ],
+          artifacts: [
+            {
+              id: ID,
+              sheet: "rec",
+              source_file: "terraform show -json",
+              nature: "observed",
+              observed: { host: "acct", at: "T" },
+              lines: Array.from({ length: 6 }, (_, i) => ({ text: `line ${i + 1}`, kind: "verbatim" as const })),
+            },
+          ],
+        },
+      ],
+    };
+    openSheetTab();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(h(Root, { payload: payload as never, reviewEnabled: false, initialLang: "ja", server: false }), host);
+    return host;
+  };
+
+  const open = async (host: HTMLElement): Promise<void> => {
+    (host.querySelector('a[href^="rs-evidence:"]') as HTMLElement).dispatchEvent(
+      new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 })
+    );
+    for (let i = 0; i < 100; i++) {
+      if (host.querySelector(".rs-artifact-panel") !== null) break;
+      await waitForEffects();
+    }
+    expect(host.querySelector(".rs-artifact-panel"), "the evidence did not open").not.toBeNull();
+  };
+
+  it("comes back out of the evidence a cell's link opened", async () => {
+    const host = mountRecord();
+    await waitForEffects();
+    await open(host);
+    history.back();
+    await waitForEffects();
+    expect(host.querySelector(".rs-artifact-panel"), "the button did not close the evidence").toBeNull();
+  });
+
+  // …and the line it was opened AT comes back with it, not whichever line the
+  // reader last looked at.
+  it("brings the line the link named back with it", async () => {
+    const host = mountRecord();
+    await waitForEffects();
+    await open(host);
+    const held = location.hash;
+    expect(decodeURIComponent(held), "the line is not in the address").toContain("#L3");
+    const lines = (): (string | undefined)[] =>
+      [...host.querySelectorAll(".rs-artifact-line.rs-here")].map((l) => l.querySelector(".rs-artifact-no")?.textContent);
+    expect(lines()).toEqual(["3"]);
+    [...host.querySelectorAll(".rs-artifact-line")][5]!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    await waitForEffects();
+    history.replaceState(null, "", held);
+    window.dispatchEvent(new window.PopStateEvent("popstate"));
+    await waitForEffects();
+    expect(lines()).toEqual(["3"]);
+  });
+});
+
+// THE ADDRESS CARRIES WHAT IS OPEN BESIDE THE SHEET, which is what makes it
+// sendable: "look at this line of this evidence" is the commonest thing one
+// reviewer says to another, and a document whose rows can be linked to and
+// whose evidence cannot is one address scheme with a hole in it.
+describe("viewer: an address that names the open file", () => {
+  it("puts the file in the fragment, and the line where there is one", () => {
+    expect(docFragment(1, "nav-0-x", { id: "web" })).toBe("#2/nav-0-x|web");
+    expect(decodeURIComponent(docFragment(1, null, { id: "obs doc", line: 12 }))).toBe("#2|obs doc#L12");
+    // …and says nothing when nothing is open, so every address written before
+    // this reads exactly as it did.
+    expect(docFragment(1, "nav-0-x")).toBe("#2/nav-0-x");
+    expect(docFragment(-1, null, null)).toBe("#overview");
+  });
+
+  it("reads one back, whole", () => {
+    expect(parseFragment("#2/nav-0-x|web", 3)).toEqual({ sheet: 1, where: "nav-0-x", panel: { id: "web" } });
+    expect(parseFragment(`#2|${encodeURIComponent("obs doc#L12")}`, 3)).toEqual({ sheet: 1, where: null, panel: { id: "obs doc", line: 12 } });
+    expect(parseFragment("#overview", 3)).toEqual({ sheet: -1, where: null, panel: null });
+  });
+
+  // An id holding the delimiter, or the one a command's own text brings with
+  // it: both parts are percent-encoded, so neither can be mistaken for the
+  // other. A `curl https://…` IS an evidence id on a real record.
+  it("survives a file named like an address", () => {
+    const id = 'curl https://h/x | jq "#L1/x"';
+    const round = parseFragment(docFragment(0, "nav-0-a|b/c", { id, line: 2 }), 3);
+    expect(round).toEqual({ sheet: 0, where: "nav-0-a|b/c", panel: { id, line: 2 } });
+  });
+
+  // A pasted link opens the document it names — the whole point — and one
+  // naming something this delivery does not carry opens nothing rather than an
+  // empty panel.
+  it("opens the evidence a pasted link names", async () => {
+    const ID = "observed poc terraform show -json";
+    const payload = {
+      metadata: { title: "t" },
+      versions: [
+        {
+          version: "current",
+          sheets: [{ name: "rec", categories: [], document: { html: '<h2 id="p-r">R</h2>\n<p>x</p>\n', headings: [{ level: 2, text: "R", id: "p-r" }] } }],
+          artifacts: [
+            {
+              id: ID,
+              sheet: "rec",
+              source_file: "terraform show -json",
+              nature: "observed",
+              observed: { host: "acct", at: "T" },
+              lines: Array.from({ length: 6 }, (_, i) => ({ text: `line ${i + 1}`, kind: "verbatim" as const })),
+            },
+          ],
+        },
+      ],
+    };
+    const openAt = async (hash: string): Promise<HTMLElement> => {
+      location.hash = hash;
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      render(h(Root, { payload: payload as never, reviewEnabled: false, initialLang: "ja", server: false }), host);
+      await waitForEffects();
+      return host;
+    };
+    const host = await openAt(`#1|${encodeURIComponent(`${ID}#L4`)}`);
+    expect(host.querySelector(".rs-artifact-panel"), "the link opened no evidence").not.toBeNull();
+    expect(
+      [...host.querySelectorAll(".rs-artifact-line.rs-here")].map((l) => l.querySelector(".rs-artifact-no")?.textContent)
+    ).toEqual(["4"]);
+    render(null, host);
+    host.remove();
+    const stale = await openAt(`#1|${encodeURIComponent("a file from another version")}`);
+    expect(stale.querySelector(".rs-artifact-panel"), "a stale link opened an empty panel").toBeNull();
+    // …and the address stops naming it, so the reader does not go on sending a
+    // link to a document that is not there. (The panel component also refuses an
+    // id it has no preview for, which is why this is the half worth asserting:
+    // nothing on screen would have shown the difference.)
+    expect(decodeURIComponent(location.hash), `hash was ${location.hash}`).not.toContain("another version");
   });
 });

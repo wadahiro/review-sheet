@@ -3025,23 +3025,63 @@ export const docLineId = (sheetIndex: number, line: number): string => `rs-doc-l
 //
 // A fragment and never a path: a delivered document is opened from a file://
 // URL, where pushState with a path is a SecurityError (measured).
-export const docFragment = (sheet: number, where?: string | null): string =>
-  sheet === -1 ? "#overview" : (where ?? "") === "" ? `#${sheet + 1}` : `#${sheet + 1}/${encodeURIComponent(where!)}`;
+// …AND WHAT IS OPEN BESIDE IT. A preview or an observed document is a LENS over
+// the sheet (see `ArtifactPanel`), reached from the row or the verdict it
+// belongs to — so for a while it was deliberately not part of the address at
+// all, and then only part of the history ENTRY, which gave back and forward
+// without making it sendable. Sendable is what it is for: "look at this line of
+// this evidence" is the commonest thing one reviewer says to another, and a
+// document whose rows can be linked to and whose evidence cannot is one address
+// scheme with a hole in it. So it rides in the fragment, which is the only
+// address a file:// document has.
+//
+// WHICH DOCUMENT and WHICH LINE, and nothing else:
+//
+//   * the marked ROW's key is not carried, because the address already names
+//     the place in the sheet and the panel follows it there (see `land`);
+//   * which instance's rendering is shown is not carried either — a tab of the
+//     panel, returning to the first where a link is opened fresh.
+//
+// Spelled as `|<id>#L<line>`, percent-encoded whole: the same `id#L<line>` a
+// record's own evidence link is written with (`evidence.ts`), read back by the
+// same `parseEvidenceRef`, so the document and the address agree about what
+// names a line. `|` cannot appear inside either part, since both are
+// percent-encoded (encodeURIComponent escapes it).
+export const docFragment = (sheet: number, where?: string | null, panel?: { id: string; line?: number } | null): string => {
+  const lens = panel === undefined || panel === null ? "" : `|${encodeURIComponent(`${panel.id}${panel.line === undefined ? "" : `#L${panel.line}`}`)}`;
+  if (sheet === -1) return `#overview${lens}`;
+  return (where ?? "") === "" ? `#${sheet + 1}${lens}` : `#${sheet + 1}/${encodeURIComponent(where!)}${lens}`;
+};
 
 // …and the same address read back. `null` for anything this document cannot
 // answer for, which is what a stale link pasted from another version is.
-export const parseFragment = (hash: string, sheets: number): { sheet: number; where: string | null } | null => {
-  const raw = hash.replace(/^#/, "");
+export const parseFragment = (
+  hash: string,
+  sheets: number
+): { sheet: number; where: string | null; panel: { id: string; line?: number } | null } | null => {
+  const all = hash.replace(/^#/, "");
+  const bar = all.indexOf("|");
+  const raw = bar < 0 ? all : all.slice(0, bar);
+  let panel: { id: string; line?: number } | null = null;
+  if (bar >= 0) {
+    try {
+      const ref = decodeURIComponent(all.slice(bar + 1));
+      if (ref !== "") panel = parseEvidenceRef(ref);
+    } catch {
+      // A malformed escape names no document, which is the same answer as a
+      // link to something this delivery does not carry.
+    }
+  }
   const slash = raw.indexOf("/");
   const base = slash < 0 ? raw : raw.slice(0, slash);
   let where: string | null = null;
   if (slash >= 0) {
     try { where = decodeURIComponent(raw.slice(slash + 1)) || null; } catch { where = null; }
   }
-  if (base === "overview") return { sheet: -1, where: null };
+  if (base === "overview") return { sheet: -1, where: null, panel };
   const n = Number.parseInt(base, 10);
   if (Number.isNaN(n) || n < 1 || n > sheets) return null;
-  return { sheet: n - 1, where };
+  return { sheet: n - 1, where, panel };
 };
 
 function collectDocLines(data: SheetData): NavEntry[] {
@@ -3975,14 +4015,10 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   }, [baseData, lang, environments]);
   const hasMetadataInit = !!(data.metadata?.project || data.metadata?.version || data.metadata?.generated_at || data.metadata?.changelog?.length || data.metadata?.extra);
 
-  // Restore tab index from URL hash (hash is 1-based)
-  const getInitialTab = (): number => {
-    const hash = location.hash.replace("#", "");
-    if (hash === "overview") return -1;
-    const num = parseInt(hash, 10);
-    if (!isNaN(num) && num >= 1 && num <= data.sheets.length) return num - 1;
-    return hasMetadataInit ? -1 : 0;
-  };
+  // Restore tab index from the URL. Read through `parseFragment`, the one
+  // spelling of an address: by hand, `#overview|<evidence>` is not "overview"
+  // and the reader arrives on the wrong page from their own link.
+  const getInitialTab = (): number => parseFragment(location.hash, data.sheets.length)?.sheet ?? (hasMetadataInit ? -1 : 0);
   const [activeSheet, setActiveSheetState] = useState(getInitialTab);
 
   // WHERE IN the document, carried in the fragment beside which document it is.
@@ -3997,18 +4033,23 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // delivered document is opened from a file:// URL, where pushState with a
   // path is a SecurityError (measured), so the fragment is the only address
   // this document can have.
-  const [initialAnchor] = useState(() => {
-    const raw = location.hash.replace("#", "");
-    const slash = raw.indexOf("/");
-    if (slash < 0) return null;
-    try { return decodeURIComponent(raw.slice(slash + 1)) || null; } catch { return null; }
-  });
+  const [initialAnchor] = useState(() => parseFragment(location.hash, data.sheets.length)?.where ?? null);
+  // …and the panel the address names, read at the FIRST RENDER like the anchor
+  // beside it and never again. An effect that re-read the hash would read one
+  // this page had written in the meantime: a reader who opened a panel before
+  // the first effects flushed had it closed and reopened without its row (the
+  // address carries the document and the line, not the key), which is a race
+  // the tests hit and a browser would hit on a slow first paint.
+  const [initialPanel] = useState(() => parseFragment(location.hash, data.sheets.length)?.panel ?? null);
 
   // Set while a JUMP is switching sheets (jumpToNav). A jump names a place
   // inside the document it opens; choosing a document from the navigation names
   // none, and the two want opposite things from the scroll — so the jump says
   // so, and the selection below stands aside.
   const jumpOwnsScroll = useRef(false);
+
+  // Set while the BROWSER is navigating — see `pushAddress`.
+  const travelling = useRef(false);
 
 
   // A DELIBERATE MOVE LEAVES AN ENTRY; FOLLOWING THE READER DOES NOT.
@@ -4024,15 +4065,29 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // the page where it stood, while a jump inside one document pushed nothing at
   // all. Half a mechanism is worse than neither — a button that looks available
   // and does nothing.
-  const pushAddress = useCallback((sheet: number, where?: string | null) => {
-    const next = docFragment(sheet, where);
-    // The same place is not a new entry: a reader clicking the section they are
-    // already in would otherwise need two presses to leave it. This is also
-    // what keeps a RESTORE from pushing — by the time the page reacts to a
-    // traversal the browser has already put that address in the bar, so the jump
-    // that follows asks for the place it is at. A flag for "the browser is
-    // navigating" was written first and removed: it could not be made to fire,
-    // which means it was not the thing doing the work.
+  const pushAddress = useCallback((sheet: number, where?: string | null, panel: ArtifactTarget | null = panelNow.current) => {
+    // RESTORING IS NOT MOVING. A push here records the place just returned to as
+    // a new entry AND throws away everything ahead of it, which is the forward
+    // button — and the comparison below cannot catch it, because the lens this
+    // page is holding has not re-rendered yet when the jump runs: it still reads
+    // as the panel the reader is LEAVING.
+    //
+    // An earlier version of this flag was removed for being unwitnessable, and
+    // that was right at the time: with no panel in the entry, a restore asked
+    // for the address it was already at and the "same place" test below stopped
+    // it. The flag earns its place now, and the test that holds it has to come
+    // back to a place rather than to a bare sheet ("records nothing of its own
+    // on the way back") — a restore with nowhere to jump never reaches here.
+    if (travelling.current) return;
+    const next = docFragment(sheet, where, panel);
+    // The same place, with the same thing open beside it, is not a new entry: a
+    // reader clicking the section they are already in would otherwise need two
+    // presses to leave it. This is also what keeps a RESTORE from pushing — by
+    // the time the page reacts to a traversal the browser has already put that
+    // address in the bar, so the jump that follows asks for the place it is at.
+    // A flag for "the browser is navigating" was written first and removed: it
+    // could not be made to fire, which means it was not the thing doing the work.
+    //
     if (location.hash === next) return;
     history.pushState(null, "", next);
   }, []);
@@ -4537,6 +4592,14 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   // the content has to be in the DOM before it can be measured. A fragment
   // naming something this document no longer has simply stays at the top,
   // which is what a stale link should do.
+  // ARRIVING WITH ONE IN THE ADDRESS — a pasted link, a reload, a return from
+  // another page. This is the whole reason the lens is in the fragment rather
+  // than in the history entry: "look at this line of this evidence" is a thing
+  // one reviewer sends another.
+  useEffect(() => {
+    if (initialPanel !== null) openPanelFrom(initialPanel);
+  }, []);
+
   useEffect(() => {
     if (initialAnchor === null) return;
     requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -4679,6 +4742,26 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   const title = data.metadata?.title ?? t.defaultTitle;
 
   const [artifactTarget, setArtifactTarget] = useState<ArtifactTarget | null>(null);
+  // The latest value, for the handlers that write history: they run after the
+  // render that produced them, so a closure over the state is a tick behind.
+  const panelNow = useRef<ArtifactTarget | null>(null);
+  panelNow.current = artifactTarget;
+  // OPENING OR CLOSING ONE IS A MOVE, so it is a place to come back from — the
+  // place the reader is already at, with the lens changed. Every other change to
+  // the panel (which environment's rendering, which line is marked) is not a
+  // move of its own: it rides in the CURRENT entry, which the fragment effect
+  // replaces rather than pushes.
+  const showPanel = useCallback((panel: ArtifactTarget | null, where?: string) => {
+    setArtifactTarget(panel);
+    pushAddress(activeSheet, where ?? parseFragment(location.hash, data.sheets.length)?.where ?? null, panel);
+  }, [pushAddress, activeSheet, data.sheets.length]);
+  // …and an address naming one, opened. Only a document this delivery actually
+  // carries: a link from another version names one it does not, and a panel that
+  // opened on nothing would be worse than the link simply not working.
+  const openPanelFrom = useCallback((ref: { id: string; line?: number } | null) => {
+    const found = ref !== null && (artifacts ?? []).some((a) => a.id === ref.id);
+    setArtifactTarget(found ? { id: ref!.id, ...(ref!.line === undefined ? {} : { line: ref!.line }) } : null);
+  }, [artifacts]);
   // An embedded image a reader asked to see properly — see ImageZoom.
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
   // …and the verdicts decided on a line a reader pointed at, when there is more
@@ -4711,9 +4794,12 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     // replaceState, as it always was — the fragment FOLLOWS the reader here and
     // a history entry per section is what that comment below is about.
     const where = (marked?.id ?? "") !== "" ? marked!.id : currentNavId;
-    const next = docFragment(activeSheet, where);
+    // …and the LENS beside it: a panel retargeted by a click or by following the
+    // reader belongs to the place they are at, so it is replaced INTO the
+    // current entry rather than pushed as a move of its own.
+    const next = docFragment(activeSheet, where, artifactTarget);
     if (location.hash !== next) history.replaceState(null, "", next);
-  }, [currentNavId, activeSheet, marked]);
+  }, [currentNavId, activeSheet, marked, artifactTarget]);
 
   // BACK AND FORWARD, which is the other half of pushing an entry at all.
   //
@@ -4738,14 +4824,23 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   useEffect(() => {
     try { history.scrollRestoration = "manual"; } catch { /* not every browser offers it */ }
     const onTravel = (): void => {
-      const at = parseFragment(location.hash, data.sheets.length);
-      if (at === null) return;
-      if (at.where === null) { if (at.sheet !== activeSheet) setActiveSheet(at.sheet); }
-      else jumpToNav(at.sheet, at.where);
+      travelling.current = true;
+      try {
+        const at = parseFragment(location.hash, data.sheets.length);
+        // The lens FIRST, so the landing below sees the panel this address names
+        // rather than moving the one being left behind. A document this delivery
+        // does not carry closes it instead of opening nothing.
+        openPanelFrom(at?.panel ?? null);
+        if (at === null) return;
+        if (at.where === null) { if (at.sheet !== activeSheet) setActiveSheet(at.sheet); }
+        else jumpToNav(at.sheet, at.where);
+      } finally {
+        travelling.current = false;
+      }
     };
-    window.addEventListener("popstate", onTravel);
-    return () => window.removeEventListener("popstate", onTravel);
-  }, [activeSheet, data.sheets.length, jumpToNav, setActiveSheet]);
+    window.addEventListener("popstate", onTravel as EventListener);
+    return () => window.removeEventListener("popstate", onTravel as EventListener);
+  }, [activeSheet, data.sheets.length, jumpToNav, setActiveSheet, openPanelFrom]);
   // Which preview a row belongs to, and where in it — resolved once per
   // document by the shared index (`artifact-index.ts`), because `md-set` asks
   // the same question when it writes the link into the carried markdown, and
@@ -4763,7 +4858,22 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
         : {
             idFor: artifactIndex.idFor,
             natureFor: (sheet, categoryPath, key) => artifactIndex.previewFor(sheet, categoryPath, key)?.nature,
-            open: (id, key, keys) => setArtifactTarget({ id, key, ...(keys === undefined ? {} : { keys }) }),
+            open: (id, key, keys) => {
+              // THE ROW WHOSE FILE THIS IS BECOMES THE PLACE. Two rows' files
+              // are two addresses — without this both read as "this sheet, that
+              // document" and the second opening recorded no move at all, so
+              // the button skipped straight past the first. It also makes the
+              // link sendable as what it is: this row, with its file open.
+              // Marked, like every other landing on a row, and NOT scrolled to:
+              // the reader has just clicked its own chip, so it is in front of
+              // them already.
+              const el = document.querySelector(`[id$="--${cssEscape(encodeIdPart(key))}"]`);
+              if (el !== null) {
+                setMarked(el as HTMLElement);
+                setCurrentNavId(el.id);
+              }
+              showPanel({ id, key, ...(keys === undefined ? {} : { keys }) }, el?.id);
+            },
           },
     [artifacts, artifactIndex]
   );
@@ -5018,7 +5128,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
           // affordance that opens nothing is one this tool does not perform.
           if (!(artifacts ?? []).some((x) => x.id === id)) return;
           e.preventDefault();
-          setArtifactTarget({ id, ...(line === undefined ? {} : { line }) });
+          showPanel({ id, ...(line === undefined ? {} : { line }) });
           return;
         }
         if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("#")) return;
@@ -5029,7 +5139,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
         const line = /^L(\d+)$/.exec(frag);
         // The PATH form, which is how a record read back out of a markdown set
         // names its evidence — one question asked in two deliveries.
-        setArtifactTarget({ id: hit.id, ...(line === null ? {} : { line: Number(line[1]) }) });
+        showPanel({ id: hit.id, ...(line === null ? {} : { line: Number(line[1]) }) });
       }}>
         ${activeSheet === OVERVIEW_TAB && hasMetadata && html`
           <section class="rs-overview">
@@ -5257,7 +5367,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
 
       ${artifactTarget && html`
         <${ArtifactPanel} previews=${artifacts ?? []} target=${artifactTarget} dock=${dockNow} onDock=${pickDock}
-                          onClose=${() => setArtifactTarget(null)}
+                          onClose=${() => showPanel(null)}
                           onPick=${(instance: string | undefined) => setArtifactTarget((c) => (c ? { ...c, instance } : c))}
                           onJumpRow=${jumpToRow}
                           onHere=${(line: number) => setArtifactTarget((c) => (c ? { ...c, line } : c))}
