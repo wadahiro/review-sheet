@@ -5209,6 +5209,20 @@ describe("viewer: the evidence panel in the history", () => {
     }
   });
 
+  // …AND THE ROW STAYS IN THE ADDRESS WHEN THE READER SCROLLS, which is what a
+  // reload reads back. A record's row has no id, so the fragment fell through to
+  // the scroll-spy's heading the moment anything scrolled: the reader reloaded a
+  // link to a verdict and landed on the chapter.
+  it("keeps the row in the address when the page scrolls", async () => {
+    const host = mountRecord();
+    await waitForEffects();
+    await open(host);
+    expect(decodeURIComponent(location.hash)).toContain("rs-doc-line:0:5");
+    window.dispatchEvent(new window.Event("scroll"));
+    await waitForEffects();
+    expect(decodeURIComponent(location.hash), `hash was ${location.hash}`).toContain("rs-doc-line:0:5");
+  });
+
   it("comes back out of the evidence a cell's link opened", async () => {
     const host = mountRecord();
     await waitForEffects();
@@ -5313,5 +5327,39 @@ describe("viewer: an address that names the open file", () => {
     // id it has no preview for, which is why this is the half worth asserting:
     // nothing on screen would have shown the difference.)
     expect(decodeURIComponent(location.hash), `hash was ${location.hash}`).not.toContain("another version");
+  });
+});
+
+
+// THE MARK SURVIVES THE LANDING FLASH.
+//
+// Both are inset shadows on the same cell — the flash fills the row and the mark
+// draws the bar down its left edge — so the animation switched the bar off for
+// the 1.6 seconds a reader is being shown where they landed, which is the one
+// moment it is most wanted.
+describe("the row mark under the landing flash", () => {
+  const body = (needle: string): string => {
+    const found = [...customStyles.matchAll(/([^{}]+)\{([^}]*)\}/g)].find((m) => m[1]!.includes(needle));
+    return found?.[2] ?? "";
+  };
+  const frames = (name: string): string => {
+    const at = customStyles.indexOf(`@keyframes ${name}`);
+    return at < 0 ? "" : customStyles.slice(at, customStyles.indexOf("}", customStyles.indexOf("100%", at)) + 1);
+  };
+
+  it("draws the bar and the flash on a marked row at once", () => {
+    const rule = body("tr.rs-row-here.rs-jump-flash > td:first-child");
+    expect(rule).toContain("animation");
+    const used = /animation:\s*([\w-]+)/.exec(rule)?.[1] ?? "";
+    expect(used).not.toBe("");
+    const kf = frames(used);
+    // The bar FIRST, so it paints over the fill rather than under it.
+    expect(kf).toMatch(/box-shadow:\s*inset 3px 0 0 var\(--rs-primary\),\s*inset 0 0 0 9999px/);
+  });
+
+  // The plain flash is unchanged for a row nobody is on.
+  it("leaves an unmarked row's flash alone", () => {
+    expect(frames("rs-flash")).toContain("9999px");
+    expect(frames("rs-flash")).not.toContain("--rs-primary");
   });
 });

@@ -4818,7 +4818,18 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     // fragment named was overwritten by its enclosing section. Still
     // replaceState, as it always was — the fragment FOLLOWS the reader here and
     // a history entry per section is what that comment below is about.
-    const where = (marked?.id ?? "") !== "" ? marked!.id : currentNavId;
+    // A RECORD'S ROW HAS NO ID — the markdown a reader edits is what those
+    // blocks are addressed by, so `markdown.ts` stamps only the line. Its
+    // address is therefore that line (`rs-doc-line:<sheet>:<line>`, what
+    // `resolveNavTarget` resolves and what a citation is written with). Without
+    // this the marked verdict fell through to the scroll-spy's HEADING, so a
+    // reader who reloaded a link to a verdict — or simply scrolled after
+    // following one — had the chapter in the address and the row gone from it.
+    const held = marked === null ? null : marked.id !== "" ? marked.id : (() => {
+      const at = marked.getAttribute("data-rs-line");
+      return at === null ? null : docLineId(activeSheet, Number(at));
+    })();
+    const where = held ?? currentNavId;
     // …and the LENS beside it: a panel retargeted by a click or by following the
     // reader belongs to the place they are at, so it is replaced INTO the
     // current entry rather than pushed as a move of its own.

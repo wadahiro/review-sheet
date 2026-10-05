@@ -3214,6 +3214,21 @@ tr.rs-jump-flash th {
   animation: rs-flash 1.6s ease-out;
 }
 
+/* …AND THE MARK SURVIVES THE FLASH. The row fill is animated as an inset
+   shadow (a cell is the element with the background), and the mark's own left
+   bar is an inset shadow too — so for the 1.6s a reader is being shown where
+   they landed, the bar saying "this is the row you are on" was switched off,
+   which is the one moment it is most wanted. Both, with the bar written FIRST
+   so it paints over the fill. */
+tr.rs-row-here.rs-jump-flash > td:first-child {
+  animation: rs-flash-here 1.6s ease-out;
+}
+
+@keyframes rs-flash-here {
+  0%, 45% { box-shadow: inset 3px 0 0 var(--rs-primary), inset 0 0 0 9999px rgba(245, 158, 11, 0.3); }
+  100% { box-shadow: inset 3px 0 0 var(--rs-primary), inset 0 0 0 9999px rgba(245, 158, 11, 0); }
+}
+
 /* A jumped-to parameter row lands below the sticky section headers plus the
    table's own column header (~one header height). */
 .rs-param-row {
