@@ -4586,21 +4586,24 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
   });
 
 
-  // Arriving with one: the document is already the right one (getInitialTab
-  // reads the same fragment), so all that is left is to land on the place it
-  // names. Two frames, for the same reason a jump across sheets takes them —
-  // the content has to be in the DOM before it can be measured. A fragment
-  // naming something this document no longer has simply stays at the top,
-  // which is what a stale link should do.
-  // ARRIVING WITH ONE IN THE ADDRESS — a pasted link, a reload, a return from
-  // another page. This is the whole reason the lens is in the fragment rather
-  // than in the history entry: "look at this line of this evidence" is a thing
-  // one reviewer sends another.
+  // ARRIVING AT AN ADDRESS — a pasted link, a reload, a return from another
+  // page. The document is already the right one (`getInitialTab` reads the same
+  // fragment), so what is left is the place and the file open beside it.
+  //
+  // ONE effect, in this order, and that is the whole of it: the panel FIRST,
+  // then the landing, two frames later. They were two effects, and a panel
+  // opening takes 34rem off the width (or a third of the height, docked below),
+  // so a landing computed before it had the reader at a position the reflow then
+  // moved — the same address landing in the right place or the wrong one
+  // depending on which effect won, which is exactly how it was reported: the
+  // same link, sometimes fine.
+  //
+  // Two frames, for the same reason a jump across sheets takes them: the content
+  // has to be in the DOM before it can be measured. A fragment naming something
+  // this document no longer has simply stays at the top, which is what a stale
+  // link should do.
   useEffect(() => {
     if (initialPanel !== null) openPanelFrom(initialPanel);
-  }, []);
-
-  useEffect(() => {
     if (initialAnchor === null) return;
     requestAnimationFrame(() => requestAnimationFrame(() => {
       // A PASTED LINK SHOWS WHAT THE SENDER SAW, by the same landing every
@@ -4755,6 +4758,28 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
     setArtifactTarget(panel);
     pushAddress(activeSheet, where ?? parseFragment(location.hash, data.sheets.length)?.where ?? null, panel);
   }, [pushAddress, activeSheet, data.sheets.length]);
+  // THE ROW THE LINK WAS CLICKED IN, as the place the address names.
+  //
+  // A record's verdict carries its evidence link in its own cell, and that row
+  // IS addressable (`rs-doc-line:<sheet>:<line>` — the markdown a reader edits
+  // is what those blocks are addressed by, so they have no id of their own). It
+  // was not being used: the place stayed whatever the scroll-spy was watching,
+  // which is the HEADING of the section, so a link sent to somebody opened the
+  // right evidence beside the right chapter and left them to find the verdict in
+  // a table of two hundred. Marked, like the row behind a sheet's own chip.
+  //
+  // Nothing happens for a link written in prose rather than in a row: there is
+  // no row to name, and the heading is then the honest answer.
+  const citingRow = useCallback((from: EventTarget | null): string | undefined => {
+    const row = (from as HTMLElement | null)?.closest?.("[data-rs-line]") ?? null;
+    const at = row?.getAttribute("data-rs-line");
+    if (row === null || at === null || at === undefined) return undefined;
+    const id = docLineId(activeSheet, Number(at));
+    setMarked(row as HTMLElement);
+    setCurrentNavId(id);
+    return id;
+  }, [activeSheet]);
+
   // …and an address naming one, opened. Only a document this delivery actually
   // carries: a link from another version names one it does not, and a panel that
   // opened on nothing would be worse than the link simply not working.
@@ -5128,7 +5153,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
           // affordance that opens nothing is one this tool does not perform.
           if (!(artifacts ?? []).some((x) => x.id === id)) return;
           e.preventDefault();
-          showPanel({ id, ...(line === undefined ? {} : { line }) });
+          showPanel({ id, ...(line === undefined ? {} : { line }) }, citingRow(e.target));
           return;
         }
         if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("#")) return;
@@ -5139,7 +5164,7 @@ function App({ data: baseData, artifacts, reviewEnabled, promptEnabled = true, l
         const line = /^L(\d+)$/.exec(frag);
         // The PATH form, which is how a record read back out of a markdown set
         // names its evidence — one question asked in two deliveries.
-        showPanel({ id: hit.id, ...(line === null ? {} : { line: Number(line[1]) }) });
+        showPanel({ id: hit.id, ...(line === null ? {} : { line: Number(line[1]) }) }, citingRow(e.target));
       }}>
         ${activeSheet === OVERVIEW_TAB && hasMetadata && html`
           <section class="rs-overview">

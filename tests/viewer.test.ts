@@ -14,7 +14,7 @@ if (typeof (globalThis as { document?: unknown }).document === "undefined") Glob
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { h, render } from "preact";
-import { Root, artifactProvenance, payloadOfSet, docIdPrefix, docFragment, parseFragment } from "../src/html/app";
+import { Root, artifactProvenance, payloadOfSet, docIdPrefix, docFragment, parseFragment, docLineId } from "../src/html/app";
 import { readMarkdownSet } from "../src/md-read";
 import { setMarkdownRenderer } from "../src/html/markdown-runtime";
 import { renderMarkdown } from "../src/markdown";
@@ -4202,10 +4202,18 @@ describe("viewer: the verdicts decided on a line", () => {
   const ID = "observed poc terraform show -json";
   const cite = (line: number): string => `rs-evidence:${encodeURIComponent(`${ID}#L${line}`)}`;
 
-  function mountWith(rows: { line: number; no: string; what: string; at: number; doc?: string }[], others: string[] = []): HTMLElement {
+  function mountWith(
+    rows: { line: number; no: string; what: string; at: number; doc?: string; also?: number }[],
+    others: string[] = []
+  ): HTMLElement {
     const citeIn = (doc: string, line: number): string => `rs-evidence:${encodeURIComponent(`${doc}#L${line}`)}`;
     const html_ = `<h2 id="p-r">R</h2>\n<table><tbody>${rows
-      .map((r) => `<tr data-rs-line="${r.line}"><td>${r.no}</td><td>${r.what}</td><td><a href="${citeIn(r.doc ?? ID, r.at)}">e</a></td></tr>`)
+      .map(
+        (r) =>
+          `<tr data-rs-line="${r.line}"><td>${r.no}</td><td>${r.what}</td><td><a href="${citeIn(r.doc ?? ID, r.at)}">e</a>${
+            r.also === undefined ? "" : `<a href="${citeIn(ID, r.also)}">e2</a>`
+          }</td></tr>`
+      )
       .join("")}</tbody></table>\n`;
     const payload = {
       metadata: { title: "t" },
@@ -4307,10 +4315,11 @@ describe("viewer: the verdicts decided on a line", () => {
     expect(no(), `the fragment says ${location.hash}`).toEqual(["3"]);
   });
 
-  // …and never into a document the reader is not holding. A verdict returned to
-  // may have been read from another file; pointing THIS panel at that file's
-  // line number would mark an unrelated line of the file on screen.
-  it("leaves the mark alone when the verdict returned to was read elsewhere", async () => {
+  // A TRAVERSAL FOLLOWS THE ADDRESS, which names the document as well as the
+  // place: coming back to a verdict read from another file opens THAT file, at
+  // the line the entry named. (The derived path is the one that must not cross
+  // documents — see the test after this one.)
+  it("comes back to the document the entry's address names", async () => {
     const OTHER = "observed poc other";
     const host = mountWith(
       [
@@ -4339,8 +4348,46 @@ describe("viewer: the verdicts decided on a line", () => {
     history.back();
     await waitForEffects();
     const here = [...host.querySelectorAll(".rs-artifact-line.rs-here")].map((l) => l.querySelector(".rs-artifact-no")?.textContent);
+    expect(host.querySelector(".rs-artifact-path")?.textContent, `the fragment says ${location.hash}`).toBe(OTHER);
+    expect(here, `the fragment says ${location.hash}`).toEqual(["3"]);
+  });
+
+  // …AND THE DERIVED PATH DOES NOT CROSS DOCUMENTS. Landing on a row points the
+  // open panel at the line that row IS (see `land`), read off the row's own
+  // evidence link — and a verdict read from TWO documents has two of them, so
+  // the link that names another file must not move a panel showing this one: its
+  // line number would mark an unrelated line of the file on screen.
+  it("leaves the mark alone where the row cites another document too", async () => {
+    const OTHER = "observed poc other";
+    // Row 1 was read from BOTH: its first link names the other document, and it
+    // is also a citer of line 7 of this one.
+    const host = mountWith(
+      [
+        { line: 5, no: "1", what: "a", at: 3, doc: OTHER, also: 7 },
+        { line: 6, no: "2", what: "b", at: 7 },
+      ],
+      [OTHER]
+    );
+    (host.querySelectorAll('a[href^="rs-evidence:"]')[2] as HTMLElement).dispatchEvent(
+      new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 })
+    );
+    for (let i = 0; i < 100; i++) {
+      if (host.querySelector(".rs-artifact-panel") !== null) break;
+      await waitForEffects();
+    }
+    expect(host.querySelector(".rs-artifact-path")?.textContent).toBe("terraform show -json");
+    // Line 7 is cited by both rows, so the picker opens; the first row is the
+    // one read from the other document.
+    lineAt(host, 7).click();
+    await waitForEffects();
+    const pick = [...host.querySelectorAll(".rs-citers button, .rs-modal button")].find((b) => (b.textContent ?? "").includes("1"));
+    (pick as HTMLElement | undefined)?.click();
+    await waitForEffects();
     expect(host.querySelector(".rs-artifact-path")?.textContent, "the panel changed documents").toBe("terraform show -json");
-    expect(here, `the fragment says ${location.hash}`).toEqual(["7"]);
+    expect(
+      [...host.querySelectorAll(".rs-artifact-line.rs-here")].map((l) => l.querySelector(".rs-artifact-no")?.textContent),
+      `the fragment says ${location.hash}`
+    ).toEqual(["7"]);
   });
 
   // THE ADDRESS OF A RECORD'S ROW HAS TO SURVIVE THE SCROLL THAT FOLLOWS.
@@ -5070,9 +5117,9 @@ describe("viewer: a panel in the history", () => {
 // gesture, two halves, two behaviours.
 describe("viewer: the evidence panel in the history", () => {
   const ID = "observed poc terraform show -json";
-  const mountRecord = (): HTMLElement => {
+  const recordPayload = () => {
     const href = `rs-evidence:${encodeURIComponent(`${ID}#L3`)}`;
-    const payload = {
+    return {
       metadata: { title: "t" },
       versions: [
         {
@@ -5100,10 +5147,13 @@ describe("viewer: the evidence panel in the history", () => {
         },
       ],
     };
+  };
+
+  const mountRecord = (): HTMLElement => {
     openSheetTab();
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(h(Root, { payload: payload as never, reviewEnabled: false, initialLang: "ja", server: false }), host);
+    render(h(Root, { payload: recordPayload() as never, reviewEnabled: false, initialLang: "ja", server: false }), host);
     return host;
   };
 
@@ -5117,6 +5167,47 @@ describe("viewer: the evidence panel in the history", () => {
     }
     expect(host.querySelector(".rs-artifact-panel"), "the evidence did not open").not.toBeNull();
   };
+
+  // THE VERDICT'S OWN ROW IS THE PLACE. A record's row carries its evidence link
+  // in its own cell and IS addressable (`rs-doc-line:<sheet>:<line>`); the place
+  // stayed whatever the scroll-spy was watching, which is the section's HEADING
+  // — so a link sent to somebody opened the right evidence beside the right
+  // chapter and left them to find the verdict in a table of two hundred.
+  it("names the row the link was clicked in", async () => {
+    const host = mountRecord();
+    await waitForEffects();
+    await open(host);
+    expect(decodeURIComponent(location.hash), `hash was ${location.hash}`).toContain("rs-doc-line:0:5");
+    const here = host.querySelector("tr.rs-row-here");
+    expect(here, "the verdict's own row is not marked").not.toBeNull();
+    expect(here!.getAttribute("data-rs-line")).toBe("5");
+  });
+
+  // …and arriving at that address puts the reader on the row with the evidence
+  // already open. The PANEL FIRST and the landing after it: a panel takes 34rem
+  // off the width (or a third of the height, docked below), so a landing
+  // computed before it opened is a position the reflow then moves — the same
+  // link landing well or badly depending on which effect won.
+  it("opens the file before aiming at the row the address names", async () => {
+    const real = Element.prototype.scrollIntoView;
+    const sawPanel: boolean[] = [];
+    location.hash = `#1/${encodeURIComponent(docLineId(0, 5))}|${encodeURIComponent(`${ID}#L3`)}`;
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    Element.prototype.scrollIntoView = function (this: Element, opts?: unknown) {
+      sawPanel.push(document.querySelector(".rs-artifact-panel") !== null);
+      return real.call(this, opts as never);
+    } as never;
+    try {
+      render(h(Root, { payload: recordPayload() as never, reviewEnabled: false, initialLang: "ja", server: false }), host);
+      for (let i = 0; i < 50 && sawPanel.length === 0; i++) await waitForEffects();
+      expect(host.querySelector(".rs-artifact-panel"), "the address did not open the evidence").not.toBeNull();
+      expect(sawPanel[0], "the landing was aimed before the panel opened").toBe(true);
+      expect(host.querySelector("tr.rs-row-here")?.getAttribute("data-rs-line")).toBe("5");
+    } finally {
+      Element.prototype.scrollIntoView = real;
+    }
+  });
 
   it("comes back out of the evidence a cell's link opened", async () => {
     const host = mountRecord();
