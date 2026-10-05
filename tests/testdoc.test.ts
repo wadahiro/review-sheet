@@ -764,3 +764,48 @@ describe("an address with a pipe in it", () => {
     expect(row).toContain("rs-evidence:");
   });
 });
+
+// THE PER-ROW DATE COLUMN IS AN EXCEPTION, not a column.
+//
+// A section's heading already carries the run (`実施日時: … ／ 対象ホスト: …`), so
+// a row repeats the date only where it was checked on a DIFFERENT day — a
+// re-check of one item, weeks later. It appeared on every row of a real record
+// instead, because the verdicts were stamped with the judge's wall clock while
+// the heading was taken from the collection: the whole record read as checked
+// today when nothing had been read since the collection days earlier (fixed in
+// judge.ts — "the moment a value verdict carries").
+describe("the date a row carries", () => {
+  const COLLECTED = "2026-09-07T07:36:49Z";
+  const withAt = (at?: string): TestResults => {
+    const r = results();
+    return { ...r, results: r.results.map((x) => ({ ...x, ...(at === undefined ? {} : { at }) })) };
+  };
+
+  // Read off the RUN's own section: the fixture also carries an environment
+  // nothing was collected for, whose rows say "not run" and whose heading says
+  // so too — a section with no run has no date to be compared against.
+  const ran = (r: TestResults): string => {
+    const all = renderTestDoc(plan(), r, "server")["test:items"];
+    const next = all.indexOf("<!-- rs:env prod -->");
+    return next < 0 ? all : all.slice(0, next);
+  };
+
+  it("says nothing where the row was checked in the run the heading names", () => {
+    // `| 実施日 |` and not the bare word: the section's heading says 実施日時,
+    // which contains it — an assertion on the word passes or fails for the
+    // wrong reason.
+    expect(ran(withAt(COLLECTED))).not.toContain("| 実施日 |");
+  });
+
+  // …and says it where it differs, which is the case the column exists for: a
+  // single item re-checked weeks after the run.
+  it("says it where the row was checked another day", () => {
+    const one = results();
+    const r: TestResults = {
+      ...one,
+      results: one.results.map((x) => ({ ...x, at: x.target.key === "pw" ? "2026-10-05T01:02:03Z" : COLLECTED })),
+    };
+    expect(ran(r)).toContain("| 実施日 |");
+    expect(ran(r)).toContain("2026-10-05");
+  });
+});

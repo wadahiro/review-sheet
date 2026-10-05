@@ -240,9 +240,11 @@ describe("what a collector must remove before anything travels", () => {
 // the machine. It was taken from the clock, so re-running the judge over a
 // month-old collection moved every functional item's evidence to today — the
 // record then says the host was read at a moment nobody read it. `judgeFiles`
-// has always used the observation's own `collected_at` for the documents it
-// carries; this path did not, so ONE observation produced two different answers
-// to "when" depending on which half of the record you read.
+// carried the observation's own `collected_at` on the DOCUMENTS it hands over
+// and not on its verdicts, and this path carried neither — so one observation
+// produced two (and then three) different answers to "when" depending on which
+// part of the record you read. Both walks take it from the collection now, per
+// environment ("the moment a value verdict carries", tests/judge.test.ts).
 describe("the moment a functional item's evidence carries", () => {
   const COLLECTED = "2026-09-17T06:23:39Z";
 

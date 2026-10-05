@@ -759,9 +759,24 @@ export function judgeFiles(
     );
   }
   const t = JUDGE_WORDS[opts.lang ?? "ja"];
-  const at = opts.at ?? new Date().toISOString();
   const { merged, conflicts } = mergeByEnvironment(observations);
   const byEnv = new Map(merged.map((o) => [o.environment, o]));
+  // WHEN THE MACHINE WAS READ, which is the observation's own moment and not
+  // this process's. A record answers "when was the deployed system checked",
+  // and the bytes being judged were collected by something else, possibly days
+  // earlier — stamping every verdict with the judge's wall clock dates the
+  // paperwork to the day somebody re-ran a build.
+  //
+  // PER ENVIRONMENT, because this walk spans them and each was collected at its
+  // own moment; the fallback (nothing said) is computed ONCE so two rows of one
+  // run cannot disagree by milliseconds. The functional walk below already does
+  // exactly this — it was fixed there and not here, so one record carried two
+  // different answers to "when" depending on which half a reader read, and the
+  // run's own heading (taken from `collected_at`) disagreed with every row
+  // under it. Hence the per-row column appearing at all: `dayOf` prints a row's
+  // date only when it differs from the run's.
+  const judgedAt = opts.at ?? new Date().toISOString();
+  const atOf = (instance: string): string => byEnv.get(instance)?.collected_at ?? judgedAt;
   const out: JudgeOutcome = { results: [], evidence: [], unanswered: [], missing: [], conflicts };
   // Parsed once per (environment, host, path): a file holds hundreds of rows,
   // and parsing it per row is the same work several hundred times over.
@@ -819,6 +834,7 @@ export function judgeFiles(
   // says "not there", which is true and misleading.
   const notChecked = notCheckedFor(plan, opts.notChecked ?? [], opts.substitute, t);
   for (const item of plan.items) {
+    const at = atOf(item.target.instance);
     const stated = notChecked(item);
     if (stated !== undefined) {
       out.results.push({

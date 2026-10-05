@@ -511,3 +511,58 @@ describe("a row this process does not check", () => {
     expect(got[0]!.reason).toContain("チャネルも宣言されていない");
   });
 });
+
+// WHEN THE MACHINE WAS READ — the observation's own moment, not this process's.
+//
+// A record answers "when was the deployed system checked", and the bytes being
+// judged were collected by something else, possibly days earlier. Every value
+// verdict was stamped with the judge's wall clock instead, so re-running a build
+// moved the whole record to today — and the run's own heading, which has always
+// been taken from `collected_at`, then disagreed with every row under it. That
+// disagreement is what made the per-row date column appear at all: a record
+// prints a row's date only where it differs from the run's.
+//
+// The functional walk was fixed for this and the value walk was not, so ONE
+// observation produced two different answers to "when" depending on which half
+// of the record a reader read.
+describe("the moment a value verdict carries", () => {
+  const plan = planOf([item({ key: "Listen", expected: "80" })]);
+  const file = { [CONF]: "Other 1\nListen 80\n" };
+
+  it("is the observation's, not the judge's", () => {
+    // `only` hands the judge its own stamp; the collection outranks it.
+    const got = only(plan, [obs(file)]);
+    expect(got.results.map((r) => r.at)).toEqual(["2026-09-11T00:00:00Z"]);
+  });
+
+  // …so the two halves of a record agree: the run's heading and the rows under
+  // it are the same moment, which is what takes the per-row column away again.
+  it("agrees with the run the record heads the section with", () => {
+    const o = [obs(file)];
+    const got = only(plan, o);
+    expect(runsFrom(o).stg?.at).toBe(got.results[0]!.at);
+  });
+
+  // PER ENVIRONMENT, because one call spans them and each was collected at its
+  // own moment.
+  it("carries each environment's own moment", () => {
+    const two: TestPlan = planOf([
+      item({ key: "Listen", expected: "80" }),
+      { ...item({ key: "Listen", expected: "80" }), target: { sheet: "s", path: ["c"], key: "Listen", instance: "prod" } } as TestItem,
+    ]);
+    const prod: Observation = { environment: "prod", collected_at: "2026-10-02T05:47:52Z", hosts: { web01: { files: file } } };
+    const got = only(two, [obs(file), prod]);
+    expect(got.results.map((r) => `${r.target.instance}=${r.at}`)).toEqual([
+      "stg=2026-09-11T00:00:00Z",
+      "prod=2026-10-02T05:47:52Z",
+    ]);
+  });
+
+  // An observation that says nothing falls back to the judge's own stamp —
+  // there is nothing else to say, and a verdict with no moment at all would be
+  // worse than one dated when it was computed.
+  it("falls back to the judge's stamp where the collection names none", () => {
+    const quiet: Observation = { environment: "stg", hosts: { web01: { files: file } } };
+    expect(only(plan, [quiet]).results.map((r) => r.at)).toEqual(["X"]);
+  });
+});
